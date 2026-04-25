@@ -54,12 +54,12 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = !isMobile;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.45;
 game.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x281a30);
-scene.fog = new THREE.Fog(0x331a2a, 100, 700);
+scene.fog = new THREE.Fog(0x6a4a5a, 240, 1100);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 2000);
 
@@ -86,9 +86,10 @@ if (!isMobile) {
 }
 
 // Lighting: dramatic dusk
-const hemi = new THREE.HemisphereLight(0xff7755, 0x221122, 0.55);
+// Lighting: warm dusk + strong fill so the city reads clearly
+const hemi = new THREE.HemisphereLight(0xffaa88, 0x44334a, 1.1);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffaa66, 0.9);
+const sun = new THREE.DirectionalLight(0xffdcb0, 1.7);
 sun.position.set(120, 180, 60);
 sun.castShadow = !isMobile;
 if (!isMobile) {
@@ -99,10 +100,10 @@ if (!isMobile) {
   sun.shadow.bias = -0.0005;
 }
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0x4466ff, 0.25);
+const fill = new THREE.DirectionalLight(0x88aaff, 0.55);
 fill.position.set(-100, 80, -120);
 scene.add(fill);
-const ambient = new THREE.AmbientLight(0x223344, 0.35);
+const ambient = new THREE.AmbientLight(0x556677, 0.7);
 scene.add(ambient);
 
 // Sky dome with stars
