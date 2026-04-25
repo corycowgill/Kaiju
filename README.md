@@ -40,6 +40,18 @@ Each one has a unique beam, roar, and charge attack with their own colors, costs
 - **Q** — Ultimate (when rage is full)
 - **Esc** — pause
 
+### Xbox controller (or any standard gamepad)
+- **Left stick** — move
+- **Right stick** — look
+- **A** — melee smash
+- **X** — beam
+- **B** — roar
+- **Y** — charge
+- **RB** — stomp · **RT** — Ultimate
+- **LB** — sprint · **Start** — pause
+
+Plug it in. The game auto-detects it via the Gamepad API.
+
 ### iPhone / touchscreen
 - **Left joystick** — move
 - **Drag right side** — look

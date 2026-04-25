@@ -317,6 +317,61 @@ if (window.visualViewport) {
 // iOS sometimes leaves the page scrolled after rotation -- snap back to top
 window.addEventListener('scroll', () => window.scrollTo(0, 0), { passive: true });
 
+// ------------------------- Gamepad (Xbox controller) -------------------------
+const padInput = {
+  moveX: 0, moveZ: 0,
+  lookX: 0, lookY: 0,
+  attack: false, sprint: false,
+  // edge-trigger latches: button-X-pressed-this-frame
+  pressed: { beam: false, roar: false, charge: false, stomp: false, ult: false, pause: false },
+  prevDown: {},
+};
+
+function readGamepad() {
+  if (!navigator.getGamepads) return false;
+  const pads = navigator.getGamepads();
+  let pad = null;
+  for (const p of pads) { if (p && p.connected) { pad = p; break; } }
+  if (!pad) {
+    padInput.moveX = padInput.moveZ = padInput.lookX = padInput.lookY = 0;
+    padInput.attack = padInput.sprint = false;
+    for (const k of Object.keys(padInput.pressed)) padInput.pressed[k] = false;
+    return false;
+  }
+  // Standard mapping (Xbox / PS layout):
+  //  axes 0,1 = left stick; axes 2,3 = right stick
+  //  buttons 0=A,1=B,2=X,3=Y, 4=LB,5=RB, 6=LT,7=RT, 8=Back,9=Start
+  const dz = (v) => Math.abs(v) < 0.18 ? 0 : (v - Math.sign(v) * 0.18) / (1 - 0.18);
+  padInput.moveX =  dz(pad.axes[0] || 0);
+  padInput.moveZ = -dz(pad.axes[1] || 0); // up on stick = forward
+  padInput.lookX =  dz(pad.axes[2] || 0);
+  padInput.lookY =  dz(pad.axes[3] || 0);
+
+  const isDown = (i) => !!(pad.buttons[i] && pad.buttons[i].pressed);
+  const press = (i) => isDown(i) && !padInput.prevDown[i];
+  // Continuous
+  padInput.attack = isDown(0); // A held = melee
+  padInput.sprint = isDown(4) || (pad.buttons[6]?.value || 0) > 0.4; // LB or LT
+  // Edge-triggered: only fire once per press
+  padInput.pressed.beam   = press(2); // X
+  padInput.pressed.roar   = press(1); // B
+  padInput.pressed.charge = press(3); // Y
+  padInput.pressed.stomp  = press(5); // RB
+  padInput.pressed.ult    = press(7) || ((pad.buttons[7]?.value || 0) > 0.6 && !padInput.prevDown[7]); // RT
+  padInput.pressed.pause  = press(9) || press(8); // Start / Back
+
+  // Cache button-down state for edge-detection next frame
+  for (let i = 0; i < pad.buttons.length; i++) padInput.prevDown[i] = isDown(i);
+  return true;
+}
+
+window.addEventListener('gamepadconnected', (e) => {
+  toast('GAMEPAD CONNECTED · ' + (e.gamepad?.id?.slice(0, 24) || ''), 'good');
+});
+window.addEventListener('gamepaddisconnected', () => {
+  toast('GAMEPAD DISCONNECTED', 'bad');
+});
+
 // ------------------------- Touch / mobile input -------------------------
 const touchInput = {
   moveX: 0, moveZ: 0,    // -1..1 from joystick
@@ -1154,7 +1209,15 @@ function resolveBuildingCollisions(pos, dt) {
 function updatePlayer(dt) {
   const k = state.kaiju;
   if (!k) return;
-  const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint;
+  // Pull live gamepad state once per frame
+  readGamepad();
+  // Right stick aims the camera
+  if (padInput.lookX !== 0 || padInput.lookY !== 0) {
+    state.yaw   -= padInput.lookX * 0.045;
+    state.pitch -= padInput.lookY * 0.030;
+    state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
+  }
+  const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
   const speed = state.monsterCfg.stats.speed * (sprint ? 18 : 11) * state.upgrades.speedMult;
 
   let mx = 0, mz = 0;
@@ -1166,6 +1229,11 @@ function updatePlayer(dt) {
   if (touchInput.moveX !== 0 || touchInput.moveZ !== 0) {
     mx += touchInput.moveX;
     mz += touchInput.moveZ;
+  }
+  // Gamepad left stick
+  if (padInput.moveX !== 0 || padInput.moveZ !== 0) {
+    mx += padInput.moveX;
+    mz += padInput.moveZ;
   }
 
   const forward = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
@@ -1243,12 +1311,16 @@ function updatePlayer(dt) {
   }
 
   // Trigger powers
-  if (keys.Digit1) fireBeam();
-  if (keys.Digit2) fireRoar();
-  if (keys.Digit3) fireCharge();
-  if (keys.KeyQ) fireUltimate();
-  if (keys.Space) fireStomp();
-  if (state.mouseDown || touchInput.attackHeld) fireMelee();
+  if (keys.Digit1 || padInput.pressed.beam) fireBeam();
+  if (keys.Digit2 || padInput.pressed.roar) fireRoar();
+  if (keys.Digit3 || padInput.pressed.charge) fireCharge();
+  if (keys.KeyQ   || padInput.pressed.ult) fireUltimate();
+  if (keys.Space  || padInput.pressed.stomp) fireStomp();
+  if (state.mouseDown || touchInput.attackHeld || padInput.attack) fireMelee();
+  if (padInput.pressed.pause) {
+    state.paused = !state.paused;
+    showMessage(state.paused ? 'PAUSED' : '', state.paused ? 0 : 0);
+  }
 }
 
 const _camRay = new THREE.Raycaster();

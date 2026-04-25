@@ -12,8 +12,50 @@ const NEON_COLORS = [0xff3366, 0x33ddff, 0xffaa22, 0xaa66ff, 0x66ff99, 0xffee44]
 function rand(min, max) { return min + Math.random() * (max - min); }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+// Build the two global window InstancedMeshes from the queue and register
+// each entry on its owning Building so collapse can hide them.
+function buildGlobalWindows(scene) {
+  if (_windowQueue.length === 0) return;
+  const lits = _windowQueue.filter(w => w.lit);
+  const dims = _windowQueue.filter(w => !w.lit);
+  const geom = new THREE.BoxGeometry(0.6, 1.2, 0.15);
+  const litMat = new THREE.MeshStandardMaterial({
+    color: 0x223344, emissive: 0xffeeaa, emissiveIntensity: 0.85, roughness: 0.5,
+  });
+  const dimMat = new THREE.MeshStandardMaterial({
+    color: 0x1a2230, roughness: 0.7,
+  });
+  const litIM = new THREE.InstancedMesh(geom, litMat, lits.length || 1);
+  const dimIM = new THREE.InstancedMesh(geom, dimMat, dims.length || 1);
+  // The IMs span the whole city -- frustum-cull as a single object would
+  // miss most of them, so just always render. There are only 2 of them.
+  litIM.frustumCulled = false;
+  dimIM.frustumCulled = false;
+  litIM.matrixAutoUpdate = false; litIM.updateMatrix();
+  dimIM.matrixAutoUpdate = false; dimIM.updateMatrix();
+  lits.forEach((w, i) => {
+    litIM.setMatrixAt(i, w.matrix);
+    w.b.windowEntries.push({ im: litIM, idx: i });
+  });
+  dims.forEach((w, i) => {
+    dimIM.setMatrixAt(i, w.matrix);
+    w.b.windowEntries.push({ im: dimIM, idx: i });
+  });
+  litIM.instanceMatrix.needsUpdate = true;
+  dimIM.instanceMatrix.needsUpdate = true;
+  if (lits.length) scene.add(litIM);
+  if (dims.length) scene.add(dimIM);
+  _windowQueue = [];
+}
+
 let LITE_MODE = false;
 export function setBuildingLite(v) { LITE_MODE = !!v; }
+
+// Global window pipeline. Buildings push their window matrices here;
+// after all buildings exist, buildCity merges them into 2 InstancedMesh
+// (one lit, one dim) so the entire skyline's windows cost 2 draw calls.
+let _windowQueue = [];
+const _zeroMatrix = new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001);
 
 export class Building {
   constructor(x, z, w, d, h, opts = {}) {
@@ -151,42 +193,40 @@ export class Building {
       this.group.add(awning);
     }
 
-    // Windows (instanced grid texture using small emissive boxes -- limited count)
-    const winMat = new THREE.MeshStandardMaterial({
-      color: 0x223344,
-      emissive: 0xffeeaa,
-      emissiveIntensity: Math.random() < 0.6 ? 0.7 : 0.0,
-    });
-    const rows = Math.max(2, Math.floor(h / 4));          // coarser window grid
-    const cols = Math.max(2, Math.floor(Math.max(w, d) / 3.5));
-    const winGeom = new THREE.BoxGeometry(0.6, 1.2, 0.15);
-    // Render only 2 faces: the ones most likely to be visible to the player
-    // facing this building. Cuts ~half the InstancedMesh draw calls.
-    const facesToRender = 2;
-    const faceOffset = Math.floor(Math.random() * 4);
-    for (let f = 0; f < facesToRender; f++) {
-      const face = (f + faceOffset) % 4;
-      const inst = new THREE.InstancedMesh(winGeom, winMat, rows * cols);
-      let i = 0;
+    // Windows -- pushed to the global queue, instanced once after all buildings.
+    // Records local matrices (relative to the building's footprint), translated
+    // by (x,z) at queue time so the global IM lives in world space.
+    if (h >= 6) {
+      const lit = Math.random() < 0.6;
+      const facesToRender = h < 16 ? 1 : 2;
+      const faceOffset = Math.floor(Math.random() * 4);
+      const rows = Math.max(2, Math.floor(h / 4));
+      const cols = Math.max(2, Math.floor(Math.max(w, d) / 3.5));
       const dummy = new THREE.Object3D();
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          dummy.position.set(0, 0, 0);
-          const yy = 1.5 + r * (h - 2) / rows;
-          const span = (face % 2 === 0 ? w : d) - 1.0;
-          const xx = -span / 2 + c * span / (cols - 1 || 1);
-          if (face === 0) dummy.position.set(xx, yy, d / 2 + 0.08);
-          else if (face === 1) { dummy.position.set(w / 2 + 0.08, yy, xx); dummy.rotation.y = Math.PI / 2; }
-          else if (face === 2) dummy.position.set(xx, yy, -d / 2 - 0.08);
-          else { dummy.position.set(-w / 2 - 0.08, yy, xx); dummy.rotation.y = Math.PI / 2; }
-          dummy.updateMatrix();
-          inst.setMatrixAt(i++, dummy.matrix);
-          dummy.rotation.set(0,0,0);
+      for (let f = 0; f < facesToRender; f++) {
+        const face = (f + faceOffset) % 4;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            dummy.position.set(0, 0, 0);
+            dummy.rotation.set(0, 0, 0);
+            const yy = 1.5 + r * (h - 2) / rows;
+            const span = (face % 2 === 0 ? w : d) - 1.0;
+            const xx = -span / 2 + c * span / (cols - 1 || 1);
+            if (face === 0)      dummy.position.set(xx, yy, d / 2 + 0.08);
+            else if (face === 1) { dummy.position.set(w / 2 + 0.08, yy, xx); dummy.rotation.y = Math.PI / 2; }
+            else if (face === 2) dummy.position.set(xx, yy, -d / 2 - 0.08);
+            else                 { dummy.position.set(-w / 2 - 0.08, yy, xx); dummy.rotation.y = Math.PI / 2; }
+            // bake building world position
+            dummy.position.x += this.x;
+            dummy.position.z += this.z;
+            dummy.updateMatrix();
+            _windowQueue.push({ b: this, matrix: dummy.matrix.clone(), lit });
+          }
         }
       }
-      this.group.add(inst);
-      this.windows.push(inst);
     }
+    // Records of window slots in the global IM, filled by buildGlobalWindows.
+    this.windowEntries = [];
 
     // user-data backlink for hit detection
     body.userData.building = this;
@@ -222,6 +262,15 @@ export class Building {
   collapse(world) {
     if (this.destroyed) return;
     this.destroyed = true;
+    // Hide our slots in the global window InstancedMesh(es)
+    if (this.windowEntries && this.windowEntries.length) {
+      for (const e of this.windowEntries) e.im.setMatrixAt(e.idx, _zeroMatrix);
+      // Mark each unique IM dirty
+      const seen = new Set();
+      for (const e of this.windowEntries) {
+        if (!seen.has(e.im)) { e.im.instanceMatrix.needsUpdate = true; seen.add(e.im); }
+      }
+    }
     const pos = this.group.position.clone();
     pos.y += this.h / 2;
 
@@ -383,6 +432,9 @@ export function buildCity(scene, world, opts = {}) {
     scene.add(b.group);
     buildings.push(b);
   }
+
+  // Build the global window InstancedMeshes now that all buildings exist.
+  buildGlobalWindows(scene);
 
   // Lamp posts -- sparser (every 4th block) so we don't spend draw calls
   // on infrastructure that's far away most of the time.

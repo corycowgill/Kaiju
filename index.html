@@ -7,17 +7,28 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="theme-color" content="#000000" />
-<title>Kaiju Rampage - Tokyo Destruction</title>
+<title>怪獣ランページ · Kaiju Rampage</title>
+
+<!-- Japanese-inspired display fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+JP:wght@400;700;900&family=Stick&family=Yuji+Mai&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
   html, body {
     width: 100%; height: 100vh; height: 100dvh;
     overflow: hidden; background: #000;
-    font-family: 'Trebuchet MS', sans-serif; color: #fff;
+    font-family: 'Noto Sans JP', 'Trebuchet MS', system-ui, sans-serif;
+    color: #fff;
     overscroll-behavior: none; touch-action: none;
     -webkit-user-select: none; user-select: none;
     position: fixed; inset: 0;
   }
+  /* Type system */
+  .display { font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif; letter-spacing: 4px; }
+  .brush   { font-family: 'Yuji Mai', 'Noto Sans JP', serif; }
+  .stick   { font-family: 'Stick', 'Noto Sans JP', sans-serif; }
+  .jp      { font-family: 'Noto Sans JP', sans-serif; }
   #game { position: fixed; inset: 0; touch-action: none; }
   #game canvas { display: block; width: 100% !important; height: 100% !important; touch-action: none; }
 
@@ -29,20 +40,56 @@
     text-shadow: 0 0 6px #000, 2px 2px 0 #000;
   }
   .panel {
-    background: rgba(0,0,0,0.55); border: 2px solid #ff3344;
-    padding: 10px 14px; border-radius: 8px;
-    box-shadow: 0 0 18px rgba(255, 50, 80, 0.45) inset;
+    background:
+      linear-gradient(180deg, rgba(35, 6, 12, 0.78), rgba(10, 0, 5, 0.78)),
+      repeating-linear-gradient(135deg, rgba(255,80,90,0.04) 0 3px, transparent 3px 6px);
+    border: 1px solid #c83246;
+    border-left: 3px solid #d3253c;
+    border-right: 3px solid #d3253c;
+    padding: 10px 14px; border-radius: 4px;
+    box-shadow:
+      0 0 18px rgba(211, 37, 60, 0.35),
+      inset 0 0 22px rgba(255, 80, 100, 0.08);
     min-width: 240px;
   }
-  .bar { height: 14px; background: #220000; border: 1px solid #883344; border-radius: 4px; overflow: hidden; margin-top: 4px; }
-  .bar > div { height: 100%; transition: width 0.2s; }
-  #hpBar > div { background: linear-gradient(90deg,#ff2244,#ff7766); }
-  #pwrBar > div { background: linear-gradient(90deg,#33aaff,#aaeeff); }
-  #ragBar > div { background: linear-gradient(90deg,#ffaa00,#ffee44); }
-  .label { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #ffcc66; }
-  .value { font-size: 20px; font-weight: bold; color: #fff; }
+  .panel::before {
+    content: ''; position: absolute;
+  }
+  .bar {
+    height: 14px;
+    background: #1a050a;
+    border: 1px solid #883344;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+    box-shadow: inset 0 0 6px rgba(0,0,0,0.7);
+  }
+  .bar > div { height: 100%; transition: width 0.2s; box-shadow: 0 0 8px currentColor; }
+  #hpBar > div { background: linear-gradient(90deg,#d3253c,#ff7766); color:#ff5566; }
+  #ragBar > div { background: linear-gradient(90deg,#ffaa00,#ffee44); color:#ffcc44; }
+  .label {
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 12px; letter-spacing: 4px;
+    color: #ffcc66; font-weight: 400;
+  }
+  .label .jp-sub {
+    display: inline-block;
+    margin-left: 6px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 10px; letter-spacing: 1px; color: #ff8866;
+    font-weight: 700;
+  }
+  .value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px; letter-spacing: 2px; color: #fff;
+  }
   #stats { text-align: right; }
-  #score { font-size: 28px; color: #ffee66; }
+  #score {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 34px; letter-spacing: 4px;
+    color: #ffee66;
+    text-shadow: 0 0 10px #ff9933, 2px 2px 0 #000;
+  }
 
   /* Powers */
   #powers {
@@ -50,17 +97,29 @@
     display: flex; gap: 12px; z-index: 10;
   }
   .power {
-    width: 78px; height: 78px; border-radius: 12px;
-    background: rgba(0,0,0,0.7); border: 2px solid #ff3344;
+    width: 78px; height: 78px; border-radius: 4px;
+    background:
+      linear-gradient(180deg, rgba(35, 6, 12, 0.85), rgba(10, 0, 5, 0.85));
+    border: 1px solid #c83246;
+    border-bottom: 3px solid #d3253c;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    color: #fff; text-align: center; cursor: pointer; user-select: none;
-    box-shadow: 0 0 12px rgba(255, 80, 100, 0.4);
+    color: #ffe6c8; text-align: center; cursor: pointer; user-select: none;
+    box-shadow:
+      0 0 12px rgba(211, 37, 60, 0.45),
+      inset 0 0 10px rgba(255, 80, 100, 0.08);
     transition: transform 0.1s;
   }
   .power:hover { transform: translateY(-3px); }
   .power.disabled { opacity: 0.4; }
-  .power .key { font-size: 20px; font-weight: bold; color: #ffcc66; }
-  .power .name { font-size: 11px; letter-spacing: 1px; }
+  .power .key {
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 22px; font-weight: 400; color: #ffcc66; letter-spacing: 1px;
+    text-shadow: 0 0 8px #ff8866;
+  }
+  .power .name {
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 10px; letter-spacing: 2px;
+  }
   .cooldown {
     position: absolute; inset: 0; background: rgba(0,0,0,0.7);
     border-radius: 10px; color: #fff; display: flex; align-items: center; justify-content: center;
@@ -71,8 +130,12 @@
   /* Crosshair / message */
   #message {
     position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
-    font-size: 48px; font-weight: bold; color: #ffee66; text-align: center;
-    text-shadow: 0 0 20px #ff0033, 4px 4px 0 #000;
+    font-family: 'Yuji Mai', 'Bebas Neue', sans-serif;
+    font-size: 56px; letter-spacing: 6px; color: #ffe6b0; text-align: center;
+    text-shadow:
+      0 0 24px #ff2244,
+      0 0 10px #ffaa44,
+      4px 4px 0 #1a0006;
     pointer-events: none; z-index: 11; opacity: 0;
     transition: opacity 0.3s;
   }
@@ -99,10 +162,42 @@
     overflow-y: auto;
   }
   .overlay h1 {
-    font-size: 64px; letter-spacing: 8px; color: #ff3344;
-    text-shadow: 0 0 30px #ff0033, 4px 4px 0 #000; margin-bottom: 6px;
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 78px; letter-spacing: 12px;
+    color: #ffe6c8;
+    text-shadow:
+      0 0 40px #ff2244,
+      0 0 14px #ff6688,
+      4px 4px 0 #1a0006;
+    margin-bottom: 0;
+    line-height: 0.95;
+    position: relative;
+    display: flex; align-items: baseline; justify-content: center; gap: 14px;
   }
-  .overlay h2 { font-size: 20px; color: #ffcc66; letter-spacing: 4px; margin-bottom: 30px; }
+  .overlay h1 .kanji {
+    font-family: 'Yuji Mai', 'Noto Sans JP', serif;
+    font-size: 0.9em;
+    color: #d3253c;
+    letter-spacing: 0;
+    text-shadow: 0 0 22px #ff2244, 4px 4px 0 #1a0006;
+  }
+  /* Rising-sun disc behind the title */
+  .overlay h1::before {
+    content: ''; position: absolute;
+    width: 240px; height: 240px;
+    background: radial-gradient(circle, rgba(211,37,60,0.55) 0%, rgba(211,37,60,0.18) 45%, transparent 70%);
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: -1; pointer-events: none;
+    filter: blur(6px);
+  }
+  .overlay h2 {
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 18px; color: #ffcc66; letter-spacing: 8px;
+    margin: 8px 0 22px 0; font-weight: 700;
+    border-top: 1px solid rgba(255, 200, 100, 0.4);
+    border-bottom: 1px solid rgba(255, 200, 100, 0.4);
+    padding: 6px 18px;
+  }
   .monsters { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; max-width: 1100px; }
   .monster-card {
     width: 240px; padding: 18px; background: rgba(20,0,0,0.7);
@@ -120,12 +215,24 @@
   .monster-card .stat { font-size: 12px; color: #aaccff; margin-top: 6px; }
 
   button.start-btn {
-    margin-top: 30px; padding: 14px 40px; font-size: 22px;
-    background: linear-gradient(180deg, #ff3344, #aa0022);
-    color: #fff; border: 2px solid #ffcc66; border-radius: 8px;
-    cursor: pointer; letter-spacing: 4px; font-weight: bold;
-    text-shadow: 2px 2px 0 #000;
-    box-shadow: 0 0 24px rgba(255,80,100,0.5);
+    margin-top: 24px; padding: 14px 44px; font-size: 22px;
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    background: linear-gradient(180deg, #d3253c, #6a0014);
+    color: #ffe6c8;
+    border: 2px solid #ffcc66;
+    border-radius: 2px;
+    cursor: pointer; letter-spacing: 8px; font-weight: 400;
+    text-shadow: 2px 2px 0 #1a0006;
+    box-shadow:
+      0 0 26px rgba(211, 37, 60, 0.55),
+      inset 0 0 16px rgba(0,0,0,0.4);
+    position: relative;
+  }
+  button.start-btn::before {
+    content: '◆'; margin-right: 10px; color: #ffcc66; font-size: 14px;
+  }
+  button.start-btn::after {
+    content: '◆'; margin-left: 10px; color: #ffcc66; font-size: 14px;
   }
   button.start-btn:hover { transform: scale(1.05); }
   button.start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -136,12 +243,23 @@
 
   #wave-banner {
     position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%);
-    font-size: 64px; font-weight: bold; color: #ff3344; text-align: center;
-    text-shadow: 0 0 30px #ff0033, 4px 4px 0 #000;
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 78px; letter-spacing: 14px; color: #ffe6c8; text-align: center;
+    text-shadow:
+      0 0 36px #ff2244,
+      0 0 14px #ffaa44,
+      5px 5px 0 #1a0006;
     pointer-events: none; z-index: 11; opacity: 0; transition: opacity 0.4s;
   }
   #wave-banner.show { opacity: 1; }
-  #wave-banner small { display: block; font-size: 22px; color: #ffcc66; letter-spacing: 6px; margin-top: 10px; }
+  #wave-banner small {
+    display: block;
+    font-family: 'Yuji Mai', 'Noto Sans JP', serif;
+    font-size: 24px; color: #ff9966; letter-spacing: 8px;
+    margin-top: 14px;
+    border-top: 1px solid rgba(255,150,100,0.35);
+    padding-top: 10px;
+  }
 
   /* ---------- Mobile / touch controls ---------- */
   #mobile-ui { display: none; pointer-events: none; }
@@ -281,12 +399,19 @@
 
   /* Toast popups */
   .toast {
-    background: rgba(0,0,0,0.7); color: #ffee66;
-    padding: 8px 18px; border-radius: 8px; font-weight: bold; letter-spacing: 3px;
-    border: 1px solid #ffcc66; font-size: 16px;
-    box-shadow: 0 0 18px rgba(255, 200, 80, 0.4);
+    background:
+      linear-gradient(180deg, rgba(35, 6, 12, 0.92), rgba(10, 0, 5, 0.92));
+    color: #ffee66;
+    padding: 6px 18px;
+    border-radius: 2px;
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-weight: 400; letter-spacing: 5px;
+    border: 1px solid #c83246;
+    border-left: 3px solid #ffcc66; border-right: 3px solid #ffcc66;
+    font-size: 16px;
+    box-shadow: 0 0 18px rgba(255, 200, 80, 0.35);
     animation: toastIn 0.3s ease-out, toastOut 0.4s ease-in 2.0s forwards;
-    text-shadow: 2px 2px 0 #000;
+    text-shadow: 0 0 8px #ff8866, 2px 2px 0 #1a0006;
   }
   .toast.bad { color: #ff8866; border-color: #ff5544; box-shadow: 0 0 18px rgba(255,80,80,0.5); }
   .toast.good { color: #66ffaa; border-color: #44ddaa; box-shadow: 0 0 18px rgba(80,255,150,0.4); }
@@ -408,8 +533,8 @@
 
 <!-- Title / Monster Select -->
 <div id="menu" class="overlay">
-  <h1>KAIJU RAMPAGE</h1>
-  <h2>~ TOKYO DESTRUCTION ~</h2>
+  <h1><span class="kanji">怪獣</span><span>RAMPAGE</span></h1>
+  <h2>東京破壊 · TOKYO DESTRUCTION</h2>
   <div id="highscore-display" style="font-size:14px; color:#ffcc66; letter-spacing:4px; margin-bottom:18px;"></div>
   <div class="monsters" id="monsterCards"></div>
   <button class="start-btn" id="startBtn" disabled>START RAMPAGE</button>
@@ -419,16 +544,16 @@
 <!-- HUD -->
 <div id="hud" class="hidden">
   <div class="panel">
-    <div class="label">KAIJU HP</div>
+    <div class="label">KAIJU HP <span class="jp-sub">体力</span></div>
     <div class="bar" id="hpBar"><div style="width:100%"></div></div>
-    <div class="label" style="margin-top:6px">RAGE</div>
+    <div class="label" style="margin-top:6px">RAGE <span class="jp-sub">怒気</span></div>
     <div class="bar" id="ragBar"><div style="width:0%"></div></div>
   </div>
   <div id="stats" class="panel">
-    <div class="label">SCORE</div>
+    <div class="label">SCORE <span class="jp-sub">得点</span></div>
     <div id="score" class="value">0</div>
-    <div class="label" style="margin-top:6px">WAVE / DESTROYED</div>
-    <div class="value" id="waveText">1 / 0 buildings</div>
+    <div class="label" style="margin-top:6px">WAVE <span class="jp-sub">波</span></div>
+    <div class="value" id="waveText">1 / 0</div>
   </div>
 </div>
 
@@ -477,7 +602,8 @@
   <b>SPACE</b> Stomp Shockwave<br>
   <b>1</b> Beam · <b>2</b> Roar · <b>3</b> Charge<br>
   <b>Q</b> ULTIMATE (full rage)<br>
-  <b>SHIFT</b> Sprint · <b>ESC</b> Pause
+  <b>SHIFT</b> Sprint · <b>ESC</b> Pause<br>
+  <span style="color:#88ccff;">🎮 Xbox: A smash · X beam · B roar · Y charge · RB stomp · RT ult · LB sprint · Start pause</span>
 </div>
 
 <!-- Game Over -->
