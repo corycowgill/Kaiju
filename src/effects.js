@@ -121,6 +121,49 @@ export function makeShockwave(world, pos, color = 0xffcc44, maxRadius = 60) {
   });
 }
 
+// Lingering smoke column from a destroyed building. Periodically emits drifting puffs
+// for ~10 seconds, keeping the destruction visible from a distance.
+export function makeSmokeColumn(world, pos, height = 30) {
+  const baseY = pos.y;
+  const proxy = new THREE.Object3D();
+  proxy.position.copy(pos);
+  world.scene.add(proxy);
+  const totalLife = 11.0;
+  let nextEmit = 0;
+  return new Effect(proxy, totalLife, (dt, t, eff) => {
+    nextEmit -= dt;
+    if (nextEmit <= 0) {
+      nextEmit = 0.25 + Math.random() * 0.18;
+      // bigger, darker puffs early; lighter and smaller later
+      const intensity = (1 - t);
+      const puffPos = pos.clone();
+      puffPos.x += (Math.random() - 0.5) * 4;
+      puffPos.z += (Math.random() - 0.5) * 4;
+      puffPos.y = baseY + 1 + (1 - intensity) * height * 0.4;
+      const m = new THREE.Mesh(
+        new THREE.SphereGeometry(1.2 + Math.random() * 0.8, 8, 8),
+        new THREE.MeshBasicMaterial({
+          color: t < 0.4 ? 0x333333 : 0x666666,
+          transparent: true,
+          opacity: 0.55 * intensity,
+        })
+      );
+      m.position.copy(puffPos);
+      world.scene.add(m);
+      m.userData.vel = new THREE.Vector3((Math.random() - 0.5) * 1.5, 1.6 + Math.random() * 1.2, (Math.random() - 0.5) * 1.5);
+      m.userData.life = 4.5;
+      m.userData.maxLife = 4.5;
+      world.effects.push(new Effect(m, 4.5, (dt2, t2) => {
+        m.position.addScaledVector(m.userData.vel, dt2);
+        m.scale.setScalar(1 + t2 * 3);
+        m.material.opacity = 0.55 * intensity * (1 - t2);
+        if (t2 >= 1) world.scene.remove(m);
+      }));
+    }
+    if (t >= 1) world.scene.remove(proxy);
+  });
+}
+
 // Quick expanding glow at a hit point. Tactile feedback for impact.
 export function makeHitPulse(world, pos, color = 0xffffff) {
   const m = new THREE.Mesh(

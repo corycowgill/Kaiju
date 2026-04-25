@@ -36,43 +36,119 @@ export class Building {
     this.body = body;
     this.group.add(body);
 
-    // Roof structure (water tank, antenna, neon)
-    if (h > 12 && Math.random() < 0.7) {
+    // Rooftop details
+    if (h > 10 && Math.random() < 0.85) {
       const tank = new THREE.Mesh(
-        new THREE.CylinderGeometry(Math.min(w, d) * 0.18, Math.min(w, d) * 0.2, 1.5, 8),
-        new THREE.MeshStandardMaterial({ color: 0x8a8270 })
+        new THREE.CylinderGeometry(Math.min(w, d) * 0.18, Math.min(w, d) * 0.2, 1.6, 10),
+        new THREE.MeshStandardMaterial({ color: 0x9a9080, roughness: 0.85 })
       );
-      tank.position.set(rand(-w*0.2, w*0.2), h + 0.75, rand(-d*0.2, d*0.2));
+      tank.position.set(rand(-w*0.25, w*0.25), h + 0.8, rand(-d*0.25, d*0.25));
       tank.castShadow = true;
       this.group.add(tank);
+      // tank ladder
+      const lad = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.6, 0.1), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+      lad.position.copy(tank.position);
+      lad.position.y = h + 0.8;
+      lad.position.x += Math.min(w, d) * 0.21;
+      this.group.add(lad);
     }
-    if (Math.random() < 0.4 && h > 16) {
+    // AC units / vents
+    if (h > 8) {
+      const ventCount = 1 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < ventCount; i++) {
+        const vw = rand(1.0, 2.4), vd = rand(1.0, 2.4);
+        const v = new THREE.Mesh(
+          new THREE.BoxGeometry(vw, 1.0, vd),
+          new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7 })
+        );
+        v.position.set(rand(-w * 0.35, w * 0.35), h + 0.5, rand(-d * 0.35, d * 0.35));
+        v.castShadow = true;
+        this.group.add(v);
+      }
+    }
+    // Antenna with blinking light
+    if (Math.random() < 0.55 && h > 14) {
+      const antH = h * (0.25 + Math.random() * 0.25);
       const ant = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.05, 0.1, h * 0.25, 4),
+        new THREE.CylinderGeometry(0.06, 0.12, antH, 4),
         new THREE.MeshStandardMaterial({ color: 0x222222 })
       );
-      ant.position.set(0, h + h * 0.125, 0);
+      ant.position.set(rand(-1.5, 1.5), h + antH / 2, rand(-1.5, 1.5));
       this.group.add(ant);
       const blink = new THREE.Mesh(
-        new THREE.SphereGeometry(0.18, 6, 6),
-        new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff3344, emissiveIntensity: 1.5 })
+        new THREE.SphereGeometry(0.22, 8, 8),
+        new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff3344, emissiveIntensity: 2.4 })
       );
-      blink.position.set(0, h + h * 0.25, 0);
+      blink.position.copy(ant.position);
+      blink.position.y = h + antH;
       this.group.add(blink);
     }
+    // Rooftop billboard / neon panel
+    if (h > 18 && Math.random() < 0.45) {
+      const c = pick(NEON_COLORS);
+      const billW = Math.min(w, d) * 0.7;
+      const billH = Math.min(8, h * 0.18);
+      const stand = new THREE.Mesh(
+        new THREE.BoxGeometry(0.15, billH * 0.6, 0.15),
+        new THREE.MeshStandardMaterial({ color: 0x222222 })
+      );
+      stand.position.set(-billW * 0.4, h + billH * 0.3, 0);
+      this.group.add(stand);
+      const stand2 = stand.clone();
+      stand2.position.x = billW * 0.4;
+      this.group.add(stand2);
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(billW, billH, 0.4),
+        new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 2.6, roughness: 0.4 })
+      );
+      panel.position.set(0, h + billH * 0.65, 0);
+      panel.rotation.y = Math.random() < 0.5 ? 0 : Math.PI / 2;
+      this.group.add(panel);
+    }
 
-    // Neon side sign
-    if (Math.random() < 0.5 && h > 10) {
-      const neonColor = pick(NEON_COLORS);
+    // Side neon sign(s)
+    const sideSignCount = h > 10 ? (Math.random() < 0.6 ? 1 : (Math.random() < 0.4 ? 2 : 0)) : 0;
+    for (let i = 0; i < sideSignCount; i++) {
+      const c = pick(NEON_COLORS);
+      const sw = w * (0.25 + Math.random() * 0.2);
+      const sh = h * (0.25 + Math.random() * 0.25);
       const sign = new THREE.Mesh(
-        new THREE.BoxGeometry(w * 0.3, h * 0.3, 0.3),
-        new THREE.MeshStandardMaterial({ color: neonColor, emissive: neonColor, emissiveIntensity: 1.2 })
+        new THREE.BoxGeometry(sw, sh, 0.45),
+        new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 2.2, roughness: 0.4 })
       );
       const side = Math.random() < 0.5 ? 1 : -1;
       const axis = Math.random() < 0.5;
-      if (axis) sign.position.set(side * (w / 2 + 0.16), h * 0.6, 0);
-      else { sign.position.set(0, h * 0.6, side * (d / 2 + 0.16)); sign.rotation.y = Math.PI / 2; }
+      const yPos = h * (0.35 + Math.random() * 0.4);
+      if (axis) sign.position.set(side * (w / 2 + 0.25), yPos, rand(-d * 0.2, d * 0.2));
+      else { sign.position.set(rand(-w * 0.2, w * 0.2), yPos, side * (d / 2 + 0.25)); sign.rotation.y = Math.PI / 2; }
       this.group.add(sign);
+      // Frame outline (slightly darker box around)
+      const frame = new THREE.Mesh(
+        new THREE.BoxGeometry(sw + 0.4, sh + 0.4, 0.2),
+        new THREE.MeshStandardMaterial({ color: 0x111111 })
+      );
+      frame.position.copy(sign.position);
+      frame.rotation.copy(sign.rotation);
+      // Push the frame slightly inboard
+      const inset = 0.1;
+      if (axis) frame.position.x -= side * inset;
+      else frame.position.z -= side * inset;
+      this.group.add(frame);
+    }
+
+    // Storefront awning at base (low buildings only)
+    if (h < 30 && Math.random() < 0.6) {
+      const c = pick(NEON_COLORS);
+      const aw = w * 0.85, ad = 1.6;
+      const awning = new THREE.Mesh(
+        new THREE.BoxGeometry(aw, 0.4, ad),
+        new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.6 })
+      );
+      const side = Math.random() < 0.5 ? 1 : -1;
+      const axis = Math.random() < 0.5;
+      if (axis) awning.position.set(0, 3.0, side * (d / 2 + ad * 0.4));
+      else { awning.position.set(side * (w / 2 + ad * 0.4), 3.0, 0); awning.rotation.y = Math.PI / 2; }
+      this.group.add(awning);
     }
 
     // Windows (instanced grid texture using small emissive boxes -- limited count)
@@ -204,6 +280,8 @@ export class Building {
       // Ground dust ring
       world.spawnShockwave(base, 0xaa8866, Math.max(this.w, this.d) * 1.4);
       world.shake(0.9 + Math.min(0.7, this.h / 40), 0.7);
+      // Lingering smoke column visible from afar
+      world.spawnSmokeColumn?.(base, this.h);
     }
 
     if (world) world.onBuildingDestroyed?.(this);
@@ -229,8 +307,10 @@ export function buildCity(scene, world, opts = {}) {
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // Street grid lines (subtle)
-  const streetMat = new THREE.MeshStandardMaterial({ color: 0x1a1a20, roughness: 1.0 });
+  // Street grid (asphalt) + glowing center lines (continuous, very cheap).
+  const streetMat = new THREE.MeshStandardMaterial({ color: 0x14141a, roughness: 0.92 });
+  const lineMat   = new THREE.MeshStandardMaterial({ color: 0xffe066, emissive: 0xffd14a, emissiveIntensity: 0.45, roughness: 0.6 });
+  const curbMat   = new THREE.MeshStandardMaterial({ color: 0x2c2c34, roughness: 1.0 });
   for (let i = -CITY_RADIUS; i <= CITY_RADIUS; i += BLOCK) {
     const sx = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, STREET), streetMat);
     sx.rotation.x = -Math.PI / 2; sx.position.set(0, 0.05, i);
@@ -238,6 +318,22 @@ export function buildCity(scene, world, opts = {}) {
     const sz = new THREE.Mesh(new THREE.PlaneGeometry(STREET, CITY_RADIUS * 2), streetMat);
     sz.rotation.x = -Math.PI / 2; sz.position.set(i, 0.05, 0);
     sz.receiveShadow = true; scene.add(sz);
+
+    // Center yellow line per street
+    const lx = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, 0.35), lineMat);
+    lx.rotation.x = -Math.PI / 2; lx.position.set(0, 0.07, i);
+    scene.add(lx);
+    const lz = new THREE.Mesh(new THREE.PlaneGeometry(0.35, CITY_RADIUS * 2), lineMat);
+    lz.rotation.x = -Math.PI / 2; lz.position.set(i, 0.07, 0);
+    scene.add(lz);
+
+    // Curbs along street edges
+    const curbX1 = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, 0.4), curbMat);
+    curbX1.rotation.x = -Math.PI / 2; curbX1.position.set(0, 0.06, i + STREET / 2 - 0.2); scene.add(curbX1);
+    const curbX2 = curbX1.clone(); curbX2.position.z = i - STREET / 2 + 0.2; scene.add(curbX2);
+    const curbZ1 = new THREE.Mesh(new THREE.PlaneGeometry(0.4, CITY_RADIUS * 2), curbMat);
+    curbZ1.rotation.x = -Math.PI / 2; curbZ1.position.set(i + STREET / 2 - 0.2, 0.06, 0); scene.add(curbZ1);
+    const curbZ2 = curbZ1.clone(); curbZ2.position.x = i - STREET / 2 + 0.2; scene.add(curbZ2);
   }
 
   // Buildings on each block (skipping center for spawn)

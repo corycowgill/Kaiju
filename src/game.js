@@ -1,10 +1,15 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { MONSTERS, buildKaiju } from './monsters.js';
 import { Building, buildCity, spawnCars } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
 import {
   Effect, makeExplosion, makeSparks, makeShockwave,
-  makeMuzzleFlash, makeSmokePuff, makeBeam, makeHitPulse,
+  makeMuzzleFlash, makeSmokePuff, makeBeam, makeHitPulse, makeSmokeColumn,
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
@@ -58,6 +63,28 @@ scene.fog = new THREE.Fog(0x331a2a, 100, 700);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 2000);
 
+// Postprocessing -- bloom + FXAA on desktop. Skip on mobile for fps.
+let composer = null;
+let bloomPass = null;
+let fxaaPass = null;
+if (!isMobile) {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.85,  // strength
+    0.6,   // radius
+    0.55   // threshold (only emit pixels brighter than this bloom)
+  );
+  composer.addPass(bloomPass);
+  fxaaPass = new ShaderPass(FXAAShader);
+  fxaaPass.material.uniforms['resolution'].value.set(
+    1 / (window.innerWidth * renderer.getPixelRatio()),
+    1 / (window.innerHeight * renderer.getPixelRatio())
+  );
+  composer.addPass(fxaaPass);
+}
+
 // Lighting: dramatic dusk
 const hemi = new THREE.HemisphereLight(0xff7755, 0x221122, 0.55);
 scene.add(hemi);
@@ -87,19 +114,61 @@ const skyMat = new THREE.ShaderMaterial({
   fragmentShader: `
     varying vec3 vP;
     uniform float time;
+    // 2D hash + noise for clouds
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      float a = hash(i), b = hash(i + vec2(1.0, 0.0));
+      float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+    }
+    float fbm(vec2 p) {
+      float v = 0.0, a = 0.5;
+      for (int i = 0; i < 4; i++) { v += a * noise(p); p *= 2.07; a *= 0.5; }
+      return v;
+    }
     void main() {
-      float h = normalize(vP).y;
-      vec3 horizon = vec3(0.55, 0.18, 0.18);
-      vec3 zenith = vec3(0.05, 0.02, 0.12);
-      vec3 col = mix(horizon, zenith, smoothstep(-0.05, 0.7, h));
-      // stars
-      vec2 p = normalize(vP).xz * 800.0;
-      float s = fract(sin(dot(floor(p), vec2(12.9898,78.233))) * 43758.5453);
-      if (h > 0.2 && s > 0.997) col += vec3(1.0) * (s - 0.997) * 200.0;
-      // moon
+      vec3 d = normalize(vP);
+      float h = d.y;
+
+      // Layered gradient: horizon glow -> mid -> zenith
+      vec3 horizon = vec3(0.95, 0.32, 0.22);   // sunset orange
+      vec3 mid     = vec3(0.32, 0.10, 0.32);   // purple
+      vec3 zenith  = vec3(0.04, 0.02, 0.14);   // deep blue
+      vec3 col = mix(horizon, mid, smoothstep(-0.05, 0.35, h));
+      col = mix(col, zenith, smoothstep(0.25, 0.85, h));
+
+      // Subtle nebula bands
+      float n = fbm(d.xz * 4.0 + vec2(time * 0.005, 0.0));
+      col += vec3(0.18, 0.06, 0.30) * (n - 0.5) * smoothstep(0.1, 0.6, h);
+
+      // Soft clouds drifting near horizon
+      float cloud = smoothstep(0.4, 0.9, fbm(vec2(d.x, d.z) * 3.5 + vec2(time * 0.012, 0.0)));
+      cloud *= smoothstep(-0.1, 0.4, h) * (1.0 - smoothstep(0.5, 0.9, h));
+      col = mix(col, vec3(0.55, 0.32, 0.42), cloud * 0.55);
+
+      // Stars - sharper
+      vec2 p = d.xz * 1200.0;
+      float s = hash(floor(p));
+      if (h > 0.18 && s > 0.9965) col += vec3(0.9, 0.95, 1.0) * (s - 0.9965) * 280.0;
+      // Twinkle a few brighter ones
+      if (h > 0.3 && s > 0.9991) {
+        float tw = 0.5 + 0.5 * sin(time * 3.0 + s * 50.0);
+        col += vec3(1.0, 0.9, 0.7) * tw * 1.2;
+      }
+
+      // Moon with soft halo
       vec3 moonDir = normalize(vec3(0.4, 0.6, -0.5));
-      float md = dot(normalize(vP), moonDir);
-      col += vec3(1.0, 0.95, 0.85) * smoothstep(0.998, 1.0, md);
+      float md = dot(d, moonDir);
+      col += vec3(1.0, 0.95, 0.82) * smoothstep(0.997, 1.0, md);
+      col += vec3(0.6, 0.5, 0.45) * smoothstep(0.985, 0.998, md) * 0.4;
+
+      // Sun-glow disc near horizon (off-screen sun for warm rim)
+      vec3 sunDir = normalize(vec3(-0.55, 0.12, 0.25));
+      float sd = max(0.0, dot(d, sunDir));
+      col += vec3(1.0, 0.5, 0.25) * pow(sd, 16.0) * 0.6;
+
       gl_FragColor = vec4(col, 1.0);
     }`
 });
@@ -128,6 +197,7 @@ const world = {
   spawnMuzzleFlash: function (pos, s) { this.effects.push(makeMuzzleFlash(this, pos, s)); },
   spawnSmoke: function (pos, s) { this.effects.push(makeSmokePuff(this, pos, s)); },
   spawnHitPulse: function (pos, color) { this.effects.push(makeHitPulse(this, pos, color)); },
+  spawnSmokeColumn: function (pos, height) { this.effects.push(makeSmokeColumn(this, pos, height)); },
   spawnBeam: function (origin, dir, len, color, glow) {
     this.effects.push(makeBeam(this, origin, dir, len, color, glow));
   },
@@ -237,6 +307,13 @@ function fitRenderer() {
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h, true); // updateStyle=true: also sets canvas style.width/height
+  if (composer) composer.setSize(w, h);
+  if (fxaaPass) {
+    fxaaPass.material.uniforms['resolution'].value.set(
+      1 / (w * renderer.getPixelRatio()),
+      1 / (h * renderer.getPixelRatio())
+    );
+  }
   updateOrientationClass();
 }
 fitRenderer();
@@ -1574,7 +1651,8 @@ function tick(now) {
     updateCamera();
     updatePopups(dt);
   }
-  renderer.render(scene, camera);
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
