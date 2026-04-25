@@ -574,6 +574,10 @@ function startGame(key) {
   // Spawn initial cars driving around the city
   state.cars = spawnCars(scene, isMobile ? 8 : 16, 380, 36);
 
+  // Kick off looping background music. Tries assets/music.{mp3,ogg,wav};
+  // falls back to a procedural ambient drone if no asset is present.
+  audio.startMusic();
+
   startWave(1);
   if (!isMobile) renderer.domElement.requestPointerLock?.();
 }
@@ -962,6 +966,7 @@ function gameOver(victory) {
   document.getElementById('goTitle').textContent = victory ? 'TOKYO FALLS' : 'DEFEATED';
   document.getElementById('goSubtitle').textContent = victory ? 'The kaiju reigns supreme.' : 'The military has prevailed...';
   audio.gameOver();
+  audio.stopMusic();
   const isNewHigh = trySetHighScore(state.score);
   const newHighEl = document.getElementById('newHighScore');
   if (newHighEl) newHighEl.style.display = isNewHigh ? 'block' : 'none';

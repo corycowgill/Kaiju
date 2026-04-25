@@ -110,6 +110,22 @@ By an AI agent (👋 hello), iteratively, in conversation with a human who kept 
 
 ---
 
+## 🎵 Soundtrack
+
+Drop a music file at one of these paths and it'll loop automatically when
+the level starts:
+
+```
+assets/music.mp3
+assets/music.ogg
+assets/music.wav
+```
+
+If no file is found, the game falls back to a synthesized ambient drone
+generated live by the Web Audio API, so there's always something playing.
+
+The 🔊 button mutes everything (SFX + music).
+
 ## 🚀 Run It Locally
 
 Any static server will do. Pick whichever doesn't make you sigh:

@@ -133,6 +133,116 @@ class Audio {
   gameOver() { this.tone(220, 0.3, 'sawtooth', 0.5, -120); this.tone(110, 0.5, 'sawtooth', 0.5, -60); }
 
   bossSpawn() { this.tone(60, 0.25, 'sawtooth', 0.6); this.tone(110, 0.4, 'sawtooth', 0.5, 30); this.alarm(); }
+
+  // ============ Music (looping background track) ============
+  // Tries the candidate paths in order. First one that loads is decoded into
+  // an AudioBuffer and stored. Subsequent calls reuse the buffer.
+  async loadMusic(paths = ['assets/music.mp3', 'assets/music.ogg', 'assets/music.wav']) {
+    if (!this.ctx || this.musicBuffer) return !!this.musicBuffer;
+    for (const url of paths) {
+      try {
+        const res = await fetch(url, { cache: 'force-cache' });
+        if (!res.ok) continue;
+        const arr = await res.arrayBuffer();
+        this.musicBuffer = await new Promise((resolve, reject) => {
+          this.ctx.decodeAudioData(arr, resolve, reject);
+        });
+        this._musicPath = url;
+        return true;
+      } catch (e) { /* try next */ }
+    }
+    return false;
+  }
+
+  // Start looping the background track. If no file was found, falls back to
+  // a procedural ambient drone so there's always something playing.
+  async startMusic(volume = 0.3) {
+    if (!this.ctx || this.musicSource || this._procRunning) return;
+    if (!this.musicBuffer) await this.loadMusic();
+    if (this.musicBuffer) {
+      const t = this._now();
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.musicBuffer;
+      src.loop = true;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(volume, t + 1.0);
+      src.connect(g); g.connect(this.master);
+      src.start(t);
+      this.musicSource = src;
+      this.musicGain = g;
+    } else {
+      this._startProceduralMusic(volume);
+    }
+  }
+
+  stopMusic() {
+    const t = this._now ? this._now() : 0;
+    if (this.musicGain && this.ctx) {
+      try {
+        this.musicGain.gain.cancelScheduledValues(t);
+        this.musicGain.gain.linearRampToValueAtTime(0.0001, t + 0.5);
+      } catch (e) {}
+    }
+    if (this.musicSource) {
+      const src = this.musicSource;
+      this.musicSource = null;
+      setTimeout(() => { try { src.stop(); src.disconnect(); } catch (e) {} }, 600);
+    }
+    if (this._procStop) { this._procStop(); this._procStop = null; this._procRunning = false; }
+  }
+
+  // ====== Procedural fallback: layered drone + slow chord progression ======
+  // Three sine voices building a slow Dm chord with an LFO-modulated low pad.
+  _startProceduralMusic(volume = 0.18) {
+    if (!this.ctx) return;
+    const t = this._now();
+    const masterG = this.ctx.createGain();
+    masterG.gain.setValueAtTime(0.0001, t);
+    masterG.gain.linearRampToValueAtTime(volume, t + 2.0);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 700;
+    masterG.connect(this.master);
+    lp.connect(masterG);
+
+    // Bass drone with subtle pitch-LFO
+    const bass = this.ctx.createOscillator();
+    bass.type = 'sine'; bass.frequency.value = 73.42;            // D2
+    const lfo = this.ctx.createOscillator();
+    lfo.type = 'sine'; lfo.frequency.value = 0.18;
+    const lfoGain = this.ctx.createGain();
+    lfoGain.gain.value = 4;
+    lfo.connect(lfoGain).connect(bass.frequency);
+    bass.connect(lp);
+
+    // Mid pad
+    const pad = this.ctx.createOscillator();
+    pad.type = 'triangle'; pad.frequency.value = 110;            // A2
+    const padG = this.ctx.createGain(); padG.gain.value = 0.4;
+    pad.connect(padG).connect(lp);
+
+    // High shimmer (very quiet)
+    const shimmer = this.ctx.createOscillator();
+    shimmer.type = 'sine'; shimmer.frequency.value = 587.33;     // D5
+    const shG = this.ctx.createGain(); shG.gain.value = 0.06;
+    shimmer.connect(shG).connect(lp);
+
+    bass.start(t); lfo.start(t); pad.start(t); shimmer.start(t);
+
+    this.musicGain = masterG;
+    this._procRunning = true;
+    this._procStop = () => {
+      const tt = this._now();
+      try {
+        masterG.gain.cancelScheduledValues(tt);
+        masterG.gain.linearRampToValueAtTime(0.0001, tt + 0.6);
+      } catch (e) {}
+      setTimeout(() => {
+        try { bass.stop(); pad.stop(); shimmer.stop(); lfo.stop(); } catch (e) {}
+        try { masterG.disconnect(); lp.disconnect(); } catch (e) {}
+      }, 700);
+    };
+  }
 }
 
 export default new Audio();
