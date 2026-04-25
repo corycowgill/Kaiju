@@ -51,6 +51,50 @@ function buildGlobalWindows(scene) {
 let LITE_MODE = false;
 export function setBuildingLite(v) { LITE_MODE = !!v; }
 
+// Spatial grid keyed by 60u cells. Lets per-frame queries (collisions, AOE
+// damage, camera collision raycast) skip the 90% of buildings that aren't
+// nearby instead of iterating the whole list.
+export class BuildingGrid {
+  constructor(cellSize = 60) {
+    this.cellSize = cellSize;
+    this.cells = new Map();
+  }
+  _key(cx, cz) { return cx + ':' + cz; }
+  add(b) {
+    const cs = this.cellSize;
+    const k = this._key(Math.floor(b.x / cs), Math.floor(b.z / cs));
+    let arr = this.cells.get(k);
+    if (!arr) { arr = []; this.cells.set(k, arr); }
+    arr.push(b);
+    b._gridKey = k;
+    b._grid = this;
+  }
+  remove(b) {
+    if (!b._gridKey) return;
+    const arr = this.cells.get(b._gridKey);
+    if (arr) {
+      const i = arr.indexOf(b);
+      if (i >= 0) arr.splice(i, 1);
+    }
+    b._gridKey = null;
+  }
+  // Run cb against every building whose cell footprint overlaps the query AABB.
+  forEachNear(x, z, radius, cb) {
+    const cs = this.cellSize;
+    const minX = Math.floor((x - radius) / cs);
+    const maxX = Math.floor((x + radius) / cs);
+    const minZ = Math.floor((z - radius) / cs);
+    const maxZ = Math.floor((z + radius) / cs);
+    for (let cx = minX; cx <= maxX; cx++) {
+      for (let cz = minZ; cz <= maxZ; cz++) {
+        const arr = this.cells.get(this._key(cx, cz));
+        if (!arr) continue;
+        for (let i = 0; i < arr.length; i++) cb(arr[i]);
+      }
+    }
+  }
+}
+
 // Global window pipeline. Buildings push their window matrices here;
 // after all buildings exist, buildCity merges them into 2 InstancedMesh
 // (one lit, one dim) so the entire skyline's windows cost 2 draw calls.
@@ -262,6 +306,8 @@ export class Building {
   collapse(world) {
     if (this.destroyed) return;
     this.destroyed = true;
+    // Drop out of the spatial grid so future queries skip us
+    if (this._grid) this._grid.remove(this);
     // Hide our slots in the global window InstancedMesh(es)
     if (this.windowEntries && this.windowEntries.length) {
       for (const e of this.windowEntries) e.im.setMatrixAt(e.idx, _zeroMatrix);
@@ -346,6 +392,7 @@ export class Building {
 
 export function buildCity(scene, world, opts = {}) {
   const buildings = [];
+  const grid = new BuildingGrid(60);
   const lite = !!opts.lite;
   setBuildingLite(lite);
   const CITY_RADIUS = lite ? 250 : 320;
@@ -415,6 +462,7 @@ export function buildCity(scene, world, opts = {}) {
         b.group.updateMatrix();
         scene.add(b.group);
         buildings.push(b);
+        grid.add(b);
       }
     }
   }
@@ -431,6 +479,7 @@ export function buildCity(scene, world, opts = {}) {
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group);
     buildings.push(b);
+    grid.add(b);
   }
 
   // Build the global window InstancedMeshes now that all buildings exist.
@@ -454,7 +503,7 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
-  return buildings;
+  return { buildings, grid };
 }
 
 // -------------------- Cars --------------------

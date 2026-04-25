@@ -5,6 +5,7 @@ export const MONSTERS = {
   godzilla: {
     name: 'Gojira',
     emoji: '🦖',
+    variant: 'gojira',
     bg: 'linear-gradient(135deg,#1a3d1a,#0a1f0a)',
     description: 'Reptilian tyrant. Massive HP, devastating atomic breath.',
     stats: { hp: 220, speed: 1.0, melee: 30, scale: 1.0 },
@@ -18,6 +19,7 @@ export const MONSTERS = {
   ghidorah: {
     name: 'Ghidorah',
     emoji: '🐲',
+    variant: 'ghidorah',
     bg: 'linear-gradient(135deg,#5a4a1a,#2a1a00)',
     description: 'Three-headed dragon. Faster, electric lightning attacks.',
     stats: { hp: 170, speed: 1.25, melee: 22, scale: 0.95 },
@@ -31,6 +33,7 @@ export const MONSTERS = {
   mecha: {
     name: 'MechaKai',
     emoji: '🤖',
+    variant: 'mecha',
     bg: 'linear-gradient(135deg,#3a3a4a,#1a1a2a)',
     description: 'Cybernetic war machine. Armored, missiles and plasma.',
     stats: { hp: 260, speed: 0.85, melee: 35, scale: 1.05 },
@@ -334,7 +337,391 @@ export function buildKaiju(cfg) {
   tail.position.set(0, 7.3, -2.4);
   root.add(tail);
 
+  // ------------- VARIANT-SPECIFIC ACCENTS -------------
+  // Each kaiju gets a distinct silhouette so the three monsters read as
+  // different creatures even before you see them attack.
+  const variant = cfg.variant || 'gojira';
+
+  // Helper: shared facial-detail builder. Adds per-variant face flourishes
+  // to a head group (eyes/lids/lips/teeth/etc).
+  function addFaceDetails(headGroup, mode) {
+    // Inner mouth (dark cavity behind teeth)
+    const mouthCavity = new THREE.Mesh(
+      new THREE.SphereGeometry(0.85, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x110000, roughness: 1.0, side: THREE.BackSide })
+    );
+    mouthCavity.scale.set(1.2, 0.5, 1.0);
+    mouthCavity.position.set(0, -0.55, 1.4);
+    headGroup.add(mouthCavity);
+
+    // Tongue (small pink curved cylinder)
+    const tongue = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.32, 1.1, 8),
+      new THREE.MeshStandardMaterial({ color: 0xaa3344, roughness: 0.7 })
+    );
+    tongue.rotation.x = Math.PI / 2;
+    tongue.position.set(0, -0.78, 1.65);
+    headGroup.add(tongue);
+
+    // Lower lip ridge along the snout
+    const lipMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.08, 6, 16, Math.PI), lipMat);
+    lip.rotation.set(Math.PI / 2, 0, Math.PI);
+    lip.position.set(0, -0.75, 1.45);
+    lip.scale.set(1.1, 0.9, 1);
+    headGroup.add(lip);
+
+    // Mouth-corner crease wrinkles
+    for (const sx of [-1, 1]) {
+      const cr = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.05, 0.15), lipMat);
+      cr.position.set(sx * 1.05, -0.55, 0.85);
+      cr.rotation.y = sx * 0.4;
+      headGroup.add(cr);
+    }
+
+    if (mode === 'gojira') {
+      // Heavy reptilian brow scales -- 3 bumps per side
+      const browBumpMat = new THREE.MeshStandardMaterial({ color: 0x1a3318, roughness: 0.95 });
+      for (const sx of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          const b = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), browBumpMat);
+          b.position.set(sx * (0.5 + i * 0.22), 0.85, 0.95 - i * 0.2);
+          b.scale.set(1, 0.7, 1);
+          headGroup.add(b);
+        }
+      }
+      // Vertical-slit pupils -- thin black boxes over the existing yellow eyes
+      const slitMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1.0 });
+      for (const sx of [-1, 1]) {
+        const slit = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.42, 0.04), slitMat);
+        slit.position.set(sx * 0.7, 0.22, 1.45);
+        headGroup.add(slit);
+      }
+      // Snout scars (3 diagonal scratch marks)
+      for (let i = 0; i < 3; i++) {
+        const sc = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.06, 0.06), slitMat);
+        sc.position.set(-0.1 + i * 0.3, -0.15 + i * 0.08, 1.95);
+        sc.rotation.z = -0.4;
+        headGroup.add(sc);
+      }
+      // Extra teeth row (smaller incisors between fangs)
+      const toothS = new THREE.MeshStandardMaterial({ color: 0xfff5d8, roughness: 0.4 });
+      for (let i = 0; i < 4; i++) {
+        const t = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.22, 4), toothS);
+        t.position.set(-0.4 + i * 0.27, -0.5, 1.85);
+        t.rotation.x = Math.PI;
+        headGroup.add(t);
+      }
+      // Throat sack ridge
+      const throat = new THREE.Mesh(
+        new THREE.SphereGeometry(0.7, 10, 6),
+        new THREE.MeshStandardMaterial({ color: 0xa8b864, roughness: 0.7 })
+      );
+      throat.scale.set(1.2, 0.4, 0.9);
+      throat.position.set(0, -1.5, 0.4);
+      headGroup.add(throat);
+    } else if (mode === 'ghidorah') {
+      // Slimmer dragon snout + golden slit eyes + pair of forehead horns above each eye
+      // Override existing eyes/pupils with smaller, golden, slit eyes.
+      const goldEyeMat = new THREE.MeshStandardMaterial({ color: 0xffcc33, emissive: 0xffaa00, emissiveIntensity: 2.4 });
+      const slitMat = new THREE.MeshStandardMaterial({ color: 0x110000 });
+      // (we still want to overlay -- existing eyes will be hidden by these on top)
+      for (const sx of [-1, 1]) {
+        const e = new THREE.Mesh(new THREE.SphereGeometry(0.30, 10, 10), goldEyeMat);
+        e.position.set(sx * 0.7, 0.22, 1.30);
+        headGroup.add(e);
+        const slit = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.46, 0.04), slitMat);
+        slit.position.set(sx * 0.7, 0.22, 1.45);
+        headGroup.add(slit);
+      }
+      // Pair of long curved horns above each eye
+      for (const sx of [-1, 1]) {
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.18, 1.6, 6), spineMat);
+        horn.position.set(sx * 0.6, 1.0, 0.0);
+        horn.rotation.x = -0.5;
+        horn.rotation.z = sx * 0.25;
+        headGroup.add(horn);
+      }
+      // Long thin lip line (sharper teeth, no fat fangs)
+      const sharpMat = new THREE.MeshStandardMaterial({ color: 0xfff5d8, roughness: 0.3 });
+      for (let i = 0; i < 8; i++) {
+        const t = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.36, 4), sharpMat);
+        t.position.set(-1.05 + i * 0.3, -0.55, 1.7);
+        t.rotation.x = Math.PI;
+        headGroup.add(t);
+      }
+      // Whisker barbels (two thin curved cylinders below the chin)
+      for (const sx of [-1, 1]) {
+        const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.02, 1.4, 4), bodyMat);
+        wh.position.set(sx * 0.4, -1.1, 1.4);
+        wh.rotation.x = -0.6;
+        wh.rotation.z = sx * 0.4;
+        headGroup.add(wh);
+      }
+    } else if (mode === 'mecha') {
+      // Mecha doesn't have organic features -- replace with a single visor
+      // band of glowing red plus mechanical jaw plating.
+      const visorMat = new THREE.MeshStandardMaterial({
+        color: 0xff2233, emissive: 0xff2233, emissiveIntensity: 2.8, roughness: 0.2, metalness: 0.6,
+      });
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.45, 0.18), visorMat);
+      visor.position.set(0, 0.22, 1.45);
+      headGroup.add(visor);
+      // Visor frame (dark)
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.3 });
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 0.1), frameMat);
+      frame.position.set(0, 0.22, 1.55);
+      headGroup.add(frame);
+      // Cheek vent slits (3 per side)
+      const slot = new THREE.MeshStandardMaterial({ color: 0x110000, emissive: 0x660000, emissiveIntensity: 0.8 });
+      for (const sx of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          const s = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.06, 0.08), slot);
+          s.position.set(sx * 0.95, -0.05 - i * 0.18, 1.0);
+          headGroup.add(s);
+        }
+      }
+      // Jaw piston / hinge
+      for (const sx of [-1, 1]) {
+        const hinge = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.18, 0.18, 0.5, 8),
+          new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.9, roughness: 0.2 })
+        );
+        hinge.rotation.z = Math.PI / 2;
+        hinge.position.set(sx * 1.0, -0.85, 0.7);
+        headGroup.add(hinge);
+      }
+      // Antenna nubs on temples
+      for (const sx of [-1, 1]) {
+        const ant = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.1, 0.5, 6),
+          new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7 })
+        );
+        ant.position.set(sx * 1.05, 0.85, 0.0);
+        ant.rotation.z = sx * 0.2;
+        headGroup.add(ant);
+      }
+      // Add a chin spike
+      const chin = new THREE.Mesh(
+        new THREE.ConeGeometry(0.2, 0.55, 4),
+        new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8 })
+      );
+      chin.rotation.x = Math.PI / 2 + 0.3;
+      chin.position.set(0, -1.25, 0.95);
+      headGroup.add(chin);
+    }
+  }
+  addFaceDetails(head, variant);
+
+  if (variant === 'ghidorah') {
+    // Two additional flanking heads on curved necks coming out of the shoulders.
+    function makeSideHead(side) {
+      const g = new THREE.Group();
+      // Neck: 5 spheres curving outward and forward
+      let nx = 0, ny = 0, nz = 0;
+      for (let i = 0; i < 5; i++) {
+        const t = i / 4;
+        const seg = new THREE.Mesh(new THREE.SphereGeometry(0.7 - t * 0.2, 10, 8), bodyMat);
+        seg.position.set(nx, ny, nz);
+        g.add(seg);
+        nx += side * 0.45;
+        ny += 0.55 - t * 0.1;
+        nz += 0.4;
+      }
+      // Mini head at tip of neck
+      const hg = new THREE.Group();
+      const sk = new THREE.Mesh(new THREE.SphereGeometry(1.0, 12, 10), bodyMat);
+      sk.scale.set(1.1, 0.9, 1.4);
+      hg.add(sk);
+      const sn = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.55, 1.2, 10), bodyMat);
+      sn.rotation.x = Math.PI / 2;
+      sn.position.set(0, -0.1, 1.0);
+      hg.add(sn);
+      // Eyes
+      const eL = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 10), eyeMat);
+      eL.position.set(-0.45, 0.18, 0.85);
+      hg.add(eL);
+      const eR = eL.clone(); eR.position.x = 0.45; hg.add(eR);
+      // Forehead horn
+      const fh = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.1, 5), spineMat);
+      fh.position.set(0, 0.85, -0.05);
+      fh.rotation.x = -0.3;
+      hg.add(fh);
+      hg.position.set(nx, ny, nz);
+      g.add(hg);
+      g.position.set(side * 2.2, 12.4, 0.4);
+      return g;
+    }
+    root.add(makeSideHead(-1));
+    root.add(makeSideHead( 1));
+
+    // Wing membranes: two angled fan-like meshes off the upper back
+    const wingMat = new THREE.MeshStandardMaterial({
+      color: cfg.spineColor, side: THREE.DoubleSide,
+      roughness: 0.6, metalness: 0.2,
+      emissive: cfg.spineColor, emissiveIntensity: 0.3,
+    });
+    function makeWing(side) {
+      // Use a stretched plane with skew via geometry
+      const w = 7.0, h = 5.5;
+      const wing = new THREE.Mesh(new THREE.PlaneGeometry(w, h, 1, 1), wingMat);
+      wing.position.set(side * 3.5, 13.0, -2.0);
+      wing.rotation.y = side * -0.35;
+      wing.rotation.z = side * -0.6;
+      wing.rotation.x = -0.25;
+      return wing;
+    }
+    root.add(makeWing(-1));
+    root.add(makeWing(1));
+
+  } else if (variant === 'mecha') {
+    // Glowing chest core
+    const coreMat = new THREE.MeshStandardMaterial({
+      color: cfg.spineColor, emissive: cfg.spineColor, emissiveIntensity: 2.6, roughness: 0.3, metalness: 0.7,
+    });
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.6, 16), coreMat);
+    core.rotation.x = Math.PI / 2;
+    core.position.set(0, 11.2, 2.4);
+    root.add(core);
+    // Outer ring around core
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.1, 0.18, 8, 24),
+      new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.3 })
+    );
+    ring.position.copy(core.position);
+    root.add(ring);
+
+    // Antenna / sensor on the head
+    const ant = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.1, 1.6, 5),
+      new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.7 })
+    );
+    ant.position.set(0, 16.5, -0.1);
+    root.add(ant);
+    const tip = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 8, 8),
+      new THREE.MeshStandardMaterial({ color: 0xff3322, emissive: 0xff3322, emissiveIntensity: 2.5 })
+    );
+    tip.position.set(0, 17.4, -0.1);
+    root.add(tip);
+
+    // Shoulder pistons (small cylinders sticking out)
+    const pistonMat = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.9, roughness: 0.2 });
+    for (const sx of [-1, 1]) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.6, 8), pistonMat);
+      p.position.set(sx * 2.7, 13.1, 1.2);
+      p.rotation.z = sx * 0.3;
+      root.add(p);
+    }
+
+    // Rivet ring around the torso (small spheres along the seam)
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const rv = new THREE.Mesh(
+        new THREE.SphereGeometry(0.12, 6, 6),
+        new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8 })
+      );
+      rv.position.set(Math.cos(ang) * 2.95, 9.0, Math.sin(ang) * 2.95);
+      root.add(rv);
+    }
+    // Vent slits on chest
+    const vent = new THREE.MeshStandardMaterial({ color: 0x110000, emissive: 0x661100, emissiveIntensity: 0.6 });
+    for (let i = 0; i < 3; i++) {
+      const v = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.1), vent);
+      v.position.set(0, 12.5 - i * 0.4, 1.95);
+      root.add(v);
+    }
+
+  } else { // gojira
+    // Iconic maple-leaf-shaped dorsal fins via custom shape geometry along the back.
+    // We replace nothing -- the standard cones already exist; we just LAYER bigger
+    // angular plates around them so the silhouette reads as classic-G.
+    const finMat = new THREE.MeshStandardMaterial({
+      color: cfg.spineColor, emissive: cfg.spineColor, emissiveIntensity: 0.7,
+      roughness: 0.3, metalness: 0.5, side: THREE.DoubleSide,
+    });
+    // Build a "maple leaf" shape (5 lobes)
+    function makeMapleShape(s) {
+      const sh = new THREE.Shape();
+      sh.moveTo(0, 0);
+      const lobes = 5;
+      for (let i = 0; i < lobes; i++) {
+        const t = i / (lobes - 1);
+        const ang = -Math.PI * 0.15 + t * Math.PI * 1.3;
+        const r = s * (0.7 + 0.3 * Math.sin(t * Math.PI));
+        sh.lineTo(Math.cos(ang) * r, Math.abs(Math.sin(ang)) * r);
+      }
+      sh.lineTo(0, 0);
+      return sh;
+    }
+    for (let i = 0; i < 9; i++) {
+      const t = i / 8;
+      const sz = 1.6 - 1.0 * t;
+      const fin = new THREE.Mesh(new THREE.ShapeGeometry(makeMapleShape(sz)), finMat);
+      fin.rotation.y = Math.PI / 2; // face sideways
+      fin.position.set(0, 14.0 - t * 8.5, -1.35 - t * 0.2);
+      root.add(fin);
+    }
+    // Extra cheek scales / chest scars
+    const scarMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
+    for (let i = 0; i < 4; i++) {
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), scarMat);
+      s.position.set(-1.4 + i * 0.9, 11.5 - i * 0.4, 2.4);
+      s.scale.set(1.0, 0.3, 0.4);
+      root.add(s);
+    }
+  }
+
   // Apply scale (and a faint forward lean for posture)
   root.scale.setScalar(cfg.stats.scale);
   return { root, head, tail };
+}
+
+// ------------- TITLE-SCREEN PREVIEW RENDER -------------
+// Renders each MONSTERS entry into a small data-URL image using a one-off
+// WebGLRenderer, so the menu shows actual 3D portraits instead of emojis.
+export function renderMonsterPreviews(size = 220) {
+  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+  r.setSize(size, size);
+  r.setPixelRatio(1);
+  r.setClearColor(0x000000, 0);
+  r.toneMapping = THREE.ACESFilmicToneMapping;
+  r.toneMappingExposure = 1.5;
+
+  const out = {};
+  for (const key of Object.keys(MONSTERS)) {
+    const cfg = MONSTERS[key];
+    const sc = new THREE.Scene();
+    sc.add(new THREE.HemisphereLight(0xffaa88, 0x44334a, 1.2));
+    const sun = new THREE.DirectionalLight(0xffdcb0, 1.7);
+    sun.position.set(6, 14, 6);
+    sc.add(sun);
+    const fill = new THREE.DirectionalLight(0x88aaff, 0.5);
+    fill.position.set(-6, 5, -8);
+    sc.add(fill);
+    sc.add(new THREE.AmbientLight(0x556677, 0.6));
+
+    const k = buildKaiju(cfg);
+    k.root.position.set(0, -7, 0);
+    k.root.rotation.y = Math.PI / 7;
+    sc.add(k.root);
+
+    const cam = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+    cam.position.set(0, 5, 36);
+    cam.lookAt(0, 6, 0);
+
+    r.render(sc, cam);
+    out[key] = r.domElement.toDataURL('image/png');
+
+    // Dispose temp meshes' geometry/materials we created here
+    sc.traverse((o) => {
+      if (o.geometry) o.geometry.dispose?.();
+      if (o.material) {
+        if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose?.());
+        else o.material.dispose?.();
+      }
+    });
+  }
+  r.dispose();
+  return out;
 }

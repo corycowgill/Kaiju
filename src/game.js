@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { MONSTERS, buildKaiju } from './monsters.js';
+import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { Building, buildCity, spawnCars } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
 import {
@@ -189,7 +189,11 @@ const world = {
 };
 
 // Build city
-world.buildings = buildCity(scene, world, { lite: isMobile });
+{
+  const { buildings, grid } = buildCity(scene, world, { lite: isMobile });
+  world.buildings = buildings;
+  world.buildingGrid = grid;
+}
 
 // ------------------------- Game state -------------------------
 const state = {
@@ -483,14 +487,21 @@ window.addEventListener('touchend', endLook);
 window.addEventListener('touchcancel', endLook);
 
 // ------------------------- Monster select UI -------------------------
+// Render real 3D portraits for the menu cards (emoji-free).
+const _previews = (() => {
+  try { return renderMonsterPreviews(220); } catch (e) { console.warn('preview render failed', e); return {}; }
+})();
 const cardsDiv = document.getElementById('monsterCards');
 for (const key of Object.keys(MONSTERS)) {
   const m = MONSTERS[key];
   const card = document.createElement('div');
   card.className = 'monster-card';
   card.dataset.key = key;
+  const portrait = _previews[key]
+    ? `background: url(${_previews[key]}) center/contain no-repeat, ${m.bg};`
+    : `background:${m.bg}`;
   card.innerHTML = `
-    <div class="preview" style="background:${m.bg}">${m.emoji}</div>
+    <div class="preview" style="${portrait}"></div>
     <h3>${m.name}</h3>
     <p>${m.description}</p>
     <div class="stat">HP ${m.stats.hp} · SPD ${m.stats.speed} · MELEE ${m.stats.melee}</div>
@@ -963,18 +974,20 @@ function gameOver(victory) {
 function damageInRadius(center, radius, amount, isAerialAlso = true) {
   amount = amount * (state.upgrades?.dmgMult || 1);
   const radiusSq = radius * radius;
-  // Damage buildings (skip the .clone().setY -- pass a reused vector)
-  for (let i = 0; i < world.buildings.length; i++) {
-    const b = world.buildings[i];
-    if (b.destroyed) continue;
-    const dx = b.group.position.x - center.x;
-    const dz = b.group.position.z - center.z;
-    const r = Math.max(b.w, b.d) * 0.5;
-    const reach = radius + r;
-    if (dx * dx + dz * dz < reach * reach) {
-      _tmpV1.set(b.group.position.x, b.h * 0.6, b.group.position.z);
-      b.damage(amount, _tmpV1, world);
-    }
+  // Spatial-grid query so we only touch buildings in nearby cells
+  const grid = world.buildingGrid;
+  if (grid) {
+    grid.forEachNear(center.x, center.z, radius + 30, (b) => {
+      if (b.destroyed) return;
+      const dx = b.group.position.x - center.x;
+      const dz = b.group.position.z - center.z;
+      const r = Math.max(b.w, b.d) * 0.5;
+      const reach = radius + r;
+      if (dx * dx + dz * dz < reach * reach) {
+        _tmpV1.set(b.group.position.x, b.h * 0.6, b.group.position.z);
+        b.damage(amount, _tmpV1, world);
+      }
+    });
   }
   // Damage enemies
   for (let i = 0; i < world.enemies.length; i++) {
@@ -1154,8 +1167,11 @@ const KAIJU_BODY_RADIUS = 3.6;
 function resolveBuildingCollisions(pos, dt) {
   if (!state.monsterCfg) return;
   const radius = KAIJU_BODY_RADIUS * (state.monsterCfg.stats.scale || 1);
-  for (const b of world.buildings) {
-    if (b.destroyed) continue;
+  const grid = world.buildingGrid;
+  if (!grid) return;
+  // Only query the cells the kaiju overlaps -- typically 1-4 buildings.
+  grid.forEachNear(pos.x, pos.z, radius + 30, (b) => {
+    if (b.destroyed) return;
     const bx = b.group.position.x;
     const bz = b.group.position.z;
     const halfW = b.w / 2;
@@ -1165,7 +1181,7 @@ function resolveBuildingCollisions(pos, dt) {
     const ddx = pos.x - bx;
     const ddz = pos.z - bz;
     const maxR = Math.max(halfW, halfD) + radius;
-    if (ddx * ddx + ddz * ddz > maxR * maxR) continue;
+    if (ddx * ddx + ddz * ddz > maxR * maxR) return;
 
     // Closest point on the AABB footprint
     const cx = THREE.MathUtils.clamp(pos.x, bx - halfW, bx + halfW);
@@ -1173,7 +1189,7 @@ function resolveBuildingCollisions(pos, dt) {
     const dx = pos.x - cx;
     const dz = pos.z - cz;
     const dist2 = dx * dx + dz * dz;
-    if (dist2 >= radius * radius) continue;
+    if (dist2 >= radius * radius) return;
 
     let contactX, contactZ;
     if (dist2 < 1e-4) {
@@ -1198,8 +1214,9 @@ function resolveBuildingCollisions(pos, dt) {
     // Continuous wear-down: ~35 dps to the building you push into
     _tmpV1.set(contactX, b.h * 0.6, contactZ);
     b.damage(35 * dt, _tmpV1, world);
-  }
+  });
 }
+
 function updatePlayer(dt) {
   const k = state.kaiju;
   if (!k) return;
@@ -1318,39 +1335,41 @@ function updatePlayer(dt) {
 }
 
 const _camRay = new THREE.Raycaster();
+const _camHead = new THREE.Vector3();
+const _camOffset = new THREE.Vector3();
+const _camTarget = new THREE.Vector3();
+const _camLook = new THREE.Vector3();
+const _camCandidates = []; // reused across frames -- we only mutate length
 function updateCamera() {
   const k = state.kaiju;
   if (!k) return;
-  // Third-person camera behind kaiju, above
-  const headPos = new THREE.Vector3();
-  k.head.getWorldPosition(headPos);
+  k.head.getWorldPosition(_camHead);
   const desiredDist = 28;
-  const offsetDir = new THREE.Vector3(
+  _camOffset.set(
     -Math.sin(state.yaw),
-    (16 - state.pitch * 14) / desiredDist, // approx vertical normalized
+    (16 - state.pitch * 14) / desiredDist,
     -Math.cos(state.yaw)
   ).normalize();
 
-  // Ray from headPos outward; clamp camera distance if it would clip a building
   let dist = desiredDist;
-  _camRay.set(headPos, offsetDir);
+  _camRay.set(_camHead, _camOffset);
   _camRay.far = desiredDist + 2;
   _camRay.near = 0.1;
-  // Only test buildings near the camera path
-  const candidates = [];
-  for (const b of world.buildings) {
-    if (b.destroyed) continue;
-    const dx = b.group.position.x - headPos.x;
-    const dz = b.group.position.z - headPos.z;
-    if (dx * dx + dz * dz > 60 * 60) continue;
-    candidates.push(b.body);
+
+  // Spatial-grid lookup -- only test buildings within 60u of the head.
+  _camCandidates.length = 0;
+  if (world.buildingGrid) {
+    world.buildingGrid.forEachNear(_camHead.x, _camHead.z, 60, (b) => {
+      if (!b.destroyed) _camCandidates.push(b.body);
+    });
   }
-  if (candidates.length) {
-    const hit = _camRay.intersectObjects(candidates, false)[0];
+  if (_camCandidates.length) {
+    const hit = _camRay.intersectObjects(_camCandidates, false)[0];
     if (hit && hit.distance < dist) dist = Math.max(6, hit.distance - 1.5);
   }
 
-  const target = headPos.clone().addScaledVector(offsetDir, dist);
+  _camTarget.copy(_camHead).addScaledVector(_camOffset, dist);
+  const target = _camTarget;
   // Camera shake
   if (world._shakeTime > 0) {
     target.x += (Math.random() - 0.5) * world._shakeMag * 2;
@@ -1360,9 +1379,9 @@ function updateCamera() {
     if (world._shakeTime <= 0) world._shakeMag = 0;
   }
   camera.position.lerp(target, 0.18);
-  const look = headPos.clone();
-  look.y += state.pitch * 12;
-  camera.lookAt(look);
+  _camLook.copy(_camHead);
+  _camLook.y += state.pitch * 12;
+  camera.lookAt(_camLook);
 }
 
 // ------------------------- World tick -------------------------
@@ -1376,11 +1395,14 @@ function updateWorld(dt) {
     world.effects[i].tick(dt);
     if (world.effects[i].dead) world.effects.splice(i, 1);
   }
-  // Cap effect count -- drop the oldest if we're flooded so older smoke
-  // doesn't choke the GPU during boss waves.
-  while (world.effects.length > MAX_EFFECTS) {
-    const e = world.effects.shift();
-    if (e && e.mesh && e.mesh.parent) e.mesh.parent.remove(e.mesh);
+  // Cap effect count -- splice once instead of shifting in a loop (O(n) vs O(n^2))
+  if (world.effects.length > MAX_EFFECTS) {
+    const drop = world.effects.length - MAX_EFFECTS;
+    for (let i = 0; i < drop; i++) {
+      const e = world.effects[i];
+      if (e && e.mesh && e.mesh.parent) e.mesh.parent.remove(e.mesh);
+    }
+    world.effects.splice(0, drop);
   }
 
   // Debris physics
@@ -1403,15 +1425,22 @@ function updateWorld(dt) {
       world.debris.splice(i, 1);
     }
   }
-  // Cap debris so a chain of building demolitions can't pile up.
-  while (world.debris.length > MAX_DEBRIS) {
-    const d = world.debris.shift();
-    if (d && d.parent) d.parent.remove(d);
+  // Cap debris in a single splice (avoids O(n^2) shift cascade)
+  if (world.debris.length > MAX_DEBRIS) {
+    const drop = world.debris.length - MAX_DEBRIS;
+    for (let i = 0; i < drop; i++) {
+      const d = world.debris[i];
+      if (d && d.parent) d.parent.remove(d);
+    }
+    world.debris.splice(0, drop);
   }
-  // Cap popups too
-  while (state.popups.length > MAX_POPUPS) {
-    const p = state.popups.shift();
-    if (p && p.el) p.el.remove();
+  if (state.popups.length > MAX_POPUPS) {
+    const drop = state.popups.length - MAX_POPUPS;
+    for (let i = 0; i < drop; i++) {
+      const p = state.popups[i];
+      if (p && p.el) p.el.remove();
+    }
+    state.popups.splice(0, drop);
   }
 
   // Enemies
