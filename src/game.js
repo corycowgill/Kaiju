@@ -491,21 +491,18 @@ window.addEventListener('touchend', endLook);
 window.addEventListener('touchcancel', endLook);
 
 // ------------------------- Monster select UI -------------------------
-// Render real 3D portraits for the menu cards (emoji-free).
-const _previews = (() => {
-  try { return renderMonsterPreviews(220); } catch (e) { console.warn('preview render failed', e); return {}; }
-})();
+// Build cards immediately with the emoji visible, THEN swap in rendered 3D
+// portraits async so the title screen never appears blank if the preview
+// renderer is slow (e.g. iPhone) or fails.
 const cardsDiv = document.getElementById('monsterCards');
+const _cardEls = {};
 for (const key of Object.keys(MONSTERS)) {
   const m = MONSTERS[key];
   const card = document.createElement('div');
   card.className = 'monster-card';
   card.dataset.key = key;
-  const portrait = _previews[key]
-    ? `background: url(${_previews[key]}) center/contain no-repeat, ${m.bg};`
-    : `background:${m.bg}`;
   card.innerHTML = `
-    <div class="preview" style="${portrait}"></div>
+    <div class="preview" style="background:${m.bg}"><span class="preview-emoji">${m.emoji}</span></div>
     <h3>${m.name}</h3>
     <p>${m.description}</p>
     <div class="stat">HP ${m.stats.hp} · SPD ${m.stats.speed} · MELEE ${m.stats.melee}</div>
@@ -520,7 +517,28 @@ for (const key of Object.keys(MONSTERS)) {
     document.getElementById('startBtn').disabled = false;
   });
   cardsDiv.appendChild(card);
+  _cardEls[key] = card;
 }
+// Render the 3D portraits AFTER the menu paints, then swap them in.
+// requestIdleCallback (Chromium) or setTimeout (Safari) defers it cleanly.
+const _renderPreviewsLazy = () => {
+  try {
+    const previews = renderMonsterPreviews(isMobile ? 160 : 220);
+    for (const key of Object.keys(previews)) {
+      const card = _cardEls[key];
+      if (!card) continue;
+      const m = MONSTERS[key];
+      const prev = card.querySelector('.preview');
+      if (prev && previews[key]) {
+        prev.style.background = `url(${previews[key]}) center/contain no-repeat, ${m.bg}`;
+        const emo = prev.querySelector('.preview-emoji');
+        if (emo) emo.style.display = 'none';
+      }
+    }
+  } catch (e) { console.warn('preview render failed; keeping emoji fallback', e); }
+};
+if (typeof requestIdleCallback === 'function') requestIdleCallback(_renderPreviewsLazy, { timeout: 500 });
+else setTimeout(_renderPreviewsLazy, 50);
 document.getElementById('startBtn').addEventListener('click', () => {
   if (!state.monsterKey) return;
   audio.init();

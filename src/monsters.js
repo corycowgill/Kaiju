@@ -681,7 +681,13 @@ export function buildKaiju(cfg) {
 // Renders each MONSTERS entry into a small data-URL image using a one-off
 // WebGLRenderer, so the menu shows actual 3D portraits instead of emojis.
 export function renderMonsterPreviews(size = 220) {
-  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+  // preserveDrawingBuffer is REQUIRED for toDataURL() to capture the rendered
+  // pixels on Safari/iOS -- without it the WebGL backbuffer is cleared after
+  // present and we'd hand back a blank PNG.
+  const r = new THREE.WebGLRenderer({
+    antialias: true, alpha: true, powerPreference: 'low-power',
+    preserveDrawingBuffer: true,
+  });
   r.setSize(size, size);
   r.setPixelRatio(1);
   r.setClearColor(0x000000, 0);

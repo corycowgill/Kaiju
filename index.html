@@ -12,7 +12,7 @@
 <!-- Japanese-inspired display fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+JP:wght@400;700;900&family=Stick&family=Yuji+Mai&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+JP:wght@400;700;900&family=Stick&family=Yuji+Mai&family=Yuji+Boku&family=Reggae+One&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
   html, body {
@@ -152,7 +152,12 @@
 
   /* Menus */
   .overlay {
-    position: fixed; inset: 0; background: radial-gradient(ellipse at center, #200 0%, #000 70%);
+    position: fixed; inset: 0;
+    /* Layered: dark crimson base + halftone dots + center vignette */
+    background:
+      radial-gradient(circle at 50% 50%, transparent 1.5px, rgba(0,0,0,0.18) 1.5px, transparent 2.5px) 0 0/22px 22px,
+      radial-gradient(ellipse at center, rgba(40,4,8,0.0) 0%, rgba(15,0,2,0.7) 65%, rgba(2,0,0,1) 100%),
+      linear-gradient(180deg, #260308 0%, #0a0103 100%);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     z-index: 100; text-align: center;
     padding-top: max(20px, env(safe-area-inset-top));
@@ -161,78 +166,219 @@
     padding-right: max(20px, env(safe-area-inset-right));
     overflow-y: auto;
   }
-  .overlay h1 {
+  /* Giant 怪獣 watermark behind the menu */
+  #menu::before {
+    content: '怪獣';
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Yuji Boku', 'Yuji Mai', serif;
+    font-size: clamp(280px, 60vh, 760px);
+    color: rgba(180, 28, 50, 0.085);
+    letter-spacing: -0.05em;
+    pointer-events: none; z-index: 0;
+    white-space: nowrap;
+    text-shadow: 0 0 80px rgba(255, 50, 70, 0.05);
+  }
+  /* Film-strip borders top/bottom of the menu */
+  #menu::after {
+    content: '';
+    position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+    pointer-events: none; z-index: 0;
+    background:
+      repeating-linear-gradient(90deg,
+        rgba(0,0,0,0.92) 0 12px, rgba(255, 230, 200, 0.06) 12px 18px,
+        rgba(0,0,0,0.92) 18px 30px) 0 0 / 100% 14px no-repeat,
+      repeating-linear-gradient(90deg,
+        rgba(0,0,0,0.92) 0 12px, rgba(255, 230, 200, 0.06) 12px 18px,
+        rgba(0,0,0,0.92) 18px 30px) 0 100% / 100% 14px no-repeat;
+  }
+  #menu > * { position: relative; z-index: 1; }
+
+  /* "STARRING" billing rule above the cards */
+  #menu .starring {
     font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
-    font-size: 78px; letter-spacing: 12px;
+    color: #ffcc66; letter-spacing: 14px; font-size: 13px;
+    margin: 6px 0 12px 0;
+    display: flex; align-items: center; gap: 14px; justify-content: center;
+  }
+  #menu .starring::before, #menu .starring::after {
+    content: ''; height: 1px; background: linear-gradient(90deg, transparent, #ffcc66, transparent);
+    flex: 1 1 0; max-width: 140px;
+  }
+  /* Studio credit at the bottom of the menu */
+  #menu .studio {
+    margin-top: 10px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px; letter-spacing: 5px;
+    color: rgba(255, 230, 200, 0.45);
+  }
+  #menu .studio b { color: rgba(255, 230, 200, 0.9); font-weight: 700; }
+
+  .overlay h1 {
+    font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 92px; letter-spacing: 8px;
     color: #ffe6c8;
     text-shadow:
-      0 0 40px #ff2244,
-      0 0 14px #ff6688,
-      4px 4px 0 #1a0006;
+      0 0 50px #ff2244,
+      0 0 18px #ff8866,
+      0 6px 0 #1a0006,
+      0 7px 0 #1a0006,
+      0 8px 18px rgba(0,0,0,0.85);
     margin-bottom: 0;
-    line-height: 0.95;
+    line-height: 0.92;
     position: relative;
-    display: flex; align-items: baseline; justify-content: center; gap: 14px;
+    display: flex; align-items: baseline; justify-content: center; gap: 18px;
+    padding: 0 6px;
   }
   .overlay h1 .kanji {
-    font-family: 'Yuji Mai', 'Noto Sans JP', serif;
-    font-size: 0.9em;
-    color: #d3253c;
-    letter-spacing: 0;
-    text-shadow: 0 0 22px #ff2244, 4px 4px 0 #1a0006;
+    font-family: 'Yuji Boku', 'Yuji Mai', serif;
+    font-size: 1.05em;
+    color: #ff3344;
+    letter-spacing: -0.02em;
+    text-shadow:
+      0 0 32px #ff2244,
+      0 0 12px #ffcc66,
+      4px 4px 0 #1a0006,
+      6px 6px 14px rgba(0,0,0,0.8);
+    transform: translateY(-0.05em) rotate(-2deg);
   }
   /* Rising-sun disc behind the title */
   .overlay h1::before {
     content: ''; position: absolute;
-    width: 240px; height: 240px;
-    background: radial-gradient(circle, rgba(211,37,60,0.55) 0%, rgba(211,37,60,0.18) 45%, transparent 70%);
+    width: 320px; height: 320px;
+    background:
+      radial-gradient(circle, rgba(211,37,60,0.65) 0%, rgba(211,37,60,0.22) 38%, transparent 70%),
+      conic-gradient(from 0deg,
+        rgba(255, 200, 100, 0.08) 0deg, transparent 14deg,
+        rgba(255, 200, 100, 0.08) 28deg, transparent 42deg,
+        rgba(255, 200, 100, 0.08) 56deg, transparent 70deg,
+        rgba(255, 200, 100, 0.08) 84deg, transparent 98deg,
+        rgba(255, 200, 100, 0.08) 112deg, transparent 126deg,
+        rgba(255, 200, 100, 0.08) 140deg, transparent 154deg,
+        rgba(255, 200, 100, 0.08) 168deg, transparent 182deg,
+        rgba(255, 200, 100, 0.08) 196deg, transparent 210deg,
+        rgba(255, 200, 100, 0.08) 224deg, transparent 238deg,
+        rgba(255, 200, 100, 0.08) 252deg, transparent 266deg,
+        rgba(255, 200, 100, 0.08) 280deg, transparent 294deg,
+        rgba(255, 200, 100, 0.08) 308deg, transparent 322deg,
+        rgba(255, 200, 100, 0.08) 336deg, transparent 350deg);
     top: 50%; left: 50%; transform: translate(-50%, -50%);
     z-index: -1; pointer-events: none;
-    filter: blur(6px);
+    border-radius: 50%;
+    filter: blur(2px);
   }
   .overlay h2 {
-    font-family: 'Noto Sans JP', sans-serif;
-    font-size: 18px; color: #ffcc66; letter-spacing: 8px;
-    margin: 8px 0 22px 0; font-weight: 700;
-    border-top: 1px solid rgba(255, 200, 100, 0.4);
-    border-bottom: 1px solid rgba(255, 200, 100, 0.4);
-    padding: 6px 18px;
+    font-family: 'Yuji Mai', 'Noto Sans JP', serif;
+    font-size: 20px; color: #ffcc66; letter-spacing: 10px;
+    margin: 14px 0 18px 0; font-weight: 400;
+    padding: 8px 28px;
+    position: relative;
+    background: rgba(20, 4, 8, 0.5);
   }
-  .monsters { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; max-width: 1100px; }
+  .overlay h2::before, .overlay h2::after {
+    content: '◆'; color: #d3253c; font-size: 11px;
+    margin: 0 12px; vertical-align: middle;
+    text-shadow: 0 0 8px #ff2244;
+  }
+  .overlay h2 .jp-line {
+    color: #ff8866; font-size: 0.95em; margin-right: 8px;
+  }
+  .monsters { display: flex; gap: 22px; flex-wrap: wrap; justify-content: center; max-width: 1100px; }
   .monster-card {
-    width: 240px; padding: 18px; background: rgba(20,0,0,0.7);
-    border: 2px solid #663344; border-radius: 12px; cursor: pointer;
+    width: 240px; padding: 18px;
+    /* Layered poster background: vignette + paper noise */
+    background:
+      radial-gradient(circle at 50% 30%, rgba(80,12,16,0.4) 0%, rgba(20,2,4,0.85) 75%),
+      linear-gradient(180deg, #1a0306, #08010260);
+    border: 1px solid #883344;
+    border-radius: 2px; cursor: pointer;
     transition: all 0.2s; text-align: left;
+    position: relative;
+    box-shadow:
+      0 6px 22px rgba(0,0,0,0.55),
+      inset 0 0 14px rgba(255, 80, 90, 0.06);
   }
-  .monster-card:hover { border-color: #ffcc66; transform: translateY(-4px); box-shadow: 0 8px 24px rgba(255,200,100,0.3); }
-  .monster-card.selected { border-color: #ff3344; background: rgba(60,0,0,0.85); box-shadow: 0 0 24px rgba(255,80,100,0.6); }
+  /* Diamond ornaments at each corner */
+  .monster-card::before, .monster-card::after,
+  .monster-card .preview::before, .monster-card .preview::after {
+    content: '◆'; position: absolute; color: #d3253c;
+    font-size: 9px; line-height: 1; text-shadow: 0 0 6px #ff2244;
+    pointer-events: none;
+  }
+  .monster-card::before { top: 4px; left: 4px; }
+  .monster-card::after  { top: 4px; right: 4px; }
+  .monster-card .preview::before { content: '◆'; bottom: -16px; left: -10px; position: absolute; color: #d3253c; font-size: 9px; text-shadow: 0 0 6px #ff2244; }
+  .monster-card .preview::after  { content: '◆'; bottom: -16px; right: -10px; position: absolute; color: #d3253c; font-size: 9px; text-shadow: 0 0 6px #ff2244; }
+  .monster-card:hover {
+    border-color: #ffcc66; transform: translateY(-4px);
+    box-shadow:
+      0 12px 30px rgba(0,0,0,0.65),
+      0 0 24px rgba(255,200,100,0.35),
+      inset 0 0 14px rgba(255, 200, 120, 0.08);
+  }
+  .monster-card.selected {
+    border-color: #ff3344;
+    background:
+      radial-gradient(circle at 50% 30%, rgba(160,30,40,0.55) 0%, rgba(40,4,8,0.95) 75%),
+      linear-gradient(180deg, #2a050a, #100204);
+    box-shadow:
+      0 0 28px rgba(255,80,100,0.7),
+      inset 0 0 18px rgba(255, 80, 100, 0.14);
+  }
   .monster-card .preview {
-    width: 100%; height: 120px; border-radius: 8px; margin-bottom: 10px;
+    width: 100%; height: 130px; border-radius: 0;
+    margin-bottom: 14px;
     display: flex; align-items: center; justify-content: center; font-size: 64px;
+    position: relative;
+    border: 1px solid rgba(255, 200, 100, 0.18);
+    box-shadow: inset 0 0 24px rgba(0,0,0,0.55);
   }
-  .monster-card h3 { font-size: 22px; color: #ffcc66; margin-bottom: 6px; }
-  .monster-card p { font-size: 13px; color: #ddd; line-height: 1.5; }
-  .monster-card .stat { font-size: 12px; color: #aaccff; margin-top: 6px; }
+  .monster-card h3 {
+    font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 24px; color: #ffcc66; margin-bottom: 8px;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px #ff8866, 2px 2px 0 #1a0006;
+  }
+  .monster-card p { font-size: 13px; color: #ddd; line-height: 1.5; font-style: italic; }
+  .monster-card .stat {
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 12px; color: #aaccff; margin-top: 6px; letter-spacing: 2px;
+  }
 
   button.start-btn {
-    margin-top: 24px; padding: 14px 44px; font-size: 22px;
-    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
-    background: linear-gradient(180deg, #d3253c, #6a0014);
+    margin-top: 24px; padding: 16px 56px; font-size: 26px;
+    font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    background:
+      radial-gradient(circle at 50% 30%, rgba(255,150,80,0.35) 0%, transparent 65%),
+      linear-gradient(180deg, #d3253c 0%, #8e0a1c 50%, #4d0010 100%);
     color: #ffe6c8;
     border: 2px solid #ffcc66;
     border-radius: 2px;
-    cursor: pointer; letter-spacing: 8px; font-weight: 400;
-    text-shadow: 2px 2px 0 #1a0006;
+    cursor: pointer; letter-spacing: 10px; font-weight: 400;
+    text-shadow: 0 0 14px #ff8866, 2px 2px 0 #1a0006, 4px 4px 8px rgba(0,0,0,0.7);
     box-shadow:
-      0 0 26px rgba(211, 37, 60, 0.55),
-      inset 0 0 16px rgba(0,0,0,0.4);
+      0 0 36px rgba(211, 37, 60, 0.65),
+      0 6px 22px rgba(0,0,0,0.65),
+      inset 0 0 22px rgba(0,0,0,0.45),
+      inset 0 1px 0 rgba(255, 230, 200, 0.25);
     position: relative;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  button.start-btn:hover:not(:disabled) {
+    transform: scale(1.04);
+    box-shadow:
+      0 0 50px rgba(255, 80, 100, 0.85),
+      0 8px 28px rgba(0,0,0,0.7),
+      inset 0 0 22px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255, 230, 200, 0.4);
   }
   button.start-btn::before {
-    content: '◆'; margin-right: 10px; color: #ffcc66; font-size: 14px;
+    content: '◆'; margin-right: 14px; color: #ffcc66; font-size: 14px;
+    text-shadow: 0 0 8px #ffcc66;
   }
   button.start-btn::after {
-    content: '◆'; margin-left: 10px; color: #ffcc66; font-size: 14px;
+    content: '◆'; margin-left: 14px; color: #ffcc66; font-size: 14px;
+    text-shadow: 0 0 8px #ffcc66;
   }
   button.start-btn:hover { transform: scale(1.05); }
   button.start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -361,8 +507,20 @@
     justify-content: center;
     gap: 4px;
   }
-  body.mobile .overlay h1 { font-size: 28px; letter-spacing: 3px; margin-bottom: 0; line-height: 1.05; }
-  body.mobile .overlay h2 { font-size: 11px; letter-spacing: 3px; margin-bottom: 6px; }
+  body.mobile .overlay h1 {
+    font-size: 32px; letter-spacing: 4px; margin-bottom: 0; line-height: 1.0; gap: 10px;
+  }
+  body.mobile .overlay h1 .kanji { font-size: 1.0em; }
+  body.mobile .overlay h1::before { width: 160px; height: 160px; }
+  body.mobile .overlay h2 {
+    font-size: 11px; letter-spacing: 4px; margin: 6px 0 6px 0; padding: 4px 12px;
+  }
+  body.mobile .overlay h2::before, body.mobile .overlay h2::after { margin: 0 5px; font-size: 9px; }
+  body.mobile #menu .starring { font-size: 10px; letter-spacing: 8px; margin: 4px 0 6px 0; gap: 8px; }
+  body.mobile #menu .starring::before, body.mobile #menu .starring::after { max-width: 60px; }
+  body.mobile #menu .studio { font-size: 9px; letter-spacing: 3px; margin-top: 6px; }
+  body.mobile #menu::before { font-size: 280px; opacity: 0.7; }
+  body.mobile #menu::after { display: none; } /* drop film strips on mobile to save vertical space */
   body.mobile #highscore-display { font-size: 10px; letter-spacing: 2px; margin-bottom: 6px; }
   body.mobile .monsters { gap: 8px; flex-wrap: nowrap; max-width: 100%; }
   body.mobile .monster-card {
@@ -534,11 +692,13 @@
 <!-- Title / Monster Select -->
 <div id="menu" class="overlay">
   <h1><span class="kanji">怪獣</span><span>RAMPAGE</span></h1>
-  <h2>東京破壊 · TOKYO DESTRUCTION</h2>
-  <div id="highscore-display" style="font-size:14px; color:#ffcc66; letter-spacing:4px; margin-bottom:18px;"></div>
+  <h2><span class="jp-line">東京破壊</span>TOKYO DESTRUCTION</h2>
+  <div id="highscore-display" style="font-family:'Bebas Neue', sans-serif; font-size:14px; color:#ffcc66; letter-spacing:6px; margin-bottom:14px;"></div>
+  <div class="starring">STARRING · 出演</div>
   <div class="monsters" id="monsterCards"></div>
   <button class="start-btn" id="startBtn" disabled>START RAMPAGE</button>
   <p class="menu-hint" style="margin-top:14px; color:#888; font-size:12px;">WASD MOVE · MOUSE LOOK · LMB ATTACK · 1-3 POWERS · SPACE STOMP</p>
+  <div class="studio">PRESENTED BY · <b>HALLUCINATED GAMES</b> · ハルシネイテッド ゲームズ</div>
 </div>
 
 <!-- HUD -->
