@@ -12,6 +12,9 @@ const NEON_COLORS = [0xff3366, 0x33ddff, 0xffaa22, 0xaa66ff, 0x66ff99, 0xffee44]
 function rand(min, max) { return min + Math.random() * (max - min); }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+let LITE_MODE = false;
+export function setBuildingLite(v) { LITE_MODE = !!v; }
+
 export class Building {
   constructor(x, z, w, d, h, opts = {}) {
     this.x = x; this.z = z; this.w = w; this.d = d; this.h = h;
@@ -81,7 +84,8 @@ export class Building {
     const rows = Math.max(2, Math.floor(h / 3));
     const cols = Math.max(2, Math.floor(Math.max(w, d) / 2.5));
     const winGeom = new THREE.BoxGeometry(0.6, 1.2, 0.15);
-    for (let face = 0; face < 4; face++) {
+    const facesToRender = LITE_MODE ? 2 : 4;
+    for (let face = 0; face < facesToRender; face++) {
       const inst = new THREE.InstancedMesh(winGeom, winMat, rows * cols);
       let i = 0;
       const dummy = new THREE.Object3D();
@@ -162,10 +166,12 @@ export class Building {
   }
 }
 
-export function buildCity(scene, world) {
+export function buildCity(scene, world, opts = {}) {
   const buildings = [];
-  const CITY_RADIUS = 380;
-  const BLOCK = 36; // block size including streets
+  const lite = !!opts.lite;
+  setBuildingLite(lite);
+  const CITY_RADIUS = lite ? 280 : 380;
+  const BLOCK = lite ? 44 : 36; // block size including streets
   const STREET = 8;
 
   // Ground (asphalt)
@@ -194,8 +200,10 @@ export function buildCity(scene, world) {
       if (Math.abs(bx) < BLOCK && Math.abs(bz) < BLOCK) continue;
       const distFromCenter = Math.sqrt(bx*bx + bz*bz);
 
+      // skip some blocks entirely on lite mode
+      if (lite && Math.random() < 0.35) continue;
       // 1-2 buildings per block
-      const n = Math.random() < 0.55 ? 2 : 1;
+      const n = lite ? 1 : (Math.random() < 0.55 ? 2 : 1);
       for (let i = 0; i < n; i++) {
         const w = rand(8, BLOCK - STREET - 4) * (n === 1 ? 1.0 : 0.5);
         const d = rand(8, BLOCK - STREET - 4) * (n === 1 ? 1.0 : 0.5);

@@ -7,12 +7,31 @@ import {
   makeMuzzleFlash, makeSmokePuff, makeBeam,
 } from './effects.js';
 
+// ------------------------- Mobile detect -------------------------
+const isMobile = (() => {
+  const ua = navigator.userAgent || '';
+  const touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  const ios = /iPhone|iPad|iPod/i.test(ua);
+  const android = /Android/i.test(ua);
+  // Treat any touch-only small screen as mobile
+  return ios || android || (touch && Math.min(window.innerWidth, window.innerHeight) < 820);
+})();
+if (isMobile) document.body.classList.add('mobile');
+
+function updateOrientationClass() {
+  if (!isMobile) return;
+  if (window.innerHeight > window.innerWidth) document.body.classList.add('portrait');
+  else document.body.classList.remove('portrait');
+}
+updateOrientationClass();
+window.addEventListener('orientationchange', updateOrientationClass);
+
 // ------------------------- Setup -------------------------
 const game = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance' });
+renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !isMobile;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -29,12 +48,14 @@ const hemi = new THREE.HemisphereLight(0xff7755, 0x221122, 0.55);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffaa66, 0.9);
 sun.position.set(120, 180, 60);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -250; sun.shadow.camera.right = 250;
-sun.shadow.camera.top = 250; sun.shadow.camera.bottom = -250;
-sun.shadow.camera.near = 1; sun.shadow.camera.far = 500;
-sun.shadow.bias = -0.0005;
+sun.castShadow = !isMobile;
+if (!isMobile) {
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -250; sun.shadow.camera.right = 250;
+  sun.shadow.camera.top = 250; sun.shadow.camera.bottom = -250;
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 500;
+  sun.shadow.bias = -0.0005;
+}
 scene.add(sun);
 const fill = new THREE.DirectionalLight(0x4466ff, 0.25);
 fill.position.set(-100, 80, -120);
@@ -107,7 +128,7 @@ const world = {
 };
 
 // Build city
-world.buildings = buildCity(scene, world);
+world.buildings = buildCity(scene, world, { lite: isMobile });
 
 // ------------------------- Game state -------------------------
 const state = {
@@ -164,7 +185,138 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  updateOrientationClass();
 });
+
+// ------------------------- Touch / mobile input -------------------------
+const touchInput = {
+  moveX: 0, moveZ: 0,    // -1..1 from joystick
+  attackHeld: false,
+  sprint: false,
+  // active pointer ids for joystick / camera
+  joyId: null, joyStartX: 0, joyStartY: 0, joyCx: 0, joyCy: 0,
+  lookId: null, lookLastX: 0, lookLastY: 0,
+};
+
+const joystickEl = document.getElementById('joystick');
+const knobEl = joystickEl ? joystickEl.querySelector('.knob') : null;
+const attackBtn = document.getElementById('attack-btn');
+const sprintBtn = document.getElementById('sprint-btn');
+const pauseBtn = document.getElementById('pause-btn');
+
+function setKnob(dx, dy) {
+  if (!knobEl) return;
+  knobEl.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+function resetJoystick() {
+  touchInput.moveX = 0; touchInput.moveZ = 0;
+  touchInput.joyId = null;
+  setKnob(0, 0);
+}
+
+if (joystickEl) {
+  const handleJoyStart = (id, cx, cy) => {
+    const r = joystickEl.getBoundingClientRect();
+    touchInput.joyCx = r.left + r.width / 2;
+    touchInput.joyCy = r.top + r.height / 2;
+    touchInput.joyId = id;
+    handleJoyMove(cx, cy);
+  };
+  const handleJoyMove = (cx, cy) => {
+    const dx = cx - touchInput.joyCx;
+    const dy = cy - touchInput.joyCy;
+    const max = 50;
+    const len = Math.hypot(dx, dy);
+    const nx = len > max ? dx * max / len : dx;
+    const ny = len > max ? dy * max / len : dy;
+    setKnob(nx, ny);
+    touchInput.moveX = nx / max;
+    touchInput.moveZ = -ny / max; // up on screen = forward
+  };
+  joystickEl.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    handleJoyStart(t.identifier, t.clientX, t.clientY);
+  }, { passive: false });
+  joystickEl.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === touchInput.joyId) {
+        handleJoyMove(t.clientX, t.clientY);
+      }
+    }
+  }, { passive: false });
+  const endJoy = (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === touchInput.joyId) resetJoystick();
+    }
+  };
+  joystickEl.addEventListener('touchend', endJoy);
+  joystickEl.addEventListener('touchcancel', endJoy);
+}
+
+if (attackBtn) {
+  attackBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault(); touchInput.attackHeld = true;
+  }, { passive: false });
+  const endAtk = (e) => { e.preventDefault(); touchInput.attackHeld = false; };
+  attackBtn.addEventListener('touchend', endAtk);
+  attackBtn.addEventListener('touchcancel', endAtk);
+}
+
+if (sprintBtn) {
+  sprintBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchInput.sprint = !touchInput.sprint;
+    sprintBtn.classList.toggle('on', touchInput.sprint);
+  }, { passive: false });
+}
+
+if (pauseBtn) {
+  pauseBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    state.paused = !state.paused;
+    showMessage(state.paused ? 'PAUSED' : '', state.paused ? 0 : 0);
+  }, { passive: false });
+}
+
+// Camera drag: any touch on the right half (not on a button) controls look
+function isOnControl(target) {
+  if (!target || !target.closest) return false;
+  return !!target.closest('#joystick, #attack-btn, #sprint-btn, #pause-btn, #powers, #hud, #menu, #gameover');
+}
+window.addEventListener('touchstart', (e) => {
+  if (!isMobile || state.gameOver || !state.kaiju) return;
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchInput.joyId) continue;
+    if (isOnControl(t.target)) continue;
+    if (t.clientX < window.innerWidth * 0.4) continue; // left side reserved for joystick area
+    if (touchInput.lookId !== null) continue;
+    touchInput.lookId = t.identifier;
+    touchInput.lookLastX = t.clientX;
+    touchInput.lookLastY = t.clientY;
+  }
+}, { passive: true });
+window.addEventListener('touchmove', (e) => {
+  if (!isMobile) return;
+  for (const t of e.changedTouches) {
+    if (t.identifier !== touchInput.lookId) continue;
+    const dx = t.clientX - touchInput.lookLastX;
+    const dy = t.clientY - touchInput.lookLastY;
+    touchInput.lookLastX = t.clientX;
+    touchInput.lookLastY = t.clientY;
+    state.yaw -= dx * 0.005;
+    state.pitch -= dy * 0.004;
+    state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
+  }
+}, { passive: true });
+const endLook = (e) => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchInput.lookId) touchInput.lookId = null;
+  }
+};
+window.addEventListener('touchend', endLook);
+window.addEventListener('touchcancel', endLook);
 
 // ------------------------- Monster select UI -------------------------
 const cardsDiv = document.getElementById('monsterCards');
@@ -213,11 +365,19 @@ function startGame(key) {
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('powers').classList.remove('hidden');
-  document.getElementById('help').classList.remove('hidden');
+  if (!isMobile) {
+    document.getElementById('help').classList.remove('hidden');
+  } else {
+    // Reveal mobile controls
+    document.getElementById('joystick').classList.remove('hidden');
+    document.getElementById('attack-btn').classList.remove('hidden');
+    document.getElementById('sprint-btn').classList.remove('hidden');
+    document.getElementById('pause-btn').classList.remove('hidden');
+  }
   buildPowersBar();
 
   startWave(1);
-  renderer.domElement.requestPointerLock?.();
+  if (!isMobile) renderer.domElement.requestPointerLock?.();
 }
 
 // ------------------------- HUD -------------------------
@@ -241,6 +401,16 @@ function buildPowersBar() {
       </div>
       <div class="cooldown" id="cd-${it.id}" style="display:none"></div>`;
     bar.appendChild(w);
+    const pwEl = w.querySelector('.power');
+    const fire = (e) => {
+      e.preventDefault();
+      if (it.id === 'beam') fireBeam();
+      else if (it.id === 'roar') fireRoar();
+      else if (it.id === 'charge') fireCharge();
+      else if (it.id === 'stomp') fireStomp();
+    };
+    pwEl.addEventListener('touchstart', fire, { passive: false });
+    pwEl.addEventListener('mousedown', fire);
   }
 }
 
@@ -473,13 +643,19 @@ function fireMelee() {
 function updatePlayer(dt) {
   const k = state.kaiju;
   if (!k) return;
-  const speed = state.monsterCfg.stats.speed * (keys.ShiftLeft || keys.ShiftRight ? 18 : 11);
+  const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint;
+  const speed = state.monsterCfg.stats.speed * (sprint ? 18 : 11);
 
   let mx = 0, mz = 0;
   if (keys.KeyW) mz += 1;
   if (keys.KeyS) mz -= 1;
   if (keys.KeyA) mx -= 1;
   if (keys.KeyD) mx += 1;
+  // Add touch joystick input (overrides if pressed)
+  if (touchInput.moveX !== 0 || touchInput.moveZ !== 0) {
+    mx += touchInput.moveX;
+    mz += touchInput.moveZ;
+  }
 
   const forward = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
   const right = new THREE.Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
@@ -555,7 +731,7 @@ function updatePlayer(dt) {
   if (keys.Digit2) fireRoar();
   if (keys.Digit3) fireCharge();
   if (keys.Space) fireStomp();
-  if (state.mouseDown) fireMelee();
+  if (state.mouseDown || touchInput.attackHeld) fireMelee();
 }
 
 function updateCamera() {

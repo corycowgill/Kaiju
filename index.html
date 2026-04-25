@@ -2,13 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#000000" />
 <title>Kaiju Rampage - Tokyo Destruction</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Trebuchet MS', sans-serif; color: #fff; }
-  #game { position: fixed; inset: 0; }
-  canvas { display: block; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden; background: #000;
+    font-family: 'Trebuchet MS', sans-serif; color: #fff;
+    overscroll-behavior: none; touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    position: fixed;
+  }
+  #game { position: fixed; inset: 0; touch-action: none; }
+  canvas { display: block; touch-action: none; }
 
   /* HUD */
   #hud {
@@ -126,10 +136,118 @@
   }
   #wave-banner.show { opacity: 1; }
   #wave-banner small { display: block; font-size: 22px; color: #ffcc66; letter-spacing: 6px; margin-top: 10px; }
+
+  /* ---------- Mobile / touch controls ---------- */
+  #mobile-ui { display: none; pointer-events: none; }
+  body.mobile #mobile-ui { display: block; }
+  body.mobile #help { display: none !important; }
+
+  /* Joystick (left) */
+  #joystick {
+    position: fixed; bottom: 110px; left: 30px;
+    width: 140px; height: 140px; border-radius: 50%;
+    background: rgba(0,0,0,0.35); border: 2px solid rgba(255,80,100,0.5);
+    box-shadow: 0 0 20px rgba(255,80,100,0.3) inset;
+    z-index: 12; pointer-events: auto; touch-action: none;
+  }
+  #joystick .knob {
+    position: absolute; top: 50%; left: 50%;
+    width: 60px; height: 60px; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #ff7788, #aa2233);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 14px rgba(255,80,100,0.6);
+    pointer-events: none;
+  }
+
+  /* Attack button (right) */
+  #attack-btn {
+    position: fixed; bottom: 130px; right: 30px;
+    width: 110px; height: 110px; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #ff5566, #880022);
+    border: 3px solid #ffcc66;
+    color: #fff; font-weight: bold; font-size: 18px; letter-spacing: 2px;
+    text-shadow: 2px 2px 0 #000;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 24px rgba(255,80,100,0.6);
+    z-index: 12; pointer-events: auto; touch-action: none;
+    user-select: none;
+  }
+  #attack-btn:active { transform: scale(0.92); background: radial-gradient(circle at 30% 30%, #ffaa66, #aa3322); }
+
+  /* Sprint toggle button */
+  #sprint-btn {
+    position: fixed; bottom: 250px; right: 40px;
+    width: 70px; height: 70px; border-radius: 50%;
+    background: rgba(0,0,0,0.55); border: 2px solid #66aaff;
+    color: #aaccff; font-weight: bold; font-size: 13px; letter-spacing: 2px;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 12; pointer-events: auto; touch-action: none;
+  }
+  #sprint-btn.on { background: rgba(80,140,200,0.8); color: #fff; }
+
+  /* Pause button */
+  #pause-btn {
+    position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(0,0,0,0.6); border: 1px solid #ffcc66;
+    color: #ffcc66; font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 13; pointer-events: auto; touch-action: none;
+  }
+
+  /* Mobile HUD shrinks */
+  body.mobile #hud { padding: 6px 10px; font-size: 12px; }
+  body.mobile .panel { min-width: 0; padding: 6px 8px; }
+  body.mobile .label { font-size: 9px; letter-spacing: 1px; }
+  body.mobile .value { font-size: 14px; }
+  body.mobile #score { font-size: 18px; }
+  body.mobile .bar { height: 9px; }
+  body.mobile #powers { gap: 6px; bottom: 8px; }
+  body.mobile .power { width: 58px; height: 58px; }
+  body.mobile .power .key { font-size: 14px; }
+  body.mobile .power .name { font-size: 9px; }
+
+  /* Mobile menu */
+  body.mobile .overlay h1 { font-size: 38px; letter-spacing: 4px; }
+  body.mobile .overlay h2 { font-size: 14px; }
+  body.mobile .monsters { gap: 10px; }
+  body.mobile .monster-card { width: 44%; min-width: 140px; padding: 10px; }
+  body.mobile .monster-card .preview { height: 70px; font-size: 38px; margin-bottom: 6px; }
+  body.mobile .monster-card h3 { font-size: 16px; }
+  body.mobile .monster-card p { font-size: 11px; }
+  body.mobile .monster-card .stat { font-size: 10px; }
+  body.mobile button.start-btn { padding: 12px 28px; font-size: 16px; margin-top: 16px; }
+
+  /* Landscape hint */
+  #rotate-hint {
+    position: fixed; inset: 0; background: #000; z-index: 1000;
+    display: none; align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px; text-align: center; padding: 20px;
+  }
+  #rotate-hint .icon { font-size: 64px; animation: rot 1.6s ease-in-out infinite; }
+  @keyframes rot {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(90deg); }
+  }
+  body.mobile.portrait #rotate-hint { display: flex; }
 </style>
 </head>
 <body>
 <div id="game"></div>
+
+<!-- Mobile touch controls -->
+<div id="mobile-ui">
+  <div id="joystick" class="hidden"><div class="knob"></div></div>
+  <div id="attack-btn" class="hidden">SMASH</div>
+  <div id="sprint-btn" class="hidden">RUN</div>
+  <div id="pause-btn" class="hidden">II</div>
+</div>
+
+<div id="rotate-hint">
+  <div class="icon">📱</div>
+  <div style="font-size:20px; color:#ffcc66;">ROTATE TO LANDSCAPE</div>
+  <div style="font-size:13px; color:#aaa;">For the best Kaiju rampage experience</div>
+</div>
 
 <!-- Title / Monster Select -->
 <div id="menu" class="overlay">
