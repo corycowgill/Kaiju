@@ -7,6 +7,7 @@ import {
   makeMuzzleFlash, makeSmokePuff, makeBeam,
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
+import audio from './audio.js';
 
 // ------------------------- Mobile detect -------------------------
 const isMobile = (() => {
@@ -105,7 +106,10 @@ const world = {
     this._shakeMag = Math.max(this._shakeMag || 0, mag);
     this._shakeTime = Math.max(this._shakeTime || 0, dur);
   },
-  spawnExplosion: function (pos, scale = 1) { this.effects.push(makeExplosion(this, pos, scale)); },
+  spawnExplosion: function (pos, scale = 1) {
+    this.effects.push(makeExplosion(this, pos, scale));
+    audio.explosion(scale);
+  },
   spawnSparks: function (pos, n) { this.effects.push(makeSparks(this, pos, n)); },
   spawnShockwave: function (pos, color, r) { this.effects.push(makeShockwave(this, pos, color, r)); },
   spawnMuzzleFlash: function (pos, s) { this.effects.push(makeMuzzleFlash(this, pos, s)); },
@@ -129,6 +133,7 @@ const world = {
     m.position.copy(origin);
     scene.add(m);
     this.shells.push({ mesh: m, vel: dir.clone().multiplyScalar(profile.speed), life: 4.0, damage: profile.damage, type });
+    audio.shoot(type);
   },
   showMessage,
 };
@@ -174,6 +179,10 @@ const state = {
   airstrikes: [],
   artyShells: [],
   boss: null,
+  // Improvements
+  damageFlash: 0,    // 0..1 fade, > 0 means recently hit
+  upgrades: { hpBonus: 0, dmgMult: 1, speedMult: 1, regenRate: 0, comboTimerBonus: 0, rageGainMult: 1 },
+  upgradePending: false,
 };
 
 const keys = {};
@@ -387,8 +396,15 @@ for (const key of Object.keys(MONSTERS)) {
 }
 document.getElementById('startBtn').addEventListener('click', () => {
   if (!state.monsterKey) return;
+  audio.init();
+  audio.resume();
   startGame(state.monsterKey);
 });
+
+// Resume audio after iOS suspends it on tab background
+document.addEventListener('visibilitychange', () => { if (!document.hidden) audio.resume(); });
+window.addEventListener('touchstart', () => audio.resume(), { passive: true, once: false });
+window.addEventListener('mousedown', () => audio.resume());
 
 // ------------------------- Start game -------------------------
 function startGame(key) {
@@ -408,6 +424,8 @@ function startGame(key) {
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('powers').classList.remove('hidden');
+  document.getElementById('minimap').classList.remove('hidden');
+  document.getElementById('mute-btn').classList.remove('hidden');
   if (!isMobile) {
     document.getElementById('help').classList.remove('hidden');
   } else {
@@ -509,6 +527,16 @@ function updateHUD() {
   if (state.boss && !state.boss.dead) {
     document.getElementById('boss-hp').style.width = Math.max(0, state.boss.hp / state.boss.maxHp * 100) + '%';
   }
+
+  // Damage flash + low HP vignette
+  const flashEl = document.getElementById('damage-flash');
+  if (flashEl) flashEl.style.opacity = String(state.damageFlash * 0.85);
+  const lowEl = document.getElementById('lowhp-warning');
+  if (lowEl) {
+    const hpPct = state.hp / state.maxHp;
+    if (hpPct < 0.3 && !state.gameOver) lowEl.classList.add('active');
+    else lowEl.classList.remove('active');
+  }
 }
 
 // ------------------------- Messages / waves -------------------------
@@ -548,8 +576,10 @@ function startWave(n) {
   if (isBossWave) {
     showWaveBanner(`WAVE ${n}`, 'BOSS APPROACHING');
     toast('⚠ BOSS WAVE ⚠', 'bad');
+    audio.bossSpawn();
   } else {
     showWaveBanner(`WAVE ${n}`, 'THE MILITARY STRIKES BACK');
+    audio.waveStart();
   }
 
   const enemies = world.enemies;
@@ -621,7 +651,7 @@ function addScore(base) {
   state.score += Math.floor(base * comboMult());
 }
 function addRage(amount) {
-  state.rage = Math.min(state.maxRage, state.rage + amount);
+  state.rage = Math.min(state.maxRage, state.rage + amount * (state.upgrades?.rageGainMult || 1));
   if (state.rage >= state.maxRage && !state._announcedUlt) {
     state._announcedUlt = true;
     toast('ULTIMATE READY · Q', 'good');
@@ -680,7 +710,9 @@ world.onCarDestroyed = () => {
   state.carsCrushed++;
   addScore(80); addRage(2);
 };
-world.onPickup = (type) => {
+world.onPickup = (type, pos) => {
+  audio.pickup(type);
+  if (pos) world.spawnSparks(pos.clone().setY(2.5), 12);
   if (type === 'hp') {
     state.hp = Math.min(state.maxHp, state.hp + 25);
     toast('+25 HP', 'good');
@@ -742,6 +774,7 @@ function gameOver(victory) {
   if (ce) ce.style.opacity = '0';
   document.getElementById('goTitle').textContent = victory ? 'TOKYO FALLS' : 'DEFEATED';
   document.getElementById('goSubtitle').textContent = victory ? 'The kaiju reigns supreme.' : 'The military has prevailed...';
+  audio.gameOver();
   document.getElementById('finalScore').textContent = state.score.toLocaleString();
   document.getElementById('finalWave').textContent = state.wave;
   document.getElementById('finalBuildings').textContent = state.buildingsDestroyed;
@@ -754,6 +787,7 @@ function gameOver(victory) {
 
 // ------------------------- Powers / damage -------------------------
 function damageInRadius(center, radius, amount, isAerialAlso = true) {
+  amount = amount * (state.upgrades?.dmgMult || 1);
   // Damage buildings
   for (const b of world.buildings) {
     if (b.destroyed) continue;
@@ -794,15 +828,17 @@ function fireBeam() {
   const length = 260;
   world.spawnBeam(origin, dir, length, cfg.color, cfg.glow);
   world.shake(0.3, 0.4);
+  audio.beam();
 
   // Hit detection along ray
   const ray = new THREE.Raycaster(origin, dir, 0.5, length);
   // Building hits
   const buildingMeshes = world.buildings.filter(b => !b.destroyed).map(b => b.body);
   const hits = ray.intersectObjects(buildingMeshes, false);
+  const beamDmg = cfg.damage * (state.upgrades.dmgMult || 1);
   if (hits.length) {
     for (const h of hits) {
-      h.object.userData.building.damage(cfg.damage, h.point, world);
+      h.object.userData.building.damage(beamDmg, h.point, world);
       world.spawnExplosion(h.point, 0.8);
       break; // pierce just first; tweak as desired
     }
@@ -817,7 +853,7 @@ function fireBeam() {
     const closest = origin.clone().addScaledVector(dir, along);
     const distSq = closest.distanceToSquared(ep);
     if (distSq < 9) {
-      e.damage(cfg.damage * 0.7, world);
+      e.damage(beamDmg * 0.7, world);
       world.spawnExplosion(ep, 0.7);
     }
   }
@@ -833,6 +869,7 @@ function fireRoar() {
   world.spawnShockwave(center, cfg.color, cfg.radius);
   world.shake(0.8, 0.5);
   damageInRadius(center, cfg.radius, cfg.damage, true);
+  audio.roar();
 }
 
 function fireCharge() {
@@ -852,6 +889,7 @@ function fireCharge() {
   world.shake(0.7, 0.4);
   // Final cleanup AOE at landing point
   damageInRadius(state.kaiju.root.position, 24, cfg.damage * 0.5, false);
+  audio.charge();
 }
 
 function fireStomp() {
@@ -862,6 +900,7 @@ function fireStomp() {
   world.spawnShockwave(center, 0xffcc44, 35);
   world.shake(0.6, 0.4);
   damageInRadius(center, 24, 22, false);
+  audio.stomp();
 }
 
 function fireUltimate() {
@@ -871,6 +910,7 @@ function fireUltimate() {
   state._announcedUlt = false;
   toast('ULTIMATE UNLEASHED!', 'good');
   showMessage('!!! KAIJU FURY !!!', 1.4);
+  audio.ult();
 
   const cfg = state.monsterCfg;
   const head = state.kaiju.head;
@@ -914,6 +954,7 @@ function fireMelee() {
   // Animate arm swing
   const armR = state.kaiju.root.getObjectByName('armR');
   if (armR) armR.userData.swing = 0.4;
+  audio.hit();
 }
 
 // ------------------------- Collision -------------------------
@@ -973,7 +1014,7 @@ function updatePlayer(dt) {
   const k = state.kaiju;
   if (!k) return;
   const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint;
-  const speed = state.monsterCfg.stats.speed * (sprint ? 18 : 11);
+  const speed = state.monsterCfg.stats.speed * (sprint ? 18 : 11) * state.upgrades.speedMult;
 
   let mx = 0, mz = 0;
   if (keys.KeyW) mz += 1;
@@ -1052,6 +1093,7 @@ function updatePlayer(dt) {
       const footPos = k.root.position.clone();
       damageInRadius(footPos, 5, 4, false);
       world.shake(0.05, 0.1);
+      audio.footstep();
     }
     state._lastPhase = phase;
   }
@@ -1065,18 +1107,40 @@ function updatePlayer(dt) {
   if (state.mouseDown || touchInput.attackHeld) fireMelee();
 }
 
+const _camRay = new THREE.Raycaster();
 function updateCamera() {
   const k = state.kaiju;
   if (!k) return;
   // Third-person camera behind kaiju, above
   const headPos = new THREE.Vector3();
   k.head.getWorldPosition(headPos);
-  const offset = new THREE.Vector3(
-    -Math.sin(state.yaw) * 28,
-    16 - state.pitch * 14,
-    -Math.cos(state.yaw) * 28
-  );
-  const target = headPos.clone().add(offset);
+  const desiredDist = 28;
+  const offsetDir = new THREE.Vector3(
+    -Math.sin(state.yaw),
+    (16 - state.pitch * 14) / desiredDist, // approx vertical normalized
+    -Math.cos(state.yaw)
+  ).normalize();
+
+  // Ray from headPos outward; clamp camera distance if it would clip a building
+  let dist = desiredDist;
+  _camRay.set(headPos, offsetDir);
+  _camRay.far = desiredDist + 2;
+  _camRay.near = 0.1;
+  // Only test buildings near the camera path
+  const candidates = [];
+  for (const b of world.buildings) {
+    if (b.destroyed) continue;
+    const dx = b.group.position.x - headPos.x;
+    const dz = b.group.position.z - headPos.z;
+    if (dx * dx + dz * dz > 60 * 60) continue;
+    candidates.push(b.body);
+  }
+  if (candidates.length) {
+    const hit = _camRay.intersectObjects(candidates, false)[0];
+    if (hit && hit.distance < dist) dist = Math.max(6, hit.distance - 1.5);
+  }
+
+  const target = headPos.clone().addScaledVector(offsetDir, dist);
   // Camera shake
   if (world._shakeTime > 0) {
     target.x += (Math.random() - 0.5) * world._shakeMag * 2;
@@ -1140,6 +1204,8 @@ function updateWorld(dt) {
         state.hp -= s.damage;
         world.spawnExplosion(s.mesh.position.clone(), 0.5);
         world.shake(0.25, 0.2);
+        state.damageFlash = Math.min(1, state.damageFlash + s.damage / 60);
+        audio.shellHit();
         scene.remove(s.mesh);
         world.shells.splice(i, 1);
         if (state.hp <= 0 && !state.gameOver) gameOver(false);
@@ -1160,13 +1226,20 @@ function updateWorld(dt) {
       if (state.gameOver) return;
       state.score += 1000;
       state.hp = Math.min(state.maxHp, state.hp + 30);
-      startWave(state.wave + 1);
-    }, 2200);
+      audio.waveClear();
+      offerUpgrades();
+    }, 1800);
     showMessage('WAVE CLEARED · +1000', 2.0);
   }
 
-  // Slowly regenerate small rage when idle
-  state.rage = Math.min(state.maxRage, state.rage + dt * 1.5);
+  // Slowly regenerate small rage when idle (rageGain upgrade)
+  state.rage = Math.min(state.maxRage, state.rage + dt * 1.5 * state.upgrades.rageGainMult);
+  // Passive HP regen if upgraded
+  if (state.upgrades.regenRate > 0) {
+    state.hp = Math.min(state.maxHp, state.hp + state.upgrades.regenRate * dt);
+  }
+  // Decay damage flash
+  if (state.damageFlash > 0) state.damageFlash = Math.max(0, state.damageFlash - dt * 1.6);
 
   // ----- Combo timer -----
   if (state.combo > 0) {
@@ -1268,6 +1341,138 @@ function spawnAirStrike() {
   toast('⚠ AIR STRIKE INCOMING ⚠', 'bad');
 }
 
+// ------------------------- Minimap -------------------------
+const minimapCanvas = document.getElementById('minimap');
+const minimapCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null;
+const MINIMAP_RANGE = 380; // world units shown half-extent
+
+function drawMinimap() {
+  if (!minimapCtx || !state.kaiju) return;
+  const cw = minimapCanvas.width, ch = minimapCanvas.height;
+  const ctx = minimapCtx;
+  ctx.clearRect(0, 0, cw, ch);
+  // Background grid
+  ctx.fillStyle = 'rgba(20, 0, 30, 0.6)';
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.strokeStyle = 'rgba(255, 80, 100, 0.18)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const v = i * cw / 4;
+    ctx.beginPath(); ctx.moveTo(v, 0); ctx.lineTo(v, ch); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, v); ctx.lineTo(cw, v); ctx.stroke();
+  }
+
+  const kx = state.kaiju.root.position.x;
+  const kz = state.kaiju.root.position.z;
+  const scale = (cw / 2) / MINIMAP_RANGE;
+  function w2m(x, z) { return [cw / 2 + (x - kx) * scale, ch / 2 + (z - kz) * scale]; }
+
+  // Buildings (simple dots, sampled)
+  ctx.fillStyle = 'rgba(180, 180, 200, 0.35)';
+  for (let i = 0; i < world.buildings.length; i += 3) {
+    const b = world.buildings[i];
+    if (b.destroyed) continue;
+    const [x, y] = w2m(b.group.position.x, b.group.position.z);
+    if (x < 0 || y < 0 || x > cw || y > ch) continue;
+    ctx.fillRect(x - 1, y - 1, 2, 2);
+  }
+
+  // Pickups (gold)
+  ctx.fillStyle = '#ffcc44';
+  for (const p of state.pickups) {
+    if (p.dead) continue;
+    const [x, y] = w2m(p.root.position.x, p.root.position.z);
+    if (x < 0 || y < 0 || x > cw || y > ch) continue;
+    ctx.fillRect(x - 2, y - 2, 4, 4);
+  }
+
+  // Air strikes (red ring)
+  ctx.strokeStyle = '#ff3344';
+  ctx.lineWidth = 1.5;
+  for (const a of state.airstrikes) {
+    const [x, y] = w2m(a.x, a.z);
+    if (x < 0 || y < 0 || x > cw || y > ch) continue;
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // Enemies
+  for (const e of world.enemies) {
+    if (e.dead) continue;
+    const [x, y] = w2m(e.root.position.x, e.root.position.z);
+    if (x < 0 || y < 0 || x > cw || y > ch) continue;
+    if (e.type === 'boss') { ctx.fillStyle = '#ff44aa'; ctx.fillRect(x - 4, y - 4, 8, 8); }
+    else if (e.type === 'jet' || e.type === 'heli') { ctx.fillStyle = '#88ccff'; ctx.fillRect(x - 2, y - 2, 4, 4); }
+    else if (e.type === 'soldier') { ctx.fillStyle = '#ffaa66'; ctx.fillRect(x - 1, y - 1, 2, 2); }
+    else { ctx.fillStyle = '#ff5544'; ctx.fillRect(x - 2, y - 2, 4, 4); }
+  }
+
+  // Kaiju arrow at center
+  ctx.save();
+  ctx.translate(cw / 2, ch / 2);
+  ctx.rotate(state.yaw + Math.PI);
+  ctx.fillStyle = '#66ff99';
+  ctx.beginPath();
+  ctx.moveTo(0, -7); ctx.lineTo(5, 5); ctx.lineTo(-5, 5); ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.restore();
+}
+
+// ------------------------- Upgrade choice modal -------------------------
+const UPGRADE_POOL = [
+  { id: 'hp',    icon: '❤️', name: 'TITAN HEART',    desc: '+30 max HP and full heal', apply: () => { state.maxHp += 30; state.hp = state.maxHp; } },
+  { id: 'dmg',   icon: '💥', name: 'CRUSHING BLOWS', desc: '+20% damage to everything', apply: () => { state.upgrades.dmgMult *= 1.2; } },
+  { id: 'speed', icon: '🌪️', name: 'KAIJU FURY',     desc: '+15% movement speed',      apply: () => { state.upgrades.speedMult *= 1.15; } },
+  { id: 'regen', icon: '🩸', name: 'REGEN SCALES',   desc: 'Heal 2 HP / sec passively', apply: () => { state.upgrades.regenRate += 2; } },
+  { id: 'rage',  icon: '🔥', name: 'WRATH OVERFLOW', desc: '+50% rage gain',           apply: () => { state.upgrades.rageGainMult *= 1.5; } },
+  { id: 'combo', icon: '⏱️', name: 'BLOOD FRENZY',   desc: '+1.5s combo timer',        apply: () => { state.comboMaxTimer += 1.5; } },
+  { id: 'hpkit', icon: '✨', name: 'BATTLE READY',   desc: 'Restore 60 HP and 60 rage', apply: () => { state.hp = Math.min(state.maxHp, state.hp + 60); state.rage = Math.min(state.maxRage, state.rage + 60); } },
+];
+
+function offerUpgrades() {
+  state.upgradePending = true;
+  state.paused = true;
+  document.exitPointerLock?.();
+  // Pick 3 random unique upgrades
+  const pool = [...UPGRADE_POOL];
+  const picks = [];
+  for (let i = 0; i < 3; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    picks.push(pool.splice(idx, 1)[0]);
+  }
+  const wrap = document.getElementById('upgrade-cards');
+  wrap.innerHTML = '';
+  for (const u of picks) {
+    const card = document.createElement('div');
+    card.className = 'ucard';
+    card.innerHTML = `<div class="icon">${u.icon}</div><h3>${u.name}</h3><p>${u.desc}</p>`;
+    const choose = () => {
+      u.apply();
+      audio.tone(660, 0.1); audio.tone(880, 0.15);
+      toast(`${u.name}!`, 'good');
+      document.getElementById('upgrade-modal').style.display = 'none';
+      state.upgradePending = false;
+      state.paused = false;
+      if (!isMobile) renderer.domElement.requestPointerLock?.();
+      // Now actually advance the wave
+      if (!state.gameOver) startWave(state.wave + 1);
+    };
+    card.addEventListener('click', choose);
+    card.addEventListener('touchstart', (e) => { e.preventDefault(); choose(); }, { passive: false });
+    wrap.appendChild(card);
+  }
+  document.getElementById('upgrade-modal').style.display = 'flex';
+}
+
+// Mute toggle
+const muteBtn = document.getElementById('mute-btn');
+if (muteBtn) {
+  muteBtn.addEventListener('click', () => {
+    audio.setMuted(!audio.muted);
+    muteBtn.textContent = audio.muted ? '🔇' : '🔊';
+  });
+}
+
 // ------------------------- Main loop -------------------------
 let last = performance.now();
 function tick(now) {
@@ -1283,6 +1488,7 @@ function tick(now) {
     }
     updateCamera();
     updateHUD();
+    drawMinimap();
   } else if (state.kaiju) {
     updateCamera();
   }

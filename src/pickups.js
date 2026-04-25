@@ -87,7 +87,7 @@ export class Pickup {
 
     // Pickup
     if (dist2 < 8 * 8) {
-      world.onPickup?.(this.type);
+      world.onPickup?.(this.type, this.root.position.clone());
       this.destroy();
       return true;
     }
