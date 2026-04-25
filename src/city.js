@@ -12,6 +12,38 @@ const NEON_COLORS = [0xff3366, 0x33ddff, 0xffaa22, 0xaa66ff, 0x66ff99, 0xffee44]
 function rand(min, max) { return min + Math.random() * (max - min); }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+// Build a single InstancedMesh for every building body. Saves ~one draw
+// call per building (the body is what the player primarily sees).
+function buildGlobalBodies(scene, buildings) {
+  if (!buildings.length) return null;
+  const mat = new THREE.MeshStandardMaterial({
+    roughness: 0.85, metalness: 0.1, vertexColors: false,
+  });
+  // unit cube; scaled per-instance via matrix
+  const geom = new THREE.BoxGeometry(1, 1, 1);
+  const im = new THREE.InstancedMesh(geom, mat, buildings.length);
+  im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(buildings.length * 3), 3);
+  // City bodies span the whole map; let the renderer skip the per-instance
+  // bounding-sphere test by disabling object-level frustum culling. There's
+  // only one mesh.
+  im.frustumCulled = false;
+  const dummy = new THREE.Object3D();
+  for (let i = 0; i < buildings.length; i++) {
+    const b = buildings[i];
+    dummy.position.set(b.x, b.h / 2, b.z);
+    dummy.scale.set(b.w, b.h, b.d);
+    dummy.updateMatrix();
+    im.setMatrixAt(i, dummy.matrix);
+    im.setColorAt(i, b.bodyColor);
+    b._bodyIM = im;
+    b._bodyIndex = i;
+  }
+  im.instanceMatrix.needsUpdate = true;
+  if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  scene.add(im);
+  return im;
+}
+
 // Build the two global window InstancedMeshes from the queue and register
 // each entry on its owning Building so collapse can hide them.
 function buildGlobalWindows(scene) {
@@ -113,14 +145,13 @@ export class Building {
     this.group.position.set(x, 0, z);
 
     const baseColor = opts.color || pick(BUILDING_PALETTE);
-    const mat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.85, metalness: 0.1 });
-
-    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-    body.position.y = h / 2;
-    body.castShadow = true;
-    body.receiveShadow = true;
-    this.body = body;
-    this.group.add(body);
+    // Body is no longer a per-building Mesh -- it's an instance in the global
+    // InstancedMesh built by buildGlobalBodies(). Record the data for later.
+    this.bodyColor = new THREE.Color(baseColor);
+    this._bodyIndex = -1;
+    // Lightweight stand-in so existing code paths (b.body.material.color
+    // mutations) don't crash. Replaced by the IM at scene level.
+    this.body = { material: { color: this.bodyColor }, userData: { building: this } };
 
     // Rooftop details (probabilities tuned down to keep mesh count manageable)
     if (h > 14 && Math.random() < 0.4) {
@@ -280,8 +311,12 @@ export class Building {
     if (this.destroyed) return 0;
     const before = this.hp;
     this.hp -= amount;
-    // tint darker as it weakens
-    this.body.material.color.offsetHSL(0, 0, -0.005);
+    // Tint darker as it weakens -- write back to the global InstancedMesh
+    this.bodyColor.offsetHSL(0, 0, -0.005);
+    if (this._bodyIM && this._bodyIndex >= 0 && this._bodyIM.instanceColor) {
+      this._bodyIM.setColorAt(this._bodyIndex, this.bodyColor);
+      this._bodyIM.instanceColor.needsUpdate = true;
+    }
     if (hitPoint && world) {
       world.spawnSparks(hitPoint, 6);
       world.spawnHitPulse?.(hitPoint, 0xffaa44);
@@ -308,6 +343,11 @@ export class Building {
     this.destroyed = true;
     // Drop out of the spatial grid so future queries skip us
     if (this._grid) this._grid.remove(this);
+    // Hide our slot in the global body InstancedMesh
+    if (this._bodyIM && this._bodyIndex >= 0) {
+      this._bodyIM.setMatrixAt(this._bodyIndex, _zeroMatrix);
+      this._bodyIM.instanceMatrix.needsUpdate = true;
+    }
     // Hide our slots in the global window InstancedMesh(es)
     if (this.windowEntries && this.windowEntries.length) {
       for (const e of this.windowEntries) e.im.setMatrixAt(e.idx, _zeroMatrix);
@@ -482,28 +522,48 @@ export function buildCity(scene, world, opts = {}) {
     grid.add(b);
   }
 
-  // Build the global window InstancedMeshes now that all buildings exist.
+  // Build the global body + window InstancedMeshes now that all buildings exist.
+  const bodiesIM = buildGlobalBodies(scene, buildings);
   buildGlobalWindows(scene);
 
-  // Lamp posts -- sparser (every 4th block) so we don't spend draw calls
-  // on infrastructure that's far away most of the time.
-  const lampMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-  const bulbMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffeeaa, emissiveIntensity: 1.4 });
-  const lampStep = BLOCK * 4;
-  for (let i = -CITY_RADIUS + BLOCK; i < CITY_RADIUS; i += lampStep) {
-    for (let j = -CITY_RADIUS + BLOCK; j < CITY_RADIUS; j += lampStep) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 5, 6), lampMat);
-      post.position.set(i + BLOCK/2 - 1, 2.5, j + BLOCK/2 - 1);
-      post.matrixAutoUpdate = false; post.updateMatrix();
-      scene.add(post);
-      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), bulbMat);
-      bulb.position.set(post.position.x, 5.0, post.position.z);
-      bulb.matrixAutoUpdate = false; bulb.updateMatrix();
-      scene.add(bulb);
+  // Lamp posts -- one InstancedMesh for posts and one for bulbs (was 2
+  // draw calls per lamp; ~30 lamps → 60 draws → 2 draws total).
+  {
+    const lampStep = BLOCK * 4;
+    const positions = [];
+    for (let i = -CITY_RADIUS + BLOCK; i < CITY_RADIUS; i += lampStep) {
+      for (let j = -CITY_RADIUS + BLOCK; j < CITY_RADIUS; j += lampStep) {
+        positions.push([i + BLOCK / 2 - 1, j + BLOCK / 2 - 1]);
+      }
+    }
+    if (positions.length) {
+      const postGeom = new THREE.CylinderGeometry(0.15, 0.18, 5, 6);
+      const postMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+      const bulbGeom = new THREE.SphereGeometry(0.3, 6, 6);
+      const bulbMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffeeaa, emissiveIntensity: 1.4 });
+      const postIM = new THREE.InstancedMesh(postGeom, postMat, positions.length);
+      const bulbIM = new THREE.InstancedMesh(bulbGeom, bulbMat, positions.length);
+      postIM.frustumCulled = false; bulbIM.frustumCulled = false;
+      const dummy = new THREE.Object3D();
+      for (let k = 0; k < positions.length; k++) {
+        const [x, z] = positions[k];
+        dummy.position.set(x, 2.5, z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        postIM.setMatrixAt(k, dummy.matrix);
+        dummy.position.y = 5.0;
+        dummy.updateMatrix();
+        bulbIM.setMatrixAt(k, dummy.matrix);
+      }
+      postIM.instanceMatrix.needsUpdate = true;
+      bulbIM.instanceMatrix.needsUpdate = true;
+      scene.add(postIM);
+      scene.add(bulbIM);
     }
   }
 
-  return { buildings, grid };
+  return { buildings, grid, bodiesIM };
 }
 
 // -------------------- Cars --------------------

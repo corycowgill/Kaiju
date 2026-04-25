@@ -190,9 +190,10 @@ const world = {
 
 // Build city
 {
-  const { buildings, grid } = buildCity(scene, world, { lite: isMobile });
+  const { buildings, grid, bodiesIM } = buildCity(scene, world, { lite: isMobile });
   world.buildings = buildings;
   world.buildingGrid = grid;
+  world.bodiesIM = bodiesIM;
 }
 
 // ------------------------- Game state -------------------------
@@ -1031,17 +1032,18 @@ function fireBeam() {
   world.shake(0.3, 0.4);
   audio.beam();
 
-  // Hit detection along ray
+  // Hit detection along ray -- single raycast against the global body IM
   const ray = new THREE.Raycaster(origin, dir, 0.5, length);
-  // Building hits
-  const buildingMeshes = world.buildings.filter(b => !b.destroyed).map(b => b.body);
-  const hits = ray.intersectObjects(buildingMeshes, false);
   const beamDmg = cfg.damage * (state.upgrades.dmgMult || 1);
-  if (hits.length) {
-    for (const h of hits) {
-      h.object.userData.building.damage(beamDmg, h.point, world);
+  if (world.bodiesIM) {
+    const hits = ray.intersectObject(world.bodiesIM, false);
+    for (let hi = 0; hi < hits.length; hi++) {
+      const h = hits[hi];
+      const b = world.buildings[h.instanceId];
+      if (!b || b.destroyed) continue;
+      b.damage(beamDmg, h.point, world);
       world.spawnExplosion(h.point, 0.8);
-      break; // pierce just first; tweak as desired
+      break;
     }
   }
   // Enemy hits along beam (sphere check)
@@ -1135,13 +1137,18 @@ function fireUltimate() {
   // Massive AOE damage everywhere within 130
   damageInRadius(center, 130, 250, true);
 
-  // Beam line damage too
+  // Beam line damage too -- pierce up to 3 instances along the path
   const ray = new THREE.Raycaster(origin, dir, 0.5, 360);
-  const buildingMeshes = world.buildings.filter(b => !b.destroyed).map(b => b.body);
-  const hits = ray.intersectObjects(buildingMeshes, false);
-  for (let i = 0; i < Math.min(hits.length, 3); i++) {
-    hits[i].object.userData.building.damage(300, hits[i].point, world);
-    world.spawnExplosion(hits[i].point, 1.4);
+  if (world.bodiesIM) {
+    const hits = ray.intersectObject(world.bodiesIM, false);
+    let hit = 0;
+    for (let i = 0; i < hits.length && hit < 3; i++) {
+      const b = world.buildings[hits[i].instanceId];
+      if (!b || b.destroyed) continue;
+      b.damage(300, hits[i].point, world);
+      world.spawnExplosion(hits[i].point, 1.4);
+      hit++;
+    }
   }
 }
 
@@ -1356,15 +1363,10 @@ function updateCamera() {
   _camRay.far = desiredDist + 2;
   _camRay.near = 0.1;
 
-  // Spatial-grid lookup -- only test buildings within 60u of the head.
-  _camCandidates.length = 0;
-  if (world.buildingGrid) {
-    world.buildingGrid.forEachNear(_camHead.x, _camHead.z, 60, (b) => {
-      if (!b.destroyed) _camCandidates.push(b.body);
-    });
-  }
-  if (_camCandidates.length) {
-    const hit = _camRay.intersectObjects(_camCandidates, false)[0];
+  // One raycast against the global building InstancedMesh -- Three.js does
+  // the per-instance bounds tests internally, no candidate filtering needed.
+  if (world.bodiesIM) {
+    const hit = _camRay.intersectObject(world.bodiesIM, false)[0];
     if (hit && hit.distance < dist) dist = Math.max(6, hit.distance - 1.5);
   }
 
