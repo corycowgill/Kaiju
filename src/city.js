@@ -36,8 +36,8 @@ export class Building {
     this.body = body;
     this.group.add(body);
 
-    // Rooftop details
-    if (h > 10 && Math.random() < 0.85) {
+    // Rooftop details (probabilities tuned down to keep mesh count manageable)
+    if (h > 14 && Math.random() < 0.4) {
       const tank = new THREE.Mesh(
         new THREE.CylinderGeometry(Math.min(w, d) * 0.18, Math.min(w, d) * 0.2, 1.6, 10),
         new THREE.MeshStandardMaterial({ color: 0x9a9080, roughness: 0.85 })
@@ -52,9 +52,9 @@ export class Building {
       lad.position.x += Math.min(w, d) * 0.21;
       this.group.add(lad);
     }
-    // AC units / vents
-    if (h > 8) {
-      const ventCount = 1 + Math.floor(Math.random() * 3);
+    // AC units / vents (only on tall buildings, fewer per building)
+    if (h > 18 && Math.random() < 0.5) {
+      const ventCount = 1;
       for (let i = 0; i < ventCount; i++) {
         const vw = rand(1.0, 2.4), vd = rand(1.0, 2.4);
         const v = new THREE.Mesh(
@@ -66,8 +66,8 @@ export class Building {
         this.group.add(v);
       }
     }
-    // Antenna with blinking light
-    if (Math.random() < 0.55 && h > 14) {
+    // Antenna with blinking light (rare; only tall buildings)
+    if (Math.random() < 0.3 && h > 30) {
       const antH = h * (0.25 + Math.random() * 0.25);
       const ant = new THREE.Mesh(
         new THREE.CylinderGeometry(0.06, 0.12, antH, 4),
@@ -83,8 +83,8 @@ export class Building {
       blink.position.y = h + antH;
       this.group.add(blink);
     }
-    // Rooftop billboard / neon panel
-    if (h > 18 && Math.random() < 0.45) {
+    // Rooftop billboard / neon panel (sparser)
+    if (h > 28 && Math.random() < 0.25) {
       const c = pick(NEON_COLORS);
       const billW = Math.min(w, d) * 0.7;
       const billH = Math.min(8, h * 0.18);
@@ -106,8 +106,8 @@ export class Building {
       this.group.add(panel);
     }
 
-    // Side neon sign(s)
-    const sideSignCount = h > 10 ? (Math.random() < 0.6 ? 1 : (Math.random() < 0.4 ? 2 : 0)) : 0;
+    // Side neon sign(s) -- usually 0 or 1, rare 2
+    const sideSignCount = h > 12 ? (Math.random() < 0.45 ? 1 : 0) : 0;
     for (let i = 0; i < sideSignCount; i++) {
       const c = pick(NEON_COLORS);
       const sw = w * (0.25 + Math.random() * 0.2);
@@ -136,8 +136,8 @@ export class Building {
       this.group.add(frame);
     }
 
-    // Storefront awning at base (low buildings only)
-    if (h < 30 && Math.random() < 0.6) {
+    // Storefront awning at base (low buildings only, sparser)
+    if (h < 25 && Math.random() < 0.25) {
       const c = pick(NEON_COLORS);
       const aw = w * 0.85, ad = 1.6;
       const awning = new THREE.Mesh(
@@ -157,11 +157,15 @@ export class Building {
       emissive: 0xffeeaa,
       emissiveIntensity: Math.random() < 0.6 ? 0.7 : 0.0,
     });
-    const rows = Math.max(2, Math.floor(h / 3));
-    const cols = Math.max(2, Math.floor(Math.max(w, d) / 2.5));
+    const rows = Math.max(2, Math.floor(h / 4));          // coarser window grid
+    const cols = Math.max(2, Math.floor(Math.max(w, d) / 3.5));
     const winGeom = new THREE.BoxGeometry(0.6, 1.2, 0.15);
-    const facesToRender = LITE_MODE ? 2 : 4;
-    for (let face = 0; face < facesToRender; face++) {
+    // Render only 2 faces: the ones most likely to be visible to the player
+    // facing this building. Cuts ~half the InstancedMesh draw calls.
+    const facesToRender = 2;
+    const faceOffset = Math.floor(Math.random() * 4);
+    for (let f = 0; f < facesToRender; f++) {
+      const face = (f + faceOffset) % 4;
       const inst = new THREE.InstancedMesh(winGeom, winMat, rows * cols);
       let i = 0;
       const dummy = new THREE.Object3D();
@@ -295,8 +299,8 @@ export function buildCity(scene, world, opts = {}) {
   const buildings = [];
   const lite = !!opts.lite;
   setBuildingLite(lite);
-  const CITY_RADIUS = lite ? 280 : 380;
-  const BLOCK = lite ? 44 : 36; // block size including streets
+  const CITY_RADIUS = lite ? 250 : 320;
+  const BLOCK = lite ? 48 : 40; // block size including streets
   const STREET = 8;
 
   // Ground (asphalt)
@@ -305,6 +309,7 @@ export function buildCity(scene, world, opts = {}) {
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
+  ground.matrixAutoUpdate = false; ground.updateMatrix();
   scene.add(ground);
 
   // Street grid (asphalt) + glowing center lines (continuous, very cheap).
@@ -314,10 +319,10 @@ export function buildCity(scene, world, opts = {}) {
   for (let i = -CITY_RADIUS; i <= CITY_RADIUS; i += BLOCK) {
     const sx = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, STREET), streetMat);
     sx.rotation.x = -Math.PI / 2; sx.position.set(0, 0.05, i);
-    sx.receiveShadow = true; scene.add(sx);
+    sx.receiveShadow = true; sx.matrixAutoUpdate = false; sx.updateMatrix(); scene.add(sx);
     const sz = new THREE.Mesh(new THREE.PlaneGeometry(STREET, CITY_RADIUS * 2), streetMat);
     sz.rotation.x = -Math.PI / 2; sz.position.set(i, 0.05, 0);
-    sz.receiveShadow = true; scene.add(sz);
+    sz.receiveShadow = true; sz.matrixAutoUpdate = false; sz.updateMatrix(); scene.add(sz);
 
     // Center yellow line per street
     const lx = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, 0.35), lineMat);
@@ -355,6 +360,10 @@ export function buildCity(scene, world, opts = {}) {
         const offX = n === 2 ? (i === 0 ? -BLOCK/4 : BLOCK/4) : rand(-2, 2);
         const offZ = rand(-2, 2);
         const b = new Building(bx + offX, bz + offZ, w, d, h);
+        // Buildings never move until destroyed -- skip per-frame matrix
+        // multiplication and only refresh when collapse mutates them.
+        b.group.matrixAutoUpdate = false;
+        b.group.updateMatrix();
         scene.add(b.group);
         buildings.push(b);
       }
@@ -370,20 +379,25 @@ export function buildCity(scene, world, opts = {}) {
   ];
   for (const lm of landmarks) {
     const b = new Building(lm.x, lm.z, lm.w, lm.d, lm.h, { color: lm.color });
+    b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group);
     buildings.push(b);
   }
 
-  // Lamp posts at intersections (sparse)
+  // Lamp posts -- sparser (every 4th block) so we don't spend draw calls
+  // on infrastructure that's far away most of the time.
   const lampMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-  const bulbMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffeeaa, emissiveIntensity: 0.9 });
-  for (let i = -CITY_RADIUS + BLOCK; i < CITY_RADIUS; i += BLOCK * 2) {
-    for (let j = -CITY_RADIUS + BLOCK; j < CITY_RADIUS; j += BLOCK * 2) {
+  const bulbMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffeeaa, emissiveIntensity: 1.4 });
+  const lampStep = BLOCK * 4;
+  for (let i = -CITY_RADIUS + BLOCK; i < CITY_RADIUS; i += lampStep) {
+    for (let j = -CITY_RADIUS + BLOCK; j < CITY_RADIUS; j += lampStep) {
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 5, 6), lampMat);
       post.position.set(i + BLOCK/2 - 1, 2.5, j + BLOCK/2 - 1);
+      post.matrixAutoUpdate = false; post.updateMatrix();
       scene.add(post);
       const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), bulbMat);
       bulb.position.set(post.position.x, 5.0, post.position.z);
+      bulb.matrixAutoUpdate = false; bulb.updateMatrix();
       scene.add(bulb);
     }
   }

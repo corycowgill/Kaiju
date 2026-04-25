@@ -128,12 +128,12 @@ export function makeSmokeColumn(world, pos, height = 30) {
   const proxy = new THREE.Object3D();
   proxy.position.copy(pos);
   world.scene.add(proxy);
-  const totalLife = 11.0;
+  const totalLife = 8.0;
   let nextEmit = 0;
   return new Effect(proxy, totalLife, (dt, t, eff) => {
     nextEmit -= dt;
     if (nextEmit <= 0) {
-      nextEmit = 0.25 + Math.random() * 0.18;
+      nextEmit = 0.5 + Math.random() * 0.3;
       // bigger, darker puffs early; lighter and smaller later
       const intensity = (1 - t);
       const puffPos = pos.clone();

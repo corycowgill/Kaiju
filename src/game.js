@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { MONSTERS, buildKaiju } from './monsters.js';
 import { Building, buildCity, spawnCars } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
@@ -49,9 +47,11 @@ window.addEventListener('orientationchange', updateOrientationClass);
 // ------------------------- Setup -------------------------
 const game = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance' });
-renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.0) : Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = !isMobile;
+// Shadows are off entirely now -- biggest single fps win for a city of this
+// size. The brighter lighting + bloom carry the look without them.
+renderer.shadowMap.enabled = false;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.45;
@@ -63,7 +63,7 @@ scene.fog = new THREE.Fog(0x6a4a5a, 240, 1100);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 2000);
 
-// Postprocessing -- bloom + FXAA on desktop. Skip on mobile for fps.
+// Postprocessing -- bloom only, at half-res, on desktop. Skip on mobile.
 let composer = null;
 let bloomPass = null;
 let fxaaPass = null;
@@ -71,18 +71,12 @@ if (!isMobile) {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.85,  // strength
-    0.6,   // radius
-    0.55   // threshold (only emit pixels brighter than this bloom)
+    new THREE.Vector2(window.innerWidth * 0.5, window.innerHeight * 0.5), // half-res buffer
+    0.75,  // strength
+    0.55,  // radius
+    0.65   // threshold -- a touch higher so only really bright pixels bloom
   );
   composer.addPass(bloomPass);
-  fxaaPass = new ShaderPass(FXAAShader);
-  fxaaPass.material.uniforms['resolution'].value.set(
-    1 / (window.innerWidth * renderer.getPixelRatio()),
-    1 / (window.innerHeight * renderer.getPixelRatio())
-  );
-  composer.addPass(fxaaPass);
 }
 
 // Lighting: dramatic dusk
@@ -91,14 +85,7 @@ const hemi = new THREE.HemisphereLight(0xffaa88, 0x44334a, 1.1);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffdcb0, 1.7);
 sun.position.set(120, 180, 60);
-sun.castShadow = !isMobile;
-if (!isMobile) {
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -250; sun.shadow.camera.right = 250;
-  sun.shadow.camera.top = 250; sun.shadow.camera.bottom = -250;
-  sun.shadow.camera.near = 1; sun.shadow.camera.far = 500;
-  sun.shadow.bias = -0.0005;
-}
+sun.castShadow = false;
 scene.add(sun);
 const fill = new THREE.DirectionalLight(0x88aaff, 0.55);
 fill.position.set(-100, 80, -120);
@@ -306,14 +293,11 @@ function fitRenderer() {
   const h = vv ? vv.height : window.innerHeight;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.0) : Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(w, h, true); // updateStyle=true: also sets canvas style.width/height
-  if (composer) composer.setSize(w, h);
-  if (fxaaPass) {
-    fxaaPass.material.uniforms['resolution'].value.set(
-      1 / (w * renderer.getPixelRatio()),
-      1 / (h * renderer.getPixelRatio())
-    );
+  if (composer) {
+    composer.setSize(w, h);
+    if (bloomPass) bloomPass.setSize(w * 0.5, h * 0.5);
   }
   updateOrientationClass();
 }
@@ -1316,11 +1300,21 @@ function updateCamera() {
 }
 
 // ------------------------- World tick -------------------------
+const MAX_EFFECTS = isMobile ? 90 : 180;
+const MAX_DEBRIS  = isMobile ? 60 : 140;
+const MAX_POPUPS  = 28;
+
 function updateWorld(dt) {
   // Effects
   for (let i = world.effects.length - 1; i >= 0; i--) {
     world.effects[i].tick(dt);
     if (world.effects[i].dead) world.effects.splice(i, 1);
+  }
+  // Cap effect count -- drop the oldest if we're flooded so older smoke
+  // doesn't choke the GPU during boss waves.
+  while (world.effects.length > MAX_EFFECTS) {
+    const e = world.effects.shift();
+    if (e && e.mesh && e.mesh.parent) e.mesh.parent.remove(e.mesh);
   }
 
   // Debris physics
@@ -1342,6 +1336,16 @@ function updateWorld(dt) {
       scene.remove(d);
       world.debris.splice(i, 1);
     }
+  }
+  // Cap debris so a chain of building demolitions can't pile up.
+  while (world.debris.length > MAX_DEBRIS) {
+    const d = world.debris.shift();
+    if (d && d.parent) d.parent.remove(d);
+  }
+  // Cap popups too
+  while (state.popups.length > MAX_POPUPS) {
+    const p = state.popups.shift();
+    if (p && p.el) p.el.remove();
   }
 
   // Enemies
