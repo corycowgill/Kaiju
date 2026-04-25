@@ -102,61 +102,31 @@ const skyMat = new THREE.ShaderMaterial({
   fragmentShader: `
     varying vec3 vP;
     uniform float time;
-    // 2D hash + noise for clouds
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-    float noise(vec2 p) {
-      vec2 i = floor(p), f = fract(p);
-      float a = hash(i), b = hash(i + vec2(1.0, 0.0));
-      float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
-      vec2 u = f * f * (3.0 - 2.0 * f);
-      return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-    }
-    float fbm(vec2 p) {
-      float v = 0.0, a = 0.5;
-      for (int i = 0; i < 4; i++) { v += a * noise(p); p *= 2.07; a *= 0.5; }
-      return v;
-    }
     void main() {
       vec3 d = normalize(vP);
       float h = d.y;
-
-      // Layered gradient: horizon glow -> mid -> zenith
-      vec3 horizon = vec3(0.95, 0.32, 0.22);   // sunset orange
-      vec3 mid     = vec3(0.32, 0.10, 0.32);   // purple
-      vec3 zenith  = vec3(0.04, 0.02, 0.14);   // deep blue
+      // Three-tier gradient
+      vec3 horizon = vec3(0.95, 0.32, 0.22);
+      vec3 mid     = vec3(0.32, 0.10, 0.32);
+      vec3 zenith  = vec3(0.04, 0.02, 0.14);
       vec3 col = mix(horizon, mid, smoothstep(-0.05, 0.35, h));
       col = mix(col, zenith, smoothstep(0.25, 0.85, h));
-
-      // Subtle nebula bands
-      float n = fbm(d.xz * 4.0 + vec2(time * 0.005, 0.0));
-      col += vec3(0.18, 0.06, 0.30) * (n - 0.5) * smoothstep(0.1, 0.6, h);
-
-      // Soft clouds drifting near horizon
-      float cloud = smoothstep(0.4, 0.9, fbm(vec2(d.x, d.z) * 3.5 + vec2(time * 0.012, 0.0)));
-      cloud *= smoothstep(-0.1, 0.4, h) * (1.0 - smoothstep(0.5, 0.9, h));
-      col = mix(col, vec3(0.55, 0.32, 0.42), cloud * 0.55);
-
-      // Stars - sharper
+      // Cheap nebula tint -- single sin wave instead of fbm
+      col += vec3(0.12, 0.04, 0.22) * sin(d.x * 3.0 + d.z * 2.5 + time * 0.05) * smoothstep(0.1, 0.6, h) * 0.5;
+      // Stars
       vec2 p = d.xz * 1200.0;
       float s = hash(floor(p));
       if (h > 0.18 && s > 0.9965) col += vec3(0.9, 0.95, 1.0) * (s - 0.9965) * 280.0;
-      // Twinkle a few brighter ones
-      if (h > 0.3 && s > 0.9991) {
-        float tw = 0.5 + 0.5 * sin(time * 3.0 + s * 50.0);
-        col += vec3(1.0, 0.9, 0.7) * tw * 1.2;
-      }
-
-      // Moon with soft halo
+      // Moon halo
       vec3 moonDir = normalize(vec3(0.4, 0.6, -0.5));
       float md = dot(d, moonDir);
       col += vec3(1.0, 0.95, 0.82) * smoothstep(0.997, 1.0, md);
       col += vec3(0.6, 0.5, 0.45) * smoothstep(0.985, 0.998, md) * 0.4;
-
-      // Sun-glow disc near horizon (off-screen sun for warm rim)
+      // Off-screen sun rim
       vec3 sunDir = normalize(vec3(-0.55, 0.12, 0.25));
       float sd = max(0.0, dot(d, sunDir));
       col += vec3(1.0, 0.5, 0.25) * pow(sd, 16.0) * 0.6;
-
       gl_FragColor = vec4(col, 1.0);
     }`
 });
@@ -164,6 +134,23 @@ const sky = new THREE.Mesh(skyGeom, skyMat);
 scene.add(sky);
 
 // ------------------------- World object -------------------------
+// Shared shell geometry + per-type materials so each shot doesn't
+// allocate a fresh BufferGeometry / MeshBasicMaterial pair.
+const SHARED_SHELL_GEOM = new THREE.SphereGeometry(0.35, 6, 6);
+const SHELL_PROFILES = {
+  tank:  { speed: 80,  damage: 9,  size: 0.35, mat: new THREE.MeshBasicMaterial({ color: 0xffaa44 }) },
+  heli:  { speed: 90,  damage: 6,  size: 0.30, mat: new THREE.MeshBasicMaterial({ color: 0xffeeaa }) },
+  mech:  { speed: 70,  damage: 14, size: 0.40, mat: new THREE.MeshBasicMaterial({ color: 0xff8844 }) },
+  jet:   { speed: 110, damage: 11, size: 0.32, mat: new THREE.MeshBasicMaterial({ color: 0xff5533 }) },
+  rifle: { speed: 140, damage: 2,  size: 0.18, mat: new THREE.MeshBasicMaterial({ color: 0xffeecc }) },
+  boss:  { speed: 75,  damage: 22, size: 0.55, mat: new THREE.MeshBasicMaterial({ color: 0xff3322 }) },
+};
+
+// Reusable temp vectors so hot loops don't allocate a Vector3 per call.
+const _tmpV1 = new THREE.Vector3();
+const _tmpV2 = new THREE.Vector3();
+const _tmpV3 = new THREE.Vector3();
+
 const world = {
   scene,
   time: 0,
@@ -190,19 +177,10 @@ const world = {
     this.effects.push(makeBeam(this, origin, dir, len, color, glow));
   },
   spawnShell: function (origin, dir, type) {
-    const profile = {
-      tank:  { speed: 80,  damage: 9,  color: 0xffaa44, size: 0.35 },
-      heli:  { speed: 90,  damage: 6,  color: 0xffeeaa, size: 0.3 },
-      mech:  { speed: 70,  damage: 14, color: 0xff8844, size: 0.4 },
-      jet:   { speed: 110, damage: 11, color: 0xff5533, size: 0.32 },
-      rifle: { speed: 140, damage: 2,  color: 0xffeecc, size: 0.18 },
-      boss:  { speed: 75,  damage: 22, color: 0xff3322, size: 0.55 },
-    }[type] || { speed: 80, damage: 9, color: 0xffaa44, size: 0.35 };
-    const m = new THREE.Mesh(
-      new THREE.SphereGeometry(profile.size, 6, 6),
-      new THREE.MeshBasicMaterial({ color: profile.color })
-    );
+    const profile = SHELL_PROFILES[type] || SHELL_PROFILES.tank;
+    const m = new THREE.Mesh(SHARED_SHELL_GEOM, profile.mat);
     m.position.copy(origin);
+    m.scale.setScalar(profile.size / 0.35); // base geom is r=0.35
     scene.add(m);
     this.shells.push({ mesh: m, vel: dir.clone().multiplyScalar(profile.speed), life: 4.0, damage: profile.damage, type });
     audio.shoot(type);
@@ -621,7 +599,26 @@ function buildPowersBar() {
   }
 }
 
+// HUD DOM writes are heavy enough that smashing them at 60Hz causes frame
+// hitches in dense fights. Throttle the slow stuff to ~10Hz; only the
+// damage flash / low-HP overlay (cheap single-element styles) refresh
+// every frame for visual smoothness.
+let _hudLast = 0;
+function updateHUDFast() {
+  const flashEl = document.getElementById('damage-flash');
+  if (flashEl) flashEl.style.opacity = String(state.damageFlash * 0.85);
+  const lowEl = document.getElementById('lowhp-warning');
+  if (lowEl) {
+    const hpPct = state.hp / state.maxHp;
+    if (hpPct < 0.3 && !state.gameOver) lowEl.classList.add('active');
+    else lowEl.classList.remove('active');
+  }
+}
 function updateHUD() {
+  updateHUDFast();
+  const now = performance.now();
+  if (now - _hudLast < 100) return; // 10 Hz
+  _hudLast = now;
   document.getElementById('hpBar').firstChild.style.width = Math.max(0, state.hp / state.maxHp * 100) + '%';
   document.getElementById('ragBar').firstChild.style.width = (state.rage / state.maxRage * 100) + '%';
   document.getElementById('score').textContent = state.score.toLocaleString();
@@ -667,16 +664,6 @@ function updateHUD() {
   // Boss bar
   if (state.boss && !state.boss.dead) {
     document.getElementById('boss-hp').style.width = Math.max(0, state.boss.hp / state.boss.maxHp * 100) + '%';
-  }
-
-  // Damage flash + low HP vignette
-  const flashEl = document.getElementById('damage-flash');
-  if (flashEl) flashEl.style.opacity = String(state.damageFlash * 0.85);
-  const lowEl = document.getElementById('lowhp-warning');
-  if (lowEl) {
-    const hpPct = state.hp / state.maxHp;
-    if (hpPct < 0.3 && !state.gameOver) lowEl.classList.add('active');
-    else lowEl.classList.remove('active');
   }
 }
 
@@ -975,29 +962,35 @@ function gameOver(victory) {
 // ------------------------- Powers / damage -------------------------
 function damageInRadius(center, radius, amount, isAerialAlso = true) {
   amount = amount * (state.upgrades?.dmgMult || 1);
-  // (hit pulses are spawned on each enemy hit below)
-  // Damage buildings
-  for (const b of world.buildings) {
+  const radiusSq = radius * radius;
+  // Damage buildings (skip the .clone().setY -- pass a reused vector)
+  for (let i = 0; i < world.buildings.length; i++) {
+    const b = world.buildings[i];
     if (b.destroyed) continue;
     const dx = b.group.position.x - center.x;
     const dz = b.group.position.z - center.z;
     const r = Math.max(b.w, b.d) * 0.5;
-    if (dx * dx + dz * dz < (radius + r) ** 2) {
-      b.damage(amount, b.group.position.clone().setY(b.h * 0.6), world);
+    const reach = radius + r;
+    if (dx * dx + dz * dz < reach * reach) {
+      _tmpV1.set(b.group.position.x, b.h * 0.6, b.group.position.z);
+      b.damage(amount, _tmpV1, world);
     }
   }
   // Damage enemies
-  for (const e of world.enemies) {
+  for (let i = 0; i < world.enemies.length; i++) {
+    const e = world.enemies[i];
     if (e.dead) continue;
     if (!isAerialAlso && e.type === 'heli') continue;
-    const dx = e.root.position.x - center.x;
-    const dz = e.root.position.z - center.z;
-    if (dx * dx + dz * dz < radius * radius) {
-      const wasDead = e.dead;
+    const ep = e.root.position;
+    const dx = ep.x - center.x;
+    const dz = ep.z - center.z;
+    if (dx * dx + dz * dz < radiusSq) {
       e.damage(amount, world);
-      world.spawnHitPulse(e.root.position.clone().setY(4), 0xffffff);
-      if (!wasDead && e.dead && e.type !== 'soldier') {
-        spawnPopup(e.root.position.clone().setY(8),
+      _tmpV1.set(ep.x, ep.y + 4, ep.z);
+      world.spawnHitPulse(_tmpV1, 0xffffff);
+      if (e.dead && e.type !== 'soldier') {
+        _tmpV2.set(ep.x, ep.y + 8, ep.z);
+        spawnPopup(_tmpV2,
           e.type === 'boss' ? '+5000' : (e.type === 'mech' ? '+700' : (e.type === 'jet' ? '+450' : '+250')),
           '#ffee44');
       }
@@ -1203,7 +1196,8 @@ function resolveBuildingCollisions(pos, dt) {
     }
 
     // Continuous wear-down: ~35 dps to the building you push into
-    b.damage(35 * dt, new THREE.Vector3(contactX, b.h * 0.6, contactZ), world);
+    _tmpV1.set(contactX, b.h * 0.6, contactZ);
+    b.damage(35 * dt, _tmpV1, world);
   }
 }
 function updatePlayer(dt) {
@@ -1428,15 +1422,17 @@ function updateWorld(dt) {
     e.update(dt, world, kpos);
   }
 
-  // Shells
+  // Shells -- compute kaiju centre once per frame, not per shell
+  if (state.kaiju) {
+    _tmpV3.copy(state.kaiju.root.position); _tmpV3.y += 8;
+  }
   for (let i = world.shells.length - 1; i >= 0; i--) {
     const s = world.shells[i];
     s.mesh.position.addScaledVector(s.vel, dt);
     s.life -= dt;
     // Hit kaiju?
     if (state.kaiju) {
-      const kCenter = state.kaiju.root.position.clone(); kCenter.y += 8;
-      if (s.mesh.position.distanceTo(kCenter) < 5) {
+      if (s.mesh.position.distanceTo(_tmpV3) < 5) {
         state.hp -= s.damage;
         world.spawnExplosion(s.mesh.position.clone(), 0.5);
         world.shake(0.25, 0.2);
@@ -1725,7 +1721,8 @@ function tick(now) {
     }
     updateCamera();
     updateHUD();
-    drawMinimap();
+    // Minimap is a full canvas redraw; ~15Hz is plenty
+    if (now - (state._lastMini || 0) > 66) { drawMinimap(); state._lastMini = now; }
     updatePopups(dt);
   } else if (state.kaiju) {
     updateCamera();

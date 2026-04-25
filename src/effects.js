@@ -1,5 +1,15 @@
 import * as THREE from 'three';
 
+// Shared geometries / materials so high-rate effect spawns (sparks, smoke,
+// hit pulses, muzzle flashes) don't churn through GC.
+const G_SPARK     = new THREE.SphereGeometry(0.12, 4, 4);
+const G_FIRE      = new THREE.SphereGeometry(1.0, 12, 12);
+const G_CORE      = new THREE.SphereGeometry(0.6, 10, 10);
+const G_HITPULSE  = new THREE.SphereGeometry(0.6, 10, 10);
+const G_MUZZLE    = new THREE.SphereGeometry(1.0, 8, 8);
+const G_SMOKE_S   = new THREE.SphereGeometry(1.0, 8, 8);
+const G_SHRAPNEL  = new THREE.SphereGeometry(0.18, 4, 4);
+
 // Particle/effect helpers - explosions, sparks, beams, shockwaves, smoke.
 // All effects allocate a tiny mesh, push themselves to the world's effect list,
 // and tick down their life.
@@ -32,12 +42,12 @@ export function makeExplosion(world, pos, scale = 1.0) {
   const fireMat = new THREE.MeshBasicMaterial({
     color: 0xffaa33, transparent: true, opacity: 1.0,
   });
-  const fire = new THREE.Mesh(new THREE.SphereGeometry(1.0, 12, 12), fireMat);
+  const fire = new THREE.Mesh(G_FIRE, fireMat);
   group.add(fire);
 
   // Inner core
   const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffcc, transparent: true, opacity: 1.0 });
-  const core = new THREE.Mesh(new THREE.SphereGeometry(0.6, 10, 10), coreMat);
+  const core = new THREE.Mesh(G_CORE, coreMat);
   group.add(core);
 
   // Light
@@ -48,7 +58,7 @@ export function makeExplosion(world, pos, scale = 1.0) {
   const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffeeaa });
   const sparks = [];
   for (let i = 0; i < 14; i++) {
-    const s = new THREE.Mesh(new THREE.SphereGeometry(0.18, 4, 4), sparkMat);
+    const s = new THREE.Mesh(G_SHRAPNEL, sparkMat);
     s.userData.vel = new THREE.Vector3(
       (Math.random() - 0.5) * 18,
       Math.random() * 14,
@@ -80,7 +90,7 @@ export function makeSparks(world, pos, count = 8) {
   const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffcc66 });
   const sparks = [];
   for (let i = 0; i < count; i++) {
-    const s = new THREE.Mesh(new THREE.SphereGeometry(0.12, 4, 4), sparkMat);
+    const s = new THREE.Mesh(G_SPARK, sparkMat);
     s.userData.vel = new THREE.Vector3(
       (Math.random() - 0.5) * 10,
       Math.random() * 6 + 2,
@@ -167,7 +177,7 @@ export function makeSmokeColumn(world, pos, height = 30) {
 // Quick expanding glow at a hit point. Tactile feedback for impact.
 export function makeHitPulse(world, pos, color = 0xffffff) {
   const m = new THREE.Mesh(
-    new THREE.SphereGeometry(0.6, 10, 10),
+    G_HITPULSE,
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 })
   );
   m.position.copy(pos);
@@ -181,13 +191,15 @@ export function makeHitPulse(world, pos, color = 0xffffff) {
 
 export function makeMuzzleFlash(world, pos, scale = 0.5) {
   const m = new THREE.Mesh(
-    new THREE.SphereGeometry(scale, 8, 8),
+    G_MUZZLE,
     new THREE.MeshBasicMaterial({ color: 0xffee88, transparent: true, opacity: 0.9 })
   );
+  m.scale.setScalar(scale);
   m.position.copy(pos);
   world.scene.add(m);
+  const baseScale = scale;
   return new Effect(m, 0.12, (dt, t) => {
-    m.scale.setScalar(1 + t * 2);
+    m.scale.setScalar(baseScale * (1 + t * 2));
     m.material.opacity = 0.9 * (1 - t);
     if (t >= 1) world.scene.remove(m);
   });
@@ -195,14 +207,15 @@ export function makeMuzzleFlash(world, pos, scale = 0.5) {
 
 export function makeSmokePuff(world, pos, scale = 1.0) {
   const m = new THREE.Mesh(
-    new THREE.SphereGeometry(scale, 8, 8),
+    G_SMOKE_S,
     new THREE.MeshBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.6 })
   );
+  m.scale.setScalar(scale);
   m.position.copy(pos);
   world.scene.add(m);
   return new Effect(m, 2.5, (dt, t) => {
     m.position.y += dt * 1.6;
-    m.scale.setScalar(1 + t * 3);
+    m.scale.setScalar(scale * (1 + t * 3));
     m.material.opacity = 0.6 * (1 - t);
     if (t >= 1) world.scene.remove(m);
   });

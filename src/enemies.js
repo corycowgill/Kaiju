@@ -1,5 +1,11 @@
 import * as THREE from 'three';
 
+// Module-level scratch vectors reused by every AI tick to avoid GC churn.
+const _aiVA = new THREE.Vector3();
+const _aiVB = new THREE.Vector3();
+const _aiVC = new THREE.Vector3();
+const _aiVD = new THREE.Vector3();
+
 // Military units. Each has hp, type, mesh, ai().
 
 export class Tank {
@@ -45,37 +51,34 @@ export class Tank {
   update(dt, world, kaijuPos) {
     if (this.dead) return;
     const myPos = this.root.position;
-    const toKaiju = new THREE.Vector3().subVectors(kaijuPos, myPos);
-    toKaiju.y = 0;
-    const dist = toKaiju.length();
+    _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
+    const dist = _aiVA.length();
     if (dist < 0.0001) return;
-    toKaiju.normalize();
+    _aiVA.divideScalar(dist); // normalize without alloc
 
     // Drive: maintain ~60u distance
-    let moveDir = new THREE.Vector3();
-    if (dist > 80) moveDir.copy(toKaiju);
-    else if (dist < 50) moveDir.copy(toKaiju).multiplyScalar(-1);
-    if (moveDir.lengthSq() > 0) {
-      myPos.x += moveDir.x * this.speed * dt;
-      myPos.z += moveDir.z * this.speed * dt;
-      this.root.rotation.y = Math.atan2(moveDir.x, moveDir.z);
+    let moveX = 0, moveZ = 0;
+    if (dist > 80)      { moveX = _aiVA.x;  moveZ = _aiVA.z;  }
+    else if (dist < 50) { moveX = -_aiVA.x; moveZ = -_aiVA.z; }
+    if (moveX || moveZ) {
+      myPos.x += moveX * this.speed * dt;
+      myPos.z += moveZ * this.speed * dt;
+      this.root.rotation.y = Math.atan2(moveX, moveZ);
     }
 
     // Aim turret at kaiju
-    const aimAngle = Math.atan2(toKaiju.x, toKaiju.z);
+    const aimAngle = Math.atan2(_aiVA.x, _aiVA.z);
     this.turret.rotation.y = aimAngle - this.root.rotation.y;
-    // Slight elevation for distance
     this.barrel.rotation.x = THREE.MathUtils.clamp(-(dist / 200), -0.3, 0);
 
     // Shoot
     this.cooldown -= dt;
     if (this.cooldown <= 0 && dist < this.shootRange) {
       this.cooldown = 2.5 + Math.random() * 1.5;
-      const muzzleWorld = new THREE.Vector3();
-      this.barrel.getWorldPosition(muzzleWorld);
-      const dir = new THREE.Vector3().subVectors(kaijuPos.clone().setY(kaijuPos.y * 0.5 + 6), muzzleWorld).normalize();
-      world.spawnShell(muzzleWorld, dir, 'tank');
-      world.spawnMuzzleFlash(muzzleWorld, 0.5);
+      this.barrel.getWorldPosition(_aiVB);
+      _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 6, kaijuPos.z).sub(_aiVB).normalize();
+      world.spawnShell(_aiVB, _aiVC, 'tank');
+      world.spawnMuzzleFlash(_aiVB, 0.5);
     }
   }
 
@@ -150,23 +153,25 @@ export class Helicopter {
   update(dt, world, kaijuPos) {
     if (this.dead) return;
     const myPos = this.root.position;
-    const toKaiju = new THREE.Vector3().subVectors(kaijuPos.clone().setY(this.altitude), myPos);
-    const dist = toKaiju.length();
+    _aiVA.set(kaijuPos.x, this.altitude, kaijuPos.z).sub(myPos);
+    const dist = _aiVA.length();
 
-    // Orbit at ~70 distance
     if (dist > 0.001) {
-      toKaiju.normalize();
-      const tangent = new THREE.Vector3(-toKaiju.z, 0, toKaiju.x);
-      const desired = new THREE.Vector3();
-      if (dist > 90) desired.copy(toKaiju);
-      else if (dist < 60) desired.copy(toKaiju).multiplyScalar(-1);
-      desired.add(tangent.multiplyScalar(0.6));
-      desired.normalize();
-      myPos.x += desired.x * this.speed * dt;
-      myPos.z += desired.z * this.speed * dt;
+      _aiVA.divideScalar(dist);
+      // tangent = (-z, 0, x)
+      const tx = -_aiVA.z, tz = _aiVA.x;
+      let dx, dz;
+      if (dist > 90)       { dx = _aiVA.x;  dz = _aiVA.z;  }
+      else if (dist < 60)  { dx = -_aiVA.x; dz = -_aiVA.z; }
+      else                 { dx = 0; dz = 0; }
+      dx += tx * 0.6; dz += tz * 0.6;
+      const dlen = Math.hypot(dx, dz) || 1;
+      dx /= dlen; dz /= dlen;
+      myPos.x += dx * this.speed * dt;
+      myPos.z += dz * this.speed * dt;
       myPos.y = this.altitude + Math.sin(world.time * 1.5 + myPos.x) * 0.4;
-      this.root.rotation.y = Math.atan2(desired.x, desired.z);
-      this.root.rotation.z = -desired.x * 0.15;
+      this.root.rotation.y = Math.atan2(dx, dz);
+      this.root.rotation.z = -dx * 0.15;
     }
 
     this.rotor.rotation.y += dt * 30;
@@ -175,9 +180,10 @@ export class Helicopter {
     this.cooldown -= dt;
     if (this.cooldown <= 0 && dist < 130) {
       this.cooldown = 1.4 + Math.random() * 0.6;
-      const dir = new THREE.Vector3().subVectors(kaijuPos.clone().setY(kaijuPos.y * 0.5 + 8), myPos).normalize();
-      world.spawnShell(myPos.clone(), dir, 'heli');
-      world.spawnMuzzleFlash(myPos.clone(), 0.3);
+      _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(myPos).normalize();
+      _aiVB.copy(myPos);
+      world.spawnShell(_aiVB, _aiVC, 'heli');
+      world.spawnMuzzleFlash(_aiVB, 0.3);
     }
   }
 
@@ -244,34 +250,33 @@ export class Mech {
   update(dt, world, kaijuPos) {
     if (this.dead) return;
     const myPos = this.root.position;
-    const toKaiju = new THREE.Vector3().subVectors(kaijuPos, myPos); toKaiju.y = 0;
-    const dist = toKaiju.length();
+    _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
+    const dist = _aiVA.length();
     if (dist > 0.001) {
-      toKaiju.normalize();
-      let moveDir = new THREE.Vector3();
-      if (dist > 50) moveDir.copy(toKaiju);
-      else if (dist < 35) moveDir.copy(toKaiju).multiplyScalar(-1);
-      if (moveDir.lengthSq() > 0) {
-        myPos.x += moveDir.x * this.speed * dt;
-        myPos.z += moveDir.z * this.speed * dt;
+      _aiVA.divideScalar(dist);
+      let dx = 0, dz = 0;
+      if (dist > 50)      { dx = _aiVA.x;  dz = _aiVA.z;  }
+      else if (dist < 35) { dx = -_aiVA.x; dz = -_aiVA.z; }
+      if (dx || dz) {
+        myPos.x += dx * this.speed * dt;
+        myPos.z += dz * this.speed * dt;
         this.legPhase += dt * 6;
         this.legL.position.y = 2.0 + Math.sin(this.legPhase) * 0.3;
         this.legR.position.y = 2.0 + Math.sin(this.legPhase + Math.PI) * 0.3;
       }
-      this.root.rotation.y = Math.atan2(toKaiju.x, toKaiju.z);
+      this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
     }
 
     this.cooldown -= dt;
     if (this.cooldown <= 0 && dist < 110) {
       this.cooldown = 1.8 + Math.random() * 0.6;
-      // Fire from both arms
-      [this.armL, this.armR].forEach((arm) => {
-        const wp = new THREE.Vector3();
-        arm.getWorldPosition(wp);
-        const dir = new THREE.Vector3().subVectors(kaijuPos.clone().setY(kaijuPos.y * 0.5 + 8), wp).normalize();
-        world.spawnShell(wp, dir, 'mech');
-        world.spawnMuzzleFlash(wp, 0.4);
-      });
+      const arms = [this.armL, this.armR];
+      for (let i = 0; i < arms.length; i++) {
+        arms[i].getWorldPosition(_aiVB);
+        _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
+        world.spawnShell(_aiVB, _aiVC, 'mech');
+        world.spawnMuzzleFlash(_aiVB, 0.4);
+      }
     }
   }
 
@@ -351,41 +356,42 @@ export class Jet {
   update(dt, world, kaijuPos) {
     if (this.dead) return;
     const myPos = this.root.position;
-    const target = kaijuPos.clone().setY(this.altitude);
-    const toTarget = new THREE.Vector3().subVectors(target, myPos);
-    const dist2D = Math.hypot(toTarget.x, toTarget.z);
+    _aiVA.set(kaijuPos.x, this.altitude, kaijuPos.z).sub(myPos);
+    const dist2D = Math.hypot(_aiVA.x, _aiVA.z);
 
     if (this.state === 'approach') {
-      // Fly toward kaiju
-      const dir = toTarget.clone().normalize();
-      this.passDir.copy(dir);
-      myPos.addScaledVector(dir, this.speed * dt);
+      const len = _aiVA.length() || 1;
+      this.passDir.copy(_aiVA).divideScalar(len);
+      myPos.addScaledVector(this.passDir, this.speed * dt);
       if (dist2D < 70) this.state = 'strafe';
     } else if (this.state === 'strafe') {
       myPos.addScaledVector(this.passDir, this.speed * dt);
-      // Fire rockets while close
       this.cooldown -= dt;
       if (this.cooldown <= 0 && dist2D < 100) {
         this.cooldown = 0.4;
-        const dir = new THREE.Vector3().subVectors(kaijuPos.clone().setY(kaijuPos.y * 0.5 + 8), myPos).normalize();
-        world.spawnShell(myPos.clone(), dir, 'jet');
-        world.spawnMuzzleFlash(myPos.clone(), 0.4);
+        _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(myPos).normalize();
+        _aiVB.copy(myPos);
+        world.spawnShell(_aiVB, _aiVC, 'jet');
+        world.spawnMuzzleFlash(_aiVB, 0.4);
       }
       if (dist2D > 90) { this.state = 'egress'; this.egressTimer = 2.5; }
-    } else { // egress
+    } else {
       myPos.addScaledVector(this.passDir, this.speed * dt);
       this.egressTimer -= dt;
       if (this.egressTimer <= 0) {
-        // Loop back for another pass from a new angle
         this.state = 'approach';
         const a = Math.random() * Math.PI * 2;
         myPos.set(kaijuPos.x + Math.cos(a) * 220, this.altitude, kaijuPos.z + Math.sin(a) * 220);
       }
     }
 
-    // Orient nose to flight direction
-    const flightDir = this.state === 'approach' ? toTarget.clone().normalize() : this.passDir;
-    this.root.rotation.y = Math.atan2(flightDir.x, flightDir.z);
+    // Orient: in approach we'd want re-normalized toward target, otherwise passDir
+    let fx = this.passDir.x, fz = this.passDir.z;
+    if (this.state === 'approach') {
+      const len = Math.hypot(_aiVA.x, _aiVA.z) || 1;
+      fx = _aiVA.x / len; fz = _aiVA.z / len;
+    }
+    this.root.rotation.y = Math.atan2(fx, fz);
     this.root.rotation.z = Math.sin(world.time * 4 + myPos.x) * 0.15;
     this.burner.scale.set(1, 1 + Math.random() * 0.4, 1);
   }
@@ -456,13 +462,12 @@ export class Artillery {
     this.cooldown -= dt;
     if (this.cooldown <= 0 && dist < 320) {
       this.cooldown = 4.5 + Math.random() * 1.5;
-      // Predicted target with small spread
       const tx = kaijuPos.x + (Math.random() - 0.5) * 14;
       const tz = kaijuPos.z + (Math.random() - 0.5) * 14;
-      const muzzle = new THREE.Vector3();
-      this.barrel.getWorldPosition(muzzle);
-      world.spawnArtilleryShell?.(muzzle, new THREE.Vector3(tx, 0, tz));
-      world.spawnMuzzleFlash(muzzle, 0.8);
+      this.barrel.getWorldPosition(_aiVB);
+      _aiVC.set(tx, 0, tz);
+      world.spawnArtilleryShell?.(_aiVB, _aiVC);
+      world.spawnMuzzleFlash(_aiVB, 0.8);
       world.shake(0.2, 0.2);
     }
   }
@@ -527,32 +532,30 @@ export class Soldier {
   update(dt, world, kaijuPos) {
     if (this.dead) return;
     const myPos = this.root.position;
-    const toK = new THREE.Vector3().subVectors(kaijuPos, myPos); toK.y = 0;
-    const dist = toK.length();
-    if (dist > 0.001) toK.normalize();
+    _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
+    const dist = _aiVA.length();
+    if (dist > 0.001) _aiVA.divideScalar(dist);
 
-    // Charge to ~25u then shoot
     if (dist > 30) {
-      myPos.addScaledVector(toK, this.speed * dt);
+      myPos.x += _aiVA.x * this.speed * dt;
+      myPos.z += _aiVA.z * this.speed * dt;
       this.walkPhase += dt * 10;
       this.legL.rotation.x = Math.sin(this.walkPhase) * 0.6;
       this.legR.rotation.x = -Math.sin(this.walkPhase) * 0.6;
     } else {
       this.legL.rotation.x = 0; this.legR.rotation.x = 0;
     }
-    this.root.rotation.y = Math.atan2(toK.x, toK.z);
+    this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
 
     this.cooldown -= dt;
     if (this.cooldown <= 0 && dist < 60) {
       this.cooldown = 0.7 + Math.random() * 0.4;
-      const wp = new THREE.Vector3();
-      this.rifle.getWorldPosition(wp);
-      const dir = new THREE.Vector3().subVectors(kaijuPos.clone().setY(kaijuPos.y * 0.5 + 8), wp).normalize();
-      world.spawnShell(wp, dir, 'rifle');
-      world.spawnMuzzleFlash(wp, 0.2);
+      this.rifle.getWorldPosition(_aiVB);
+      _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
+      world.spawnShell(_aiVB, _aiVC, 'rifle');
+      world.spawnMuzzleFlash(_aiVB, 0.2);
     }
 
-    // Soldiers die instantly if kaiju walks over them
     if (dist < 4) {
       this.damage(999, world);
       world.shake(0.05, 0.1);
@@ -644,35 +647,33 @@ export class BossMech {
   update(dt, world, kaijuPos) {
     if (this.dead) return;
     const myPos = this.root.position;
-    const toK = new THREE.Vector3().subVectors(kaijuPos, myPos); toK.y = 0;
-    const dist = toK.length();
-    if (dist > 0.001) toK.normalize();
+    _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
+    const dist = _aiVA.length();
+    if (dist > 0.001) _aiVA.divideScalar(dist);
 
     if (dist > 30) {
-      myPos.addScaledVector(toK, this.speed * dt);
+      myPos.x += _aiVA.x * this.speed * dt;
+      myPos.z += _aiVA.z * this.speed * dt;
       this.legPhase += dt * 4;
       this.legL.position.y = 4.0 + Math.sin(this.legPhase) * 0.5;
       this.legR.position.y = 4.0 + Math.sin(this.legPhase + Math.PI) * 0.5;
     } else {
       this.legL.position.y = 4.0; this.legR.position.y = 4.0;
     }
-    this.root.rotation.y = Math.atan2(toK.x, toK.z);
+    this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
 
-    // Eye glow pulse
     this.eye.material.emissiveIntensity = 0.5 + Math.sin(world.time * 4) * 0.3;
 
-    // Twin missile barrage
     this.cooldown -= dt;
     if (this.cooldown <= 0 && dist < 160) {
       this.cooldown = 1.2;
-      [this.cannonL, this.cannonR].forEach((c) => {
-        const wp = new THREE.Vector3();
-        c.getWorldPosition(wp);
-        const dir = new THREE.Vector3().subVectors(kaijuPos.clone().setY(kaijuPos.y * 0.5 + 8), wp).normalize();
-        // Boss shells hit harder
-        world.spawnShell(wp, dir, 'boss');
-        world.spawnMuzzleFlash(wp, 0.6);
-      });
+      const cannons = [this.cannonL, this.cannonR];
+      for (let i = 0; i < cannons.length; i++) {
+        cannons[i].getWorldPosition(_aiVB);
+        _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
+        world.spawnShell(_aiVB, _aiVC, 'boss');
+        world.spawnMuzzleFlash(_aiVB, 0.6);
+      }
     }
 
     // Special: ground-pound shockwave (radial AOE) at close range
