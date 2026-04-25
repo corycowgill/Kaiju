@@ -247,3 +247,92 @@ export function buildCity(scene, world, opts = {}) {
 
   return buildings;
 }
+
+// -------------------- Cars --------------------
+const CAR_COLORS = [0xff3344, 0x33aaff, 0xffcc33, 0xffffff, 0x222222, 0x44aa66, 0xaa44ff];
+
+export class Car {
+  constructor(x, z, axis /* 'x' or 'z' */, dir /* +1/-1 */) {
+    this.dead = false;
+    this.axis = axis; this.dir = dir;
+    this.speed = 12 + Math.random() * 8;
+    const color = CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)];
+    const root = new THREE.Group();
+    root.position.set(x, 0.6, z);
+
+    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.3 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, roughness: 0.1, metalness: 0.6 });
+    const lightMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffee99, emissiveIntensity: 1.2 });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 3.4), bodyMat);
+    body.castShadow = true;
+    root.add(body);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.6), glassMat);
+    cabin.position.set(0, 0.65, -0.1);
+    root.add(cabin);
+    // Wheels
+    for (const sx of [-0.7, 0.7]) {
+      for (const sz of [-1.1, 1.1]) {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.25, 8), dark);
+        w.rotation.z = Math.PI / 2; w.position.set(sx, -0.35, sz);
+        root.add(w);
+      }
+    }
+    // Headlights
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.1), lightMat);
+    hl.position.set(-0.45, 0.0, 1.7); root.add(hl);
+    const hr = hl.clone(); hr.position.x = 0.45; root.add(hr);
+
+    if (axis === 'x') root.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+    else if (dir < 0) root.rotation.y = Math.PI;
+
+    this.root = root;
+  }
+
+  update(dt, world, kaijuPos, cityRadius) {
+    if (this.dead) return;
+    if (this.axis === 'x') this.root.position.x += this.speed * this.dir * dt;
+    else this.root.position.z += this.speed * this.dir * dt;
+
+    // Wrap around city bounds
+    const lim = cityRadius + 30;
+    if (this.root.position.x > lim) this.root.position.x = -lim;
+    if (this.root.position.x < -lim) this.root.position.x = lim;
+    if (this.root.position.z > lim) this.root.position.z = -lim;
+    if (this.root.position.z < -lim) this.root.position.z = lim;
+
+    // Stomped by kaiju
+    const dx = kaijuPos.x - this.root.position.x;
+    const dz = kaijuPos.z - this.root.position.z;
+    if (dx * dx + dz * dz < 5 * 5) {
+      this.explode(world);
+    }
+  }
+
+  explode(world) {
+    if (this.dead) return;
+    this.dead = true;
+    world.spawnExplosion(this.root.position.clone().setY(1), 0.7);
+    world.shake(0.15, 0.15);
+    this.root.parent && this.root.parent.remove(this.root);
+    world.onCarDestroyed?.();
+  }
+}
+
+export function spawnCars(scene, count, cityRadius = 380, blockSize = 36) {
+  const cars = [];
+  for (let i = 0; i < count; i++) {
+    const axis = Math.random() < 0.5 ? 'x' : 'z';
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    // Pick a street line (multiple of blockSize), with random position along it
+    const lane = (Math.floor(Math.random() * (cityRadius * 2 / blockSize)) - cityRadius / blockSize) * blockSize;
+    const along = (Math.random() - 0.5) * cityRadius * 2;
+    const x = axis === 'x' ? along : lane + (dir > 0 ? -2 : 2);
+    const z = axis === 'z' ? along : lane + (dir > 0 ? 2 : -2);
+    const c = new Car(x, z, axis, dir);
+    scene.add(c.root);
+    cars.push(c);
+  }
+  return cars;
+}

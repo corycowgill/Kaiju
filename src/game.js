@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { MONSTERS, buildKaiju } from './monsters.js';
-import { Building, buildCity } from './city.js';
-import { Tank, Helicopter, Mech } from './enemies.js';
+import { Building, buildCity, spawnCars } from './city.js';
+import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
 import {
   Effect, makeExplosion, makeSparks, makeShockwave,
   makeMuzzleFlash, makeSmokePuff, makeBeam,
 } from './effects.js';
+import { Pickup, rollDrop } from './pickups.js';
 
 // ------------------------- Mobile detect -------------------------
 const isMobile = (() => {
@@ -113,16 +114,21 @@ const world = {
     this.effects.push(makeBeam(this, origin, dir, len, color, glow));
   },
   spawnShell: function (origin, dir, type) {
-    const speed = type === 'mech' ? 70 : (type === 'heli' ? 90 : 80);
-    const damage = type === 'mech' ? 14 : (type === 'heli' ? 6 : 9);
-    const color = type === 'mech' ? 0xff8844 : (type === 'heli' ? 0xffeeaa : 0xffaa44);
+    const profile = {
+      tank:  { speed: 80,  damage: 9,  color: 0xffaa44, size: 0.35 },
+      heli:  { speed: 90,  damage: 6,  color: 0xffeeaa, size: 0.3 },
+      mech:  { speed: 70,  damage: 14, color: 0xff8844, size: 0.4 },
+      jet:   { speed: 110, damage: 11, color: 0xff5533, size: 0.32 },
+      rifle: { speed: 140, damage: 2,  color: 0xffeecc, size: 0.18 },
+      boss:  { speed: 75,  damage: 22, color: 0xff3322, size: 0.55 },
+    }[type] || { speed: 80, damage: 9, color: 0xffaa44, size: 0.35 };
     const m = new THREE.Mesh(
-      new THREE.SphereGeometry(0.35, 6, 6),
-      new THREE.MeshBasicMaterial({ color })
+      new THREE.SphereGeometry(profile.size, 6, 6),
+      new THREE.MeshBasicMaterial({ color: profile.color })
     );
     m.position.copy(origin);
     scene.add(m);
-    this.shells.push({ mesh: m, vel: dir.clone().multiplyScalar(speed), life: 4.0, damage, type });
+    this.shells.push({ mesh: m, vel: dir.clone().multiplyScalar(profile.speed), life: 4.0, damage: profile.damage, type });
   },
   showMessage,
 };
@@ -145,15 +151,29 @@ const state = {
   tanksKilled: 0,
   helisKilled: 0,
   mechsKilled: 0,
+  jetsKilled: 0,
+  artilleryKilled: 0,
+  soldiersKilled: 0,
+  bossesKilled: 0,
+  carsCrushed: 0,
   vel: new THREE.Vector3(),
   yaw: 0,
   pitch: -0.15,
   walkPhase: 0,
-  cooldowns: { beam: 0, roar: 0, charge: 0, stomp: 0, melee: 0 },
+  cooldowns: { beam: 0, roar: 0, charge: 0, stomp: 0, melee: 0, ult: 0 },
   mouseDown: false,
   paused: false,
   gameOver: false,
   inWave: false,
+  // New mechanics
+  combo: 0,
+  comboTimer: 0,
+  comboMaxTimer: 3.0,
+  pickups: [],
+  cars: [],
+  airstrikes: [],
+  artyShells: [],
+  boss: null,
 };
 
 const keys = {};
@@ -399,6 +419,9 @@ function startGame(key) {
   }
   buildPowersBar();
 
+  // Spawn initial cars driving around the city
+  state.cars = spawnCars(scene, isMobile ? 8 : 16, 380, 36);
+
   startWave(1);
   if (!isMobile) renderer.domElement.requestPointerLock?.();
 }
@@ -413,6 +436,7 @@ function buildPowersBar() {
     { key: '2', id: 'roar', name: cfg.roar.name, cost: cfg.roar.cost },
     { key: '3', id: 'charge', name: cfg.charge.name, cost: cfg.charge.cost },
     { key: 'SPC', id: 'stomp', name: 'STOMP', cost: 15 },
+    { key: 'Q',   id: 'ult',   name: 'ULTIMATE', cost: 100 },
   ];
   for (const it of items) {
     const w = document.createElement('div');
@@ -431,6 +455,7 @@ function buildPowersBar() {
       else if (it.id === 'roar') fireRoar();
       else if (it.id === 'charge') fireCharge();
       else if (it.id === 'stomp') fireStomp();
+      else if (it.id === 'ult') fireUltimate();
     };
     pwEl.addEventListener('touchstart', fire, { passive: false });
     pwEl.addEventListener('mousedown', fire);
@@ -466,6 +491,24 @@ function updateHUD() {
   updateP('roar', cfg.roar.cost);
   updateP('charge', cfg.charge.cost);
   updateP('stomp', 15);
+  updateP('ult', 100);
+
+  // Combo HUD
+  const comboEl = document.getElementById('combo');
+  if (comboEl) {
+    if (state.combo > 0) {
+      comboEl.style.opacity = '1';
+      document.getElementById('combo-mult').textContent = 'x' + comboMult().toFixed(1);
+      document.getElementById('combo-bar').style.width = Math.max(0, state.comboTimer / state.comboMaxTimer * 100) + '%';
+    } else {
+      comboEl.style.opacity = '0';
+    }
+  }
+
+  // Boss bar
+  if (state.boss && !state.boss.dead) {
+    document.getElementById('boss-hp').style.width = Math.max(0, state.boss.hp / state.boss.maxHp * 100) + '%';
+  }
 }
 
 // ------------------------- Messages / waves -------------------------
@@ -480,6 +523,16 @@ function showMessage(text, duration = 1.8) {
     messageTimeout = setTimeout(() => el.classList.remove('show'), duration * 1000);
   }
 }
+
+function toast(text, kind = '') {
+  const wrap = document.getElementById('toasts');
+  if (!wrap) return;
+  const el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' ' + kind : '');
+  el.textContent = text;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
 function showWaveBanner(text, sub) {
   const el = document.getElementById('wave-banner');
   el.innerHTML = text + (sub ? `<small>${sub}</small>` : '');
@@ -490,19 +543,40 @@ function showWaveBanner(text, sub) {
 function startWave(n) {
   state.wave = n;
   state.inWave = true;
-  showWaveBanner(`WAVE ${n}`, 'THE MILITARY STRIKES BACK');
+
+  const isBossWave = n > 0 && n % 4 === 0;
+  if (isBossWave) {
+    showWaveBanner(`WAVE ${n}`, 'BOSS APPROACHING');
+    toast('⚠ BOSS WAVE ⚠', 'bad');
+  } else {
+    showWaveBanner(`WAVE ${n}`, 'THE MILITARY STRIKES BACK');
+  }
 
   const enemies = world.enemies;
-  // Spawn enemies in a ring around the kaiju
   const kpos = state.kaiju.root.position;
-  const tankCount = 3 + n * 2;
-  const heliCount = Math.min(8, Math.floor(n * 1.2));
-  const mechCount = n >= 3 ? Math.floor((n - 2) * 1.0) : 0;
-
   function spawnPos(radius) {
     const a = Math.random() * Math.PI * 2;
     return [kpos.x + Math.cos(a) * radius, kpos.z + Math.sin(a) * radius];
   }
+
+  // Boss replaces big mech spawn on boss waves
+  if (isBossWave) {
+    const [bx, bz] = spawnPos(170);
+    const boss = new BossMech(bx, bz);
+    scene.add(boss.root);
+    enemies.push(boss);
+    state.boss = boss;
+    document.getElementById('boss-bar').style.display = 'block';
+  }
+
+  // Standard scaling
+  const tankCount = 2 + n * 2;
+  const heliCount = Math.min(8, Math.floor(n * 1.2));
+  const mechCount = (n >= 3 && !isBossWave) ? Math.floor((n - 2) * 1.0) : 0;
+  const jetCount = n >= 2 ? Math.min(5, Math.floor(n / 2)) : 0;
+  const artyCount = n >= 3 ? Math.min(4, Math.floor((n - 1) / 2)) : 0;
+  const soldierSquads = n >= 2 ? Math.floor(n / 2) : 0;
+
   for (let i = 0; i < tankCount; i++) {
     const [x, z] = spawnPos(160 + Math.random() * 80);
     const t = new Tank(x, z); scene.add(t.root); enemies.push(t);
@@ -515,15 +589,146 @@ function startWave(n) {
     const [x, z] = spawnPos(150 + Math.random() * 60);
     const m = new Mech(x, z); scene.add(m.root); enemies.push(m);
   }
+  for (let i = 0; i < jetCount; i++) {
+    const [x, z] = spawnPos(220 + Math.random() * 60);
+    const j = new Jet(x, z); scene.add(j.root); enemies.push(j);
+  }
+  for (let i = 0; i < artyCount; i++) {
+    const [x, z] = spawnPos(240 + Math.random() * 80);
+    const a = new Artillery(x, z); scene.add(a.root); enemies.push(a);
+  }
+  // Soldier squads of 5 each
+  for (let s = 0; s < soldierSquads; s++) {
+    const [cx, cz] = spawnPos(120 + Math.random() * 50);
+    for (let i = 0; i < 5; i++) {
+      const sx = cx + (Math.random() - 0.5) * 8;
+      const sz = cz + (Math.random() - 0.5) * 8;
+      const sol = new Soldier(sx, sz); scene.add(sol.root); enemies.push(sol);
+    }
+  }
 }
 
-world.onTankKilled = () => { state.tanksKilled++; state.score += 250; state.rage = Math.min(state.maxRage, state.rage + 8); };
-world.onHeliKilled = () => { state.helisKilled++; state.score += 350; state.rage = Math.min(state.maxRage, state.rage + 10); };
-world.onMechKilled = () => { state.mechsKilled++; state.score += 700; state.rage = Math.min(state.maxRage, state.rage + 18); };
+// ---- Combo + scoring helpers ----
+function comboMult() { return Math.min(5, 1 + state.combo * 0.1); }
+function bumpCombo() {
+  state.combo += 1;
+  state.comboTimer = state.comboMaxTimer;
+  if (state.combo === 10) toast('COMBO x2!', 'good');
+  if (state.combo === 25) toast('UNSTOPPABLE!', 'good');
+  if (state.combo === 50) toast('CITY WRECKER!', 'good');
+}
+function addScore(base) {
+  state.score += Math.floor(base * comboMult());
+}
+function addRage(amount) {
+  state.rage = Math.min(state.maxRage, state.rage + amount);
+  if (state.rage >= state.maxRage && !state._announcedUlt) {
+    state._announcedUlt = true;
+    toast('ULTIMATE READY · Q', 'good');
+  }
+  if (state.rage < state.maxRage) state._announcedUlt = false;
+}
+
+// ---- Drop helper: spawn a pickup at world pos ----
+function maybeDropPickup(pos, source = 'building') {
+  const t = rollDrop(source);
+  if (!t) return;
+  const p = new Pickup(t, pos.x, 2.5, pos.z);
+  scene.add(p.root);
+  state.pickups.push(p);
+}
+
+world.onTankKilled = () => {
+  state.tanksKilled++;
+  addScore(250); addRage(8); bumpCombo();
+};
+world.onHeliKilled = () => {
+  state.helisKilled++;
+  addScore(350); addRage(10); bumpCombo();
+};
+world.onMechKilled = () => {
+  state.mechsKilled++;
+  addScore(700); addRage(18); bumpCombo();
+};
+world.onJetKilled = () => {
+  state.jetsKilled++;
+  addScore(450); addRage(12); bumpCombo();
+  toast('JET DOWN!', 'good');
+};
+world.onArtilleryKilled = () => {
+  state.artilleryKilled++;
+  addScore(400); addRage(10); bumpCombo();
+};
+world.onSoldierKilled = () => {
+  state.soldiersKilled++;
+  addScore(50); addRage(2);
+};
+world.onBossKilled = () => {
+  state.bossesKilled++;
+  addScore(5000); addRage(40);
+  toast('BOSS DESTROYED · +5000', 'good');
+  document.getElementById('boss-bar').style.display = 'none';
+  state.boss = null;
+};
+world.onBossSlam = () => {
+  // Damage to player if too close
+  state.hp -= 22;
+  world.shake(1.0, 0.5);
+  if (state.hp <= 0 && !state.gameOver) gameOver(false);
+};
+world.onCarDestroyed = () => {
+  state.carsCrushed++;
+  addScore(80); addRage(2);
+};
+world.onPickup = (type) => {
+  if (type === 'hp') {
+    state.hp = Math.min(state.maxHp, state.hp + 25);
+    toast('+25 HP', 'good');
+  } else if (type === 'rage') {
+    addRage(30);
+    toast('+30 RAGE', 'good');
+  } else if (type === 'score') {
+    addScore(500);
+    toast('+500', 'good');
+  }
+};
 world.onBuildingDestroyed = (b) => {
   state.buildingsDestroyed++;
-  state.score += Math.floor(b.maxHp * 1.5);
-  state.rage = Math.min(state.maxRage, state.rage + 6);
+  addScore(Math.floor(b.maxHp * 1.5));
+  addRage(6);
+  bumpCombo();
+  // Drop a pickup at the rubble
+  maybeDropPickup(b.group.position.clone(), 'building');
+};
+
+// ---- Artillery shell support (parabolic) ----
+world.spawnArtilleryShell = (origin, target) => {
+  // Compute initial velocity to hit target after T seconds
+  const T = 2.4;
+  const g = 30;
+  const vx = (target.x - origin.x) / T;
+  const vz = (target.z - origin.z) / T;
+  const vy = (target.y - origin.y) / T + 0.5 * g * T;
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 6, 6),
+    new THREE.MeshBasicMaterial({ color: 0xffaa44 })
+  );
+  m.position.copy(origin);
+  scene.add(m);
+
+  // Ground marker at predicted impact
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(2.5, 3.0, 24),
+    new THREE.MeshBasicMaterial({ color: 0xff3344, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(target.x, 0.3, target.z);
+  scene.add(ring);
+
+  state.artyShells.push({
+    mesh: m, ring, vel: new THREE.Vector3(vx, vy, vz),
+    target, life: T + 1.0, damage: 25, gravity: g,
+  });
 };
 
 function gameOver(victory) {
@@ -532,12 +737,18 @@ function gameOver(victory) {
   document.getElementById('hud').classList.add('hidden');
   document.getElementById('powers').classList.add('hidden');
   document.getElementById('help').classList.add('hidden');
+  document.getElementById('boss-bar').style.display = 'none';
+  const ce = document.getElementById('combo');
+  if (ce) ce.style.opacity = '0';
   document.getElementById('goTitle').textContent = victory ? 'TOKYO FALLS' : 'DEFEATED';
   document.getElementById('goSubtitle').textContent = victory ? 'The kaiju reigns supreme.' : 'The military has prevailed...';
   document.getElementById('finalScore').textContent = state.score.toLocaleString();
   document.getElementById('finalWave').textContent = state.wave;
   document.getElementById('finalBuildings').textContent = state.buildingsDestroyed;
-  document.getElementById('finalTanks').textContent = state.tanksKilled + state.helisKilled + state.mechsKilled;
+  const totalKills = state.tanksKilled + state.helisKilled + state.mechsKilled +
+                     state.jetsKilled + state.artilleryKilled + state.soldiersKilled +
+                     state.bossesKilled;
+  document.getElementById('finalTanks').textContent = totalKills;
   document.getElementById('gameover').classList.remove('hidden');
 }
 
@@ -649,6 +860,45 @@ function fireStomp() {
   damageInRadius(center, 24, 22, false);
 }
 
+function fireUltimate() {
+  if (state.rage < 100 || state.cooldowns.ult > 0) return;
+  state.rage = 0;
+  state.cooldowns.ult = 1.5;
+  state._announcedUlt = false;
+  toast('ULTIMATE UNLEASHED!', 'good');
+  showMessage('!!! KAIJU FURY !!!', 1.4);
+
+  const cfg = state.monsterCfg;
+  const head = state.kaiju.head;
+  const origin = new THREE.Vector3();
+  head.getWorldPosition(origin);
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir); dir.y *= 0.4; dir.normalize();
+  origin.addScaledVector(dir, 4.0);
+
+  // Mega-beam: extra wide, very long
+  world.spawnBeam(origin, dir, 360, cfg.beam.color, cfg.beam.glow);
+  world.shake(2.5, 1.4);
+
+  // Triple expanding shockwave
+  const center = state.kaiju.root.position.clone();
+  world.spawnShockwave(center, 0xffffff, 100);
+  setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.color, 140), 120);
+  setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.glow, 180), 260);
+
+  // Massive AOE damage everywhere within 130
+  damageInRadius(center, 130, 250, true);
+
+  // Beam line damage too
+  const ray = new THREE.Raycaster(origin, dir, 0.5, 360);
+  const buildingMeshes = world.buildings.filter(b => !b.destroyed).map(b => b.body);
+  const hits = ray.intersectObjects(buildingMeshes, false);
+  for (let i = 0; i < Math.min(hits.length, 3); i++) {
+    hits[i].object.userData.building.damage(300, hits[i].point, world);
+    world.spawnExplosion(hits[i].point, 1.4);
+  }
+}
+
 function fireMelee() {
   if (state.cooldowns.melee > 0) return;
   state.cooldowns.melee = 0.6;
@@ -753,6 +1003,7 @@ function updatePlayer(dt) {
   if (keys.Digit1) fireBeam();
   if (keys.Digit2) fireRoar();
   if (keys.Digit3) fireCharge();
+  if (keys.KeyQ) fireUltimate();
   if (keys.Space) fireStomp();
   if (state.mouseDown || touchInput.attackHeld) fireMelee();
 }
@@ -859,6 +1110,105 @@ function updateWorld(dt) {
 
   // Slowly regenerate small rage when idle
   state.rage = Math.min(state.maxRage, state.rage + dt * 1.5);
+
+  // ----- Combo timer -----
+  if (state.combo > 0) {
+    state.comboTimer -= dt;
+    if (state.comboTimer <= 0) {
+      if (state.combo >= 8) toast(`COMBO ENDED · x${state.combo}`, '');
+      state.combo = 0;
+    }
+  }
+
+  // ----- Pickups -----
+  for (let i = state.pickups.length - 1; i >= 0; i--) {
+    const collected = state.pickups[i].update(dt, world, kpos);
+    if (state.pickups[i].dead) state.pickups.splice(i, 1);
+  }
+
+  // ----- Cars -----
+  for (let i = state.cars.length - 1; i >= 0; i--) {
+    const c = state.cars[i];
+    if (c.dead) { state.cars.splice(i, 1); continue; }
+    c.update(dt, world, kpos, 380);
+  }
+  // Re-spawn cars over time (keep ~12 active)
+  if (state.cars.length < 12 && Math.random() < dt * 0.6) {
+    const news = spawnCars(scene, 1, 380, 36);
+    state.cars.push(...news);
+  }
+
+  // ----- Artillery shells (parabolic) -----
+  for (let i = state.artyShells.length - 1; i >= 0; i--) {
+    const s = state.artyShells[i];
+    s.life -= dt;
+    s.vel.y -= s.gravity * dt;
+    s.mesh.position.addScaledVector(s.vel, dt);
+    // Pulse the marker
+    if (s.ring) {
+      const t01 = 1 - Math.max(0, s.life - 1.0) / 2.4;
+      s.ring.material.opacity = 0.3 + Math.sin(world.time * 8) * 0.3;
+      s.ring.scale.setScalar(1 + t01 * 0.4);
+    }
+    if (s.mesh.position.y <= 0 || s.life <= 0) {
+      const impact = s.mesh.position.clone().setY(0);
+      world.spawnExplosion(impact, 1.5);
+      world.shake(0.4, 0.4);
+      // AOE damage to player and buildings
+      damageInRadius(impact, 18, s.damage * 0.6, false);
+      const dx = state.kaiju.root.position.x - impact.x;
+      const dz = state.kaiju.root.position.z - impact.z;
+      if (dx * dx + dz * dz < 18 * 18) {
+        state.hp -= s.damage;
+        if (state.hp <= 0 && !state.gameOver) gameOver(false);
+      }
+      scene.remove(s.mesh);
+      if (s.ring) scene.remove(s.ring);
+      state.artyShells.splice(i, 1);
+    }
+  }
+
+  // ----- Air strikes -----
+  // After wave 3, occasionally call in air strikes near the kaiju
+  if (state.wave >= 3 && state.inWave && Math.random() < dt * 0.07) {
+    spawnAirStrike();
+  }
+  for (let i = state.airstrikes.length - 1; i >= 0; i--) {
+    const a = state.airstrikes[i];
+    a.timer -= dt;
+    a.ring.material.opacity = 0.4 + Math.sin(world.time * 10) * 0.4;
+    if (a.timer <= 0) {
+      // Drop bombs in sequence
+      const impact = new THREE.Vector3(a.x, 0, a.z);
+      world.spawnExplosion(impact, 2.0);
+      world.shake(1.0, 0.7);
+      damageInRadius(impact, 22, 40, false);
+      const dx = state.kaiju.root.position.x - a.x;
+      const dz = state.kaiju.root.position.z - a.z;
+      if (dx * dx + dz * dz < 22 * 22) {
+        state.hp -= 40;
+        if (state.hp <= 0 && !state.gameOver) gameOver(false);
+      }
+      scene.remove(a.ring);
+      state.airstrikes.splice(i, 1);
+    }
+  }
+}
+
+function spawnAirStrike() {
+  const kpos = state.kaiju.root.position;
+  // Lead the player slightly
+  const leadX = kpos.x + state.vel.x * 0.6 + (Math.random() - 0.5) * 30;
+  const leadZ = kpos.z + state.vel.z * 0.6 + (Math.random() - 0.5) * 30;
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(18, 22, 32),
+    new THREE.MeshBasicMaterial({ color: 0xff5544, side: THREE.DoubleSide, transparent: true, opacity: 0.7 })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(leadX, 0.3, leadZ);
+  scene.add(ring);
+  state.airstrikes.push({ x: leadX, z: leadZ, ring, timer: 2.2 });
+  toast('⚠ AIR STRIKE INCOMING ⚠', 'bad');
 }
 
 // ------------------------- Main loop -------------------------
