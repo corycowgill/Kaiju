@@ -3,7 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
-import { Building, buildCity, spawnCars } from './city.js';
+import { Building, buildCity, spawnCars, flushBodiesIM } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
 import {
   Effect, makeExplosion, makeSparks, makeShockwave,
@@ -150,6 +150,9 @@ const SHELL_PROFILES = {
 const _tmpV1 = new THREE.Vector3();
 const _tmpV2 = new THREE.Vector3();
 const _tmpV3 = new THREE.Vector3();
+const _beamOrigin = new THREE.Vector3();
+const _beamDir = new THREE.Vector3();
+const _beamRay = new THREE.Raycaster();
 
 const world = {
   scene,
@@ -789,18 +792,20 @@ function spawnPopup(worldPos, text, color = '#ffee66') {
   popupContainer.appendChild(el);
   state.popups.push({ el, worldPos: worldPos.clone(), life: 1.1, maxLife: 1.1 });
 }
+// Reused projection vector so we don't clone Vector3 28x per frame
+const _popV = new THREE.Vector3();
 function updatePopups(dt) {
   for (let i = state.popups.length - 1; i >= 0; i--) {
     const p = state.popups[i];
     p.life -= dt;
     if (p.life <= 0) { p.el.remove(); state.popups.splice(i, 1); continue; }
     const t = 1 - p.life / p.maxLife;
-    const v = p.worldPos.clone();
-    v.y += t * 7;
-    v.project(camera);
-    if (v.z > 1 || v.z < -1) { p.el.style.opacity = '0'; continue; }
-    const x = (v.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
+    _popV.copy(p.worldPos);
+    _popV.y += t * 7;
+    _popV.project(camera);
+    if (_popV.z > 1 || _popV.z < -1) { p.el.style.opacity = '0'; continue; }
+    const x = (_popV.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-_popV.y * 0.5 + 0.5) * window.innerHeight;
     p.el.style.transform = `translate(${x}px, ${y}px) scale(${1 + t * 0.4})`;
     p.el.style.opacity = String(Math.max(0, 1 - t * 1.2));
   }
@@ -1018,25 +1023,24 @@ function fireBeam() {
   state.rage -= cfg.cost;
   state.cooldowns.beam = 4.0;
 
-  const head = state.kaiju.head;
-  const origin = new THREE.Vector3();
-  head.getWorldPosition(origin);
-  origin.y += 0.5;
+  state.kaiju.head.getWorldPosition(_beamOrigin);
+  _beamOrigin.y += 0.5;
   // direction = camera forward, biased horizontally toward enemies
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir); dir.y *= 0.4; dir.normalize();
-  origin.addScaledVector(dir, 3.5);
+  camera.getWorldDirection(_beamDir);
+  _beamDir.y *= 0.4; _beamDir.normalize();
+  _beamOrigin.addScaledVector(_beamDir, 3.5);
 
   const length = 260;
-  world.spawnBeam(origin, dir, length, cfg.color, cfg.glow);
+  world.spawnBeam(_beamOrigin, _beamDir, length, cfg.color, cfg.glow);
   world.shake(0.3, 0.4);
   audio.beam();
 
   // Hit detection along ray -- single raycast against the global body IM
-  const ray = new THREE.Raycaster(origin, dir, 0.5, length);
+  _beamRay.set(_beamOrigin, _beamDir);
+  _beamRay.near = 0.5; _beamRay.far = length;
   const beamDmg = cfg.damage * (state.upgrades.dmgMult || 1);
   if (world.bodiesIM) {
-    const hits = ray.intersectObject(world.bodiesIM, false);
+    const hits = _beamRay.intersectObject(world.bodiesIM, false);
     for (let hi = 0; hi < hits.length; hi++) {
       const h = hits[hi];
       const b = world.buildings[h.instanceId];
@@ -1046,18 +1050,18 @@ function fireBeam() {
       break;
     }
   }
-  // Enemy hits along beam (sphere check)
+  // Enemy hits along beam (sphere check; uses module-level scratch vectors)
   for (const e of world.enemies) {
     if (e.dead) continue;
-    const ep = e.root.position.clone(); ep.y += 4;
-    const v = ep.clone().sub(origin);
-    const along = v.dot(dir);
+    _tmpV1.copy(e.root.position); _tmpV1.y += 4;
+    _tmpV2.copy(_tmpV1).sub(_beamOrigin);
+    const along = _tmpV2.dot(_beamDir);
     if (along < 0 || along > length) continue;
-    const closest = origin.clone().addScaledVector(dir, along);
-    const distSq = closest.distanceToSquared(ep);
+    _tmpV3.copy(_beamOrigin).addScaledVector(_beamDir, along);
+    const distSq = _tmpV3.distanceToSquared(_tmpV1);
     if (distSq < 9) {
       e.damage(beamDmg * 0.7, world);
-      world.spawnExplosion(ep, 0.7);
+      world.spawnExplosion(_tmpV1, 0.7);
     }
   }
 }
@@ -1503,6 +1507,10 @@ function updateWorld(dt) {
   }
   // Decay damage flash
   if (state.damageFlash > 0) state.damageFlash = Math.max(0, state.damageFlash - dt * 1.6);
+
+  // Flush any pending GPU uploads for the building InstancedMesh once per
+  // frame instead of once per damage event.
+  flushBodiesIM(world.bodiesIM);
 
   // ----- Combo timer -----
   if (state.combo > 0) {

@@ -12,6 +12,19 @@ const NEON_COLORS = [0xff3366, 0x33ddff, 0xffaa22, 0xaa66ff, 0x66ff99, 0xffee44]
 function rand(min, max) { return min + Math.random() * (max - min); }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+// Flush any pending body-IM color/matrix changes once per frame.
+export function flushBodiesIM(im) {
+  if (!im) return;
+  if (im._colorDirty && im.instanceColor) {
+    im.instanceColor.needsUpdate = true;
+    im._colorDirty = false;
+  }
+  if (im._matrixDirty) {
+    im.instanceMatrix.needsUpdate = true;
+    im._matrixDirty = false;
+  }
+}
+
 // Build a single InstancedMesh for every building body. Saves ~one draw
 // call per building (the body is what the player primarily sees).
 function buildGlobalBodies(scene, buildings) {
@@ -311,11 +324,13 @@ export class Building {
     if (this.destroyed) return 0;
     const before = this.hp;
     this.hp -= amount;
-    // Tint darker as it weakens -- write back to the global InstancedMesh
+    // Tint darker as it weakens -- write into the IM but DEFER the
+    // needsUpdate flag so a single multi-hit frame triggers one GPU sync
+    // instead of N. flushBodiesIM() is called once per frame from updateWorld.
     this.bodyColor.offsetHSL(0, 0, -0.005);
     if (this._bodyIM && this._bodyIndex >= 0 && this._bodyIM.instanceColor) {
       this._bodyIM.setColorAt(this._bodyIndex, this.bodyColor);
-      this._bodyIM.instanceColor.needsUpdate = true;
+      this._bodyIM._colorDirty = true;
     }
     if (hitPoint && world) {
       world.spawnSparks(hitPoint, 6);
@@ -343,10 +358,10 @@ export class Building {
     this.destroyed = true;
     // Drop out of the spatial grid so future queries skip us
     if (this._grid) this._grid.remove(this);
-    // Hide our slot in the global body InstancedMesh
+    // Hide our slot in the global body InstancedMesh (deferred flush)
     if (this._bodyIM && this._bodyIndex >= 0) {
       this._bodyIM.setMatrixAt(this._bodyIndex, _zeroMatrix);
-      this._bodyIM.instanceMatrix.needsUpdate = true;
+      this._bodyIM._matrixDirty = true;
     }
     // Hide our slots in the global window InstancedMesh(es)
     if (this.windowEntries && this.windowEntries.length) {

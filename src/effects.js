@@ -10,6 +10,25 @@ const G_MUZZLE    = new THREE.SphereGeometry(1.0, 8, 8);
 const G_SMOKE_S   = new THREE.SphereGeometry(1.0, 8, 8);
 const G_SHRAPNEL  = new THREE.SphereGeometry(0.18, 4, 4);
 
+// Global pool of explosion PointLights. Three.js evaluates every light per
+// fragment, so an unbounded count tanks fps in heavy combat. We allocate a
+// fixed pool and reuse the oldest/dimmest light for new explosions.
+const MAX_EXPLOSION_LIGHTS = 5;
+const _lightPool = [];
+let _lightCursor = 0;
+function acquireLight(scene) {
+  if (_lightPool.length < MAX_EXPLOSION_LIGHTS) {
+    const l = new THREE.PointLight(0xffaa33, 0, 60);
+    scene.add(l);
+    _lightPool.push(l);
+    return l;
+  }
+  // Round-robin reuse so newest explosion always gets a light
+  const l = _lightPool[_lightCursor];
+  _lightCursor = (_lightCursor + 1) % _lightPool.length;
+  return l;
+}
+
 // Particle/effect helpers - explosions, sparks, beams, shockwaves, smoke.
 // All effects allocate a tiny mesh, push themselves to the world's effect list,
 // and tick down their life.
@@ -50,9 +69,14 @@ export function makeExplosion(world, pos, scale = 1.0) {
   const core = new THREE.Mesh(G_CORE, coreMat);
   group.add(core);
 
-  // Light
-  const light = new THREE.PointLight(0xffaa33, 4, 60);
-  group.add(light);
+  // Pooled point light -- track which one we're using so we don't fade
+  // a light that has been hijacked by a newer explosion.
+  const light = acquireLight(world.scene);
+  light.position.copy(pos);
+  light.intensity = 6 * scale;
+  light.distance = 60;
+  // Sequence id so we know if this explosion still owns the light
+  const seq = (light._seq = (light._seq || 0) + 1);
 
   // Shrapnel sparks
   const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffeeaa });
@@ -74,12 +98,16 @@ export function makeExplosion(world, pos, scale = 1.0) {
     core.scale.setScalar(s * 0.5);
     fireMat.opacity = 1 - t;
     coreMat.opacity = 1 - t * 1.5;
-    light.intensity = (1 - t) * 6;
+    // Only fade *our* light; if a newer explosion hijacked it, leave it alone
+    if (light._seq === seq) light.intensity = (1 - t) * 6 * scale;
     for (const sp of sparks) {
       sp.position.addScaledVector(sp.userData.vel, dt);
       sp.userData.vel.y -= 30 * dt;
     }
-    if (t >= 1) world.scene.remove(group);
+    if (t >= 1) {
+      if (light._seq === seq) light.intensity = 0;
+      world.scene.remove(group);
+    }
   });
 }
 
@@ -131,8 +159,14 @@ export function makeShockwave(world, pos, color = 0xffcc44, maxRadius = 60) {
   });
 }
 
+// Shared materials for smoke puffs -- one for early-dark, one for late-light.
+// Each puff still needs its own opacity fade, so we clone the material lazily
+// per puff but reuse the geometry.
+const G_SMOKE_PUFF = new THREE.SphereGeometry(1.4, 8, 8);
+const _smokeMatProto = new THREE.MeshBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.55 });
+
 // Lingering smoke column from a destroyed building. Periodically emits drifting puffs
-// for ~10 seconds, keeping the destruction visible from a distance.
+// for ~8 seconds, keeping the destruction visible from a distance.
 export function makeSmokeColumn(world, pos, height = 30) {
   const baseY = pos.y;
   const proxy = new THREE.Object3D();
@@ -140,34 +174,36 @@ export function makeSmokeColumn(world, pos, height = 30) {
   world.scene.add(proxy);
   const totalLife = 8.0;
   let nextEmit = 0;
-  return new Effect(proxy, totalLife, (dt, t, eff) => {
+  return new Effect(proxy, totalLife, (dt, t) => {
     nextEmit -= dt;
     if (nextEmit <= 0) {
-      nextEmit = 0.5 + Math.random() * 0.3;
-      // bigger, darker puffs early; lighter and smaller later
+      nextEmit = 0.6 + Math.random() * 0.4;
       const intensity = (1 - t);
-      const puffPos = pos.clone();
-      puffPos.x += (Math.random() - 0.5) * 4;
-      puffPos.z += (Math.random() - 0.5) * 4;
-      puffPos.y = baseY + 1 + (1 - intensity) * height * 0.4;
-      const m = new THREE.Mesh(
-        new THREE.SphereGeometry(1.2 + Math.random() * 0.8, 8, 8),
-        new THREE.MeshBasicMaterial({
-          color: t < 0.4 ? 0x333333 : 0x666666,
-          transparent: true,
-          opacity: 0.55 * intensity,
-        })
+      // Per-puff material clone (cheap; just copies properties) so opacity
+      // can fade independently. Geometry stays shared.
+      const mat = _smokeMatProto.clone();
+      mat.color.setHex(t < 0.4 ? 0x333333 : 0x666666);
+      mat.opacity = 0.55 * intensity;
+      const m = new THREE.Mesh(G_SMOKE_PUFF, mat);
+      const sz = 0.85 + Math.random() * 0.55;
+      m.scale.setScalar(sz);
+      m.position.set(
+        pos.x + (Math.random() - 0.5) * 4,
+        baseY + 1 + (1 - intensity) * height * 0.4,
+        pos.z + (Math.random() - 0.5) * 4,
       );
-      m.position.copy(puffPos);
       world.scene.add(m);
-      m.userData.vel = new THREE.Vector3((Math.random() - 0.5) * 1.5, 1.6 + Math.random() * 1.2, (Math.random() - 0.5) * 1.5);
-      m.userData.life = 4.5;
-      m.userData.maxLife = 4.5;
+      const vy = 1.6 + Math.random() * 1.2;
+      const vx = (Math.random() - 0.5) * 1.5;
+      const vz = (Math.random() - 0.5) * 1.5;
+      const baseScale = sz;
       world.effects.push(new Effect(m, 4.5, (dt2, t2) => {
-        m.position.addScaledVector(m.userData.vel, dt2);
-        m.scale.setScalar(1 + t2 * 3);
-        m.material.opacity = 0.55 * intensity * (1 - t2);
-        if (t2 >= 1) world.scene.remove(m);
+        m.position.x += vx * dt2;
+        m.position.y += vy * dt2;
+        m.position.z += vz * dt2;
+        m.scale.setScalar(baseScale * (1 + t2 * 3));
+        mat.opacity = 0.55 * intensity * (1 - t2);
+        if (t2 >= 1) { world.scene.remove(m); mat.dispose(); }
       }));
     }
     if (t >= 1) world.scene.remove(proxy);
