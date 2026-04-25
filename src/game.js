@@ -842,12 +842,16 @@ function fireCharge() {
   state.cooldowns.charge = 6.0;
   // Dash forward and damage anything in front
   const forward = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
+  // Damage in a cone first so anything we plow through gets demolished
+  const cone = state.kaiju.root.position.clone().addScaledVector(forward, 12);
+  damageInRadius(cone, 28, cfg.damage, false);
   state.kaiju.root.position.addScaledVector(forward, 28);
+  // Push out of any building that survived the cone
+  resolveBuildingCollisions(state.kaiju.root.position, 0.5);
   world.spawnShockwave(state.kaiju.root.position.clone(), cfg.color, 25);
   world.shake(0.7, 0.4);
-  // damage cone in front
-  const center = state.kaiju.root.position.clone().addScaledVector(forward, 12);
-  damageInRadius(center, 28, cfg.damage, false);
+  // Final cleanup AOE at landing point
+  damageInRadius(state.kaiju.root.position, 24, cfg.damage * 0.5, false);
 }
 
 function fireStomp() {
@@ -912,7 +916,59 @@ function fireMelee() {
   if (armR) armR.userData.swing = 0.4;
 }
 
-// ------------------------- Player update -------------------------
+// ------------------------- Collision -------------------------
+// Resolve kaiju-vs-buildings as a circle-vs-AABB push, while wearing the
+// building down. Walking into a building no longer phases through it; you
+// have to crush it down (or use beam/charge/melee) to pass.
+const KAIJU_BODY_RADIUS = 3.6;
+function resolveBuildingCollisions(pos, dt) {
+  if (!state.monsterCfg) return;
+  const radius = KAIJU_BODY_RADIUS * (state.monsterCfg.stats.scale || 1);
+  for (const b of world.buildings) {
+    if (b.destroyed) continue;
+    const bx = b.group.position.x;
+    const bz = b.group.position.z;
+    const halfW = b.w / 2;
+    const halfD = b.d / 2;
+
+    // Quick reject (single-distance test against bounding circle of building)
+    const ddx = pos.x - bx;
+    const ddz = pos.z - bz;
+    const maxR = Math.max(halfW, halfD) + radius;
+    if (ddx * ddx + ddz * ddz > maxR * maxR) continue;
+
+    // Closest point on the AABB footprint
+    const cx = THREE.MathUtils.clamp(pos.x, bx - halfW, bx + halfW);
+    const cz = THREE.MathUtils.clamp(pos.z, bz - halfD, bz + halfD);
+    const dx = pos.x - cx;
+    const dz = pos.z - cz;
+    const dist2 = dx * dx + dz * dz;
+    if (dist2 >= radius * radius) continue;
+
+    let contactX, contactZ;
+    if (dist2 < 1e-4) {
+      // Center is inside the box -- pop out the nearest edge
+      const exitL = pos.x - (bx - halfW);
+      const exitR = (bx + halfW) - pos.x;
+      const exitN = pos.z - (bz - halfD);
+      const exitS = (bz + halfD) - pos.z;
+      const m = Math.min(exitL, exitR, exitN, exitS);
+      if (m === exitL)      { pos.x = bx - halfW - radius; contactX = bx - halfW; contactZ = pos.z; }
+      else if (m === exitR) { pos.x = bx + halfW + radius; contactX = bx + halfW; contactZ = pos.z; }
+      else if (m === exitN) { pos.z = bz - halfD - radius; contactZ = bz - halfD; contactX = pos.x; }
+      else                  { pos.z = bz + halfD + radius; contactZ = bz + halfD; contactX = pos.x; }
+    } else {
+      const dist = Math.sqrt(dist2);
+      const nx = dx / dist, nz = dz / dist;
+      pos.x = cx + nx * radius;
+      pos.z = cz + nz * radius;
+      contactX = cx; contactZ = cz;
+    }
+
+    // Continuous wear-down: ~35 dps to the building you push into
+    b.damage(35 * dt, new THREE.Vector3(contactX, b.h * 0.6, contactZ), world);
+  }
+}
 function updatePlayer(dt) {
   const k = state.kaiju;
   if (!k) return;
@@ -942,6 +998,7 @@ function updatePlayer(dt) {
 
   k.root.position.x += state.vel.x * dt;
   k.root.position.z += state.vel.z * dt;
+  resolveBuildingCollisions(k.root.position, dt);
   // Clamp to map bounds
   const limit = 380;
   k.root.position.x = THREE.MathUtils.clamp(k.root.position.x, -limit, limit);
