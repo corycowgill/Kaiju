@@ -519,26 +519,54 @@ for (const key of Object.keys(MONSTERS)) {
   cardsDiv.appendChild(card);
   _cardEls[key] = card;
 }
-// Render the 3D portraits AFTER the menu paints, then swap them in.
-// requestIdleCallback (Chromium) or setTimeout (Safari) defers it cleanly.
+// Portrait priority chain:
+//   1. Static image at assets/<key>.{png,jpg,jpeg,webp}  (artist-supplied; wins)
+//   2. 3D-rendered preview from buildKaiju()             (procedural fallback)
+//   3. Emoji shown in the .preview slot                  (always present)
+const _staticCovered = new Set();
+function _setCardImage(key, url) {
+  const card = _cardEls[key];
+  if (!card) return;
+  const m = MONSTERS[key];
+  const prev = card.querySelector('.preview');
+  if (!prev) return;
+  prev.style.background = `url(${url}) center/contain no-repeat, ${m.bg}`;
+  const emo = prev.querySelector('.preview-emoji');
+  if (emo) emo.style.display = 'none';
+}
+function _tryStaticImage(key) {
+  return new Promise((resolve) => {
+    const exts = ['png', 'jpg', 'jpeg', 'webp'];
+    let i = 0;
+    const tryNext = () => {
+      if (i >= exts.length) return resolve(false);
+      const url = `assets/${key}.${exts[i++]}`;
+      const img = new Image();
+      img.onload = () => { _setCardImage(key, url); _staticCovered.add(key); resolve(true); };
+      img.onerror = tryNext;
+      img.src = url;
+    };
+    tryNext();
+  });
+}
 const _renderPreviewsLazy = () => {
   try {
     const previews = renderMonsterPreviews(isMobile ? 160 : 220);
     for (const key of Object.keys(previews)) {
-      const card = _cardEls[key];
-      if (!card) continue;
-      const m = MONSTERS[key];
-      const prev = card.querySelector('.preview');
-      if (prev && previews[key]) {
-        prev.style.background = `url(${previews[key]}) center/contain no-repeat, ${m.bg}`;
-        const emo = prev.querySelector('.preview-emoji');
-        if (emo) emo.style.display = 'none';
-      }
+      if (_staticCovered.has(key)) continue; // artist asset already loaded
+      if (previews[key]) _setCardImage(key, previews[key]);
     }
   } catch (e) { console.warn('preview render failed; keeping emoji fallback', e); }
 };
-if (typeof requestIdleCallback === 'function') requestIdleCallback(_renderPreviewsLazy, { timeout: 500 });
-else setTimeout(_renderPreviewsLazy, 50);
+// Kick off both. Static images are probed in parallel; 3D fallback runs once
+// the menu has painted (idleCallback / setTimeout). Whichever finishes first
+// wins per monster, with static taking precedence if both complete.
+Promise.all(Object.keys(MONSTERS).map(_tryStaticImage)).then((results) => {
+  // If every monster got a static image, skip the 3D render entirely.
+  if (results.every(Boolean)) return;
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(_renderPreviewsLazy, { timeout: 500 });
+  else setTimeout(_renderPreviewsLazy, 50);
+});
 document.getElementById('startBtn').addEventListener('click', () => {
   if (!state.monsterKey) return;
   audio.init();
