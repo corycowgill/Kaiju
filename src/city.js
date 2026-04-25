@@ -18,7 +18,7 @@ export function setBuildingLite(v) { LITE_MODE = !!v; }
 export class Building {
   constructor(x, z, w, d, h, opts = {}) {
     this.x = x; this.z = z; this.w = w; this.d = d; this.h = h;
-    this.maxHp = Math.max(40, Math.floor(h * 4 + w * d * 0.4));
+    this.maxHp = Math.max(20, Math.floor(h * 1.4 + w * d * 0.18));
     this.hp = this.maxHp;
     this.destroyed = false;
     this.debris = [];
@@ -114,10 +114,24 @@ export class Building {
 
   damage(amount, hitPoint, world) {
     if (this.destroyed) return 0;
+    const before = this.hp;
     this.hp -= amount;
-    // shake a little
+    // tint darker as it weakens
     this.body.material.color.offsetHSL(0, 0, -0.005);
-    if (hitPoint && world) world.spawnSparks(hitPoint, 6);
+    if (hitPoint && world) {
+      world.spawnSparks(hitPoint, 6);
+      world.spawnHitPulse?.(hitPoint, 0xffaa44);
+    }
+    // emit smoke when crossing damage thresholds (50% / 25%)
+    const halfPct = before / this.maxHp;
+    const nowPct = this.hp / this.maxHp;
+    if (world && halfPct > 0.5 && nowPct <= 0.5) {
+      world.spawnSmoke(this.group.position.clone().setY(this.h * 0.85), 1.4);
+    }
+    if (world && halfPct > 0.25 && nowPct <= 0.25) {
+      world.spawnSmoke(this.group.position.clone().setY(this.h * 0.7), 1.8);
+      world.spawnSparks(this.group.position.clone().setY(this.h * 0.6), 8);
+    }
     if (this.hp <= 0) {
       this.collapse(world);
       return this.maxHp; // score
@@ -131,38 +145,71 @@ export class Building {
     const pos = this.group.position.clone();
     pos.y += this.h / 2;
 
-    // explode body into chunks
-    const chunks = 5 + Math.floor(Math.random() * 5);
+    // Big initial fireball + a couple of staggered smaller explosions
+    if (world) {
+      world.spawnExplosion(pos.clone(), 1.6 + Math.min(2.0, this.h / 30));
+      const w2 = world;
+      setTimeout(() => { if (w2.scene) w2.spawnExplosion(pos.clone().setY(this.h * 0.5).add(new THREE.Vector3(rand(-3,3), 0, rand(-3,3))), 1.0); }, 90);
+      setTimeout(() => { if (w2.scene) w2.spawnExplosion(this.group.position.clone().setY(this.h * 0.2), 1.2); }, 200);
+    }
+
+    // Lots of chunks for satisfying spray
+    const chunks = 14 + Math.floor(Math.random() * 6) + Math.min(8, Math.floor(this.h / 12));
     for (let i = 0; i < chunks; i++) {
-      const cw = this.w * rand(0.25, 0.55);
-      const ch = this.h * rand(0.15, 0.35);
-      const cd = this.d * rand(0.25, 0.55);
+      const cw = this.w * rand(0.18, 0.55);
+      const ch = this.h * rand(0.08, 0.32);
+      const cd = this.d * rand(0.18, 0.55);
       const m = new THREE.Mesh(
         new THREE.BoxGeometry(cw, ch, cd),
         new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 0.95 })
       );
       m.position.copy(this.group.position);
-      m.position.y = this.h * 0.4 + rand(-2, 2);
+      m.position.y = this.h * rand(0.2, 0.7);
       m.position.x += rand(-this.w / 3, this.w / 3);
       m.position.z += rand(-this.d / 3, this.d / 3);
       m.castShadow = true;
-      m.userData.vel = new THREE.Vector3(rand(-8, 8), rand(8, 18), rand(-8, 8));
-      m.userData.angVel = new THREE.Vector3(rand(-3,3), rand(-3,3), rand(-3,3));
-      m.userData.life = 4.0;
+      m.userData.vel = new THREE.Vector3(rand(-12, 12), rand(10, 22), rand(-12, 12));
+      m.userData.angVel = new THREE.Vector3(rand(-5, 5), rand(-5, 5), rand(-5, 5));
+      m.userData.life = 6.5; // longer-lived debris
       world.scene.add(m);
       world.debris.push(m);
     }
 
-    // fireball / smoke
-    if (world) {
-      world.spawnExplosion(pos, 1.4);
-      world.shake(0.6, 0.5);
-      world.onBuildingDestroyed?.(this);
+    // Ground rubble (low boxes that stay)
+    for (let i = 0; i < 4; i++) {
+      const rw = this.w * rand(0.3, 0.7);
+      const rd = this.d * rand(0.3, 0.7);
+      const rh = rand(1.2, 2.6);
+      const rub = new THREE.Mesh(
+        new THREE.BoxGeometry(rw, rh, rd),
+        new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 1.0 })
+      );
+      rub.position.set(
+        this.group.position.x + rand(-this.w / 4, this.w / 4),
+        rh / 2,
+        this.group.position.z + rand(-this.d / 4, this.d / 4),
+      );
+      rub.rotation.y = Math.random() * Math.PI;
+      rub.castShadow = true; rub.receiveShadow = true;
+      world.scene.add(rub);
     }
+
+    // Dust plume: many smoke puffs spreading from base
+    if (world) {
+      const base = this.group.position.clone().setY(0);
+      for (let i = 0; i < 8; i++) {
+        const dust = base.clone().add(new THREE.Vector3(rand(-this.w * 0.6, this.w * 0.6), rand(0, 4), rand(-this.d * 0.6, this.d * 0.6)));
+        world.spawnSmoke(dust, 1.4 + Math.random() * 1.2);
+      }
+      // Ground dust ring
+      world.spawnShockwave(base, 0xaa8866, Math.max(this.w, this.d) * 1.4);
+      world.shake(0.9 + Math.min(0.7, this.h / 40), 0.7);
+    }
+
+    if (world) world.onBuildingDestroyed?.(this);
 
     // remove building from scene
     this.group.parent && this.group.parent.remove(this.group);
-    // dispose materials/geometries lazily
   }
 }
 

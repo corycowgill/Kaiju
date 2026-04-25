@@ -4,10 +4,23 @@ import { Building, buildCity, spawnCars } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
 import {
   Effect, makeExplosion, makeSparks, makeShockwave,
-  makeMuzzleFlash, makeSmokePuff, makeBeam,
+  makeMuzzleFlash, makeSmokePuff, makeBeam, makeHitPulse,
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
+
+// ------------------------- High score (localStorage) -------------------------
+const HIGH_SCORE_KEY = 'kaiju_highscore';
+function getHighScore() {
+  try { return parseInt(localStorage.getItem(HIGH_SCORE_KEY) || '0', 10) || 0; } catch { return 0; }
+}
+function trySetHighScore(s) {
+  try {
+    const cur = getHighScore();
+    if (s > cur) { localStorage.setItem(HIGH_SCORE_KEY, String(s)); return true; }
+  } catch {}
+  return false;
+}
 
 // ------------------------- Mobile detect -------------------------
 const isMobile = (() => {
@@ -114,6 +127,7 @@ const world = {
   spawnShockwave: function (pos, color, r) { this.effects.push(makeShockwave(this, pos, color, r)); },
   spawnMuzzleFlash: function (pos, s) { this.effects.push(makeMuzzleFlash(this, pos, s)); },
   spawnSmoke: function (pos, s) { this.effects.push(makeSmokePuff(this, pos, s)); },
+  spawnHitPulse: function (pos, color) { this.effects.push(makeHitPulse(this, pos, color)); },
   spawnBeam: function (origin, dir, len, color, glow) {
     this.effects.push(makeBeam(this, origin, dir, len, color, glow));
   },
@@ -183,6 +197,9 @@ const state = {
   damageFlash: 0,    // 0..1 fade, > 0 means recently hit
   upgrades: { hpBonus: 0, dmgMult: 1, speedMult: 1, regenRate: 0, comboTimerBonus: 0, rageGainMult: 1 },
   upgradePending: false,
+  popups: [],          // floating score numbers
+  slowMoUntil: 0,      // performance.now() ms until slow-mo ends
+  slowMoScale: 1,
 };
 
 const keys = {};
@@ -400,6 +417,13 @@ document.getElementById('startBtn').addEventListener('click', () => {
   audio.resume();
   startGame(state.monsterKey);
 });
+
+// Render existing high score on the menu
+{
+  const hs = getHighScore();
+  const el = document.getElementById('highscore-display');
+  if (el) el.textContent = hs > 0 ? `BEST · ${hs.toLocaleString()}` : 'NEW CITY · NO RECORDS YET';
+}
 
 // Resume audio after iOS suspends it on tab background
 document.addEventListener('visibilitychange', () => { if (!document.hidden) audio.resume(); });
@@ -638,6 +662,40 @@ function startWave(n) {
   }
 }
 
+// ---- Floating score popups (HTML overlay) ----
+const popupContainer = document.getElementById('popups');
+function spawnPopup(worldPos, text, color = '#ffee66') {
+  if (!popupContainer) return;
+  const el = document.createElement('div');
+  el.className = 'popup';
+  el.textContent = text;
+  el.style.color = color;
+  popupContainer.appendChild(el);
+  state.popups.push({ el, worldPos: worldPos.clone(), life: 1.1, maxLife: 1.1 });
+}
+function updatePopups(dt) {
+  for (let i = state.popups.length - 1; i >= 0; i--) {
+    const p = state.popups[i];
+    p.life -= dt;
+    if (p.life <= 0) { p.el.remove(); state.popups.splice(i, 1); continue; }
+    const t = 1 - p.life / p.maxLife;
+    const v = p.worldPos.clone();
+    v.y += t * 7;
+    v.project(camera);
+    if (v.z > 1 || v.z < -1) { p.el.style.opacity = '0'; continue; }
+    const x = (v.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
+    p.el.style.transform = `translate(${x}px, ${y}px) scale(${1 + t * 0.4})`;
+    p.el.style.opacity = String(Math.max(0, 1 - t * 1.2));
+  }
+}
+
+// ---- Slow-motion on big moments ----
+function slowMo(scale, durSec) {
+  state.slowMoScale = scale;
+  state.slowMoUntil = performance.now() + durSec * 1000;
+}
+
 // ---- Combo + scoring helpers ----
 function comboMult() { return Math.min(5, 1 + state.combo * 0.1); }
 function bumpCombo() {
@@ -698,7 +756,10 @@ world.onBossKilled = () => {
   addScore(5000); addRage(40);
   toast('BOSS DESTROYED · +5000', 'good');
   document.getElementById('boss-bar').style.display = 'none';
+  if (state.boss) spawnPopup(state.boss.root.position.clone().setY(14), '+5000', '#ff66aa');
   state.boss = null;
+  slowMo(0.25, 0.7);
+  world.shake(2.0, 1.0);
 };
 world.onBossSlam = () => {
   // Damage to player if too close
@@ -715,22 +776,27 @@ world.onPickup = (type, pos) => {
   if (pos) world.spawnSparks(pos.clone().setY(2.5), 12);
   if (type === 'hp') {
     state.hp = Math.min(state.maxHp, state.hp + 25);
-    toast('+25 HP', 'good');
+    if (pos) spawnPopup(pos.clone().setY(4), '+25 HP', '#66ff99');
   } else if (type === 'rage') {
     addRage(30);
-    toast('+30 RAGE', 'good');
+    if (pos) spawnPopup(pos.clone().setY(4), '+30 RAGE', '#88ccff');
   } else if (type === 'score') {
     addScore(500);
-    toast('+500', 'good');
+    if (pos) spawnPopup(pos.clone().setY(4), '+500', '#ffcc44');
   }
 };
 world.onBuildingDestroyed = (b) => {
   state.buildingsDestroyed++;
-  addScore(Math.floor(b.maxHp * 1.5));
+  const base = Math.floor(b.maxHp * 1.5);
+  addScore(base);
   addRage(6);
   bumpCombo();
   // Drop a pickup at the rubble
   maybeDropPickup(b.group.position.clone(), 'building');
+  // Floating "+N" with combo multiplier shown
+  const shown = Math.floor(base * comboMult());
+  spawnPopup(b.group.position.clone().setY(b.h * 0.6), `+${shown}`,
+    state.combo >= 5 ? '#ff66aa' : '#ffee66');
 };
 
 // ---- Artillery shell support (parabolic) ----
@@ -775,6 +841,10 @@ function gameOver(victory) {
   document.getElementById('goTitle').textContent = victory ? 'TOKYO FALLS' : 'DEFEATED';
   document.getElementById('goSubtitle').textContent = victory ? 'The kaiju reigns supreme.' : 'The military has prevailed...';
   audio.gameOver();
+  const isNewHigh = trySetHighScore(state.score);
+  const newHighEl = document.getElementById('newHighScore');
+  if (newHighEl) newHighEl.style.display = isNewHigh ? 'block' : 'none';
+  document.getElementById('goHighScore').textContent = getHighScore().toLocaleString();
   document.getElementById('finalScore').textContent = state.score.toLocaleString();
   document.getElementById('finalWave').textContent = state.wave;
   document.getElementById('finalBuildings').textContent = state.buildingsDestroyed;
@@ -788,6 +858,7 @@ function gameOver(victory) {
 // ------------------------- Powers / damage -------------------------
 function damageInRadius(center, radius, amount, isAerialAlso = true) {
   amount = amount * (state.upgrades?.dmgMult || 1);
+  // (hit pulses are spawned on each enemy hit below)
   // Damage buildings
   for (const b of world.buildings) {
     if (b.destroyed) continue;
@@ -805,7 +876,14 @@ function damageInRadius(center, radius, amount, isAerialAlso = true) {
     const dx = e.root.position.x - center.x;
     const dz = e.root.position.z - center.z;
     if (dx * dx + dz * dz < radius * radius) {
+      const wasDead = e.dead;
       e.damage(amount, world);
+      world.spawnHitPulse(e.root.position.clone().setY(4), 0xffffff);
+      if (!wasDead && e.dead && e.type !== 'soldier') {
+        spawnPopup(e.root.position.clone().setY(8),
+          e.type === 'boss' ? '+5000' : (e.type === 'mech' ? '+700' : (e.type === 'jet' ? '+450' : '+250')),
+          '#ffee44');
+      }
     }
   }
 }
@@ -911,6 +989,7 @@ function fireUltimate() {
   toast('ULTIMATE UNLEASHED!', 'good');
   showMessage('!!! KAIJU FURY !!!', 1.4);
   audio.ult();
+  slowMo(0.45, 0.5);
 
   const cfg = state.monsterCfg;
   const head = state.kaiju.head;
@@ -1478,7 +1557,8 @@ let last = performance.now();
 function tick(now) {
   const dtRaw = (now - last) / 1000;
   last = now;
-  const dt = Math.min(0.05, dtRaw);
+  const slowActive = now < state.slowMoUntil;
+  const dt = Math.min(0.05, dtRaw) * (slowActive ? state.slowMoScale : 1);
   if (!state.paused && !state.gameOver) {
     world.time += dt;
     skyMat.uniforms.time.value = world.time;
@@ -1489,8 +1569,10 @@ function tick(now) {
     updateCamera();
     updateHUD();
     drawMinimap();
+    updatePopups(dt);
   } else if (state.kaiju) {
     updateCamera();
+    updatePopups(dt);
   }
   renderer.render(scene, camera);
   requestAnimationFrame(tick);

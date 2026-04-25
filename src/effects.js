@@ -121,6 +121,21 @@ export function makeShockwave(world, pos, color = 0xffcc44, maxRadius = 60) {
   });
 }
 
+// Quick expanding glow at a hit point. Tactile feedback for impact.
+export function makeHitPulse(world, pos, color = 0xffffff) {
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(0.6, 10, 10),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 })
+  );
+  m.position.copy(pos);
+  world.scene.add(m);
+  return new Effect(m, 0.22, (dt, t) => {
+    m.scale.setScalar(1 + t * 6);
+    m.material.opacity = 0.95 * (1 - t);
+    if (t >= 1) world.scene.remove(m);
+  });
+}
+
 export function makeMuzzleFlash(world, pos, scale = 0.5) {
   const m = new THREE.Mesh(
     new THREE.SphereGeometry(scale, 8, 8),

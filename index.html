@@ -282,6 +282,17 @@
   body.mobile #boss-bar { top: 50px; width: 80%; }
   body.mobile #toasts { top: 100px; }
 
+  /* Score popup */
+  .popup {
+    position: absolute; left: 0; top: 0;
+    transform: translate(-50%, -50%);
+    font-weight: bold; font-size: 24px;
+    color: #ffee66; text-shadow: 0 0 8px #000, 2px 2px 0 #000, -2px -2px 0 #000;
+    white-space: nowrap;
+    will-change: transform, opacity;
+  }
+  body.mobile .popup { font-size: 18px; }
+
   /* Low HP pulsing red vignette */
   #lowhp-warning.active {
     animation: lowhpPulse 0.9s ease-in-out infinite;
@@ -356,6 +367,9 @@
 <div id="damage-flash" style="position:fixed; inset:0; pointer-events:none; z-index:9; background:radial-gradient(ellipse at center, transparent 40%, #ff0033 100%); opacity:0; transition:opacity 0.25s;"></div>
 <div id="lowhp-warning" style="position:fixed; inset:0; pointer-events:none; z-index:9; box-shadow:inset 0 0 120px 60px #ff0033; opacity:0;"></div>
 
+<!-- Floating score popup container -->
+<div id="popups" style="position:fixed; inset:0; pointer-events:none; z-index:8; overflow:hidden;"></div>
+
 <!-- Mobile touch controls -->
 <div id="mobile-ui">
   <div id="joystick" class="hidden"><div class="knob"></div></div>
@@ -374,6 +388,7 @@
 <div id="menu" class="overlay">
   <h1>KAIJU RAMPAGE</h1>
   <h2>~ TOKYO DESTRUCTION ~</h2>
+  <div id="highscore-display" style="font-size:14px; color:#ffcc66; letter-spacing:4px; margin-bottom:18px;"></div>
   <div class="monsters" id="monsterCards"></div>
   <button class="start-btn" id="startBtn" disabled>START RAMPAGE</button>
   <p style="margin-top:20px; color:#888; font-size:12px;">WASD MOVE · MOUSE LOOK · LMB ATTACK · 1-3 POWERS · SPACE STOMP</p>
@@ -447,7 +462,9 @@
 <div id="gameover" class="overlay hidden">
   <h1 id="goTitle">DEFEATED</h1>
   <h2 id="goSubtitle">The military has prevailed...</h2>
+  <div id="newHighScore" style="font-size:24px; color:#ff66aa; letter-spacing:6px; margin-bottom:8px; display:none;">★ NEW HIGH SCORE ★</div>
   <div class="stats-row">Final Score: <b id="finalScore">0</b></div>
+  <div class="stats-row">High Score: <b id="goHighScore">0</b></div>
   <div class="stats-row">Waves Survived: <b id="finalWave">0</b></div>
   <div class="stats-row">Buildings Destroyed: <b id="finalBuildings">0</b></div>
   <div class="stats-row">Tanks Crushed: <b id="finalTanks">0</b></div>
