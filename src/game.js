@@ -1185,7 +1185,10 @@ function updatePlayer(dt) {
   }
 
   const forward = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
-  const right = new THREE.Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
+  // Camera-right vector. forward x up in a right-handed system gives
+  // (-cos(yaw), 0, sin(yaw)) -- the previous (cos, 0, -sin) was the
+  // negation, so D strafed left and A strafed right.
+  const right = new THREE.Vector3(-Math.cos(state.yaw), 0, Math.sin(state.yaw));
   const move = new THREE.Vector3();
   move.addScaledVector(forward, mz);
   move.addScaledVector(right, mx);
