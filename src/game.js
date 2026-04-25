@@ -181,12 +181,33 @@ window.addEventListener('mousemove', (e) => {
   }
 });
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+function fitRenderer() {
+  // Prefer visualViewport on iOS Safari -- it tracks the actually-visible area
+  // (excludes the dynamic URL bar / keyboard) and updates after rotation.
+  const vv = window.visualViewport;
+  const w = vv ? vv.width  : window.innerWidth;
+  const h = vv ? vv.height : window.innerHeight;
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(w, h, true); // updateStyle=true: also sets canvas style.width/height
   updateOrientationClass();
+}
+fitRenderer();
+window.addEventListener('resize', fitRenderer);
+window.addEventListener('orientationchange', () => {
+  // iOS Safari fires orientationchange before layout settles; re-fit a few times.
+  fitRenderer();
+  setTimeout(fitRenderer, 120);
+  setTimeout(fitRenderer, 400);
+  setTimeout(fitRenderer, 900);
 });
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitRenderer);
+  window.visualViewport.addEventListener('scroll', fitRenderer);
+}
+// iOS sometimes leaves the page scrolled after rotation -- snap back to top
+window.addEventListener('scroll', () => window.scrollTo(0, 0), { passive: true });
 
 // ------------------------- Touch / mobile input -------------------------
 const touchInput = {
@@ -287,10 +308,12 @@ function isOnControl(target) {
 }
 window.addEventListener('touchstart', (e) => {
   if (!isMobile || state.gameOver || !state.kaiju) return;
+  // Compute live joystick gate so landscape (wider screen) still allows look.
+  const joyRect = joystickEl ? joystickEl.getBoundingClientRect() : null;
   for (const t of e.changedTouches) {
     if (t.identifier === touchInput.joyId) continue;
     if (isOnControl(t.target)) continue;
-    if (t.clientX < window.innerWidth * 0.4) continue; // left side reserved for joystick area
+    if (joyRect && t.clientX < joyRect.right + 24 && t.clientY > joyRect.top - 40) continue;
     if (touchInput.lookId !== null) continue;
     touchInput.lookId = t.identifier;
     touchInput.lookLastX = t.clientX;

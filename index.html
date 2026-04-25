@@ -11,14 +11,15 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
   html, body {
-    width: 100%; height: 100%; overflow: hidden; background: #000;
+    width: 100%; height: 100vh; height: 100dvh;
+    overflow: hidden; background: #000;
     font-family: 'Trebuchet MS', sans-serif; color: #fff;
     overscroll-behavior: none; touch-action: none;
     -webkit-user-select: none; user-select: none;
-    position: fixed;
+    position: fixed; inset: 0;
   }
   #game { position: fixed; inset: 0; touch-action: none; }
-  canvas { display: block; touch-action: none; }
+  #game canvas { display: block; width: 100% !important; height: 100% !important; touch-action: none; }
 
   /* HUD */
   #hud {
@@ -90,7 +91,12 @@
   .overlay {
     position: fixed; inset: 0; background: radial-gradient(ellipse at center, #200 0%, #000 70%);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    z-index: 100; text-align: center; padding: 20px;
+    z-index: 100; text-align: center;
+    padding-top: max(20px, env(safe-area-inset-top));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+    overflow-y: auto;
   }
   .overlay h1 {
     font-size: 64px; letter-spacing: 8px; color: #ff3344;
@@ -142,10 +148,19 @@
   body.mobile #mobile-ui { display: block; }
   body.mobile #help { display: none !important; }
 
+  /* Safe-area aware HUD on mobile */
+  body.mobile #hud {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+
   /* Joystick (left) */
   #joystick {
-    position: fixed; bottom: 110px; left: 30px;
-    width: 140px; height: 140px; border-radius: 50%;
+    position: fixed;
+    bottom: max(20px, calc(env(safe-area-inset-bottom) + 16px));
+    left: max(16px, calc(env(safe-area-inset-left) + 12px));
+    width: 130px; height: 130px; border-radius: 50%;
     background: rgba(0,0,0,0.35); border: 2px solid rgba(255,80,100,0.5);
     box-shadow: 0 0 20px rgba(255,80,100,0.3) inset;
     z-index: 12; pointer-events: auto; touch-action: none;
@@ -161,11 +176,13 @@
 
   /* Attack button (right) */
   #attack-btn {
-    position: fixed; bottom: 130px; right: 30px;
-    width: 110px; height: 110px; border-radius: 50%;
+    position: fixed;
+    bottom: max(28px, calc(env(safe-area-inset-bottom) + 22px));
+    right: max(16px, calc(env(safe-area-inset-right) + 12px));
+    width: 100px; height: 100px; border-radius: 50%;
     background: radial-gradient(circle at 30% 30%, #ff5566, #880022);
     border: 3px solid #ffcc66;
-    color: #fff; font-weight: bold; font-size: 18px; letter-spacing: 2px;
+    color: #fff; font-weight: bold; font-size: 16px; letter-spacing: 2px;
     text-shadow: 2px 2px 0 #000;
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 0 24px rgba(255,80,100,0.6);
@@ -176,10 +193,12 @@
 
   /* Sprint toggle button */
   #sprint-btn {
-    position: fixed; bottom: 250px; right: 40px;
-    width: 70px; height: 70px; border-radius: 50%;
+    position: fixed;
+    bottom: max(140px, calc(env(safe-area-inset-bottom) + 130px));
+    right: max(28px, calc(env(safe-area-inset-right) + 22px));
+    width: 64px; height: 64px; border-radius: 50%;
     background: rgba(0,0,0,0.55); border: 2px solid #66aaff;
-    color: #aaccff; font-weight: bold; font-size: 13px; letter-spacing: 2px;
+    color: #aaccff; font-weight: bold; font-size: 12px; letter-spacing: 2px;
     display: flex; align-items: center; justify-content: center;
     z-index: 12; pointer-events: auto; touch-action: none;
   }
@@ -187,10 +206,12 @@
 
   /* Pause button */
   #pause-btn {
-    position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
-    width: 38px; height: 38px; border-radius: 50%;
+    position: fixed;
+    top: max(6px, calc(env(safe-area-inset-top) + 4px));
+    left: 50%; transform: translateX(-50%);
+    width: 36px; height: 36px; border-radius: 50%;
     background: rgba(0,0,0,0.6); border: 1px solid #ffcc66;
-    color: #ffcc66; font-size: 18px;
+    color: #ffcc66; font-size: 16px;
     display: flex; align-items: center; justify-content: center;
     z-index: 13; pointer-events: auto; touch-action: none;
   }
@@ -202,8 +223,13 @@
   body.mobile .value { font-size: 14px; }
   body.mobile #score { font-size: 18px; }
   body.mobile .bar { height: 9px; }
-  body.mobile #powers { gap: 6px; bottom: 8px; }
-  body.mobile .power { width: 58px; height: 58px; }
+  body.mobile #powers {
+    gap: 6px;
+    bottom: max(8px, calc(env(safe-area-inset-bottom) + 4px));
+    /* Keep power buttons clear of the joystick + attack button */
+    left: 50%; transform: translateX(-50%);
+  }
+  body.mobile .power { width: 54px; height: 54px; }
   body.mobile .power .key { font-size: 14px; }
   body.mobile .power .name { font-size: 9px; }
 
