@@ -1,4 +1,4 @@
-# 🦖 KAIJU RAMPAGE
+# 🦖 KAIJU HAVOC
 
 > A 100% browser-based, three.js-powered Tokyo destruction simulator. Pick a giant monster. Stomp the city. Vaporize the army. Repeat until the high score weeps.
 
