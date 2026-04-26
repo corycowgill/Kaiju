@@ -693,6 +693,7 @@ export function renderMonsterPreviews(size = 220) {
   r.setClearColor(0x000000, 0);
   r.toneMapping = THREE.ACESFilmicToneMapping;
   r.toneMappingExposure = 1.5;
+  r.outputColorSpace = THREE.SRGBColorSpace;
 
   const out = {};
   for (const key of Object.keys(MONSTERS)) {

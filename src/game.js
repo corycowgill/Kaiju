@@ -6,6 +6,7 @@ window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { Building, buildCity, spawnCars, flushBodiesIM } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
@@ -59,7 +60,8 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = false;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.45;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 game.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -68,20 +70,24 @@ scene.fog = new THREE.Fog(0x6a4a5a, 240, 1100);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 2000);
 
-// Postprocessing -- bloom only, at half-res, on desktop. Skip on mobile.
+// Postprocessing pipeline:
+//   RenderPass -> UnrealBloomPass -> OutputPass (tone-map + sRGB at the end).
+// Bloom runs at half-res to keep mobile-class GPUs in the budget.
+// Phase 1 of graphics plan: explicit OutputPass + sRGBColorSpace audit so the
+// composer chain matches the colour pipeline regardless of pass order.
 let composer = null;
 let bloomPass = null;
-let fxaaPass = null;
-if (!isMobile) {
+{
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth * 0.5, window.innerHeight * 0.5), // half-res buffer
-    0.75,  // strength
-    0.55,  // radius
-    0.65   // threshold -- a touch higher so only really bright pixels bloom
+    new THREE.Vector2(window.innerWidth * 0.5, window.innerHeight * 0.5),
+    isMobile ? 0.55 : 0.85,  // strength (slightly lower on mobile)
+    isMobile ? 0.45 : 0.55,  // radius
+    0.7                      // threshold -- only genuinely bright pixels bloom
   );
   composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
 }
 
 // Lighting: dramatic dusk
