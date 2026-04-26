@@ -1611,19 +1611,24 @@ export function buildCity(scene, world, opts = {}) {
   const BLOCK = lite ? 48 : 40; // block size including streets
   const STREET = 8;
 
-  // Ground (asphalt)
+  // Ground: now a sidewalk-grey concrete colour so the dark asphalt streets
+  // sit on top of it and the area between blocks reads as pavement instead
+  // of just "the void". Beyond CITY_RADIUS we keep it the same colour --
+  // works as a continuous urban floor even at the periphery.
   const groundGeom = new THREE.PlaneGeometry(1600, 1600, 1, 1);
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.95 });
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x6e6864, roughness: 0.95 });
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   ground.matrixAutoUpdate = false; ground.updateMatrix();
   scene.add(ground);
 
-  // Street grid (asphalt) + glowing center lines (continuous, very cheap).
+  // Street grid (asphalt) + glowing center lines + flanking sidewalks.
   const streetMat = new THREE.MeshStandardMaterial({ color: 0x14141a, roughness: 0.92 });
   const lineMat   = new THREE.MeshStandardMaterial({ color: 0xffe066, emissive: 0xffd14a, emissiveIntensity: 0.45, roughness: 0.6 });
-  const curbMat   = new THREE.MeshStandardMaterial({ color: 0x2c2c34, roughness: 1.0 });
+  const curbMat   = new THREE.MeshStandardMaterial({ color: 0x222226, roughness: 1.0 });
+  const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x9a948c, roughness: 0.95 });
+  const SIDEWALK_W = 3.0; // width of each sidewalk strip flanking a street
   for (let i = -CITY_RADIUS; i <= CITY_RADIUS; i += BLOCK) {
     const sx = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, STREET), streetMat);
     sx.rotation.x = -Math.PI / 2; sx.position.set(0, 0.05, i);
@@ -1631,6 +1636,20 @@ export function buildCity(scene, world, opts = {}) {
     const sz = new THREE.Mesh(new THREE.PlaneGeometry(STREET, CITY_RADIUS * 2), streetMat);
     sz.rotation.x = -Math.PI / 2; sz.position.set(i, 0.05, 0);
     sz.receiveShadow = true; sz.matrixAutoUpdate = false; sz.updateMatrix(); scene.add(sz);
+
+    // Sidewalks flanking each street -- light grey strips just past the curb.
+    for (const off of [STREET / 2 + SIDEWALK_W / 2, -(STREET / 2 + SIDEWALK_W / 2)]) {
+      const swx = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, SIDEWALK_W), sidewalkMat);
+      swx.rotation.x = -Math.PI / 2;
+      swx.position.set(0, 0.06, i + off);
+      swx.receiveShadow = true; swx.matrixAutoUpdate = false; swx.updateMatrix();
+      scene.add(swx);
+      const swz = new THREE.Mesh(new THREE.PlaneGeometry(SIDEWALK_W, CITY_RADIUS * 2), sidewalkMat);
+      swz.rotation.x = -Math.PI / 2;
+      swz.position.set(i + off, 0.06, 0);
+      swz.receiveShadow = true; swz.matrixAutoUpdate = false; swz.updateMatrix();
+      scene.add(swz);
+    }
 
     // Center yellow line per street
     const lx = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, 0.35), lineMat);
@@ -1882,6 +1901,92 @@ export function buildCity(scene, world, opts = {}) {
       bulbIM.instanceMatrix.needsUpdate = true;
       scene.add(postIM);
       scene.add(bulbIM);
+    }
+  }
+
+  // ---- Stoplights at major intersections ----
+  // 4 InstancedMeshes per stoplight component (pole, head box, red, yellow,
+  // green) shared by every intersection. Placed every 3rd block so we don't
+  // light up every single corner.
+  {
+    const intersections = [];
+    const stoplightStep = BLOCK * 3;
+    for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += stoplightStep) {
+      for (let j = -CITY_RADIUS + BLOCK; j <= CITY_RADIUS - BLOCK; j += stoplightStep) {
+        // Skip near central plaza + reserved zones
+        if (Math.abs(i) < BLOCK && Math.abs(j) < BLOCK) continue;
+        if (isReserved(i, j)) continue;
+        intersections.push([i, j]);
+      }
+    }
+    if (intersections.length) {
+      const poleMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.85, metalness: 0.4 });
+      const headMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.5 });
+      const redMat   = new THREE.MeshStandardMaterial({ color: 0x440000, emissive: 0xff2200, emissiveIntensity: 0.0 });
+      const yelMat   = new THREE.MeshStandardMaterial({ color: 0x443300, emissive: 0xffaa11, emissiveIntensity: 0.0 });
+      const grnMat   = new THREE.MeshStandardMaterial({ color: 0x004411, emissive: 0x33ff66, emissiveIntensity: 0.0 });
+      // We want one of {red, yellow, green} on per stoplight, so we'll
+      // create three separate IMs sized to whatever subset of intersections
+      // gets that colour and bake the live colour by setting its emissive
+      // intensity at construction time. Per-instance emissive intensity
+      // isn't directly supported, so we colour the bucket and skip per-
+      // instance variation.
+      const poleGeom = new THREE.CylinderGeometry(0.18, 0.22, 5.5, 6);
+      const headGeom = new THREE.BoxGeometry(0.7, 1.6, 0.5);
+      const lightGeom = new THREE.SphereGeometry(0.18, 8, 8);
+      const N = intersections.length;
+      const poleIM = new THREE.InstancedMesh(poleGeom, poleMat, N);
+      const headIM = new THREE.InstancedMesh(headGeom, headMat, N);
+      const redIM  = new THREE.InstancedMesh(lightGeom, redMat, N);
+      const yelIM  = new THREE.InstancedMesh(lightGeom, yelMat, N);
+      const grnIM  = new THREE.InstancedMesh(lightGeom, grnMat, N);
+      poleIM.frustumCulled = headIM.frustumCulled = redIM.frustumCulled = yelIM.frustumCulled = grnIM.frustumCulled = false;
+      const dummy = new THREE.Object3D();
+      // Use instance color attr on the light IMs to selectively light one
+      // bulb per stoplight. Off bulbs get a near-black colour modulator
+      // (with the IM's MeshStandardMaterial having low base emissiveIntensity
+      // already, this kills the glow). Since per-instance EMISSIVE isn't
+      // supported, we instead use 3 different base materials with full
+      // emissive intensity and use a SEPARATE OFF-stack of small black
+      // capper boxes drawn over the inactive bulbs. Simpler: just keep
+      // all 3 bulbs always lit but dimmed -- works fine visually given
+      // bloom is doing the heavy lifting.
+      for (let k = 0; k < N; k++) {
+        const [ix, iz] = intersections[k];
+        // Place on the SE corner of the intersection so it doesn't sit in
+        // the road. The pole centre is offset diagonally outward by one
+        // sidewalk + half-block.
+        const cornerX = ix + STREET / 2 + SIDEWALK_W * 0.6;
+        const cornerZ = iz + STREET / 2 + SIDEWALK_W * 0.6;
+        // Pole
+        dummy.position.set(cornerX, 2.75, cornerZ);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        poleIM.setMatrixAt(k, dummy.matrix);
+        // Head (signal box on top of pole)
+        dummy.position.set(cornerX, 5.6, cornerZ);
+        dummy.updateMatrix();
+        headIM.setMatrixAt(k, dummy.matrix);
+        // Three lights stacked vertically (red top, yellow mid, green bottom)
+        for (const [im, yOff] of [[redIM, 6.15], [yelIM, 5.6], [grnIM, 5.05]]) {
+          dummy.position.set(cornerX, yOff, cornerZ + 0.27);
+          dummy.updateMatrix();
+          im.setMatrixAt(k, dummy.matrix);
+        }
+      }
+      poleIM.instanceMatrix.needsUpdate = true;
+      headIM.instanceMatrix.needsUpdate = true;
+      // Set the active emissive intensity. We dim 2 of 3 lights heavily so
+      // it reads as one colour active + two dim, like a real signal.
+      redMat.emissiveIntensity = 1.8;
+      yelMat.emissiveIntensity = 0.3;
+      grnMat.emissiveIntensity = 0.3;
+      redIM.instanceMatrix.needsUpdate = true;
+      yelIM.instanceMatrix.needsUpdate = true;
+      grnIM.instanceMatrix.needsUpdate = true;
+      scene.add(poleIM); scene.add(headIM);
+      scene.add(redIM); scene.add(yelIM); scene.add(grnIM);
     }
   }
 

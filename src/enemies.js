@@ -21,29 +21,106 @@ export class Tank {
     const root = new THREE.Group();
     root.position.set(x, 0, z);
 
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4a5238, roughness: 0.85 });
-    const trackMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 1.0 });
+    // Brighter olive than before so the tank reads against the dark asphalt
+    // streets. Plus a yellow warning stripe and amber running lights.
+    const bodyMat   = new THREE.MeshStandardMaterial({ color: 0x788055, roughness: 0.85 });
+    const bodyDark  = new THREE.MeshStandardMaterial({ color: 0x4a5238, roughness: 0.9 });
+    const trackMat  = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 1.0 });
+    const metalMat  = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5, metalness: 0.7 });
+    const lightMat  = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffeeaa, emissiveIntensity: 1.8 });
+    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffd11a, emissive: 0xffaa11, emissiveIntensity: 0.6 });
 
+    // Lower hull (sloped front for visual interest)
     const hull = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.0, 5.0), bodyMat);
     hull.position.y = 1.0;
     hull.castShadow = true;
     root.add(hull);
+    // Glacis plate (sloped front armour)
+    const glacis = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.9, 1.1), bodyMat);
+    glacis.position.set(0, 1.05, 2.2);
+    glacis.rotation.x = -0.4;
+    root.add(glacis);
+    // Side skirts to break up the silhouette
+    const skirtL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 4.6), bodyDark);
+    skirtL.position.set(-1.8, 0.85, 0);
+    root.add(skirtL);
+    const skirtR = skirtL.clone(); skirtR.position.x = 1.8; root.add(skirtR);
 
+    // Tracks
     const trL = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.7, 5.4), trackMat);
     trL.position.set(-1.7, 0.35, 0); trL.castShadow = true; root.add(trL);
     const trR = trL.clone(); trR.position.x = 1.7; root.add(trR);
+    // Visible track-wheel knobs (5 per side) for hand-built feel
+    for (const sx of [-1.7, 1.7]) {
+      for (let i = 0; i < 5; i++) {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.84, 8), metalMat);
+        w.rotation.z = Math.PI / 2;
+        w.position.set(sx, 0.35, -2.0 + i * 1.0);
+        root.add(w);
+      }
+    }
 
-    const turret = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.8, 8), bodyMat);
-    turret.position.y = 1.7;
+    // Turret (slightly tapered cylinder)
+    const turret = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.9, 10), bodyMat);
+    turret.position.y = 1.75;
     turret.castShadow = true;
     root.add(turret);
     this.turret = turret;
+    // Commander hatch on top
+    const hatch = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.36, 8), bodyDark);
+    hatch.position.set(0, 0.55, -0.35);
+    turret.add(hatch);
+    // Turret-side smoke launcher cluster
+    for (const sx of [-0.95, 0.95]) {
+      const cluster = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.6), metalMat);
+      cluster.position.set(sx, 0.15, 0.4);
+      turret.add(cluster);
+    }
+    // Antenna sweeping up from the rear of the turret
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.4, 4), metalMat);
+    antenna.position.set(0.85, 1.5, -0.55);
+    antenna.rotation.z = -0.15;
+    turret.add(antenna);
 
+    // Main barrel (with muzzle brake)
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 3.0, 8), bodyMat);
     barrel.rotation.z = Math.PI / 2;
     barrel.position.set(0, 0.0, 1.5);
     turret.add(barrel);
     this.barrel = barrel;
+    const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.4, 8), metalMat);
+    muzzle.rotation.z = Math.PI / 2;
+    muzzle.position.set(0, 0, 1.5);
+    barrel.add(muzzle);
+    // Coaxial machine gun beside the barrel
+    const coax = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.6, 6), metalMat);
+    coax.rotation.z = Math.PI / 2;
+    coax.position.set(0.3, -0.1, 0.9);
+    turret.add(coax);
+
+    // Front headlights (emissive amber)
+    for (const sx of [-1.2, 1.2]) {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.22, 0.12), lightMat);
+      hl.position.set(sx, 1.05, 2.55);
+      root.add(hl);
+    }
+    // Rear exhaust pipe with a soot-black tip
+    const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.8, 6), metalMat);
+    exhaust.rotation.x = Math.PI / 2;
+    exhaust.position.set(-1.2, 1.35, -2.3);
+    root.add(exhaust);
+    // Yellow warning stripe down the hull side -- big visibility boost.
+    for (const sx of [-1.71, 1.71]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 4.4), stripeMat);
+      stripe.position.set(sx, 1.0, 0);
+      root.add(stripe);
+    }
+    // Rear tail lights
+    for (const sx of [-1.0, 1.0]) {
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.15, 0.08), new THREE.MeshStandardMaterial({ color: 0x551111, emissive: 0xff2233, emissiveIntensity: 1.6 }));
+      tl.position.set(sx, 1.05, -2.55);
+      root.add(tl);
+    }
 
     this.root = root;
   }
@@ -112,24 +189,50 @@ export class Helicopter {
     const root = new THREE.Group();
     root.position.set(x, this.altitude, z);
 
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x556644, roughness: 0.6, metalness: 0.3 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    // Brighter olive-gray for visibility against the dusk sky/buildings.
+    const bodyMat   = new THREE.MeshStandardMaterial({ color: 0x7a8a66, roughness: 0.55, metalness: 0.3 });
+    const bodyDark  = new THREE.MeshStandardMaterial({ color: 0x4f5a40, roughness: 0.7 });
+    const dark      = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const glassMat  = new THREE.MeshStandardMaterial({ color: 0x4488aa, roughness: 0.15, metalness: 0.6, emissive: 0x336699, emissiveIntensity: 0.35 });
+    const lightMat  = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffeeaa, emissiveIntensity: 1.6 });
+    const redMat    = new THREE.MeshStandardMaterial({ color: 0x441111, emissive: 0xff2233, emissiveIntensity: 1.2 });
 
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1.5, 10, 10), bodyMat);
+    const body = new THREE.Mesh(new THREE.SphereGeometry(1.5, 12, 12), bodyMat);
     body.scale.set(1.0, 0.9, 1.6);
     body.castShadow = true;
     root.add(body);
 
-    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.3, 3.5, 6), bodyMat);
+    // Cockpit canopy (curved glass at the front)
+    const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.0, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), glassMat);
+    canopy.scale.set(1.0, 0.65, 1.4);
+    canopy.position.set(0, 0.35, 1.4);
+    root.add(canopy);
+    // Side windows
+    for (const sx of [-1, 1]) {
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 1.2), glassMat);
+      win.position.set(sx * 1.1, 0.25, 0.2);
+      root.add(win);
+    }
+
+    // Tail boom (slightly tapered)
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, 3.5, 8), bodyMat);
     tail.rotation.x = Math.PI / 2;
     tail.position.z = -2.4;
     root.add(tail);
+    // Stabilising horizontal fins
+    const hStab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.08, 0.4), bodyDark);
+    hStab.position.set(0, 0.0, -3.6);
+    root.add(hStab);
 
     const fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.9, 0.5), bodyMat);
     fin.position.set(0, 0.4, -3.9);
     root.add(fin);
 
-    // Main rotor
+    // Main rotor mast (visible above the body)
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.6, 6), dark);
+    mast.position.y = 1.05;
+    root.add(mast);
+    // Main rotor (4 blades - approximated by 2 perpendicular slabs)
     const rotor = new THREE.Mesh(new THREE.BoxGeometry(8, 0.1, 0.3), dark);
     rotor.position.y = 1.4;
     root.add(rotor);
@@ -137,17 +240,50 @@ export class Helicopter {
     rotor2.rotation.y = Math.PI / 2;
     rotor.add(rotor2);
     this.rotor = rotor;
+    // Rotor hub
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.25, 8), bodyDark);
+    hub.position.y = 1.4;
+    root.add(hub);
 
-    // Tail rotor
+    // Tail rotor + housing
+    const tailRotorHub = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), bodyDark);
+    tailRotorHub.position.set(0.32, 0.4, -3.9);
+    root.add(tailRotorHub);
     const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.05, 0.15), dark);
     tailRotor.position.set(0.3, 0.4, -3.9);
     root.add(tailRotor);
     this.tailRotor = tailRotor;
 
-    // Skids
+    // Skids + cross-supports
     const skid1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.4, 6), dark);
     skid1.rotation.x = Math.PI / 2; skid1.position.set(-0.8, -1.2, 0); root.add(skid1);
     const skid2 = skid1.clone(); skid2.position.x = 0.8; root.add(skid2);
+    for (const sz of [-0.7, 0.7]) {
+      const cross = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.7, 6), dark);
+      cross.rotation.z = Math.PI / 2;
+      cross.position.set(0, -1.0, sz);
+      root.add(cross);
+    }
+
+    // Underbelly searchlight
+    const search = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), lightMat);
+    search.position.set(0, -0.95, 0.6);
+    root.add(search);
+    // Side rocket pods
+    for (const sx of [-1, 1]) {
+      const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.2, 8), bodyDark);
+      pod.rotation.z = Math.PI / 2;
+      pod.position.set(sx * 1.6, -0.4, 0.4);
+      root.add(pod);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.4, 6), dark);
+      tip.position.set(sx * 1.6, -0.4, 1.0);
+      tip.rotation.x = Math.PI / 2;
+      root.add(tip);
+    }
+    // Tail anti-collision blink
+    const blink = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), redMat);
+    blink.position.set(0, 0.85, -3.95);
+    root.add(blink);
 
     this.root = root;
   }
@@ -218,33 +354,118 @@ export class Mech {
     const root = new THREE.Group();
     root.position.set(x, 0, z);
 
-    const armorMat = new THREE.MeshStandardMaterial({ color: 0x445566, roughness: 0.5, metalness: 0.4 });
-    const accentMat = new THREE.MeshStandardMaterial({ color: 0xff4422, emissive: 0xff2200, emissiveIntensity: 0.4 });
+    // Brighter steel-blue armour + strong red accent so the mech is
+    // unmissable against the dusk-Tokyo backdrop.
+    const armorMat  = new THREE.MeshStandardMaterial({ color: 0x6b7e94, roughness: 0.45, metalness: 0.55 });
+    const armorDark = new THREE.MeshStandardMaterial({ color: 0x3a4856, roughness: 0.65, metalness: 0.4 });
+    const accentMat = new THREE.MeshStandardMaterial({ color: 0xff4422, emissive: 0xff2200, emissiveIntensity: 1.4 });
+    const eyeMat    = new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff2233, emissiveIntensity: 2.4 });
+    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffd11a, emissive: 0xffaa11, emissiveIntensity: 0.6 });
 
+    // Torso
     const torso = new THREE.Mesh(new THREE.BoxGeometry(3.0, 3.5, 2.4), armorMat);
     torso.position.y = 6.0;
     torso.castShadow = true;
     root.add(torso);
     this.torso = torso;
+    // Chest beacon (glowing core)
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.4, 14), accentMat);
+    core.rotation.x = Math.PI / 2;
+    core.position.set(0, 6.0, 1.25);
+    root.add(core);
+    // Yellow hazard stripes wrapping the torso
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.05, 0.32, 2.45), stripeMat);
+    stripe.position.set(0, 4.6, 0);
+    root.add(stripe);
 
-    const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 8), accentMat);
-    cockpit.position.set(0, 6.5, 1.4);
-    root.add(cockpit);
+    // Head/sensor block above the torso (more menacing than a sphere)
+    const head = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.0, 1.2), armorMat);
+    head.position.set(0, 8.0, 0);
+    root.add(head);
+    // Glowing eye visor
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.28, 0.08), eyeMat);
+    visor.position.set(0, 8.05, 0.62);
+    root.add(visor);
 
-    // Cannon arms
-    const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 3.0, 8), armorMat);
-    armL.rotation.x = Math.PI / 2;
-    armL.position.set(-2.0, 6.2, 1.0);
-    root.add(armL);
-    this.armL = armL;
-    const armR = armL.clone(); armR.position.x = 2.0; root.add(armR);
-    this.armR = armR;
+    // Pauldron / shoulder spikes for menace
+    for (const sx of [-1, 1]) {
+      const pauld = new THREE.Mesh(new THREE.SphereGeometry(0.85, 10, 8), armorDark);
+      pauld.position.set(sx * 1.85, 7.4, 0);
+      pauld.scale.set(1, 0.9, 1);
+      root.add(pauld);
+      // Single small spike on the pauldron
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.7, 5), armorDark);
+      spike.position.set(sx * 1.85, 8.05, 0);
+      spike.rotation.z = sx * 0.25;
+      root.add(spike);
+    }
 
-    // Legs
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.9, 4.0, 1.2), armorMat);
-    legL.position.set(-1.0, 2.0, 0); legL.castShadow = true; root.add(legL);
-    const legR = legL.clone(); legR.position.x = 1.0; root.add(legR);
-    this.legL = legL; this.legR = legR;
+    // Cannon arms (now with shoulder elbow + barrel detail)
+    function makeArm(sx) {
+      const arm = new THREE.Group();
+      // Upper arm cylinder
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 1.6, 10), armorMat);
+      upper.position.y = -0.8;
+      arm.add(upper);
+      // Elbow joint sphere
+      const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), armorDark);
+      elbow.position.y = -1.6;
+      arm.add(elbow);
+      // Forearm cannon
+      const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.55, 2.4, 10), armorMat);
+      fore.position.y = -2.8;
+      arm.add(fore);
+      // Cannon barrel sticking out the front
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 1.6, 10), armorDark);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, -3.0, 1.1);
+      arm.add(barrel);
+      // Muzzle brake
+      const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.4, 10), armorDark);
+      muzzle.rotation.x = Math.PI / 2;
+      muzzle.position.set(0, -3.0, 2.0);
+      arm.add(muzzle);
+      // Mini emissive port on the muzzle
+      const port = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), accentMat);
+      port.position.set(0, -3.0, 2.18);
+      arm.add(port);
+      arm.position.set(sx * 2.0, 7.4, 0);
+      return arm;
+    }
+    const armL = makeArm(-1); root.add(armL); this.armL = armL;
+    const armR = makeArm( 1); root.add(armR); this.armR = armR;
+
+    // Legs (now with knee joint + foot)
+    function makeLeg(sx) {
+      const leg = new THREE.Group();
+      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.0, 1.2), armorMat);
+      thigh.position.y = -1.0;
+      leg.add(thigh);
+      // Knee armour pad
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), armorDark);
+      knee.position.y = -2.0;
+      knee.scale.set(1.1, 0.7, 1.0);
+      leg.add(knee);
+      const shin = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.8, 1.1), armorMat);
+      shin.position.y = -2.95;
+      leg.add(shin);
+      // Foot pad
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.8), armorDark);
+      foot.position.y = -3.95;
+      foot.position.z = 0.2;
+      leg.add(foot);
+      // Toe spike
+      const toe = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 4), armorDark);
+      toe.rotation.x = Math.PI / 2;
+      toe.position.set(0, -3.95, 1.2);
+      leg.add(toe);
+      leg.position.set(sx * 1.0, 4.2, 0);
+      return leg;
+    }
+    const legL = makeLeg(-1); root.add(legL); this.legL = legL;
+    const legR = makeLeg( 1); root.add(legR); this.legR = legR;
+    // Make sure castShadow flag propagates
+    root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
 
     this.root = root;
   }
@@ -264,8 +485,8 @@ export class Mech {
         myPos.x += dx * this.speed * dt;
         myPos.z += dz * this.speed * dt;
         this.legPhase += dt * 6;
-        this.legL.position.y = 2.0 + Math.sin(this.legPhase) * 0.3;
-        this.legR.position.y = 2.0 + Math.sin(this.legPhase + Math.PI) * 0.3;
+        this.legL.position.y = 4.2 + Math.sin(this.legPhase) * 0.4;
+        this.legR.position.y = 4.2 + Math.sin(this.legPhase + Math.PI) * 0.4;
       }
       this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
     }
@@ -506,27 +727,81 @@ export class Soldier {
     const root = new THREE.Group();
     root.position.set(x, 0, z);
 
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x556633, roughness: 0.95 });
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0xddbb99 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const bodyMat   = new THREE.MeshStandardMaterial({ color: 0x6a7a40, roughness: 0.95 }); // brighter olive
+    const skinMat   = new THREE.MeshStandardMaterial({ color: 0xeac199 });
+    const dark      = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const vestMat   = new THREE.MeshStandardMaterial({ color: 0xffd11a, emissive: 0xffaa11, emissiveIntensity: 0.55 });
+    const beltMat   = new THREE.MeshStandardMaterial({ color: 0x3a3320, roughness: 0.9 });
+    const muzzleMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.4, metalness: 0.6 });
 
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.0, 0.5), bodyMat);
     torso.position.y = 1.4;
     root.add(torso);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), skinMat);
+    // Hi-vis tactical vest -- big visibility win
+    const vest = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.65, 0.55), vestMat);
+    vest.position.y = 1.45;
+    root.add(vest);
+    // Belt
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.18, 0.55), beltMat);
+    belt.position.y = 1.05;
+    root.add(belt);
+    // Backpack
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.3), beltMat);
+    pack.position.set(0, 1.5, -0.36);
+    root.add(pack);
+    // Pack reflective stripe
+    const reflect = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.1, 0.05), vestMat);
+    reflect.position.set(0, 1.45, -0.52);
+    root.add(reflect);
+
+    // Head + helmet (slightly larger helmet, with chinstrap line)
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 10), skinMat);
     head.position.y = 2.1;
     root.add(head);
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8, 0, Math.PI*2, 0, Math.PI/2), bodyMat);
-    helmet.position.y = 2.18;
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 10, 0, Math.PI*2, 0, Math.PI/2), bodyMat);
+    helmet.position.y = 2.16;
     root.add(helmet);
+    // Helmet front strip (NV mount stub)
+    const nvm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.06), beltMat);
+    nvm.position.set(0, 2.34, 0.32);
+    root.add(nvm);
 
+    // Arms (simple cylinders)
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.85, 6), bodyMat);
+      arm.position.set(sx * 0.45, 1.4, 0);
+      arm.rotation.z = sx * -0.05;
+      root.add(arm);
+    }
+
+    // Legs
     const legL = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.0, 0.3), bodyMat);
     legL.position.set(-0.18, 0.5, 0); root.add(legL);
     const legR = legL.clone(); legR.position.x = 0.18; root.add(legR);
     this.legL = legL; this.legR = legR;
+    // Boots
+    for (const sx of [-0.18, 0.18]) {
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.4), dark);
+      boot.position.set(sx, 0.04, 0.05);
+      root.add(boot);
+    }
 
-    const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.9), dark);
-    rifle.position.set(0.3, 1.4, 0.4);
+    // Rifle: barrel + body + stock + sight (much more recognisable)
+    const rifle = new THREE.Group();
+    const rifleBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.55), dark);
+    rifleBody.position.z = 0.05;
+    rifle.add(rifleBody);
+    const rifleBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.5, 6), muzzleMat);
+    rifleBarrel.rotation.x = Math.PI / 2;
+    rifleBarrel.position.z = 0.55;
+    rifle.add(rifleBarrel);
+    const rifleStock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.3), beltMat);
+    rifleStock.position.z = -0.25;
+    rifle.add(rifleStock);
+    const rifleSight = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.18), dark);
+    rifleSight.position.set(0, 0.12, 0.02);
+    rifle.add(rifleSight);
+    rifle.position.set(0.3, 1.4, 0.2);
     root.add(rifle);
     this.rifle = rifle;
 
