@@ -44,6 +44,16 @@ export class Effect {
   tick(dt) {
     this.life -= dt;
     if (this.life <= 0) {
+      // Final cleanup tick at t=1. Each effect's callback removes its
+      // owned meshes inside an `if (t >= 1)` guard; without invoking it
+      // one last time, callbacks that own multiple meshes (explosion,
+      // shockwave, beam, smoke column) leak their visuals into the scene.
+      // Wrapped in try/catch so a buggy callback can't keep the array
+      // entry alive forever.
+      if (!this._cleaned) {
+        this._cleaned = true;
+        try { this.update(0, 1, this); } catch (e) {}
+      }
       this.dead = true;
       return;
     }
