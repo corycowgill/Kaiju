@@ -595,3 +595,160 @@ export function makeDustBurst(world, pos, radius = 14, count = 8) {
     if (t >= 1) for (const m of puffs) world.scene.remove(m);
   });
 }
+
+// ============== Roar / charge readability helpers ==============
+
+// Sound-wave rings: 3 expanding wireframe spheres staggered 0.18s apart so
+// they read as concentric pressure waves emanating from a roar source.
+export function makeSoundWaveRings(world, pos, color = 0xffffff, count = 3, maxRadius = 80, life = 1.4) {
+  const group = new THREE.Group();
+  group.position.copy(pos);
+  world.scene.add(group);
+  const meshes = [];
+  for (let i = 0; i < count; i++) {
+    const m = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 18, 12),
+      new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.0,
+        wireframe: true, depthWrite: false,
+      })
+    );
+    m.userData.delay = i * 0.18;
+    group.add(m);
+    meshes.push(m);
+  }
+  return new Effect(group, life, (dt, t) => {
+    for (const m of meshes) {
+      const local01 = Math.max(0, t - m.userData.delay / life);
+      const r = 1 + local01 * maxRadius;
+      m.scale.setScalar(r);
+      m.material.opacity = Math.min(1, local01 * 4) * (1 - local01) * 0.7;
+    }
+    if (t >= 1) world.scene.remove(group);
+  });
+}
+
+// Breath cone: a wispy expanding cone fired from origin in dir. Used as a
+// "this is literally a roar coming out of the mouth" visual cue.
+export function makeBreathCone(world, origin, dir, length = 28, color = 0xffaa66, life = 0.7) {
+  const cone = new THREE.Mesh(
+    new THREE.ConeGeometry(0.3, length, 14, 1, true),
+    new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.0,
+      side: THREE.DoubleSide, depthWrite: false,
+    })
+  );
+  // Cone default points along +Y; rotate it to point along dir.
+  const up = new THREE.Vector3(0, 1, 0);
+  const q = new THREE.Quaternion().setFromUnitVectors(up, dir.clone().normalize());
+  cone.quaternion.copy(q);
+  // Position so the cone's apex is at origin and it widens outward
+  cone.position.copy(origin).addScaledVector(dir, length / 2);
+  world.scene.add(cone);
+  return new Effect(cone, life, (dt, t) => {
+    const widen = 1 + t * 8;
+    cone.scale.set(widen, 1, widen);
+    cone.material.opacity = Math.min(1, t * 4) * (1 - t) * 0.6;
+    if (t >= 1) world.scene.remove(cone);
+  });
+}
+
+// Wing-flap arc: a fan-shaped slab sweeping outward from the kaiju on
+// charge attacks. One per side. Reads as "the wings just slammed".
+export function makeWingFlap(world, pos, side, color = 0xff66ff) {
+  const wing = new THREE.Mesh(
+    new THREE.RingGeometry(2, 10, 14, 1, -Math.PI / 4, Math.PI / 1.6),
+    new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.85,
+      side: THREE.DoubleSide, depthWrite: false,
+    })
+  );
+  wing.rotation.x = -Math.PI / 2;
+  wing.rotation.z = side * Math.PI / 2.2;
+  wing.position.copy(pos);
+  wing.position.y += 6;
+  world.scene.add(wing);
+  // Bright inner highlight
+  const wing2 = new THREE.Mesh(
+    new THREE.RingGeometry(2, 4, 14, 1, -Math.PI / 4, Math.PI / 1.6),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 1.0,
+      side: THREE.DoubleSide, depthWrite: false,
+    })
+  );
+  wing2.rotation.copy(wing.rotation);
+  wing2.position.copy(wing.position);
+  world.scene.add(wing2);
+  return new Effect(wing, 0.55, (dt, t) => {
+    const s = 1 + t * 0.7;
+    wing.scale.set(s, s, 1);
+    wing2.scale.set(s, s, 1);
+    wing.material.opacity = (1 - t) * 0.9;
+    wing2.material.opacity = (1 - t * 1.4);
+    if (t >= 1) { world.scene.remove(wing); world.scene.remove(wing2); }
+  });
+}
+
+// Wind streaks: 10 line-segment trails fanning forward from origin. Used
+// for charge / dash to show motion + impact direction.
+export function makeWindStreaks(world, origin, dir, color = 0xffffff, count = 10) {
+  const group = new THREE.Group();
+  world.scene.add(group);
+  const streaks = [];
+  for (let i = 0; i < count; i++) {
+    const yawJit = (Math.random() - 0.5) * 0.55;
+    const pitchJit = (Math.random() - 0.5) * 0.25;
+    const yaw = Math.atan2(dir.x, dir.z) + yawJit;
+    const pitch = Math.asin(Math.max(-1, Math.min(1, dir.y))) + pitchJit;
+    const dirOut = new THREE.Vector3(
+      Math.sin(yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      Math.cos(yaw) * Math.cos(pitch),
+    );
+    const streak = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.04, 4 + Math.random() * 3, 5),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false })
+    );
+    const up = new THREE.Vector3(0, 1, 0);
+    const q = new THREE.Quaternion().setFromUnitVectors(up, dirOut);
+    streak.quaternion.copy(q);
+    streak.position.copy(origin).addScaledVector(dirOut, 6 + Math.random() * 8);
+    streak.userData.vel = dirOut.clone().multiplyScalar(40 + Math.random() * 25);
+    group.add(streak);
+    streaks.push(streak);
+  }
+  return new Effect(group, 0.55, (dt, t) => {
+    for (const s of streaks) {
+      s.position.addScaledVector(s.userData.vel, dt);
+      s.material.opacity = (1 - t) * 0.85;
+    }
+    if (t >= 1) world.scene.remove(group);
+  });
+}
+
+// Missile launch flash: bright fireball + dark smoke puff at the launch
+// point. Pairs with makeMissileSwarm for visible source feedback.
+export function makeMissileLaunchFlash(world, pos) {
+  const flash = new THREE.Mesh(
+    G_FIRE,
+    new THREE.MeshBasicMaterial({ color: 0xffeebb, transparent: true, opacity: 1.0, depthWrite: false })
+  );
+  flash.position.copy(pos);
+  flash.scale.setScalar(0.6);
+  world.scene.add(flash);
+  const smoke = new THREE.Mesh(
+    G_FIRE,
+    new THREE.MeshBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.7, depthWrite: false })
+  );
+  smoke.position.copy(pos);
+  smoke.scale.setScalar(0.4);
+  world.scene.add(smoke);
+  return new Effect(flash, 0.5, (dt, t) => {
+    flash.scale.setScalar(0.6 + t * 3.5);
+    flash.material.opacity = (1 - t) * 0.95;
+    smoke.scale.setScalar(0.4 + t * 3.6);
+    smoke.position.y += 4 * dt;
+    smoke.material.opacity = 0.7 * (1 - t);
+    if (t >= 1) { world.scene.remove(flash); world.scene.remove(smoke); }
+  });
+}

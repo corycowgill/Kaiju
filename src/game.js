@@ -15,6 +15,8 @@ import {
   makeMuzzleFlash, makeSmokePuff, makeBeam, makeHitPulse, makeSmokeColumn,
   makeChainLightning, makeMissileSwarm, makeAtomicDome,
   makeWingSlash, makeTailSweep, makeAfterburnerTrail, makeDustBurst,
+  makeSoundWaveRings, makeBreathCone, makeWingFlap, makeWindStreaks,
+  makeMissileLaunchFlash,
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
@@ -1447,6 +1449,16 @@ function fireRoar() {
   damageInRadius(center, cfg.radius, cfg.damage, true);
   audio.roar();
 
+  // Universal "this is literally a roar" visuals: head-locked breath cone
+  // pointing where the camera looks, plus 3 expanding pressure rings so it
+  // reads as a sonic blast even from a distance.
+  const roarHead = state.kaiju.head;
+  const roarHeadPos = new THREE.Vector3();
+  roarHead.getWorldPosition(roarHeadPos);
+  const roarDir = new THREE.Vector3(Math.sin(state.yaw), 0.05, Math.cos(state.yaw));
+  world.effects.push(makeSoundWaveRings(world, roarHeadPos, cfg.color, 3, cfg.radius * 0.95, 1.4));
+  world.effects.push(makeBreathCone(world, roarHeadPos, roarDir, 32, cfg.color, 0.8));
+
   // Per-variant signature VFX layered on top of the shared shockwave.
   if (variant === 'gojira') {
     // PRIMAL ROAR: thick brown dust burst kicked up around the kaiju
@@ -1477,6 +1489,8 @@ function fireRoar() {
   } else if (variant === 'mecha') {
     // MISSILE BARRAGE: 8 missiles arcing outward, each exploding on impact.
     makeMissileSwarm(world, center, cfg.radius, 8);
+    // Visible launch flash at the kaiju so the player sees the source
+    world.effects.push(makeMissileLaunchFlash(world, roarHeadPos));
   }
 }
 
@@ -1502,14 +1516,22 @@ function fireCharge() {
   damageInRadius(endPos, 24, cfg.damage * 0.5, false);
   audio.charge();
 
+  // Universal motion read: 10 wind streaks fanning forward from the dash
+  // start so the player sees the impact direction even from behind.
+  const streakOrigin = startPos.clone(); streakOrigin.y += 6;
+  world.effects.push(makeWindStreaks(world, streakOrigin, forward, 0xffffff, 10));
+
   // Per-variant signature trail
   if (variant === 'gojira') {
     // TAIL SWEEP: yellow arc trail at the start, plus a dust kick along path
     world.effects.push(makeTailSweep(world, startPos, state.yaw, cfg.color));
     world.effects.push(makeDustBurst(world, cone, 14, 10));
   } else if (variant === 'ghidorah') {
-    // WING SLAM: magenta crescent slash arc at the end of the dash
+    // WING SLAM: magenta crescent slash arc at the end of the dash plus
+    // big visible wing-flap fans from each side so the wing-attack reads.
     world.effects.push(makeWingSlash(world, endPos, state.yaw, cfg.color));
+    world.effects.push(makeWingFlap(world, endPos, -1, cfg.color));
+    world.effects.push(makeWingFlap(world, endPos,  1, cfg.color));
   } else if (variant === 'mecha') {
     // ROCKET DASH: blue afterburner cone behind the dash path
     const trail = makeAfterburnerTrail(world, startPos, endPos, cfg.color);
@@ -1521,13 +1543,14 @@ function fireStomp() {
   if (state.rage < 15 || state.cooldowns.stomp > 0) return;
   state.rage -= 15;
   state.cooldowns.stomp = 1.5;
-  const center = state.kaiju.root.position.clone();
-  world.spawnShockwave(center, 0xffcc44, 45);
-  world.shake(0.7, 0.4);
-  // Stomp now hits a wider radius hard enough to one-shot small buildings
-  // and shred any ground unit unlucky enough to be near. Aerial included.
-  damageInRadius(center, 32, 180, true);
-  audio.stomp();
+  // Begin a JUMP. The actual ground impact (shockwave + AOE damage) fires
+  // at the apex's down-leg in updateKaijuAnim when the jump phase lands.
+  // _stompJumpT is total airtime, _stompJumpD is total airtime (constant
+  // for normalizing) and _stompImpacted prevents double-impact.
+  state._stompJumpT = 0.55;
+  state._stompJumpD = 0.55;
+  state._stompImpacted = false;
+  audio.charge && audio.charge(); // launch whoosh
 }
 
 function fireUltimate() {
@@ -1600,7 +1623,11 @@ function fireUltimate() {
     // beam covering the front arc + secondary shockwaves.
     world.spawnBeam(origin, dir, 360, cfg.beam.color, cfg.beam.glow);
     makeMissileSwarm(world, center, 120, 10);
-    setTimeout(() => makeMissileSwarm(world, center, 130, 8), 280);
+    world.effects.push(makeMissileLaunchFlash(world, origin));
+    setTimeout(() => {
+      makeMissileSwarm(world, center, 130, 8);
+      world.effects.push(makeMissileLaunchFlash(world, origin));
+    }, 280);
     setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.color, 170), 180);
     showMessage('☄ MISSILE BARRAGE ☄', 1.4);
   } else {
@@ -1784,11 +1811,42 @@ function updatePlayer(dt) {
 
   // ----- Vertical bob -----
   // Vertical lift peaks twice per leg cycle (foot strikes), heavier when
-  // sprinting. Idle: gentle breathing oscillation.
-  const bobAmt = moving ? (sprint ? 0.95 : 0.70) : 0.0;
-  k.root.position.y = moving
-    ? sw2 * bobAmt
-    : Math.sin(tIdle * 1.5) * 0.18; // breathing
+  // sprinting. Idle: gentle breathing oscillation. JUMP-STOMP overrides
+  // both -- a parabolic arc up to ~JUMP_PEAK_H then slamming back down.
+  state._stompJumpT = Math.max(0, (state._stompJumpT || 0) - dt);
+  if (state._stompJumpT > 0) {
+    const dur = state._stompJumpD || 0.55;
+    const t = 1 - state._stompJumpT / dur; // 0..1
+    // Parabolic arc: peaks at t=0.5, lands at t=1
+    const JUMP_PEAK_H = 18;
+    k.root.position.y = JUMP_PEAK_H * 4 * t * (1 - t);
+    // Heavy forward pitch during the slam-down half (looks like a body slam)
+    if (t > 0.55) {
+      const slamT = (t - 0.55) / 0.45;
+      k.root.rotation.x = (k.root.rotation.x || 0) + slamT * 0.35;
+    } else {
+      // Slight tuck on the way up
+      k.root.rotation.x = (k.root.rotation.x || 0) - (1 - Math.abs(t - 0.5) * 2) * 0.15;
+    }
+  } else {
+    if (!state._stompImpacted && state._stompJumpD) {
+      // Just landed -- fire the actual stomp shockwave + AOE here so the
+      // visuals/damage line up with the slam frame.
+      state._stompImpacted = true;
+      state._stompJumpD = 0;
+      const impactPos = k.root.position.clone();
+      world.spawnShockwave(impactPos, 0xffcc44, 55);
+      world.spawnShockwave(impactPos, 0xffaa66, 30);
+      world.effects.push(makeDustBurst(world, impactPos, 22, 14));
+      world.shake(1.2, 0.55);
+      damageInRadius(impactPos, 36, 220, true);
+      audio.stomp();
+    }
+    const bobAmt = moving ? (sprint ? 0.95 : 0.70) : 0.0;
+    k.root.position.y = moving
+      ? sw2 * bobAmt
+      : Math.sin(tIdle * 1.5) * 0.18; // breathing
+  }
 
   // ----- Legs -----
   const legL = k.root.getObjectByName('legL');
