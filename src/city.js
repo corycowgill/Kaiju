@@ -326,6 +326,187 @@ function makeFactoryDistrict() {
 
 // Nuclear plant: two cooling towers (hyperboloid via lathe), reactor dome,
 // concrete base, perimeter fence, and a static steam puff at each tower.
+// Construction site: a half-built skyscraper (concrete shell + visible
+// rebar floors) standing next to a tall yellow tower crane with a
+// counterweight, hook, and cable. Surrounded by orange-and-white safety
+// fencing and a couple of porta-potties / material pallets for flavour.
+function makeConstructionSite() {
+  const group = new THREE.Group();
+  const concreteMat = new THREE.MeshStandardMaterial({ color: 0x8a8478, roughness: 0.9 });
+  const concreteDark = new THREE.MeshStandardMaterial({ color: 0x554d40, roughness: 0.95 });
+  const steelMat   = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.45, metalness: 0.7 });
+  const yellowMat  = new THREE.MeshStandardMaterial({ color: 0xffd11a, roughness: 0.55, metalness: 0.3, emissive: 0xff8811, emissiveIntensity: 0.25 });
+  const orangeMat  = new THREE.MeshStandardMaterial({ color: 0xff7733, roughness: 0.6 });
+  const cableMat   = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
+  const fenceMat   = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.95 });
+
+  // Concrete pad / dirt
+  const dirtMat = new THREE.MeshStandardMaterial({ color: 0x7a6a52, roughness: 0.95 });
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(56, 56), dirtMat);
+  pad.rotation.x = -Math.PI / 2; pad.position.y = 0.13;
+  pad.receiveShadow = true;
+  group.add(pad);
+
+  // Half-built skyscraper: concrete frame with 6 visible floors, no
+  // facade above the bottom 2.
+  const floors = 6;
+  const floorH = 4;
+  const w = 16, d = 16;
+  for (let f = 0; f < floors; f++) {
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, d), concreteMat);
+    slab.position.set(-12, f * floorH + 0.25, 0);
+    group.add(slab);
+    // Corner columns
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const col = new THREE.Mesh(new THREE.BoxGeometry(0.7, floorH, 0.7), concreteDark);
+      col.position.set(-12 + sx * (w / 2 - 0.4), f * floorH + floorH / 2, sz * (d / 2 - 0.4));
+      group.add(col);
+    }
+    // Edge rebar / safety rail along open floors (top 3)
+    if (f >= 3) {
+      for (const sx of [-1, 1]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, d), orangeMat);
+        rail.position.set(-12 + sx * (w / 2 - 0.05), f * floorH + 1.0, 0);
+        group.add(rail);
+      }
+    }
+    // Bottom 2 floors get a partial facade
+    if (f < 2) {
+      const facade = new THREE.Mesh(new THREE.BoxGeometry(w * 0.95, floorH * 0.95, 0.2), concreteMat);
+      facade.position.set(-12, f * floorH + floorH / 2, d / 2);
+      group.add(facade);
+    }
+  }
+  // Rebar sprouting from the top floor (8 thin rusty cylinders)
+  for (let i = 0; i < 8; i++) {
+    const rebar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.4, 5), orangeMat);
+    rebar.position.set(-12 + (Math.random() - 0.5) * 12, floors * floorH + 0.7, (Math.random() - 0.5) * 12);
+    group.add(rebar);
+  }
+
+  // Tower crane next to the building
+  const craneX = 8;
+  const mastH = floors * floorH + 12;
+  // Square mast (4 vertical struts + horizontal cross-bracing)
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.18, mastH, 0.18), yellowMat);
+    strut.position.set(craneX + sx * 0.7, mastH / 2, sz * 0.7);
+    group.add(strut);
+  }
+  // Cross-bracing at intervals along the mast
+  for (let i = 1; i < 8; i++) {
+    const y = (i / 8) * mastH;
+    const brace1 = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), yellowMat);
+    brace1.position.set(craneX, y, 0.7); group.add(brace1);
+    const brace2 = brace1.clone(); brace2.position.z = -0.7; group.add(brace2);
+    const brace3 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1.5), yellowMat);
+    brace3.position.set(craneX + 0.7, y, 0); group.add(brace3);
+    const brace4 = brace3.clone(); brace4.position.x = craneX - 0.7; group.add(brace4);
+    // Diagonal X bracing per face
+    const xb1 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.08, 0.08), yellowMat);
+    xb1.position.set(craneX, y - 0.5, 0.7); xb1.rotation.z = 0.6; group.add(xb1);
+    const xb2 = xb1.clone(); xb2.rotation.z = -0.6; group.add(xb2);
+  }
+  // Operator cab at the top
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.6, 1.8), yellowMat);
+  cab.position.set(craneX, mastH + 1.2, 0);
+  group.add(cab);
+  const cabWindow = new THREE.Mesh(
+    new THREE.BoxGeometry(2.62, 0.9, 1.82),
+    new THREE.MeshStandardMaterial({ color: 0x3366aa, emissive: 0x224488, emissiveIntensity: 0.5, roughness: 0.2, metalness: 0.5 })
+  );
+  cabWindow.position.copy(cab.position);
+  cabWindow.position.y -= 0.1;
+  group.add(cabWindow);
+  // Long horizontal jib (working arm)
+  const jibLen = 18;
+  const jib = new THREE.Mesh(new THREE.BoxGeometry(jibLen, 0.7, 0.7), yellowMat);
+  jib.position.set(craneX + jibLen / 2 - 2, mastH + 2.3, 0);
+  group.add(jib);
+  // Jib tower (small triangle frame on top)
+  const apex = new THREE.Mesh(new THREE.ConeGeometry(0.25, 3.5, 4), yellowMat);
+  apex.position.set(craneX, mastH + 4.0, 0);
+  group.add(apex);
+  // Cables from apex to jib tip and to counter-jib
+  function cable(fromX, fromY, toX, toY) {
+    const dx = toX - fromX, dy = toY - fromY;
+    const len = Math.hypot(dx, dy);
+    const cab = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, len, 4), cableMat);
+    cab.position.set((fromX + toX) / 2, (fromY + toY) / 2, 0);
+    cab.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
+    group.add(cab);
+  }
+  cable(craneX, mastH + 5.7, craneX + jibLen - 2, mastH + 2.7);
+  cable(craneX, mastH + 5.7, craneX - 5, mastH + 2.7);
+  // Counter-jib (short arm with counterweight)
+  const cjib = new THREE.Mesh(new THREE.BoxGeometry(7, 0.7, 0.7), yellowMat);
+  cjib.position.set(craneX - 4.5, mastH + 2.3, 0);
+  group.add(cjib);
+  const counterweight = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.6, 1.6), concreteDark);
+  counterweight.position.set(craneX - 7.0, mastH + 1.7, 0);
+  group.add(counterweight);
+  // Hoist trolley + hook hanging from the jib
+  const trolley = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.7), steelMat);
+  trolley.position.set(craneX + jibLen - 4, mastH + 1.95, 0);
+  group.add(trolley);
+  // Hook cable (long)
+  cable(trolley.position.x, mastH + 1.85, trolley.position.x, 6);
+  const hook = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.18, 6, 12), steelMat);
+  hook.position.set(trolley.position.x, 5.6, 0);
+  hook.rotation.x = Math.PI / 2;
+  group.add(hook);
+  // Suspended construction load (concrete block)
+  const load = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.4, 1.6), concreteMat);
+  load.position.set(trolley.position.x, 4.2, 0);
+  group.add(load);
+
+  // Orange-and-white safety fence around the perimeter (instanced strips)
+  for (const [px, pz, w2, d2] of [
+    [0,  26, 56, 0.18],
+    [0, -26, 56, 0.18],
+    [ 26, 0, 0.18, 52],
+    [-26, 0, 0.18, 52],
+  ]) {
+    const f = new THREE.Mesh(new THREE.BoxGeometry(w2, 1.6, d2), fenceMat);
+    f.position.set(px, 0.8, pz);
+    group.add(f);
+    // Orange caution ribbon along the top
+    const ribbon = new THREE.Mesh(new THREE.BoxGeometry(w2 + 0.05, 0.18, d2 + 0.05), orangeMat);
+    ribbon.position.set(px, 1.7, pz);
+    group.add(ribbon);
+  }
+
+  // Material pallets + porta-potty for flavour
+  const palletMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.95 });
+  for (let i = 0; i < 3; i++) {
+    const pallet = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 1.6), palletMat);
+    pallet.position.set(-2 - i * 3, 0.3, 16);
+    group.add(pallet);
+    // Stacked rebar bundles on top
+    const bundle = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 2.4, 8), orangeMat);
+    bundle.rotation.z = Math.PI / 2;
+    bundle.position.set(pallet.position.x, 0.85, 16);
+    group.add(bundle);
+  }
+  // Porta-potty
+  const potty = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.6, 1.4), new THREE.MeshStandardMaterial({ color: 0x66aa55, roughness: 0.7 }));
+  potty.position.set(15, 1.3, -18);
+  group.add(potty);
+  const pottyDoor = new THREE.Mesh(new THREE.BoxGeometry(1.42, 2.0, 0.05), concreteDark);
+  pottyDoor.position.set(15, 1.0, -17.27);
+  group.add(pottyDoor);
+
+  // Big "工事中" (UNDER CONSTRUCTION) sign on the front fence
+  const signFace = new THREE.Mesh(
+    new THREE.BoxGeometry(8, 2.4, 0.2),
+    new THREE.MeshStandardMaterial({ color: 0xffd11a, emissive: 0xffaa11, emissiveIntensity: 0.6 })
+  );
+  signFace.position.set(0, 3.2, 26.2);
+  group.add(signFace);
+
+  return group;
+}
+
 function makeNuclearPlant() {
   const group = new THREE.Group();
   const concreteMat = new THREE.MeshStandardMaterial({ color: 0xa6a6a4, roughness: 0.92 });
@@ -1695,6 +1876,7 @@ export function buildCity(scene, world, opts = {}) {
     { kind: 'c', x:   60, z:  220, r: 22 },    // Kabukiza
     { kind: 'c', x:  -60, z: -100, r: 18 },    // Mori JP Tower
     { kind: 'c', x: -120, z:   60, r: 22 },    // Shibuya Scramble Square
+    { kind: 'c', x:  120, z: -100, r: 28 },    // Construction site
     // River: a horizontal strip across the whole map at z = RIVER_Z
     { kind: 'r',
       x1: -CITY_RADIUS - 50, z1: RIVER_Z - RIVER_WIDTH / 2 - 4,
@@ -1993,6 +2175,196 @@ export function buildCity(scene, world, opts = {}) {
       scene.add(poleIM); scene.add(headIM);
       scene.add(redIM); scene.add(yelIM); scene.add(grnIM);
     }
+  }
+
+  // ---- Crosswalks at major (every-3rd-block) intersections ----
+  // Each crossing is 5 white stripes; we lay them on the four approach
+  // sides per intersection. Instanced once for the whole city.
+  {
+    const stoplightStep = BLOCK * 3;
+    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.8, emissive: 0x333333, emissiveIntensity: 0.05 });
+    const stripeGeom = new THREE.PlaneGeometry(0.7, STREET - 1.6);
+    const positions = [];
+    const dummy = new THREE.Object3D();
+    const STRIPES = 5;
+    const STRIPE_SPACING = 0.95;
+    for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += stoplightStep) {
+      for (let j = -CITY_RADIUS + BLOCK; j <= CITY_RADIUS - BLOCK; j += stoplightStep) {
+        if (Math.abs(i) < BLOCK && Math.abs(j) < BLOCK) continue;
+        if (isReserved(i, j)) continue;
+        // Four crossings per intersection: N, S, E, W of the intersection centre
+        const crossings = [
+          { x: i, z: j + STREET / 2 + 1.2, axis: 'x' }, // north crossing (perpendicular to z-street)
+          { x: i, z: j - STREET / 2 - 1.2, axis: 'x' },
+          { x: i + STREET / 2 + 1.2, z: j, axis: 'z' },
+          { x: i - STREET / 2 - 1.2, z: j, axis: 'z' },
+        ];
+        for (const c of crossings) {
+          for (let s = 0; s < STRIPES; s++) {
+            const offset = (s - (STRIPES - 1) / 2) * STRIPE_SPACING;
+            if (c.axis === 'x') {
+              positions.push({ x: c.x + offset, y: 0.075, z: c.z, rotY: 0 });
+            } else {
+              positions.push({ x: c.x, y: 0.075, z: c.z + offset, rotY: Math.PI / 2 });
+            }
+          }
+        }
+      }
+    }
+    if (positions.length) {
+      const im = new THREE.InstancedMesh(stripeGeom, stripeMat, positions.length);
+      im.frustumCulled = false;
+      im.receiveShadow = true;
+      for (let k = 0; k < positions.length; k++) {
+        const p = positions[k];
+        dummy.position.set(p.x, p.y, p.z);
+        dummy.rotation.set(-Math.PI / 2, 0, p.rotY);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        im.setMatrixAt(k, dummy.matrix);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      scene.add(im);
+    }
+  }
+
+  // ---- Street trees scattered on sidewalks ----
+  // Two InstancedMeshes (trunk + foliage). Trees sit just past the curb
+  // along major streets, alternating sides every 18u.
+  {
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.95 });
+    const leafMat  = new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 });
+    const trunkGeom = new THREE.CylinderGeometry(0.32, 0.42, 3.4, 6);
+    const leafGeom  = new THREE.SphereGeometry(1.7, 8, 6);
+    const treePositions = [];
+    const STREET_OFFSET = STREET / 2 + 2.4; // sit just past the curb
+    for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += BLOCK) {
+      // East-west streets at z=i: place trees along the +z and -z sides
+      for (let along = -CITY_RADIUS + 12; along < CITY_RADIUS; along += 18) {
+        if (isReserved(along, i + STREET_OFFSET) || Math.abs(along) < BLOCK / 2) continue;
+        if (Math.random() < 0.55) {
+          treePositions.push({ x: along, z: i + STREET_OFFSET, scale: 0.8 + Math.random() * 0.5 });
+        }
+        if (Math.random() < 0.55) {
+          treePositions.push({ x: along, z: i - STREET_OFFSET, scale: 0.8 + Math.random() * 0.5 });
+        }
+      }
+    }
+    if (treePositions.length) {
+      const trunkIM = new THREE.InstancedMesh(trunkGeom, trunkMat, treePositions.length);
+      const leafIM  = new THREE.InstancedMesh(leafGeom,  leafMat,  treePositions.length);
+      trunkIM.frustumCulled = false; leafIM.frustumCulled = false;
+      const dummy = new THREE.Object3D();
+      for (let k = 0; k < treePositions.length; k++) {
+        const t = treePositions[k];
+        dummy.position.set(t.x, 1.7 * t.scale, t.z);
+        dummy.scale.set(t.scale, t.scale, t.scale);
+        dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+        dummy.updateMatrix();
+        trunkIM.setMatrixAt(k, dummy.matrix);
+        dummy.position.y = 4.2 * t.scale;
+        dummy.scale.set(1.2 * t.scale, 1.0 * t.scale, 1.2 * t.scale);
+        dummy.updateMatrix();
+        leafIM.setMatrixAt(k, dummy.matrix);
+      }
+      trunkIM.instanceMatrix.needsUpdate = true;
+      leafIM.instanceMatrix.needsUpdate = true;
+      scene.add(trunkIM); scene.add(leafIM);
+    }
+  }
+
+  // ---- Vending machines at street corners ----
+  // 3 instanced meshes, one per colour. Iconic Tokyo street furniture --
+  // cheap, glowing, and a great bloom contributor.
+  {
+    const VENDING_COLORS = [
+      { color: 0xc12030, name: 'red'  },
+      { color: 0x2266aa, name: 'blue' },
+      { color: 0x33aa55, name: 'green'},
+    ];
+    const buckets = VENDING_COLORS.map(() => []);
+    const vGeom = new THREE.BoxGeometry(1.1, 2.4, 0.7);
+    // Place at every 5th intersection corner (spacing dense enough to feel
+    // urban but not blanket-cover the entire city)
+    const step = BLOCK * 2;
+    for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += step) {
+      for (let j = -CITY_RADIUS + BLOCK; j <= CITY_RADIUS - BLOCK; j += step) {
+        if (Math.abs(i) < BLOCK && Math.abs(j) < BLOCK) continue;
+        if (isReserved(i, j)) continue;
+        const cornerX = i + STREET / 2 + 2.0;
+        const cornerZ = j + STREET / 2 + 2.0;
+        const bIdx = Math.floor(Math.random() * VENDING_COLORS.length);
+        buckets[bIdx].push({ x: cornerX, z: cornerZ });
+        // Sometimes add a 2nd machine adjacent to make a bank-of-vendors
+        if (Math.random() < 0.4) {
+          const bIdx2 = Math.floor(Math.random() * VENDING_COLORS.length);
+          buckets[bIdx2].push({ x: cornerX + 1.3, z: cornerZ });
+        }
+      }
+    }
+    const dummy = new THREE.Object3D();
+    for (let i = 0; i < VENDING_COLORS.length; i++) {
+      const list = buckets[i];
+      if (!list.length) continue;
+      const c = VENDING_COLORS[i].color;
+      const mat = new THREE.MeshStandardMaterial({
+        color: c, emissive: c, emissiveIntensity: 0.6, roughness: 0.55, metalness: 0.3,
+      });
+      const im = new THREE.InstancedMesh(vGeom, mat, list.length);
+      im.frustumCulled = false;
+      for (let k = 0; k < list.length; k++) {
+        const p = list[k];
+        dummy.position.set(p.x, 1.2, p.z);
+        dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        im.setMatrixAt(k, dummy.matrix);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      scene.add(im);
+    }
+  }
+
+  // ---- Lamp-post ground glow patches ----
+  // A small amber glow disc under every lamp so the lighting reads even
+  // when the actual point lights are off (which they always are -- the
+  // lamps were always emissive bulbs without dynamic light, but the glow
+  // patches sell the illusion of dropped light).
+  {
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0xffd180, transparent: true, opacity: 0.25, depthWrite: false,
+    });
+    const glowGeom = new THREE.CircleGeometry(3.6, 16);
+    const lampStep = BLOCK * 4;
+    const positions = [];
+    for (let i = -CITY_RADIUS + BLOCK; i < CITY_RADIUS; i += lampStep) {
+      for (let j = -CITY_RADIUS + BLOCK; j < CITY_RADIUS; j += lampStep) {
+        positions.push([i + BLOCK / 2 - 1, j + BLOCK / 2 - 1]);
+      }
+    }
+    if (positions.length) {
+      const im = new THREE.InstancedMesh(glowGeom, glowMat, positions.length);
+      im.frustumCulled = false;
+      const dummy = new THREE.Object3D();
+      for (let k = 0; k < positions.length; k++) {
+        const [x, z] = positions[k];
+        dummy.position.set(x, 0.18, z);
+        dummy.rotation.set(-Math.PI / 2, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        im.setMatrixAt(k, dummy.matrix);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      scene.add(im);
+    }
+  }
+
+  // ---- Construction site landmark (with tower crane) ----
+  {
+    const cs = makeConstructionSite();
+    cs.position.set(120, 0, -100);
+    cs.matrixAutoUpdate = false; cs.updateMatrix();
+    scene.add(cs);
   }
 
   return { buildings, grid, bodiesIM };
