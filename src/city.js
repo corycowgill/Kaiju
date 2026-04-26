@@ -9,6 +9,52 @@ const BUILDING_PALETTE = [
 ];
 const NEON_COLORS = [0xff3366, 0x33ddff, 0xffaa22, 0xaa66ff, 0x66ff99, 0xffee44];
 
+// Pool of Japanese sign phrases (food, entertainment, services, kanji+kana mix).
+// Used by makeNeonSignTexture to bake a glowing label canvas-texture and
+// then attached as both map + emissiveMap on the sign material so the
+// glyphs actually emit light through bloom.
+const NEON_PHRASES = [
+  'カラオケ', 'ラーメン', '寿司', 'バー', 'ホテル', '居酒屋',
+  'パチンコ', 'ゲーム', '焼鳥', '銀行', '東京', 'カフェ',
+  'コンビニ', '書店', '映画', '怪獣', '電気', '地下鉄',
+];
+// Cache: one CanvasTexture per (phrase, color) so repeated buildings reuse.
+const _signTexCache = new Map();
+function makeNeonSignTexture(text, colorHex) {
+  const key = text + ':' + colorHex;
+  const hit = _signTexCache.get(key);
+  if (hit) return hit;
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = '#0a0006';
+  g.fillRect(0, 0, c.width, c.height);
+  const colorStr = '#' + colorHex.toString(16).padStart(6, '0');
+  // Layered glow then crisp text on top
+  g.font = 'bold 56px "Noto Sans JP", "Yuji Mai", sans-serif';
+  g.textBaseline = 'middle';
+  g.textAlign = 'center';
+  g.shadowColor = colorStr;
+  g.shadowBlur = 28;
+  g.fillStyle = colorStr;
+  g.fillText(text, c.width / 2, c.height / 2);
+  g.shadowBlur = 14;
+  g.fillText(text, c.width / 2, c.height / 2);
+  g.shadowBlur = 0;
+  g.fillStyle = '#ffffff';
+  g.fillText(text, c.width / 2, c.height / 2);
+  // Thin border frame
+  g.strokeStyle = colorStr;
+  g.lineWidth = 4;
+  g.strokeRect(2, 2, c.width - 4, c.height - 4);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  _signTexCache.set(key, tex);
+  return tex;
+}
+
 function rand(min, max) { return min + Math.random() * (max - min); }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
@@ -282,86 +328,244 @@ function makeFactoryDistrict() {
 // concrete base, perimeter fence, and a static steam puff at each tower.
 function makeNuclearPlant() {
   const group = new THREE.Group();
-  const concreteMat = new THREE.MeshStandardMaterial({ color: 0x9a9a98, roughness: 0.9 });
-  const baseMat     = new THREE.MeshStandardMaterial({ color: 0x6a6a68, roughness: 0.95 });
-  const reactorMat  = new THREE.MeshStandardMaterial({ color: 0xbabac4, roughness: 0.4, metalness: 0.5 });
-  const detailMat   = new THREE.MeshStandardMaterial({ color: 0xff7711, emissive: 0xff5500, emissiveIntensity: 0.8 });
+  const concreteMat = new THREE.MeshStandardMaterial({ color: 0xa6a6a4, roughness: 0.92 });
+  const concreteDark = new THREE.MeshStandardMaterial({ color: 0x6a6a68, roughness: 0.95 });
+  const reactorMat  = new THREE.MeshStandardMaterial({ color: 0xc8c8d0, roughness: 0.4, metalness: 0.55 });
+  const containmentMat = new THREE.MeshStandardMaterial({ color: 0xb6b6b0, roughness: 0.7 });
+  const hazardMat   = new THREE.MeshStandardMaterial({ color: 0xffd11a, emissive: 0xff7700, emissiveIntensity: 0.7, roughness: 0.55 });
+  const hazardBlack = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+  const trefoilMat  = new THREE.MeshStandardMaterial({ color: 0xffd11a, emissive: 0xffaa00, emissiveIntensity: 1.6 });
+  const reactorGlow = new THREE.MeshStandardMaterial({ color: 0x66ff99, emissive: 0x33ee88, emissiveIntensity: 1.8 });
+  const blueWindow  = new THREE.MeshStandardMaterial({ color: 0x335577, emissive: 0x66bbff, emissiveIntensity: 0.9 });
 
-  // Concrete pad
-  const pad = new THREE.Mesh(new THREE.PlaneGeometry(110, 100), baseMat);
+  // Larger concrete pad
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(140, 120), concreteDark);
   pad.rotation.x = -Math.PI / 2; pad.position.y = 0.12;
   pad.receiveShadow = true;
   group.add(pad);
+  // Ground hazard stripes (yellow + black diagonal at the entry)
+  for (let i = 0; i < 8; i++) {
+    const stripe = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.6, 8),
+      i % 2 === 0 ? hazardMat : hazardBlack
+    );
+    stripe.rotation.x = -Math.PI / 2;
+    stripe.position.set(-50 + i * 3, 0.16, 50);
+    group.add(stripe);
+  }
 
-  // Two cooling towers via LatheGeometry (hyperboloid waist)
-  function makeCoolingTower(x, z) {
+  // ----------- Cooling towers (taller, more pinched waist) -----------
+  function makeCoolingTower(x, z, height = 88) {
     const points = [];
-    const segs = 14;
-    const h = 50;
+    const segs = 22;
+    const r0 = 14;       // base radius
+    const rWaist = 9;    // pinched waist radius
+    const rTop = 11;     // flared top radius
+    const waistT = 0.62; // proportional height of the waist
     for (let i = 0; i <= segs; i++) {
       const t = i / segs;
-      // pinched waist around 0.55 of height
-      const r = 9 + 4 * Math.cos((t - 0.55) * Math.PI * 1.6) - 5 * Math.exp(-((t - 0.55) ** 2) * 25);
-      points.push(new THREE.Vector2(Math.max(2.5, r), t * h));
+      let r;
+      if (t < waistT) {
+        const k = t / waistT;
+        r = r0 * (1 - k) + rWaist * k;
+      } else {
+        const k = (t - waistT) / (1 - waistT);
+        r = rWaist * (1 - k) + rTop * k;
+      }
+      points.push(new THREE.Vector2(r, t * height));
     }
-    const lathe = new THREE.Mesh(new THREE.LatheGeometry(points, 24), concreteMat);
+    const lathe = new THREE.Mesh(new THREE.LatheGeometry(points, 28), concreteMat);
     lathe.position.set(x, 0, z);
     group.add(lathe);
-    // Static steam puff cluster on top
-    const steamMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, transparent: true, opacity: 0.55, depthWrite: false });
-    for (let i = 0; i < 4; i++) {
-      const puff = new THREE.Mesh(new THREE.SphereGeometry(4 + Math.random() * 2, 10, 8), steamMat);
-      puff.position.set(x + (Math.random() - 0.5) * 6, h + 1.5 + i * 1.6, z + (Math.random() - 0.5) * 6);
+    // Yellow hazard band near the base
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(14.1, 14.1, 1.4, 28, 1, true), hazardMat);
+    band.position.set(x, 4, z);
+    group.add(band);
+    // Inner shadow ring at top
+    const innerRing = new THREE.Mesh(new THREE.CylinderGeometry(rTop * 0.95, rTop * 0.95, 0.4, 24), hazardBlack);
+    innerRing.position.set(x, height + 0.2, z);
+    group.add(innerRing);
+    // Steam plume: stacked white spheres rising tall + wide
+    const steamMat = new THREE.MeshStandardMaterial({
+      color: 0xfafafa, transparent: true, opacity: 0.7, depthWrite: false,
+      emissive: 0xddeeff, emissiveIntensity: 0.15,
+    });
+    for (let i = 0; i < 8; i++) {
+      const r = 6 + i * 1.8 + Math.random() * 2;
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), steamMat);
+      puff.position.set(
+        x + (Math.random() - 0.5) * (8 + i * 2),
+        height + 3 + i * 4.5,
+        z + (Math.random() - 0.5) * (8 + i * 2),
+      );
+      puff.scale.y = 0.65 + Math.random() * 0.3;
       group.add(puff);
     }
+    // Hot vent at the lip
+    const vent = new THREE.Mesh(
+      new THREE.TorusGeometry(rTop * 0.85, 0.4, 8, 24),
+      new THREE.MeshStandardMaterial({ color: 0x442200, emissive: 0xff5522, emissiveIntensity: 1.2 })
+    );
+    vent.rotation.x = Math.PI / 2;
+    vent.position.set(x, height + 0.6, z);
+    group.add(vent);
   }
-  makeCoolingTower(-22, 8);
-  makeCoolingTower( 22, 8);
+  makeCoolingTower(-32,  6, 92);
+  makeCoolingTower( 32,  6, 88);
 
-  // Reactor dome on the south side
-  const domeBase = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 8, 24), concreteMat);
-  domeBase.position.set(0, 4, -28);
+  // ----------- Containment building (big rectangular hall around / behind dome) -----------
+  const hall = new THREE.Mesh(new THREE.BoxGeometry(50, 14, 26), containmentMat);
+  hall.position.set(0, 7, -36);
+  group.add(hall);
+  // Big yellow stripe along the hall front
+  const hallStripe = new THREE.Mesh(new THREE.BoxGeometry(50.2, 1.4, 26.2), hazardMat);
+  hallStripe.position.set(0, 12.8, -36);
+  group.add(hallStripe);
+  // Window strip on the hall (lit from within)
+  const hallWin = new THREE.Mesh(new THREE.BoxGeometry(50.05, 1.6, 26.05), blueWindow);
+  hallWin.position.set(0, 8.5, -36);
+  group.add(hallWin);
+  // Roof vents on the hall
+  for (let i = 0; i < 4; i++) {
+    const v = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 2.2, 10), concreteDark);
+    v.position.set(-18 + i * 12, 15.2, -36);
+    group.add(v);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.4, 10), hazardBlack);
+    cap.position.set(-18 + i * 12, 16.4, -36);
+    group.add(cap);
+  }
+
+  // ----------- Reactor dome -----------
+  const domeR = 14;
+  const domeBase = new THREE.Mesh(new THREE.CylinderGeometry(domeR, domeR, 12, 24), concreteMat);
+  domeBase.position.set(0, 6, -10);
   group.add(domeBase);
+  // Yellow + black hazard ring at dome-base ground level
+  for (let i = 0; i < 24; i++) {
+    const seg = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 1.0, 0.6),
+      i % 2 === 0 ? hazardMat : hazardBlack
+    );
+    const a = (i / 24) * Math.PI * 2;
+    seg.position.set(Math.cos(a) * domeR * 1.05, 0.6, -10 + Math.sin(a) * domeR * 1.05);
+    seg.rotation.y = a + Math.PI / 2;
+    group.add(seg);
+  }
+  // Dome itself
   const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(11, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.SphereGeometry(domeR, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2),
     reactorMat
   );
-  dome.position.set(0, 8, -28);
+  dome.position.set(0, 12, -10);
   group.add(dome);
-  // Hazard stripe ring at the dome base
-  const stripe = new THREE.Mesh(
-    new THREE.CylinderGeometry(11.1, 11.1, 0.8, 24),
-    new THREE.MeshStandardMaterial({ color: 0xffcc11, emissive: 0xff8800, emissiveIntensity: 0.4 })
+  // Concrete ring at dome equator
+  const equator = new THREE.Mesh(new THREE.TorusGeometry(domeR + 0.2, 0.6, 6, 28), concreteDark);
+  equator.rotation.x = Math.PI / 2;
+  equator.position.set(0, 12, -10);
+  group.add(equator);
+  // Glowing reactor windows around the base of the dome (4 sides)
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const win = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 0.4), reactorGlow);
+    win.position.set(Math.cos(a) * (domeR + 0.05), 8, -10 + Math.sin(a) * (domeR + 0.05));
+    win.rotation.y = a + Math.PI / 2;
+    group.add(win);
+  }
+  // Antenna / lightning rod on top
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, 4, 6), hazardBlack);
+  rod.position.set(0, 12 + domeR + 1.6, -10);
+  group.add(rod);
+  const beacon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff3344, emissiveIntensity: 2.4 })
   );
-  stripe.position.set(0, 7.6, -28);
-  group.add(stripe);
-  // Radioactive trefoil "watermark" -- thin emissive box low on the dome
-  const watermark = new THREE.Mesh(new THREE.BoxGeometry(4, 0.18, 0.2), detailMat);
-  watermark.position.set(0, 8, -17);
-  group.add(watermark);
+  beacon.position.set(0, 12 + domeR + 3.6, -10);
+  group.add(beacon);
 
-  // Tubular pipework between cooling towers and reactor
-  const pipeMat = new THREE.MeshStandardMaterial({ color: 0x6a6a6a, roughness: 0.4, metalness: 0.6 });
-  for (const cx of [-22, 22]) {
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 36, 10), pipeMat);
-    pipe.position.set((cx) * 0.5, 5, -10);
-    pipe.rotation.x = Math.PI / 2;
-    pipe.rotation.y = Math.atan2(cx, 18) - Math.PI / 2;
-    group.add(pipe);
+  // ----------- Radioactive trefoil signs (yellow, glowing) -----------
+  function makeTrefoil(cx, cy, cz, ry = 0) {
+    const t = new THREE.Group();
+    // Yellow circular plate
+    const plate = new THREE.Mesh(new THREE.CircleGeometry(2.2, 18), hazardMat);
+    t.add(plate);
+    // Three black trefoil "blades" (thin pie wedges)
+    for (let i = 0; i < 3; i++) {
+      const blade = new THREE.Mesh(
+        new THREE.CircleGeometry(1.6, 12, -Math.PI / 6, Math.PI / 3),
+        trefoilMat
+      );
+      blade.rotation.z = (i / 3) * Math.PI * 2;
+      blade.position.z = 0.05;
+      t.add(blade);
+    }
+    // Center black disc
+    const center = new THREE.Mesh(new THREE.CircleGeometry(0.55, 14), hazardBlack);
+    center.position.z = 0.06;
+    t.add(center);
+    t.position.set(cx, cy, cz);
+    t.rotation.y = ry;
+    return t;
+  }
+  // Trefoil on the dome face (visible from the south approach)
+  group.add(makeTrefoil(0, 12, 4.05, 0));
+  // Trefoils on the containment hall ends
+  group.add(makeTrefoil(-25.2, 8, -36, -Math.PI / 2));
+  group.add(makeTrefoil( 25.2, 8, -36,  Math.PI / 2));
+
+  // ----------- Pipework -----------
+  const pipeMat = new THREE.MeshStandardMaterial({ color: 0x7a7a7a, roughness: 0.4, metalness: 0.65 });
+  // Cooling-tower outflow trunk (large diameter pipes from each tower into hall)
+  for (const cx of [-32, 32]) {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 28, 12), pipeMat);
+    trunk.position.set(cx * 0.5, 6, -22);
+    trunk.rotation.x = Math.PI / 2;
+    trunk.rotation.y = Math.atan2(cx * 0.5 - cx, -22 - 6);
+    group.add(trunk);
+  }
+  // Catwalk pipework along the back
+  for (let i = 0; i < 5; i++) {
+    const sup = new THREE.Mesh(new THREE.BoxGeometry(0.4, 7, 0.4), concreteDark);
+    sup.position.set(-30 + i * 15, 3.5, -52);
+    group.add(sup);
+    if (i < 4) {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 15, 8), pipeMat);
+      pipe.position.set(-30 + i * 15 + 7.5, 7, -52);
+      pipe.rotation.z = Math.PI / 2;
+      group.add(pipe);
+    }
   }
 
-  // Perimeter fence (low gray)
+  // ----------- Perimeter fence (chain-link feel via vertical posts + crossbars) -----------
   const fenceMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.95 });
   for (const [px, pz, w, d] of [
-    [0,  44, 110, 0.2],
-    [0, -44, 110, 0.2],
-    [ 53, 0, 0.2, 88],
-    [-53, 0, 0.2, 88],
+    [0,  56, 130, 0.18],
+    [0, -56, 130, 0.18],
+    [ 64, 0, 0.18, 116],
+    [-64, 0, 0.18, 116],
   ]) {
-    const f = new THREE.Mesh(new THREE.BoxGeometry(w, 2.0, d), fenceMat);
-    f.position.set(px, 1.0, pz);
+    const f = new THREE.Mesh(new THREE.BoxGeometry(w, 2.4, d), fenceMat);
+    f.position.set(px, 1.2, pz);
     group.add(f);
   }
+  // Fence posts every 8u along the front edge
+  for (let i = -8; i <= 8; i++) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.25, 3.0, 0.25), fenceMat);
+    post.position.set(i * 8, 1.5, 56);
+    group.add(post);
+  }
+
+  // ----------- "NUCLEAR" sign on the front fence -----------
+  const signMat = new THREE.MeshStandardMaterial({
+    color: 0xffd11a, emissive: 0xffaa22, emissiveIntensity: 0.9,
+  });
+  const signFrame = new THREE.Mesh(new THREE.BoxGeometry(28, 5, 0.6), hazardBlack);
+  signFrame.position.set(0, 6, 56.1);
+  group.add(signFrame);
+  const signFace = new THREE.Mesh(new THREE.BoxGeometry(26, 3.4, 0.3), signMat);
+  signFace.position.set(0, 6, 56.4);
+  group.add(signFace);
+  // Trefoil on the sign
+  group.add(makeTrefoil(-10, 6, 56.6, 0));
 
   group.matrixAutoUpdate = false; group.updateMatrix();
   return group;
@@ -1037,6 +1241,14 @@ export class Building {
     // mutations) don't crash. Replaced by the IM at scene level.
     this.body = { material: { color: this.bodyColor }, userData: { building: this } };
 
+    // Bail early for landmarks with custom meshes -- they don't want the
+    // generic procedural water tanks / AC vents / billboards / neon signs /
+    // awnings / roof variants painted on top.
+    if (opts.skipWindows) {
+      this.windowEntries = [];
+      return;
+    }
+
     // Rooftop details (probabilities tuned down to keep mesh count manageable)
     if (h > 14 && Math.random() < 0.4) {
       const tank = new THREE.Mesh(
@@ -1159,21 +1371,38 @@ export class Building {
       }
     }
 
-    // Side neon sign(s) -- usually 0 or 1, rare 2
+    // Side neon sign(s) -- usually 0 or 1, rare 2. Each sign now bakes a
+    // Japanese-text canvas as both map + emissiveMap so the glyphs actually
+    // glow (and pump bloom) instead of being a featureless coloured slab.
     const sideSignCount = h > 12 ? (Math.random() < 0.45 ? 1 : 0) : 0;
     for (let i = 0; i < sideSignCount; i++) {
       const c = pick(NEON_COLORS);
-      const sw = w * (0.25 + Math.random() * 0.2);
-      const sh = h * (0.25 + Math.random() * 0.25);
+      const phrase = pick(NEON_PHRASES);
+      const tex = makeNeonSignTexture(phrase, c);
+      // Sign aspect ratio matches the texture (256x96 ~= 8:3) so the glyphs
+      // don't squish: scale width relative to height accordingly.
+      const sh = h * (0.18 + Math.random() * 0.18);
+      const sw = sh * (256 / 96);
       const sign = new THREE.Mesh(
-        new THREE.BoxGeometry(sw, sh, 0.45),
-        new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 2.2, roughness: 0.4 })
+        new THREE.BoxGeometry(sw, sh, 0.4),
+        new THREE.MeshStandardMaterial({
+          map: tex, emissiveMap: tex,
+          emissive: 0xffffff, emissiveIntensity: 1.6,
+          roughness: 0.4, metalness: 0.1,
+        })
       );
       const side = Math.random() < 0.5 ? 1 : -1;
       const axis = Math.random() < 0.5;
       const yPos = h * (0.35 + Math.random() * 0.4);
-      if (axis) sign.position.set(side * (w / 2 + 0.25), yPos, rand(-d * 0.2, d * 0.2));
-      else { sign.position.set(rand(-w * 0.2, w * 0.2), yPos, side * (d / 2 + 0.25)); sign.rotation.y = Math.PI / 2; }
+      if (axis) {
+        // Sign on +X or -X wall: rotate 90° so face points outward.
+        sign.position.set(side * (w / 2 + 0.25), yPos, rand(-d * 0.2, d * 0.2));
+        sign.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+      } else {
+        // Sign on +Z or -Z wall: 0 or 180°.
+        sign.position.set(rand(-w * 0.2, w * 0.2), yPos, side * (d / 2 + 0.25));
+        sign.rotation.y = side > 0 ? 0 : Math.PI;
+      }
       this.group.add(sign);
       // Frame outline (slightly darker box around)
       const frame = new THREE.Mesh(
@@ -1207,7 +1436,9 @@ export class Building {
     // Windows -- pushed to the global queue, instanced once after all buildings.
     // Records local matrices (relative to the building's footprint), translated
     // by (x,z) at queue time so the global IM lives in world space.
-    if (h >= 6) {
+    // skipWindows opt: landmarks render their own custom mesh and don't
+    // want generic procedural window dots painted onto them.
+    if (h >= 6 && !opts.skipWindows) {
       const lit = Math.random() < 0.6;
       const facesToRender = h < 16 ? 1 : 2;
       const faceOffset = Math.floor(Math.random() * 4);
@@ -1509,7 +1740,7 @@ export function buildCity(scene, world, opts = {}) {
   // Tokyo Tower: tall, destructible, custom lattice mesh.
   {
     const tx = 160, tz = -160, th = 90;
-    const tower = new Building(tx, tz, 14, 14, th, { color: 0xd72b35 });
+    const tower = new Building(tx, tz, 14, 14, th, { color: 0xd72b35, skipWindows: true });
     tower.group.matrixAutoUpdate = false; tower.group.updateMatrix();
     // Hide the InstancedMesh body slot for the tower; we render the lattice instead.
     tower._skipBodyIM = true;
@@ -1528,7 +1759,7 @@ export function buildCity(scene, world, opts = {}) {
   // Imperial Palace: large walled compound with sloped pagoda-style roof.
   {
     const px = -180, pz = 140, ps = 60;
-    const palace = new Building(px, pz, 28, 28, 22, { color: 0xeae3d2 });
+    const palace = new Building(px, pz, 28, 28, 22, { color: 0xeae3d2, skipWindows: true });
     palace.group.matrixAutoUpdate = false; palace.group.updateMatrix();
     palace._skipBodyIM = true;
     palace.customMesh = makeImperialPalaceMesh(ps);
@@ -1552,15 +1783,34 @@ export function buildCity(scene, world, opts = {}) {
   }
 
   // ---------- Industrial / power districts ----------
+  // Both register as Buildings so they collide / take damage / collapse with
+  // the standard VFX. The actual visuals come from custom mesh groups
+  // (skipBodyIM = true).
   {
-    const fac = makeFactoryDistrict();
-    fac.position.set(240, 0, -200);
-    scene.add(fac);
+    const fac = new Building(240, -200, 110, 90, 16, { color: 0x6a6a68, skipWindows: true });
+    fac.group.matrixAutoUpdate = false; fac.group.updateMatrix();
+    fac._skipBodyIM = true;
+    fac.customMesh = makeFactoryDistrict();
+    fac.customMesh.position.set(240, 0, -200);
+    fac.customMesh.matrixAutoUpdate = false; fac.customMesh.updateMatrix();
+    fac.maxHp = 700; fac.hp = fac.maxHp; // beefy industrial complex
+    scene.add(fac.group);
+    scene.add(fac.customMesh);
+    buildings.push(fac);
+    grid.add(fac);
   }
   {
-    const np = makeNuclearPlant();
-    np.position.set(-240, 0, -200);
-    scene.add(np);
+    const np = new Building(-240, -200, 130, 110, 22, { color: 0xa6a6a4, skipWindows: true });
+    np.group.matrixAutoUpdate = false; np.group.updateMatrix();
+    np._skipBodyIM = true;
+    np.customMesh = makeNuclearPlant();
+    np.customMesh.position.set(-240, 0, -200);
+    np.customMesh.matrixAutoUpdate = false; np.customMesh.updateMatrix();
+    np.maxHp = 900; np.hp = np.maxHp; // even tougher than factory
+    scene.add(np.group);
+    scene.add(np.customMesh);
+    buildings.push(np);
+    grid.add(np);
   }
 
   // ---------- River + bridges ----------
@@ -1572,7 +1822,7 @@ export function buildCity(scene, world, opts = {}) {
 
   // ---------- Real Tokyo landmark towers (custom destructible meshes) ----------
   function addLandmark(spec) {
-    const b = new Building(spec.x, spec.z, spec.w, spec.d, spec.h, { color: spec.color || 0xb0b8c4 });
+    const b = new Building(spec.x, spec.z, spec.w, spec.d, spec.h, { color: spec.color || 0xb0b8c4, skipWindows: true });
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     b._skipBodyIM = true;
     b.customMesh = spec.mesh;

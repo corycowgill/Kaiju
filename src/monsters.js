@@ -88,9 +88,12 @@ export function buildKaiju(cfg) {
   root.name = 'kaiju';
 
   // Per-variant rim colour: cyan for organic kaiju, magenta for the mecha.
+  // Strength tuned WAY down so the rim is a subtle silhouette accent, not
+  // a glowing halo. (Previous values 1.6 / 1.4 were producing an "odd glow"
+  // around the kaiju per user feedback.)
   const rimColor = cfg.variant === 'mecha' ? 0xff3388 : 0x33ddff;
-  const bodyMat  = addRimLight(new THREE.MeshStandardMaterial({ color: cfg.color,      roughness: 0.7,  metalness: 0.18 }), rimColor, 1.6);
-  const bodyDark = addRimLight(new THREE.MeshStandardMaterial({ color: new THREE.Color(cfg.color).multiplyScalar(0.7), roughness: 0.75 }), rimColor, 1.4);
+  const bodyMat  = addRimLight(new THREE.MeshStandardMaterial({ color: cfg.color,      roughness: 0.7,  metalness: 0.18 }), rimColor, 0.35, 3.5);
+  const bodyDark = addRimLight(new THREE.MeshStandardMaterial({ color: new THREE.Color(cfg.color).multiplyScalar(0.7), roughness: 0.75 }), rimColor, 0.30, 3.5);
   const bellyMat = new THREE.MeshStandardMaterial({ color: cfg.bellyColor, roughness: 0.85 });
   const spineMat = new THREE.MeshStandardMaterial({ color: cfg.spineColor, roughness: 0.35, metalness: 0.4, emissive: cfg.spineColor, emissiveIntensity: 0.45 });
   const clawMat  = new THREE.MeshStandardMaterial({ color: 0x111111,       roughness: 0.5,  metalness: 0.3 });
