@@ -48,12 +48,49 @@ export const MONSTERS = {
 
 // Build a stylized kaiju with curved geometry and personality details:
 // snout, brow, nostrils, glowing pupils, neck, scales/scutes, claws, horn.
+// Phase 7: Fresnel rim-light injection via onBeforeCompile. Adds a neon-coloured
+// edge term to MeshStandardMaterial based on view-facing normal so the kaiju
+// silhouette pops against dim backgrounds.
+function addRimLight(material, hex, strength = 1.6, power = 2.5) {
+  const rim = new THREE.Color(hex);
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uRimColor    = { value: rim };
+    shader.uniforms.uRimStrength = { value: strength };
+    shader.uniforms.uRimPower    = { value: power };
+    shader.fragmentShader = shader.fragmentShader.replace(
+      'void main() {',
+      `uniform vec3 uRimColor;
+       uniform float uRimStrength;
+       uniform float uRimPower;
+       void main() {`
+    );
+    // Inject right before the colour gets written so we add to the final
+    // outgoingLight after all PBR + tone-mapping prep happens.
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <opaque_fragment>',
+      `// rim light additive (graphics plan Phase 7)
+      {
+        float fr = 1.0 - max(0.0, dot(normalize(vNormal), normalize(vViewPosition)));
+        fr = pow(fr, uRimPower);
+        outgoingLight += uRimColor * fr * uRimStrength;
+      }
+      #include <opaque_fragment>`
+    );
+  };
+  // Each material gets a unique cache key so Three.js doesn't dedup the
+  // shader programs across rim-lit materials.
+  material.customProgramCacheKey = () => 'rim_' + hex;
+  return material;
+}
+
 export function buildKaiju(cfg) {
   const root = new THREE.Group();
   root.name = 'kaiju';
 
-  const bodyMat  = new THREE.MeshStandardMaterial({ color: cfg.color,      roughness: 0.7,  metalness: 0.18 });
-  const bodyDark = new THREE.MeshStandardMaterial({ color: new THREE.Color(cfg.color).multiplyScalar(0.7), roughness: 0.75 });
+  // Per-variant rim colour: cyan for organic kaiju, magenta for the mecha.
+  const rimColor = cfg.variant === 'mecha' ? 0xff3388 : 0x33ddff;
+  const bodyMat  = addRimLight(new THREE.MeshStandardMaterial({ color: cfg.color,      roughness: 0.7,  metalness: 0.18 }), rimColor, 1.6);
+  const bodyDark = addRimLight(new THREE.MeshStandardMaterial({ color: new THREE.Color(cfg.color).multiplyScalar(0.7), roughness: 0.75 }), rimColor, 1.4);
   const bellyMat = new THREE.MeshStandardMaterial({ color: cfg.bellyColor, roughness: 0.85 });
   const spineMat = new THREE.MeshStandardMaterial({ color: cfg.spineColor, roughness: 0.35, metalness: 0.4, emissive: cfg.spineColor, emissiveIntensity: 0.45 });
   const clawMat  = new THREE.MeshStandardMaterial({ color: 0x111111,       roughness: 0.5,  metalness: 0.3 });
