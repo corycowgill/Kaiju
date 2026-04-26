@@ -1,6 +1,8 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '7d47202+', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', 'f7892c5+', new Date().toISOString());
+window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
+window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -13,6 +15,7 @@ import {
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
+window.__dbg && window.__dbg('DBG · all imports OK');
 
 // ------------------------- High score (localStorage) -------------------------
 const HIGH_SCORE_KEY = 'kaiju_highscore';
@@ -194,12 +197,14 @@ const world = {
 };
 
 // Build city
+window.__dbg && window.__dbg('DBG · buildCity starting…');
 {
   const { buildings, grid, bodiesIM } = buildCity(scene, world, { lite: isMobile });
   world.buildings = buildings;
   world.buildingGrid = grid;
   world.bodiesIM = bodiesIM;
 }
+window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
 
 // ------------------------- Game state -------------------------
 const state = {
@@ -522,6 +527,7 @@ for (const key of Object.keys(MONSTERS)) {
   _cardEls[key] = card;
 }
 console.info('[KAIJU HAVOC] menu cards built:', cardsDiv.children.length, 'isMobile:', isMobile);
+window.__dbg && window.__dbg('DBG · cards built: ' + cardsDiv.children.length + ' · isMobile=' + isMobile, '#9f9');
 // Portrait priority chain:
 //   1. Static image at assets/<key>.{png,jpg,jpeg,webp}  (artist-supplied; wins)
 //   2. 3D-rendered preview from buildKaiju()             (procedural fallback)

@@ -650,6 +650,30 @@
 <body>
 <div id="game"></div>
 
+<!-- Visible diagnostic banner (also catches any uncaught script errors) -->
+<div id="debug-banner" style="position:fixed; top:8px; left:8px; right:8px; z-index:9999; background:rgba(0,40,0,0.9); color:#9f9; font:11px/1.4 monospace; padding:6px 8px; border:1px solid #4a4; border-radius:4px; max-height:30vh; overflow:auto; pointer-events:none;">DBG · loading…</div>
+<script>
+  // Capture any error from any later script and surface it on-screen.
+  (function () {
+    var b = document.getElementById('debug-banner');
+    function log(msg, color) {
+      if (!b) return;
+      var line = document.createElement('div');
+      if (color) line.style.color = color;
+      line.textContent = msg;
+      b.appendChild(line);
+    }
+    window.addEventListener('error', function (e) {
+      log('ERROR: ' + (e.message || e.error || 'unknown') + ' @ ' + (e.filename || '?') + ':' + (e.lineno || '?'), '#f99');
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      log('PROMISE REJECT: ' + (e.reason && e.reason.message || e.reason || 'unknown'), '#f99');
+    });
+    window.__dbg = log; // game.js can use this
+    log('DBG · banner ready', '#9f9');
+  })();
+</script>
+
 <!-- Damage screen flash -->
 <div id="damage-flash" style="position:fixed; inset:0; pointer-events:none; z-index:9; background:radial-gradient(ellipse at center, transparent 40%, #ff0033 100%); opacity:0; transition:opacity 0.25s;"></div>
 <div id="lowhp-warning" style="position:fixed; inset:0; pointer-events:none; z-index:9; box-shadow:inset 0 0 120px 60px #ff0033; opacity:0;"></div>
