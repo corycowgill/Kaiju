@@ -453,6 +453,119 @@ window.addEventListener('gamepaddisconnected', () => {
   toast('GAMEPAD DISCONNECTED', 'bad');
 });
 
+// ------------------------- Menu navigation (gamepad + keyboard) -------------------------
+// pollMenuGamepad() fires whenever the title menu OR the upgrade modal is
+// visible. It tracks a focused index (cards + START on the menu, cards
+// only on the upgrade modal), navigates with D-pad / left-stick, confirms
+// with A, and launches with Start.
+const _menuPad = { focused: -1, cool: 0, prevDown: {}, prevAxis: 0 };
+function _menuVisible() {
+  return !document.getElementById('menu').classList.contains('hidden');
+}
+function _upgradeVisible() {
+  return state.upgradePending === true;
+}
+function _setFocus(items, idx) {
+  for (let i = 0; i < items.length; i++) {
+    items[i].classList.toggle('pad-focus', i === idx);
+  }
+}
+function _menuTargets() {
+  if (_upgradeVisible()) return Array.from(document.querySelectorAll('#upgrade-cards .ucard'));
+  if (_menuVisible()) {
+    const cards = Array.from(document.querySelectorAll('#monsterCards .monster-card'));
+    cards.push(document.getElementById('startBtn'));
+    return cards;
+  }
+  return [];
+}
+function navigateMenu(dir) {
+  const items = _menuTargets();
+  if (!items.length) return;
+  let f = _menuPad.focused;
+  if (f < 0) f = 0;
+  else f = Math.max(0, Math.min(items.length - 1, f + dir));
+  _menuPad.focused = f;
+  _setFocus(items, f);
+}
+function confirmMenu() {
+  const items = _menuTargets();
+  if (!items.length) return;
+  const f = _menuPad.focused < 0 ? 0 : _menuPad.focused;
+  const target = items[f];
+  if (!target) return;
+  // The startBtn is disabled until a monster is picked; calling click()
+  // on a disabled button does nothing, which is the right behaviour.
+  if (target.disabled) return;
+  target.click();
+}
+function pollMenuGamepad(dt) {
+  if (!_menuVisible() && !_upgradeVisible()) return;
+  if (!navigator.getGamepads) return;
+  const pads = navigator.getGamepads();
+  let pad = null;
+  for (const p of pads) { if (p && p.connected) { pad = p; break; } }
+  if (!pad) {
+    // Still keep visible focus from keyboard navigation
+    if (_menuPad.focused >= 0) _setFocus(_menuTargets(), _menuPad.focused);
+    return;
+  }
+  _menuPad.cool = Math.max(0, _menuPad.cool - dt);
+  const ax = pad.axes[0] || 0;
+  const dpadL = !!(pad.buttons[14] && pad.buttons[14].pressed);
+  const dpadR = !!(pad.buttons[15] && pad.buttons[15].pressed);
+  const dpadU = !!(pad.buttons[12] && pad.buttons[12].pressed);
+  const dpadD = !!(pad.buttons[13] && pad.buttons[13].pressed);
+  const aPressed = !!(pad.buttons[0] && pad.buttons[0].pressed) && !_menuPad.prevDown[0];
+  const startPressed = !!(pad.buttons[9] && pad.buttons[9].pressed) && !_menuPad.prevDown[9];
+
+  // Horizontal nav (left-stick + D-pad). Cooldown so a held direction
+  // doesn't sprint through items.
+  const wantLeft  = (ax < -0.55 || dpadL);
+  const wantRight = (ax > 0.55 || dpadR);
+  if (_menuPad.cool === 0) {
+    if (wantLeft)  { navigateMenu(-1); _menuPad.cool = 0.20; }
+    else if (wantRight) { navigateMenu(+1); _menuPad.cool = 0.20; }
+  }
+  // On the title menu only, vertical jump between card row + start btn
+  if (_menuVisible() && !_upgradeVisible()) {
+    if (_menuPad.cool === 0 && dpadD && _menuPad.focused < 3) {
+      _menuPad.focused = 3; _setFocus(_menuTargets(), 3); _menuPad.cool = 0.20;
+    } else if (_menuPad.cool === 0 && dpadU && _menuPad.focused === 3) {
+      _menuPad.focused = 0; _setFocus(_menuTargets(), 0); _menuPad.cool = 0.20;
+    }
+  }
+  if (aPressed) confirmMenu();
+  if (startPressed) {
+    // Start button shortcut: if a monster is picked, jump straight in.
+    const start = document.getElementById('startBtn');
+    if (start && !start.disabled) start.click();
+  }
+  // Cache button state for next frame's edge detection
+  for (const i of [0, 9, 12, 13, 14, 15]) {
+    _menuPad.prevDown[i] = !!(pad.buttons[i] && pad.buttons[i].pressed);
+  }
+}
+
+// Keyboard fallback: arrow keys + Enter while the menu / upgrade modal are open.
+window.addEventListener('keydown', (e) => {
+  if (!_menuVisible() && !_upgradeVisible()) return;
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); navigateMenu(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); navigateMenu(+1); }
+  else if (e.key === 'ArrowDown' && _menuVisible() && !_upgradeVisible()) {
+    e.preventDefault();
+    _menuPad.focused = 3;
+    _setFocus(_menuTargets(), 3);
+  } else if (e.key === 'ArrowUp' && _menuVisible() && !_upgradeVisible()) {
+    e.preventDefault();
+    _menuPad.focused = 0;
+    _setFocus(_menuTargets(), 0);
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    confirmMenu();
+  }
+});
+
 // ------------------------- Touch / mobile input -------------------------
 const touchInput = {
   moveX: 0, moveZ: 0,    // -1..1 from joystick
@@ -2160,6 +2273,8 @@ function offerUpgrades() {
   state.upgradePending = true;
   state.paused = true;
   document.exitPointerLock?.();
+  // Reset menu focus so the first upgrade card is highlighted by default
+  _menuPad.focused = 0;
   // Pick 3 random unique upgrades
   const pool = [...UPGRADE_POOL];
   const picks = [];
@@ -2180,6 +2295,7 @@ function offerUpgrades() {
       document.getElementById('upgrade-modal').style.display = 'none';
       state.upgradePending = false;
       state.paused = false;
+      _menuPad.focused = -1;
       if (!isMobile) renderer.domElement.requestPointerLock?.();
       // Now actually advance the wave
       if (!state.gameOver) startWave(state.wave + 1);
@@ -2223,6 +2339,9 @@ function tick(now) {
     updateCamera();
     updatePopups(dt);
   }
+  // Menu navigation (gamepad) -- runs whenever the menu or upgrade modal
+  // is on screen, regardless of paused/gameOver state.
+  pollMenuGamepad(dtRaw);
   if (composer) composer.render();
   else renderer.render(scene, camera);
   requestAnimationFrame(tick);
