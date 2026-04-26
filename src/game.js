@@ -42,6 +42,28 @@ const isMobile = (() => {
 })();
 if (isMobile) document.body.classList.add('mobile');
 
+// Phase 8: graphics quality tier. Defaults to auto (low on mobile, high on
+// desktop) and can be overridden with ?q=low | ?q=med | ?q=high.
+function detectQuality() {
+  const m = location.search.match(/[?&]q=(low|med|high)\b/);
+  if (m) return m[1];
+  return isMobile ? 'low' : 'high';
+}
+const QUALITY = detectQuality();
+const Q_HIGH = QUALITY === 'high';
+const Q_MED  = QUALITY === 'med';
+const Q_LOW  = QUALITY === 'low';
+console.info('[KAIJU HAVOC] quality tier =', QUALITY);
+// Highlight the active quality pick on the title screen.
+{
+  const pick = document.querySelector(`#quality-picker a[href="?q=${QUALITY}"]`);
+  if (pick) {
+    pick.style.color = '#ffe6c8';
+    pick.style.borderColor = '#ffcc66';
+    pick.style.background = 'rgba(255,200,100,0.12)';
+  }
+}
+
 function updateOrientationClass() {
   if (!isMobile) return;
   if (window.innerHeight > window.innerWidth) document.body.classList.add('portrait');
@@ -52,14 +74,12 @@ window.addEventListener('orientationchange', updateOrientationClass);
 
 // ------------------------- Setup -------------------------
 const game = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, powerPreference: 'high-performance' });
-renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.0) : Math.min(window.devicePixelRatio, 1.5));
+// Phase 8: pixel ratio + shadow toggle keyed off the QUALITY tier.
+const renderer = new THREE.WebGLRenderer({ antialias: Q_HIGH, powerPreference: 'high-performance' });
+const QUALITY_PR = Q_HIGH ? 1.5 : (Q_MED ? 1.25 : 1.0);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY_PR));
 renderer.setSize(window.innerWidth, window.innerHeight);
-// Shadows are off entirely now -- biggest single fps win for a city of this
-// size. The brighter lighting + bloom carry the look without them.
-// Phase 4: shadow casting on desktop only -- the kaiju + nearest few
-// buildings cast soft shadows. Mobile keeps shadows off entirely.
-renderer.shadowMap.enabled = !isMobile;
+renderer.shadowMap.enabled = Q_HIGH;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
@@ -87,9 +107,9 @@ let bloomPass = null;
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth * 0.5, window.innerHeight * 0.5),
-    isMobile ? 0.55 : 0.85,  // strength (slightly lower on mobile)
-    isMobile ? 0.45 : 0.55,  // radius
-    0.7                      // threshold -- only genuinely bright pixels bloom
+    Q_HIGH ? 0.85 : (Q_MED ? 0.65 : 0.45), // strength
+    Q_HIGH ? 0.55 : (Q_MED ? 0.50 : 0.40), // radius
+    0.7                                     // threshold
   );
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
@@ -99,11 +119,11 @@ let bloomPass = null;
 // Phase 4 lighting: low-angle synthwave-dusk sun + reduced ambient (IBL
 // from Phase 3 handles fill on desktop), plus 6 neon point lights as set
 // dressing. Hemisphere kept as a cheap colour fill on mobile (no IBL there).
-const hemi = new THREE.HemisphereLight(0xff7780, 0x1a0633, isMobile ? 0.55 : 0.30);
+const hemi = new THREE.HemisphereLight(0xff7780, 0x1a0633, Q_HIGH ? 0.30 : (Q_MED ? 0.45 : 0.55));
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xff8866, 1.45);
 sun.position.set(-90, 60, 40); // low-angle sunset rake from the side
-if (!isMobile) {
+if (Q_HIGH) {
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
   // Tight frustum: kaiju + ~80u radius around it. We retarget per frame
@@ -114,14 +134,16 @@ if (!isMobile) {
   sun.shadow.bias = -0.0005;
 }
 scene.add(sun);
-const ambient = new THREE.AmbientLight(0x334455, isMobile ? 0.45 : 0.10);
+const ambient = new THREE.AmbientLight(0x334455, Q_HIGH ? 0.10 : (Q_MED ? 0.30 : 0.45));
 scene.add(ambient);
 
-// Six neon point lights scattered through the city as set dressing. Short
-// distance + decay so they only colour the immediate street level.
+// Six (high) / 5 (med) / 4 (low) neon point lights scattered through the
+// city as set dressing. Short distance + decay so they only colour the
+// immediate street level.
 const NEON_PALETTE = [0xff3388, 0x33ddff, 0xffaa44, 0xff66ff, 0x66ff99, 0xffee44];
+const NEON_COUNT = Q_HIGH ? 6 : (Q_MED ? 5 : 4);
 const _neonLights = [];
-for (let i = 0; i < (isMobile ? 4 : 6); i++) {
+for (let i = 0; i < NEON_COUNT; i++) {
   const c = NEON_PALETTE[i % NEON_PALETTE.length];
   const a = (i / 6) * Math.PI * 2;
   const r = 110 + Math.random() * 80;
@@ -176,7 +198,7 @@ scene.add(sky);
 // PMREM, and feed it as scene.environment. All MeshStandardMaterials get
 // reflections/ambient automatically. Skipped on mobile to keep the GPU
 // budget for bloom + emissive windows.
-if (!isMobile) {
+if (Q_HIGH) {
   try {
     const pmrem = new THREE.PMREMGenerator(renderer);
     pmrem.compileEquirectangularShader();
@@ -345,7 +367,7 @@ function fitRenderer() {
   const h = vv ? vv.height : window.innerHeight;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.0) : Math.min(window.devicePixelRatio, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY_PR));
   renderer.setSize(w, h, true); // updateStyle=true: also sets canvas style.width/height
   if (composer) {
     composer.setSize(w, h);
@@ -1487,7 +1509,7 @@ function updateCamera() {
   if (!k) return;
   // Sun offset stays constant relative to the kaiju so shadows follow it
   // through the city without ever overflowing the 90u shadow camera.
-  if (sun && !isMobile) {
+  if (sun && Q_HIGH) {
     sun.position.set(k.root.position.x - 90, 90, k.root.position.z + 40);
   }
   k.head.getWorldPosition(_camHead);
