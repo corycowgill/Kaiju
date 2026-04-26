@@ -650,14 +650,18 @@
 <body>
 <div id="game"></div>
 
-<!-- Visible diagnostic banner (also catches any uncaught script errors) -->
-<div id="debug-banner" style="position:fixed; top:8px; left:8px; right:8px; z-index:9999; background:rgba(0,40,0,0.9); color:#9f9; font:11px/1.4 monospace; padding:6px 8px; border:1px solid #4a4; border-radius:4px; max-height:30vh; overflow:auto; pointer-events:none;">DBG · loading…</div>
+<!-- Diagnostic banner: opt-in via ?debug so it doesn't show for normal users.
+     Surfaces uncaught script errors and lets game.js post checkpoints via
+     window.__dbg(msg, color). -->
 <script>
-  // Capture any error from any later script and surface it on-screen.
   (function () {
-    var b = document.getElementById('debug-banner');
+    if (!/[?&]debug\b/.test(location.search)) { window.__dbg = function () {}; return; }
+    var b = document.createElement('div');
+    b.id = 'debug-banner';
+    b.style.cssText = 'position:fixed;top:8px;left:8px;right:8px;z-index:9999;background:rgba(0,40,0,.9);color:#9f9;font:11px/1.4 monospace;padding:6px 8px;border:1px solid #4a4;border-radius:4px;max-height:30vh;overflow:auto;pointer-events:none;';
+    b.textContent = 'DBG · loading…';
+    document.body.appendChild(b);
     function log(msg, color) {
-      if (!b) return;
       var line = document.createElement('div');
       if (color) line.style.color = color;
       line.textContent = msg;
@@ -669,7 +673,7 @@
     window.addEventListener('unhandledrejection', function (e) {
       log('PROMISE REJECT: ' + (e.reason && e.reason.message || e.reason || 'unknown'), '#f99');
     });
-    window.__dbg = log; // game.js can use this
+    window.__dbg = log;
     log('DBG · banner ready', '#9f9');
   })();
 </script>
