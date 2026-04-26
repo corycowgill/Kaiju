@@ -284,10 +284,11 @@ const world = {
 // Build city
 window.__dbg && window.__dbg('DBG · buildCity starting…');
 {
-  const { buildings, grid, bodiesIM } = buildCity(scene, world, { lite: isMobile });
+  const { buildings, grid, bodiesIM, cityAnimators } = buildCity(scene, world, { lite: isMobile });
   world.buildings = buildings;
   world.buildingGrid = grid;
   world.bodiesIM = bodiesIM;
+  world.cityAnimators = cityAnimators || [];
 }
 window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
 
@@ -2222,6 +2223,13 @@ function updateWorld(dt) {
   for (let i = state.pickups.length - 1; i >= 0; i--) {
     const collected = state.pickups[i].update(dt, world, kpos);
     if (state.pickups[i].dead) state.pickups.splice(i, 1);
+  }
+
+  // ----- City animators (pigeon flocks etc.) -----
+  if (world.cityAnimators) {
+    for (let i = 0; i < world.cityAnimators.length; i++) {
+      world.cityAnimators[i].update(dt, world.time);
+    }
   }
 
   // ----- Cars -----

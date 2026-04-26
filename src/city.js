@@ -1877,6 +1877,9 @@ export function buildCity(scene, world, opts = {}) {
     { kind: 'c', x:  -60, z: -100, r: 18 },    // Mori JP Tower
     { kind: 'c', x: -120, z:   60, r: 22 },    // Shibuya Scramble Square
     { kind: 'c', x:  120, z: -100, r: 28 },    // Construction site
+    // Small street-level landmarks (koban / yatai cluster)
+    { kind: 'c', x:   40, z:   50, r: 8 },     // Police koban
+    { kind: 'c', x: -150, z:  -10, r: 10 },    // Ramen yatai cluster
     // River: a horizontal strip across the whole map at z = RIVER_Z
     { kind: 'r',
       x1: -CITY_RADIUS - 50, z1: RIVER_Z - RIVER_WIDTH / 2 - 4,
@@ -2580,6 +2583,117 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
+  // ---- Bicycles parked at sidewalks ----
+  // Iconic Tokyo street-side cycle parking. We use 3 IMs (frame, front
+  // wheel, back wheel) so the whole population renders in 3 draw calls.
+  // Wheels are vertical (rotated to align with the bike's travel axis).
+  {
+    const bikePoses = [];
+    const STREET_OFF_BIKE = STREET / 2 + SIDEWALK_W * 0.55;
+    for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += BLOCK) {
+      for (let along = -CITY_RADIUS + 8; along < CITY_RADIUS; along += 4.5) {
+        if (Math.abs(along) < BLOCK / 2) continue;
+        // North side of E-W street
+        if (Math.random() < 0.10) {
+          const z = i + STREET_OFF_BIKE + (Math.random() - 0.5) * 0.5;
+          if (!isReserved(along, z)) bikePoses.push({ x: along, z, yaw: Math.PI / 2 + (Math.random() - 0.5) * 0.4 });
+        }
+        // South side of E-W street
+        if (Math.random() < 0.10) {
+          const z = i - STREET_OFF_BIKE + (Math.random() - 0.5) * 0.5;
+          if (!isReserved(along, z)) bikePoses.push({ x: along, z, yaw: Math.PI / 2 + (Math.random() - 0.5) * 0.4 });
+        }
+      }
+    }
+    if (bikePoses.length) {
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x222a33, roughness: 0.55, metalness: 0.6 });
+      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.95 });
+      // Frame approximated as a thin box (1.6u long, 0.7u tall, 0.06u wide)
+      const frameGeom = new THREE.BoxGeometry(1.6, 0.7, 0.06);
+      const wheelGeom = new THREE.CylinderGeometry(0.32, 0.32, 0.05, 10);
+      const seatGeom  = new THREE.BoxGeometry(0.22, 0.08, 0.08);
+      const handleGeom = new THREE.BoxGeometry(0.45, 0.06, 0.06);
+      const frameIM = new THREE.InstancedMesh(frameGeom, frameMat, bikePoses.length);
+      const fwIM    = new THREE.InstancedMesh(wheelGeom, wheelMat, bikePoses.length);
+      const bwIM    = new THREE.InstancedMesh(wheelGeom, wheelMat, bikePoses.length);
+      const seatIM  = new THREE.InstancedMesh(seatGeom, frameMat, bikePoses.length);
+      const handleIM = new THREE.InstancedMesh(handleGeom, frameMat, bikePoses.length);
+      [frameIM, fwIM, bwIM, seatIM, handleIM].forEach(im => { im.frustumCulled = false; });
+      const dummy = new THREE.Object3D();
+      for (let k = 0; k < bikePoses.length; k++) {
+        const b = bikePoses[k];
+        // Frame: tilted ~12° "leaning on a kickstand" lean for realism
+        const lean = (Math.random() < 0.5 ? 1 : -1) * 0.18;
+        // Travel direction is along the street (axis depends on placement),
+        // approximated by the yaw stored above. Frame box's long axis is X
+        // so we rotate Y by yaw to align with the street.
+        dummy.position.set(b.x, 0.5, b.z);
+        dummy.rotation.set(0, b.yaw, lean);
+        dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+        frameIM.setMatrixAt(k, dummy.matrix);
+        // Wheels: vertical (rot.x = π/2), positioned at frame ends along yaw
+        const fwd = new THREE.Vector3(Math.cos(b.yaw), 0, -Math.sin(b.yaw));
+        dummy.position.set(b.x + fwd.x * 0.7, 0.32, b.z + fwd.z * 0.7);
+        dummy.rotation.set(Math.PI / 2, 0, b.yaw);
+        dummy.updateMatrix(); fwIM.setMatrixAt(k, dummy.matrix);
+        dummy.position.set(b.x - fwd.x * 0.7, 0.32, b.z - fwd.z * 0.7);
+        dummy.rotation.set(Math.PI / 2, 0, b.yaw);
+        dummy.updateMatrix(); bwIM.setMatrixAt(k, dummy.matrix);
+        // Seat
+        dummy.position.set(b.x - fwd.x * 0.2, 0.95, b.z - fwd.z * 0.2);
+        dummy.rotation.set(0, b.yaw, lean);
+        dummy.updateMatrix(); seatIM.setMatrixAt(k, dummy.matrix);
+        // Handlebar
+        dummy.position.set(b.x + fwd.x * 0.55, 0.9, b.z + fwd.z * 0.55);
+        dummy.rotation.set(0, b.yaw + Math.PI / 2, lean);
+        dummy.updateMatrix(); handleIM.setMatrixAt(k, dummy.matrix);
+      }
+      [frameIM, fwIM, bwIM, seatIM, handleIM].forEach(im => {
+        im.instanceMatrix.needsUpdate = true; scene.add(im);
+      });
+    }
+  }
+
+  // ---- Police koban (交番) ----
+  // Small two-story police box. Iconic blue uniformed officer would stand
+  // outside, but at this scale the box itself reads as one. Single Group.
+  {
+    const koban = makePoliceKoban();
+    const kx = 40, kz = 50;
+    if (!isReserved(kx, kz)) {
+      koban.position.set(kx, 0, kz);
+      scene.add(koban);
+    }
+  }
+
+  // ---- Ramen yatai cluster (ramen food carts) ----
+  // 2 carts side-by-side with red chochin lanterns + steam rising. Placed
+  // at a corner near the park.
+  {
+    const yatai = makeRamenYatai();
+    const yx = -150, yz = -10;
+    if (!isReserved(yx, yz)) {
+      yatai.position.set(yx, 0, yz);
+      scene.add(yatai);
+    }
+  }
+
+  // ---- Torii gate (神社の鳥居) ----
+  // Big red Japanese gate at the entrance to Park 1. Two pillars, kasagi
+  // (top beam), nuki (lower cross-beam). Pure visual landmark.
+  {
+    const torii = makeToriiGate();
+    torii.position.set(200, 0, 175); // just south of Park 1 (200, 200)
+    torii.rotation.y = 0;
+    scene.add(torii);
+  }
+
+  // ---- Pigeon flock (animated) ----
+  // 14 small bird silhouettes flying in a slow circular pattern overhead.
+  // Wings flap on a cosine curve. Returns an animator pushed onto
+  // cityAnimators that the main game loop will tick each frame.
+  const flock = makePigeonFlock(scene);
+
   // ---- Subway entrance kiosks ----
   // Small 4u-tall kiosk with a roof, dark stairwell descending into it,
   // yellow safety railings, and a "地下鉄" sign. Dropped at a few major
@@ -2598,7 +2712,221 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
-  return { buildings, grid, bodiesIM };
+  return { buildings, grid, bodiesIM, cityAnimators: [flock] };
+}
+
+// Tokyo "koban" -- small two-story police box. Sky-blue trim, white wall,
+// red rooflight, "交番" sign over the door.
+function makePoliceKoban() {
+  const g = new THREE.Group();
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xd0d8d0, roughness: 0.7 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x2a4a8a, roughness: 0.5, metalness: 0.3 });
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x223344, roughness: 0.6 });
+  const lightMat = new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff3344, emissiveIntensity: 2.5 });
+  const doorMat  = new THREE.MeshStandardMaterial({ color: 0x88aacc, emissive: 0x445577, emissiveIntensity: 0.4, roughness: 0.2 });
+  // Body (two-story)
+  const body = new THREE.Mesh(new THREE.BoxGeometry(6, 7, 5.5), wallMat);
+  body.position.y = 3.5; g.add(body);
+  // Blue trim band
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(6.05, 0.5, 5.55), trimMat);
+  trim.position.y = 4.0; g.add(trim);
+  // Pitched roof
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 1.6, 4), roofMat);
+  roof.position.y = 7 + 0.8;
+  roof.rotation.y = Math.PI / 4;
+  g.add(roof);
+  // Roof "police" red light
+  const lightStand = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 0.2), trimMat);
+  lightStand.position.set(0, 7.7 + 0.4, 0); g.add(lightStand);
+  const redLight = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 8), lightMat);
+  redLight.position.set(0, 7.7 + 1.0, 0); g.add(redLight);
+  // Glass door (front)
+  const door = new THREE.Mesh(new THREE.BoxGeometry(1.8, 3.0, 0.1), doorMat);
+  door.position.set(0, 1.5, 5.5 / 2 + 0.06); g.add(door);
+  // 交番 sign band over the door
+  const signMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xeeeeee, emissiveIntensity: 0.6 });
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 0.1), signMat);
+  sign.position.set(0, 4.4, 5.5 / 2 + 0.06); g.add(sign);
+  // Side small windows
+  const winMat = new THREE.MeshStandardMaterial({ color: 0x224466, emissive: 0x336688, emissiveIntensity: 0.5, roughness: 0.2 });
+  for (const sx of [-1, 1]) {
+    const w1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 1.6), winMat);
+    w1.position.set(sx * 3.05, 5.0, 0); g.add(w1);
+    const w2 = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 0.1), winMat);
+    w2.position.set(sx * 1.6, 5.0, 5.5 / 2 + 0.05); g.add(w2);
+  }
+  g.matrixAutoUpdate = false;
+  return g;
+}
+
+// Ramen yatai (food cart) cluster. 2 carts joined by a chochin lantern
+// row, with a steam wisp rising from each kettle.
+function makeRamenYatai() {
+  const g = new THREE.Group();
+  const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a5a30, roughness: 0.85 });
+  const cartTopMat = new THREE.MeshStandardMaterial({ color: 0xd64030, roughness: 0.7 });
+  const counterMat = new THREE.MeshStandardMaterial({ color: 0x3a2818, roughness: 0.85 });
+  const lanternMat = new THREE.MeshStandardMaterial({ color: 0xff4422, emissive: 0xff4422, emissiveIntensity: 2.2, roughness: 0.5 });
+  const lanternFrameMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+  const kettleMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4, metalness: 0.7 });
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.95 });
+  const steamMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, transparent: true, opacity: 0.4, depthWrite: false });
+  for (let i = 0; i < 2; i++) {
+    const cart = new THREE.Group();
+    cart.position.set(i * 5.5, 0, 0);
+    // Counter
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.0, 1.6), counterMat);
+    counter.position.y = 1.0; cart.add(counter);
+    // Roof posts (4)
+    const postGeom = new THREE.BoxGeometry(0.15, 2.4, 0.15);
+    for (const dx of [-1.9, 1.9]) {
+      for (const dz of [-0.7, 0.7]) {
+        const p = new THREE.Mesh(postGeom, woodMat);
+        p.position.set(dx, 1.5 + 1.2, dz); cart.add(p);
+      }
+    }
+    // Red roof
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.3, 1.9), cartTopMat);
+    roof.position.y = 3.7; cart.add(roof);
+    // Kettle on counter
+    const kettle = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.7, 12), kettleMat);
+    kettle.position.set(-0.8, 1.85, 0); cart.add(kettle);
+    // Steam wisp
+    const steam = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 8), steamMat);
+    steam.position.set(-0.8, 2.7, 0); steam.scale.y = 1.4; cart.add(steam);
+    const steam2 = new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), steamMat);
+    steam2.position.set(-0.7, 3.5, 0.1); cart.add(steam2);
+    // Wheels
+    const wheelGeom = new THREE.CylinderGeometry(0.4, 0.4, 0.2, 10);
+    for (const dx of [-1.6, 1.6]) {
+      for (const dz of [-0.65, 0.65]) {
+        const w = new THREE.Mesh(wheelGeom, wheelMat);
+        w.rotation.z = Math.PI / 2;
+        w.position.set(dx, 0.4, dz); cart.add(w);
+      }
+    }
+    g.add(cart);
+  }
+  // 4 chochin lanterns hanging on the connecting beam between carts
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(8, 0.12, 0.12), lanternFrameMat);
+  beam.position.set(2.75, 4.0, 0); g.add(beam);
+  for (let i = 0; i < 4; i++) {
+    const lan = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.85, 10), lanternMat);
+    lan.position.set(0.5 + i * 1.6, 3.4, 0); g.add(lan);
+    // Black string
+    const str = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.55, 0.04), lanternFrameMat);
+    str.position.set(0.5 + i * 1.6, 3.78, 0); g.add(str);
+  }
+  g.matrixAutoUpdate = false;
+  return g;
+}
+
+// Big red Japanese torii gate. Two pillars, top beam (kasagi) with curved
+// uplifted ends, and a horizontal cross-beam (nuki) below it.
+function makeToriiGate() {
+  const g = new THREE.Group();
+  const redMat = new THREE.MeshStandardMaterial({ color: 0xc8302a, roughness: 0.55, metalness: 0.05 });
+  const blackMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 });
+  const PILLAR_H = 11, PILLAR_R = 0.65, SPAN = 9;
+  // Two pillars (slight inward taper at the top, matched by classical gates)
+  for (const sx of [-1, 1]) {
+    const pillar = new THREE.Mesh(
+      new THREE.CylinderGeometry(PILLAR_R, PILLAR_R * 1.1, PILLAR_H, 14),
+      redMat,
+    );
+    pillar.position.set(sx * SPAN / 2, PILLAR_H / 2, 0);
+    g.add(pillar);
+    // Pillar base (small black plinth)
+    const base = new THREE.Mesh(new THREE.BoxGeometry(PILLAR_R * 2.6, 0.35, PILLAR_R * 2.6), blackMat);
+    base.position.set(sx * SPAN / 2, 0.18, 0);
+    g.add(base);
+  }
+  // Nuki -- lower cross-beam (passes through the pillars)
+  const nuki = new THREE.Mesh(new THREE.BoxGeometry(SPAN + 1.6, 0.85, 0.85), redMat);
+  nuki.position.set(0, PILLAR_H * 0.78, 0);
+  g.add(nuki);
+  // Kasagi -- top beam with curved uplifted ends. We approximate by stacking
+  // a long thin beam plus two angled "horns" at each end.
+  const kasagi = new THREE.Mesh(new THREE.BoxGeometry(SPAN + 4, 0.95, 1.4), redMat);
+  kasagi.position.set(0, PILLAR_H + 0.85, 0); g.add(kasagi);
+  // Shimaki (a black thin layer just under the kasagi)
+  const shimaki = new THREE.Mesh(new THREE.BoxGeometry(SPAN + 3.2, 0.35, 1.2), blackMat);
+  shimaki.position.set(0, PILLAR_H + 0.35, 0); g.add(shimaki);
+  // Upturned ends (crown horns)
+  for (const sx of [-1, 1]) {
+    const horn = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.85, 1.4), redMat);
+    horn.position.set(sx * (SPAN / 2 + 1.8), PILLAR_H + 1.15, 0);
+    horn.rotation.z = sx * 0.18;
+    g.add(horn);
+  }
+  // Center plaque (white "鳥居" tag-ish, just a white box)
+  const plaque = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.6, 0.18), new THREE.MeshStandardMaterial({ color: 0xeeeeec, emissive: 0xeeeeec, emissiveIntensity: 0.4 }));
+  plaque.position.set(0, PILLAR_H * 0.92, 0.6);
+  g.add(plaque);
+  g.matrixAutoUpdate = false;
+  return g;
+}
+
+// Pigeon flock: 14 birds drifting in slow lazy circles overhead. Wings
+// flap via a sine curve in the animator. Three IMs (body, wing-L, wing-R)
+// plus an animator object that the main loop ticks.
+function makePigeonFlock(scene) {
+  const COUNT = 14;
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3a3a44, roughness: 0.85 });
+  const wingMat = new THREE.MeshStandardMaterial({ color: 0x4a4a55, roughness: 0.8, side: THREE.DoubleSide });
+  const bodyGeom = new THREE.BoxGeometry(0.45, 0.35, 1.0);
+  const wingGeom = new THREE.BoxGeometry(1.4, 0.05, 0.45);
+  const bodyIM = new THREE.InstancedMesh(bodyGeom, bodyMat, COUNT);
+  const wingLIM = new THREE.InstancedMesh(wingGeom, wingMat, COUNT);
+  const wingRIM = new THREE.InstancedMesh(wingGeom, wingMat, COUNT);
+  bodyIM.frustumCulled = false; wingLIM.frustumCulled = false; wingRIM.frustumCulled = false;
+  scene.add(bodyIM); scene.add(wingLIM); scene.add(wingRIM);
+  // Each pigeon has its own circle: random center, radius, height,
+  // angular speed, phase, and wing-flap phase offset.
+  const birds = [];
+  for (let i = 0; i < COUNT; i++) {
+    birds.push({
+      cx: (Math.random() - 0.5) * 600,
+      cz: (Math.random() - 0.5) * 600,
+      r:  20 + Math.random() * 80,
+      y:  35 + Math.random() * 45,
+      omega: 0.18 + Math.random() * 0.25, // rad/s
+      phase: Math.random() * Math.PI * 2,
+      flapPhase: Math.random() * Math.PI * 2,
+      flapHz: 6 + Math.random() * 3,
+    });
+  }
+  const dummy = new THREE.Object3D();
+  // Update writes new matrices each frame.
+  function update(dt, time) {
+    for (let i = 0; i < COUNT; i++) {
+      const b = birds[i];
+      const a = b.phase + time * b.omega;
+      const x = b.cx + Math.cos(a) * b.r;
+      const z = b.cz + Math.sin(a) * b.r;
+      // Tangent direction for the bird's heading
+      const yaw = a + Math.PI / 2;
+      const flap = Math.sin(b.flapPhase + time * b.flapHz);
+      // Body
+      dummy.position.set(x, b.y, z);
+      dummy.rotation.set(0, yaw, 0);
+      dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+      bodyIM.setMatrixAt(i, dummy.matrix);
+      // Wings flap up/down with the sine curve
+      const wingTilt = flap * 0.8;
+      // Left wing
+      dummy.position.set(x, b.y + 0.05, z);
+      dummy.rotation.set(0, yaw, wingTilt);
+      dummy.updateMatrix(); wingLIM.setMatrixAt(i, dummy.matrix);
+      // Right wing -- mirror
+      dummy.rotation.set(0, yaw + Math.PI, wingTilt);
+      dummy.updateMatrix(); wingRIM.setMatrixAt(i, dummy.matrix);
+    }
+    bodyIM.instanceMatrix.needsUpdate = true;
+    wingLIM.instanceMatrix.needsUpdate = true;
+    wingRIM.instanceMatrix.needsUpdate = true;
+  }
+  return { update };
 }
 
 function makeSubwayEntrance() {
