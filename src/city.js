@@ -897,37 +897,67 @@ function buildGlobalBodies(scene, buildings) {
 
 // Build the two global window InstancedMeshes from the queue and register
 // each entry on its owning Building so collapse can hide them.
+// Synthwave window palette. Each emissive bucket gets its own InstancedMesh so
+// per-window colour variation is essentially free (no per-instance shader
+// patching needed). 'off' is the dim/un-lit bucket.
+const WINDOW_BUCKETS = [
+  { name: 'off',   color: 0x111822, emissive: 0x000000, intensity: 0.0, weight: 0.30 },
+  { name: 'pink',  color: 0x331122, emissive: 0xff3388, intensity: 2.6, weight: 0.16 },
+  { name: 'cyan',  color: 0x003344, emissive: 0x33ddff, intensity: 2.4, weight: 0.16 },
+  { name: 'amber', color: 0x442211, emissive: 0xffaa44, intensity: 2.2, weight: 0.22 },
+  { name: 'white', color: 0x332a22, emissive: 0xffeedd, intensity: 1.8, weight: 0.16 },
+];
+function pickWindowBucket() {
+  const r = Math.random();
+  let acc = 0;
+  for (let i = 0; i < WINDOW_BUCKETS.length; i++) {
+    acc += WINDOW_BUCKETS[i].weight;
+    if (r < acc) return i;
+  }
+  return WINDOW_BUCKETS.length - 1;
+}
+
 function buildGlobalWindows(scene) {
   if (_windowQueue.length === 0) return;
-  const lits = _windowQueue.filter(w => w.lit);
-  const dims = _windowQueue.filter(w => !w.lit);
   const geom = new THREE.BoxGeometry(0.6, 1.2, 0.15);
-  const litMat = new THREE.MeshStandardMaterial({
-    color: 0x223344, emissive: 0xffeeaa, emissiveIntensity: 0.85, roughness: 0.5,
-  });
-  const dimMat = new THREE.MeshStandardMaterial({
-    color: 0x1a2230, roughness: 0.7,
-  });
-  const litIM = new THREE.InstancedMesh(geom, litMat, lits.length || 1);
-  const dimIM = new THREE.InstancedMesh(geom, dimMat, dims.length || 1);
-  // The IMs span the whole city -- frustum-cull as a single object would
-  // miss most of them, so just always render. There are only 2 of them.
-  litIM.frustumCulled = false;
-  dimIM.frustumCulled = false;
-  litIM.matrixAutoUpdate = false; litIM.updateMatrix();
-  dimIM.matrixAutoUpdate = false; dimIM.updateMatrix();
-  lits.forEach((w, i) => {
-    litIM.setMatrixAt(i, w.matrix);
-    w.b.windowEntries.push({ im: litIM, idx: i });
-  });
-  dims.forEach((w, i) => {
-    dimIM.setMatrixAt(i, w.matrix);
-    w.b.windowEntries.push({ im: dimIM, idx: i });
-  });
-  litIM.instanceMatrix.needsUpdate = true;
-  dimIM.instanceMatrix.needsUpdate = true;
-  if (lits.length) scene.add(litIM);
-  if (dims.length) scene.add(dimIM);
+  // Bucket every window. Buildings whose owner had `lit:false` (we tag this
+  // at queue time) skew heavily to the 'off' bucket; otherwise they pick
+  // from the synthwave palette weights.
+  const buckets = WINDOW_BUCKETS.map(() => []);
+  for (const w of _windowQueue) {
+    let bIdx;
+    if (!w.lit) {
+      // 80% off, 20% any of the lit colours -- gives the unlit buildings a
+      // few stray glowing windows so the city never looks completely dead.
+      bIdx = Math.random() < 0.8 ? 0 : (1 + Math.floor(Math.random() * 4));
+    } else {
+      bIdx = pickWindowBucket();
+    }
+    buckets[bIdx].push(w);
+  }
+  // Build one IM per bucket
+  for (let i = 0; i < WINDOW_BUCKETS.length; i++) {
+    const cfg = WINDOW_BUCKETS[i];
+    const list = buckets[i];
+    if (!list.length) continue;
+    const mat = new THREE.MeshStandardMaterial({
+      color: cfg.color,
+      emissive: cfg.emissive,
+      emissiveIntensity: cfg.intensity,
+      roughness: 0.5,
+      metalness: 0.0,
+    });
+    const im = new THREE.InstancedMesh(geom, mat, list.length);
+    im.frustumCulled = false;
+    im.matrixAutoUpdate = false; im.updateMatrix();
+    for (let j = 0; j < list.length; j++) {
+      const w = list[j];
+      im.setMatrixAt(j, w.matrix);
+      w.b.windowEntries.push({ im, idx: j });
+    }
+    im.instanceMatrix.needsUpdate = true;
+    scene.add(im);
+  }
   _windowQueue = [];
 }
 
