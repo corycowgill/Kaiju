@@ -2100,7 +2100,7 @@ export function buildCity(scene, world, opts = {}) {
   // light up every single corner.
   {
     const intersections = [];
-    const stoplightStep = BLOCK * 3;
+    const stoplightStep = BLOCK;
     for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += stoplightStep) {
       for (let j = -CITY_RADIUS + BLOCK; j <= CITY_RADIUS - BLOCK; j += stoplightStep) {
         // Skip near central plaza + reserved zones
@@ -2180,11 +2180,90 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
+  // ---- Street name signs ----
+  // Cross-arm signs at every other intersection on the NW corner (so
+  // they don't pile up with the stoplights on the SE corner). One pole
+  // + horizontal cross-arm + two white sign plates per intersection.
+  // Five IMs total drive the entire grid.
+  {
+    const signStep = BLOCK * 2;
+    const corners = [];
+    for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += signStep) {
+      for (let j = -CITY_RADIUS + BLOCK; j <= CITY_RADIUS - BLOCK; j += signStep) {
+        if (Math.abs(i) < BLOCK && Math.abs(j) < BLOCK) continue;
+        if (isReserved(i, j)) continue;
+        corners.push([i, j]);
+      }
+    }
+    if (corners.length) {
+      const N = corners.length;
+      const poleMat  = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.85, metalness: 0.4 });
+      const armMat   = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.85 });
+      const plateMat = new THREE.MeshStandardMaterial({
+        color: 0xeeeeee, roughness: 0.5,
+        emissive: 0xeeeeee, emissiveIntensity: 0.3,
+      });
+      const textMat  = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7 });
+      const poleGeom  = new THREE.CylinderGeometry(0.13, 0.16, 4.5, 6);
+      const armGeom   = new THREE.BoxGeometry(2.6, 0.12, 0.12);
+      const plateGeom = new THREE.BoxGeometry(2.0, 0.55, 0.06);
+      // "Text" stripe: tiny darker box on top of the plate that reads as
+      // a placeholder for the street name without requiring a canvas.
+      const textGeom  = new THREE.BoxGeometry(1.6, 0.18, 0.02);
+      const poleIM  = new THREE.InstancedMesh(poleGeom, poleMat, N);
+      const armIM   = new THREE.InstancedMesh(armGeom, armMat, N);
+      // Two plates per intersection (one per cross street, perpendicular)
+      const plateIM = new THREE.InstancedMesh(plateGeom, plateMat, N * 2);
+      const textIM  = new THREE.InstancedMesh(textGeom, textMat, N * 2);
+      [poleIM, armIM, plateIM, textIM].forEach(im => { im.frustumCulled = false; });
+      const dummy = new THREE.Object3D();
+      for (let k = 0; k < N; k++) {
+        const [ix, iz] = corners[k];
+        // NW corner of the intersection
+        const cx = ix - STREET / 2 - SIDEWALK_W * 0.6;
+        const cz = iz - STREET / 2 - SIDEWALK_W * 0.6;
+        // Pole
+        dummy.position.set(cx, 2.25, cz);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+        poleIM.setMatrixAt(k, dummy.matrix);
+        // Cross-arm (single horizontal arm; signs hang off both sides)
+        dummy.position.set(cx, 4.2, cz);
+        dummy.rotation.set(0, Math.PI / 4, 0); // diagonal so two perpendicular signs read clearly
+        dummy.updateMatrix();
+        armIM.setMatrixAt(k, dummy.matrix);
+        // Sign plate 1 -- N/S street, on +X end of the arm
+        const arm1 = { dx: Math.cos(Math.PI / 4) * 0.95, dz: Math.sin(Math.PI / 4) * 0.95 };
+        dummy.position.set(cx + arm1.dx, 4.0, cz + arm1.dz);
+        dummy.rotation.set(0, 0, 0); // facing +Z
+        dummy.updateMatrix();
+        plateIM.setMatrixAt(k * 2, dummy.matrix);
+        // Text band on plate 1
+        dummy.position.set(cx + arm1.dx, 4.05, cz + arm1.dz + 0.04);
+        dummy.updateMatrix();
+        textIM.setMatrixAt(k * 2, dummy.matrix);
+        // Sign plate 2 -- E/W street, on -X end of the arm, perpendicular
+        const arm2 = { dx: -arm1.dx, dz: -arm1.dz };
+        dummy.position.set(cx + arm2.dx, 4.0, cz + arm2.dz);
+        dummy.rotation.set(0, Math.PI / 2, 0); // facing +X
+        dummy.updateMatrix();
+        plateIM.setMatrixAt(k * 2 + 1, dummy.matrix);
+        // Text band on plate 2
+        dummy.position.set(cx + arm2.dx + 0.04, 4.05, cz + arm2.dz);
+        dummy.updateMatrix();
+        textIM.setMatrixAt(k * 2 + 1, dummy.matrix);
+      }
+      [poleIM, armIM, plateIM, textIM].forEach(im => {
+        im.instanceMatrix.needsUpdate = true; scene.add(im);
+      });
+    }
+  }
+
   // ---- Crosswalks at major (every-3rd-block) intersections ----
   // Each crossing is 5 white stripes; we lay them on the four approach
   // sides per intersection. Instanced once for the whole city.
   {
-    const stoplightStep = BLOCK * 3;
+    const stoplightStep = BLOCK;
     const stripeMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.8, emissive: 0x333333, emissiveIntensity: 0.05 });
     const stripeGeom = new THREE.PlaneGeometry(0.7, STREET - 1.6);
     const positions = [];

@@ -931,9 +931,9 @@ function startGame(key) {
   buildPowersBar();
 
   // Spawn initial cars driving around the city
-  state.cars = spawnCars(scene, isMobile ? 8 : 16, 380, isMobile ? 48 : 40);
+  state.cars = spawnCars(scene, isMobile ? 14 : 32, 380, isMobile ? 48 : 40);
   // Spawn ambient pedestrians who panic + flee when the kaiju approaches
-  state.civilians = spawnCivilians(scene, isMobile ? 14 : 24, 350);
+  state.civilians = spawnCivilians(scene, isMobile ? 24 : 50, 350);
 
   // Kick off looping background music. Tries assets/music.{mp3,ogg,wav};
   // falls back to a procedural ambient drone if no asset is present.
@@ -2356,12 +2356,12 @@ function updateWorld(dt) {
     cv.update(dt, world, kpos, 350);
   }
   // Trickle-respawn so the streets don't go empty after a rampage
-  if (state.civilians.length < (isMobile ? 12 : 20) && Math.random() < dt * 0.8) {
+  if (state.civilians.length < (isMobile ? 22 : 44) && Math.random() < dt * 1.2) {
     const news = spawnCivilians(scene, 1, 350);
     state.civilians.push(...news);
   }
-  // Re-spawn cars over time (keep ~12 active)
-  if (state.cars.length < 12 && Math.random() < dt * 0.6) {
+  // Re-spawn cars over time so traffic stays alive
+  if (state.cars.length < (isMobile ? 12 : 26) && Math.random() < dt * 1.0) {
     const news = spawnCars(scene, 1, 380, isMobile ? 48 : 40);
     state.cars.push(...news);
   }
