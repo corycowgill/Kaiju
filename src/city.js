@@ -315,9 +315,8 @@ export class Building {
     }
     // Records of window slots in the global IM, filled by buildGlobalWindows.
     this.windowEntries = [];
-
-    // user-data backlink for hit detection
-    body.userData.building = this;
+    // (body.userData.building backlink is set on the stub at line ~167;
+    //  raycasts use the global body InstancedMesh + instanceId now.)
   }
 
   damage(amount, hitPoint, world) {
