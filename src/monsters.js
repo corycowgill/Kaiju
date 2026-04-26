@@ -1121,15 +1121,179 @@ export function buildKaiju(cfg) {
       }
     }
 
-    // ---------- Bumpy reptilian scale clusters along the back / shoulders ----------
+    // ---------- DENSE REPTILIAN BACK ----------
+    // What the camera sees most often is the kaiju's back, so it gets the
+    // heaviest detail pass: a hex-grid scale pattern, overlapping
+    // crocodile-style backplates between every fin pair, vertebral spine
+    // bumps, lateral flank scales, and dense tail scales.
+    const scaleHigh = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cfg.color).multiplyScalar(1.2),
+      roughness: 0.85,
+    });
+    const scaleLow = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cfg.color).multiplyScalar(0.65),
+      roughness: 0.95,
+    });
+    const plateMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cfg.color).multiplyScalar(0.8),
+      roughness: 0.85, metalness: 0.08,
+    });
+
+    // 1) Dense back scale field (hex-offset grid) -- one InstancedMesh.
+    const scaleGeom = new THREE.SphereGeometry(0.16, 6, 5);
+    const dummy = new THREE.Object3D();
+    {
+      const positions = [];
+      for (let row = 0; row < 11; row++) {
+        const cols = row < 2 ? 5 : (row < 8 ? 4 : 3);
+        const hexOff = (row % 2) * 0.28;
+        for (let i = 0; i < cols; i++) {
+          const cx = (i - (cols - 1) / 2) * 0.6 + hexOff;
+          const sy = 14.6 - row * 0.85 + (Math.random() - 0.5) * 0.18;
+          const sz = -1.55 - Math.abs(cx) * 0.04 + (Math.random() - 0.5) * 0.1;
+          positions.push({
+            x: cx, y: sy, z: sz,
+            sx: 0.85 + Math.random() * 0.45,
+            ry: Math.random() * Math.PI * 2,
+          });
+        }
+      }
+      const im = new THREE.InstancedMesh(scaleGeom, scaleHigh, positions.length);
+      for (let i = 0; i < positions.length; i++) {
+        const p = positions[i];
+        dummy.position.set(p.x, p.y, p.z);
+        dummy.scale.set(p.sx, 0.42 * p.sx, p.sx);
+        dummy.rotation.set(0.1, p.ry, 0);
+        dummy.updateMatrix();
+        im.setMatrixAt(i, dummy.matrix);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      root.add(im);
+    }
+
+    // 2) Crocodile-style overlapping backplates running between each
+    //    dorsal fin pair (8 plates, getting smaller toward the tail).
+    for (let i = 0; i < 8; i++) {
+      const t = i / 7;
+      const w = 1.6 - 0.8 * t;
+      const h = 0.45;
+      const d = 1.2 - 0.5 * t;
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), plateMat);
+      plate.position.set(0, 13.2 - t * 7.5, -0.75 - t * 0.2);
+      plate.rotation.x = -0.12 - t * 0.04;
+      // Slight z-tilt for organic look
+      plate.rotation.z = (i % 2 === 0 ? 1 : -1) * 0.02;
+      root.add(plate);
+      // Beveled edge plate underneath each backplate (darker, slightly larger)
+      const bevel = new THREE.Mesh(new THREE.BoxGeometry(w + 0.18, 0.18, d + 0.18), scaleLow);
+      bevel.position.set(0, 13.2 - t * 7.5 - 0.2, -0.75 - t * 0.2);
+      bevel.rotation.x = -0.12 - t * 0.04;
+      root.add(bevel);
+    }
+
+    // 3) Vertebral spine bumps -- 14 osteoderm bumps along the dorsal
+    //    midline (between the dorsal fin row and the backplates).
     for (let i = 0; i < 14; i++) {
-      const sx = (Math.random() - 0.5) * 4;
-      const sy = 7 + Math.random() * 6;
-      const sz = -1.4 + Math.random() * 0.4;
-      const sc = new THREE.Mesh(new THREE.SphereGeometry(0.18 + Math.random() * 0.08, 6, 6), scaleMat);
-      sc.position.set(sx, sy, sz);
-      sc.scale.y = 0.5;
-      root.add(sc);
+      const t = i / 13;
+      const r = 0.28 - t * 0.08;
+      const bump = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), plateMat);
+      bump.position.set(0, 14.5 - t * 8.4, -1.42 - t * 0.18);
+      bump.scale.set(1, 0.55, 1);
+      root.add(bump);
+    }
+
+    // 4) Lateral flank scales (smaller, denser) -- one InstancedMesh
+    //    covering both flanks from shoulders to hips.
+    {
+      const positions = [];
+      for (let row = 0; row < 9; row++) {
+        for (const side of [-1, 1]) {
+          for (let col = 0; col < 4; col++) {
+            const yOff = (col % 2) * 0.18;
+            positions.push({
+              x: side * (1.45 + col * 0.42),
+              y: 13.5 - row * 0.85 + yOff,
+              z: -0.4 - col * 0.18,
+              sx: 0.7 + Math.random() * 0.3,
+              ry: side * Math.PI / 2,
+            });
+          }
+        }
+      }
+      const im = new THREE.InstancedMesh(scaleGeom, scaleHigh, positions.length);
+      for (let i = 0; i < positions.length; i++) {
+        const p = positions[i];
+        dummy.position.set(p.x, p.y, p.z);
+        dummy.scale.set(p.sx, 0.32 * p.sx, p.sx);
+        dummy.rotation.set(0, p.ry, 0);
+        dummy.updateMatrix();
+        im.setMatrixAt(i, dummy.matrix);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      root.add(im);
+    }
+
+    // 5) Shoulder + upper-arm scale clumps (chunkier than back scales).
+    for (const sx of [-1, 1]) {
+      for (let i = 0; i < 5; i++) {
+        const sc = new THREE.Mesh(new THREE.SphereGeometry(0.22 + Math.random() * 0.08, 8, 6), scaleHigh);
+        sc.position.set(sx * (2.4 + (Math.random() - 0.5) * 0.5),
+                        12.6 + (Math.random() - 0.5) * 1.0,
+                        -0.4 + (Math.random() - 0.5) * 0.6);
+        sc.scale.set(1, 0.55, 1);
+        root.add(sc);
+      }
+    }
+
+    // 6) Neck spikes (small dorsal spines on the neck connecting torso to head)
+    for (let i = 0; i < 5; i++) {
+      const t = i / 4;
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.16 - t * 0.05, 0.55 - t * 0.15, 5), spineMat);
+      sp.position.set(0, 13.2 + t * 1.4, -0.7 + t * 0.2);
+      sp.rotation.x = -0.4 + t * 0.2;
+      root.add(sp);
+    }
+
+    // 7) Tail dense back-scales (instanced) running down the tail's top
+    {
+      const positions = [];
+      for (let row = 0; row < 9; row++) {
+        const t = row / 8;
+        const cols = 3 - Math.floor(t * 2);
+        const w = 0.3 - t * 0.15;
+        for (let c = 0; c < cols; c++) {
+          positions.push({
+            x: (c - (cols - 1) / 2) * w * 1.6,
+            y: 0.45 - t * 0.35,
+            z: -0.4 - row * 0.95,
+            sx: w / 0.18,
+          });
+        }
+      }
+      const im = new THREE.InstancedMesh(scaleGeom, scaleHigh, positions.length);
+      for (let i = 0; i < positions.length; i++) {
+        const p = positions[i];
+        dummy.position.set(p.x, p.y, p.z);
+        dummy.scale.set(p.sx, 0.4 * p.sx, p.sx);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        im.setMatrixAt(i, dummy.matrix);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      tail.add(im);
+    }
+
+    // 8) Tail underside scutes (lighter, broader plates running under the tail)
+    for (let i = 0; i < 8; i++) {
+      const t = i / 7;
+      const sw = 1.0 - t * 0.5;
+      const sc = new THREE.Mesh(
+        new THREE.BoxGeometry(sw, 0.18, 0.7),
+        new THREE.MeshStandardMaterial({ color: cfg.bellyColor, roughness: 0.7 })
+      );
+      sc.position.set(0, -0.55 + t * 0.2, -0.6 - i * 1.05);
+      sc.rotation.x = 0.05 + t * 0.05;
+      tail.add(sc);
     }
     // ---------- Chest scars (existing) -- now beefier ----------
     for (let i = 0; i < 5; i++) {
