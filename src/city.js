@@ -170,6 +170,580 @@ function makeTokyoTowerMesh(height = 90) {
   return group;
 }
 
+// Industrial factory complex: warehouses, smokestacks with banded
+// red/white striping, big storage tanks, and pipes.
+function makeFactoryDistrict() {
+  const group = new THREE.Group();
+  const concreteMat = new THREE.MeshStandardMaterial({ color: 0x6a6a68, roughness: 0.95 });
+  const wallMat     = new THREE.MeshStandardMaterial({ color: 0x8a7a5a, roughness: 0.9  });
+  const metalMat    = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, roughness: 0.4, metalness: 0.7 });
+  const pipeMat     = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.5, metalness: 0.5 });
+  const stackMat    = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.6 });
+  const stackRedMat = new THREE.MeshStandardMaterial({ color: 0xc23333, roughness: 0.6 });
+  const tankMat     = new THREE.MeshStandardMaterial({ color: 0xaaa388, roughness: 0.5, metalness: 0.3 });
+  const beaconMat   = new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff3344, emissiveIntensity: 2.2 });
+
+  // Concrete pad
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(120, 90), concreteMat);
+  pad.rotation.x = -Math.PI / 2; pad.position.y = 0.12;
+  pad.receiveShadow = true;
+  group.add(pad);
+
+  // Two large warehouses (low and wide with sloped corrugated roofs)
+  for (const [px, pz, w, d, hh] of [
+    [-30, -10, 40, 26, 14],
+    [ 30,  10, 40, 26, 12],
+  ]) {
+    const wh = new THREE.Mesh(new THREE.BoxGeometry(w, hh, d), wallMat);
+    wh.position.set(px, hh / 2, pz);
+    group.add(wh);
+    // Sloped roof: a thin angled box
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x556655, roughness: 0.85, metalness: 0.2 });
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 1, 0.6, d + 1), roofMat);
+    roof.position.set(px, hh + 0.3, pz);
+    group.add(roof);
+    // Vent stacks on top
+    for (let i = 0; i < 3; i++) {
+      const v = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 2.5, 8), pipeMat);
+      v.position.set(px - w * 0.3 + i * w * 0.3, hh + 1.85, pz);
+      group.add(v);
+    }
+  }
+
+  // Two banded smokestacks
+  for (const [sx, sz] of [[-45, 22], [45, -22]]) {
+    const totalH = 38;
+    const stack = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.8, totalH, 14), stackMat);
+    stack.position.set(sx, totalH / 2, sz);
+    group.add(stack);
+    // Red bands (3)
+    for (let b = 0; b < 3; b++) {
+      const ring = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.45, 2.85, 2.4, 14, 1, true),
+        stackRedMat
+      );
+      ring.position.set(sx, 6 + b * 10, sz);
+      group.add(ring);
+    }
+    // Beacon at top
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 8), beaconMat);
+    beacon.position.set(sx, totalH + 0.5, sz);
+    group.add(beacon);
+    // A thin smoke column (drifting puff effect could be added later, but
+    // a soft semi-transparent cone is enough for static look)
+    const smokeMat = new THREE.MeshStandardMaterial({ color: 0xccc4b8, transparent: true, opacity: 0.45, depthWrite: false });
+    const smoke = new THREE.Mesh(new THREE.ConeGeometry(3.2, 9, 10), smokeMat);
+    smoke.position.set(sx, totalH + 4, sz);
+    smoke.rotation.x = Math.PI;
+    group.add(smoke);
+  }
+
+  // Three big storage tanks (cylinders) with capped tops
+  for (const [tx, tz] of [[-15, 32], [0, 36], [15, 32]]) {
+    const r = 5, hh = 9;
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, hh, 18), tankMat);
+    t.position.set(tx, hh / 2, tz);
+    group.add(t);
+    const cap = new THREE.Mesh(
+      new THREE.SphereGeometry(r * 0.95, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+      tankMat
+    );
+    cap.position.set(tx, hh, tz);
+    group.add(cap);
+    // Thin pipe between tanks
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 8, 6), pipeMat);
+    pipe.position.set(tx, hh + 1.5, tz - 4);
+    pipe.rotation.x = Math.PI / 2;
+    group.add(pipe);
+  }
+  // Catwalk pipe connecting warehouses to tanks
+  const catwalk = new THREE.Mesh(new THREE.BoxGeometry(60, 0.4, 0.8), pipeMat);
+  catwalk.position.set(0, 12, 22);
+  group.add(catwalk);
+
+  // Chain-link fence (low gray boxes around perimeter)
+  const fenceMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.95 });
+  for (const [px, pz, w, d] of [
+    [0,  44, 116, 0.2],
+    [0, -44, 116, 0.2],
+    [ 58, 0, 0.2, 88],
+    [-58, 0, 0.2, 88],
+  ]) {
+    const f = new THREE.Mesh(new THREE.BoxGeometry(w, 2.0, d), fenceMat);
+    f.position.set(px, 1.0, pz);
+    group.add(f);
+  }
+
+  group.matrixAutoUpdate = false; group.updateMatrix();
+  return group;
+}
+
+// Nuclear plant: two cooling towers (hyperboloid via lathe), reactor dome,
+// concrete base, perimeter fence, and a static steam puff at each tower.
+function makeNuclearPlant() {
+  const group = new THREE.Group();
+  const concreteMat = new THREE.MeshStandardMaterial({ color: 0x9a9a98, roughness: 0.9 });
+  const baseMat     = new THREE.MeshStandardMaterial({ color: 0x6a6a68, roughness: 0.95 });
+  const reactorMat  = new THREE.MeshStandardMaterial({ color: 0xbabac4, roughness: 0.4, metalness: 0.5 });
+  const detailMat   = new THREE.MeshStandardMaterial({ color: 0xff7711, emissive: 0xff5500, emissiveIntensity: 0.8 });
+
+  // Concrete pad
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(110, 100), baseMat);
+  pad.rotation.x = -Math.PI / 2; pad.position.y = 0.12;
+  pad.receiveShadow = true;
+  group.add(pad);
+
+  // Two cooling towers via LatheGeometry (hyperboloid waist)
+  function makeCoolingTower(x, z) {
+    const points = [];
+    const segs = 14;
+    const h = 50;
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      // pinched waist around 0.55 of height
+      const r = 9 + 4 * Math.cos((t - 0.55) * Math.PI * 1.6) - 5 * Math.exp(-((t - 0.55) ** 2) * 25);
+      points.push(new THREE.Vector2(Math.max(2.5, r), t * h));
+    }
+    const lathe = new THREE.Mesh(new THREE.LatheGeometry(points, 24), concreteMat);
+    lathe.position.set(x, 0, z);
+    group.add(lathe);
+    // Static steam puff cluster on top
+    const steamMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, transparent: true, opacity: 0.55, depthWrite: false });
+    for (let i = 0; i < 4; i++) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(4 + Math.random() * 2, 10, 8), steamMat);
+      puff.position.set(x + (Math.random() - 0.5) * 6, h + 1.5 + i * 1.6, z + (Math.random() - 0.5) * 6);
+      group.add(puff);
+    }
+  }
+  makeCoolingTower(-22, 8);
+  makeCoolingTower( 22, 8);
+
+  // Reactor dome on the south side
+  const domeBase = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 8, 24), concreteMat);
+  domeBase.position.set(0, 4, -28);
+  group.add(domeBase);
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(11, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+    reactorMat
+  );
+  dome.position.set(0, 8, -28);
+  group.add(dome);
+  // Hazard stripe ring at the dome base
+  const stripe = new THREE.Mesh(
+    new THREE.CylinderGeometry(11.1, 11.1, 0.8, 24),
+    new THREE.MeshStandardMaterial({ color: 0xffcc11, emissive: 0xff8800, emissiveIntensity: 0.4 })
+  );
+  stripe.position.set(0, 7.6, -28);
+  group.add(stripe);
+  // Radioactive trefoil "watermark" -- thin emissive box low on the dome
+  const watermark = new THREE.Mesh(new THREE.BoxGeometry(4, 0.18, 0.2), detailMat);
+  watermark.position.set(0, 8, -17);
+  group.add(watermark);
+
+  // Tubular pipework between cooling towers and reactor
+  const pipeMat = new THREE.MeshStandardMaterial({ color: 0x6a6a6a, roughness: 0.4, metalness: 0.6 });
+  for (const cx of [-22, 22]) {
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 36, 10), pipeMat);
+    pipe.position.set((cx) * 0.5, 5, -10);
+    pipe.rotation.x = Math.PI / 2;
+    pipe.rotation.y = Math.atan2(cx, 18) - Math.PI / 2;
+    group.add(pipe);
+  }
+
+  // Perimeter fence (low gray)
+  const fenceMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.95 });
+  for (const [px, pz, w, d] of [
+    [0,  44, 110, 0.2],
+    [0, -44, 110, 0.2],
+    [ 53, 0, 0.2, 88],
+    [-53, 0, 0.2, 88],
+  ]) {
+    const f = new THREE.Mesh(new THREE.BoxGeometry(w, 2.0, d), fenceMat);
+    f.position.set(px, 1.0, pz);
+    group.add(f);
+  }
+
+  group.matrixAutoUpdate = false; group.updateMatrix();
+  return group;
+}
+
+// River: a flat blue-emissive plane spanning E-W across the city, with a
+// darker shoreline strip on either side.
+function makeRiver(cityRadius, riverZ, riverWidth) {
+  const group = new THREE.Group();
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x224d6b, roughness: 0.2, metalness: 0.55,
+    emissive: 0x102a3c, emissiveIntensity: 0.35,
+  });
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(cityRadius * 2 + 80, riverWidth), waterMat);
+  water.rotation.x = -Math.PI / 2; water.position.set(0, 0.18, riverZ);
+  water.receiveShadow = true;
+  group.add(water);
+  // Shoreline strips
+  const shoreMat = new THREE.MeshStandardMaterial({ color: 0x6a5840, roughness: 0.95 });
+  for (const sz of [-1, 1]) {
+    const shore = new THREE.Mesh(new THREE.PlaneGeometry(cityRadius * 2 + 80, 2.5), shoreMat);
+    shore.rotation.x = -Math.PI / 2;
+    shore.position.set(0, 0.16, riverZ + sz * (riverWidth / 2 + 1.2));
+    group.add(shore);
+  }
+  group.matrixAutoUpdate = false; group.updateMatrix();
+  return group;
+}
+
+// Bridge crossing the river at a given x. Built as a flat deck + railings + pylons.
+function makeBridge(x, riverZ, riverWidth) {
+  const g = new THREE.Group();
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.85 });
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7, metalness: 0.4 });
+  const pylonMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.85 });
+
+  const deckLen = riverWidth + 6;
+  const deckW = 9;
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(deckW, 0.6, deckLen), deckMat);
+  deck.position.set(x, 1.0, riverZ);
+  g.add(deck);
+  // Yellow centre stripe
+  const stripe = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.4, deckLen - 1),
+    new THREE.MeshStandardMaterial({ color: 0xffd14a, emissive: 0xffd14a, emissiveIntensity: 0.4 })
+  );
+  stripe.rotation.x = -Math.PI / 2;
+  stripe.position.set(x, 1.34, riverZ);
+  g.add(stripe);
+  // Railings on both sides
+  for (const sx of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.2, deckLen), railMat);
+    rail.position.set(x + sx * (deckW / 2 - 0.2), 1.85, riverZ);
+    g.add(rail);
+    // Rail posts every 4u
+    const posts = Math.floor(deckLen / 4);
+    for (let p = 0; p <= posts; p++) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.6, 0.25), railMat);
+      post.position.set(x + sx * (deckW / 2 - 0.2), 1.5, riverZ - deckLen / 2 + p * 4);
+      g.add(post);
+    }
+  }
+  // Pylons under the deck (water-side supports)
+  for (const sz of [-1, 1]) {
+    const pylon = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 1.0, 8), pylonMat);
+    pylon.position.set(x, 0.5, riverZ + sz * (deckLen / 2 - 1.5));
+    g.add(pylon);
+  }
+  g.matrixAutoUpdate = false; g.updateMatrix();
+  return g;
+}
+
+// ---------- Real Tokyo landmark mesh helpers ----------
+
+// Tokyo Skytree: triangular base widening then transitioning to a slim
+// circular shaft with two observation pods and a long antenna mast.
+function makeSkytreeMesh(height = 130) {
+  const g = new THREE.Group();
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.5, metalness: 0.3 });
+  const blueMat  = new THREE.MeshStandardMaterial({ color: 0xb6cad4, roughness: 0.45, metalness: 0.5, emissive: 0x4488aa, emissiveIntensity: 0.18 });
+  const darkMat  = new THREE.MeshStandardMaterial({ color: 0x222222 });
+  const beaconMat = new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff3344, emissiveIntensity: 2.4 });
+
+  // Tapered triangular base (3-sided cylinder) -> circular waist
+  const baseSeg = new THREE.Mesh(new THREE.CylinderGeometry(7.5, 11, height * 0.55, 3), whiteMat);
+  baseSeg.position.y = height * 0.275;
+  baseSeg.rotation.y = Math.PI / 6;
+  g.add(baseSeg);
+  // Cross bracing rings on the base
+  for (let i = 1; i < 5; i++) {
+    const t = i / 5;
+    const r = 11 - (11 - 7.5) * t;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.05, 0.18, 5, 14), darkMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = t * height * 0.55;
+    g.add(ring);
+  }
+  // Mid shaft (circular)
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 7.5, height * 0.2, 18), whiteMat);
+  shaft.position.y = height * 0.55 + height * 0.1;
+  g.add(shaft);
+  // Lower observation pod
+  const pod1 = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 5, 18), blueMat);
+  pod1.position.y = height * 0.65;
+  g.add(pod1);
+  // Upper shaft (slimmer)
+  const shaft2 = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 4.5, height * 0.18, 14), whiteMat);
+  shaft2.position.y = height * 0.78;
+  g.add(shaft2);
+  // Upper observation pod
+  const pod2 = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.5, 3.5, 14), blueMat);
+  pod2.position.y = height * 0.86;
+  g.add(pod2);
+  // Antenna mast
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 1.6, height * 0.18, 8), darkMat);
+  mast.position.y = height * 0.96;
+  g.add(mast);
+  // Beacon
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 10), beaconMat);
+  beacon.position.y = height * 1.05;
+  g.add(beacon);
+  return g;
+}
+
+// Mode Gakuen Cocoon Tower: bullet/cocoon-shaped tower with a diagonal
+// lattice criss-cross pattern over a white inner skin.
+function makeCocoonTowerMesh(height = 80) {
+  const g = new THREE.Group();
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xeae6dc, roughness: 0.55 });
+  const meshMat = new THREE.MeshStandardMaterial({ color: 0x444c55, roughness: 0.4, metalness: 0.6 });
+  // Cocoon profile via lathe
+  const pts = [];
+  const segs = 18;
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const r = 7 * Math.sin(t * Math.PI) ** 0.6 + 0.5;
+    pts.push(new THREE.Vector2(Math.max(0.5, r), t * height));
+  }
+  const inner = new THREE.Mesh(new THREE.LatheGeometry(pts, 22), skinMat);
+  g.add(inner);
+  // Diagonal lattice via two helical torus-like rings
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const strut = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, height * 1.04, 0.18),
+      meshMat
+    );
+    strut.position.set(Math.cos(a) * 6.5, height / 2, Math.sin(a) * 6.5);
+    strut.rotation.y = a;
+    strut.rotation.z = 0.3;
+    g.add(strut);
+  }
+  // Horizontal bands every 12u
+  for (let i = 1; i < 6; i++) {
+    const y = (i / 6) * height;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(7 * Math.sin((i / 6) * Math.PI) ** 0.6 + 0.5, 0.22, 6, 22), meshMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = y;
+    g.add(ring);
+  }
+  return g;
+}
+
+// Asahi Group HQ: black "beer mug" tower with a white "foam" head and the
+// adjacent gold "Asahi Flame" sculpture on a low pedestal.
+function makeAsahiMesh() {
+  const g = new THREE.Group();
+  const mugMat   = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4, metalness: 0.4 });
+  const foamMat  = new THREE.MeshStandardMaterial({ color: 0xf3eee2, roughness: 0.7 });
+  const goldMat  = new THREE.MeshStandardMaterial({ color: 0xc99227, roughness: 0.35, metalness: 0.85, emissive: 0x553300, emissiveIntensity: 0.35 });
+  const concreteMat = new THREE.MeshStandardMaterial({ color: 0x6a6a68, roughness: 0.95 });
+
+  // Concrete base shared between both
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(38, 0.5, 24), concreteMat);
+  pad.position.set(0, 0.25, 0);
+  g.add(pad);
+
+  // Beer-mug tower
+  const mug = new THREE.Mesh(new THREE.CylinderGeometry(7, 7.4, 36, 20), mugMat);
+  mug.position.set(-9, 18, 0);
+  g.add(mug);
+  // Window strip emissive
+  const winMat = new THREE.MeshStandardMaterial({ color: 0x113344, emissive: 0xffeeaa, emissiveIntensity: 0.5 });
+  for (let i = 0; i < 6; i++) {
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(7.05, 7.45, 1.4, 20, 1, true), winMat);
+    ring.position.set(-9, 4 + i * 6, 0);
+    g.add(ring);
+  }
+  // Beer foam head (white scalloped top)
+  const foamMain = new THREE.Mesh(
+    new THREE.SphereGeometry(7.3, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    foamMat
+  );
+  foamMain.position.set(-9, 36, 0);
+  g.add(foamMain);
+  // Foam drip on side
+  const drip = new THREE.Mesh(new THREE.SphereGeometry(2.4, 10, 8), foamMat);
+  drip.position.set(-15, 34, 0);
+  drip.scale.set(1, 1.3, 1);
+  g.add(drip);
+
+  // Gold flame sculpture (curved horizontal flame)
+  const flame = new THREE.Mesh(
+    new THREE.ConeGeometry(3.5, 14, 12),
+    goldMat
+  );
+  flame.position.set(11, 10, 0);
+  flame.rotation.z = -Math.PI / 2.5;
+  g.add(flame);
+  // Flame tip elongation
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(1.4, 10, 10), goldMat);
+  tip.position.set(18, 12, 0);
+  tip.rotation.z = -Math.PI / 2;
+  g.add(tip);
+  // Black flame pedestal
+  const ped = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 6), mugMat);
+  ped.position.set(11, 2.5, 0);
+  g.add(ped);
+  return g;
+}
+
+// NTT DOCOMO Yoyogi: tall stepped tower with a clock-tower mast at top.
+function makeNTTDocomoMesh(height = 78) {
+  const g = new THREE.Group();
+  const tanMat   = new THREE.MeshStandardMaterial({ color: 0xa5957a, roughness: 0.7 });
+  const darkMat  = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.6 });
+  const winMat   = new THREE.MeshStandardMaterial({ color: 0x223355, emissive: 0xffeeaa, emissiveIntensity: 0.6 });
+
+  // Stepped main shaft (3 setbacks)
+  const w0 = 12, d0 = 12;
+  for (let i = 0; i < 4; i++) {
+    const t = i / 4;
+    const w = w0 - i * 1.4;
+    const d = d0 - i * 1.4;
+    const segH = height * 0.18;
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(w, segH, d), tanMat);
+    seg.position.y = i * segH + segH / 2;
+    g.add(seg);
+    // Window band per segment
+    const win = new THREE.Mesh(new THREE.BoxGeometry(w * 0.95, segH * 0.7, d * 0.95), winMat);
+    win.position.y = seg.position.y;
+    g.add(win);
+  }
+  // Setback collar
+  const collar = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 8), darkMat);
+  collar.position.y = height * 0.74;
+  g.add(collar);
+  // Clock-tower mast (rectangular shaft)
+  const mast = new THREE.Mesh(new THREE.BoxGeometry(4.5, height * 0.18, 4.5), tanMat);
+  mast.position.y = height * 0.84;
+  g.add(mast);
+  // Clock face on each side
+  const clockFace = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffeecc, emissiveIntensity: 0.6 });
+  const clockHands = new THREE.MeshStandardMaterial({ color: 0x000000 });
+  for (const [rotY, x, z] of [[0, 0, 2.31], [Math.PI, 0, -2.31], [Math.PI/2, 2.31, 0], [-Math.PI/2, -2.31, 0]]) {
+    const face = new THREE.Mesh(new THREE.CircleGeometry(1.6, 16), clockFace);
+    face.rotation.y = rotY;
+    face.position.set(x, height * 0.84, z);
+    g.add(face);
+    const hand1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 0.05), clockHands);
+    hand1.rotation.y = rotY;
+    hand1.position.set(x + 0.001, height * 0.84, z + 0.001);
+    g.add(hand1);
+  }
+  // Spire
+  const spire = new THREE.Mesh(new THREE.ConeGeometry(0.6, height * 0.12, 6), darkMat);
+  spire.position.y = height * 0.99;
+  g.add(spire);
+  return g;
+}
+
+// Kabukiza Theatre: traditional Japanese building with sweeping curved gable
+// roof tiers and red trim. Wide and low.
+function makeKabukizaMesh() {
+  const g = new THREE.Group();
+  const wallMat   = new THREE.MeshStandardMaterial({ color: 0xeeeae0, roughness: 0.7 });
+  const roofMat   = new THREE.MeshStandardMaterial({ color: 0x222a30, roughness: 0.55, metalness: 0.3 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: 0xa61f24, roughness: 0.55, emissive: 0x440a0a, emissiveIntensity: 0.2 });
+
+  // Main wide hall
+  const hall = new THREE.Mesh(new THREE.BoxGeometry(34, 12, 18), wallMat);
+  hall.position.y = 6;
+  g.add(hall);
+  // Red plinth
+  const plinth = new THREE.Mesh(new THREE.BoxGeometry(34.6, 1.2, 18.6), accentMat);
+  plinth.position.y = 0.6;
+  g.add(plinth);
+  // First curved roof (gable across the long axis) -- approximated with a wide flat triangle prism
+  function gable(yBase, w, d, h, depthOffset) {
+    const r = new THREE.Mesh(new THREE.ConeGeometry(w * 0.62, h, 4), roofMat);
+    r.rotation.y = Math.PI / 4;
+    r.scale.set(1, 1, d / w);
+    r.position.set(0, yBase + h / 2, depthOffset || 0);
+    return r;
+  }
+  g.add(gable(12, 36, 22, 6));
+  // Upper smaller roof tier (the central ornamental one)
+  g.add(gable(15, 22, 14, 4.5));
+  // Roof ridge ornaments (shachihoko-like fish)
+  const ornMat = new THREE.MeshStandardMaterial({ color: 0xddc066, roughness: 0.4, metalness: 0.6 });
+  for (const sx of [-1, 1]) {
+    const orn = new THREE.Mesh(new THREE.ConeGeometry(0.7, 2.5, 4), ornMat);
+    orn.position.set(sx * 9, 17, 0);
+    orn.rotation.x = -0.3;
+    g.add(orn);
+  }
+  // Front entry awning / red lanterns
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(20, 0.8, 4), roofMat);
+  awning.position.set(0, 7, 11);
+  g.add(awning);
+  const lanternMat = new THREE.MeshStandardMaterial({ color: 0xa61f24, emissive: 0xff4422, emissiveIntensity: 0.7 });
+  for (let i = 0; i < 5; i++) {
+    const lan = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 10), lanternMat);
+    lan.position.set(-8 + i * 4, 5, 11.5);
+    lan.scale.set(1, 1.3, 1);
+    g.add(lan);
+  }
+  return g;
+}
+
+// Azabudai Hills Mori JP Tower: tall sleek dark-glass slab. Just very tall.
+function makeMoriJPMesh(height = 110) {
+  const g = new THREE.Group();
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: 0x2a3540, roughness: 0.18, metalness: 0.85, emissive: 0x1a2530, emissiveIntensity: 0.25,
+  });
+  const accentMat = new THREE.MeshStandardMaterial({ color: 0x445566, roughness: 0.4, metalness: 0.7 });
+  // Subtle tapered profile
+  const lower = new THREE.Mesh(new THREE.BoxGeometry(13, height * 0.55, 13), glassMat);
+  lower.position.y = height * 0.275;
+  g.add(lower);
+  const upper = new THREE.Mesh(new THREE.BoxGeometry(11, height * 0.45, 11), glassMat);
+  upper.position.y = height * 0.55 + height * 0.225;
+  g.add(upper);
+  // Crown
+  const crown = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 8), accentMat);
+  crown.position.y = height + 2;
+  g.add(crown);
+  // Window strips (horizontal bands, very subtle emissive)
+  const winMat = new THREE.MeshStandardMaterial({ color: 0x66aacc, emissive: 0x4488bb, emissiveIntensity: 0.4, roughness: 0.3, metalness: 0.6 });
+  const bandCount = Math.floor(height / 3.5);
+  for (let i = 0; i < bandCount; i++) {
+    const y = i * 3.5 + 1.5;
+    const w = y < height * 0.55 ? 13.05 : 11.05;
+    const band = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, w), winMat);
+    band.position.y = y;
+    g.add(band);
+  }
+  return g;
+}
+
+// Shibuya Scramble Square: blocky modern skyscraper with a notched crown
+// (Shibuya Sky observation deck) and a slight cantilever at the top.
+function makeShibuyaScrambleMesh(height = 70) {
+  const g = new THREE.Group();
+  const facadeMat = new THREE.MeshStandardMaterial({ color: 0x6a7480, roughness: 0.4, metalness: 0.55 });
+  const glassMat  = new THREE.MeshStandardMaterial({ color: 0x4488aa, emissive: 0x336688, emissiveIntensity: 0.35, roughness: 0.2, metalness: 0.7 });
+  const darkMat   = new THREE.MeshStandardMaterial({ color: 0x222222 });
+  // Main blocky tower
+  const main = new THREE.Mesh(new THREE.BoxGeometry(20, height * 0.85, 20), facadeMat);
+  main.position.y = height * 0.425;
+  g.add(main);
+  // Window grids (3 visible faces with slight emissive)
+  const win = new THREE.Mesh(new THREE.BoxGeometry(20.05, height * 0.85, 20.05), glassMat);
+  win.position.y = main.position.y;
+  win.scale.set(1, 0.98, 1);
+  g.add(win);
+  // Cantilevered observation deck (notched corner overhanging)
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(24, 4, 24), facadeMat);
+  deck.position.y = height * 0.88;
+  g.add(deck);
+  // Open-air notch (simulated by a darker inset on top)
+  const notch = new THREE.Mesh(new THREE.BoxGeometry(16, 1.4, 16), darkMat);
+  notch.position.y = height * 0.92;
+  g.add(notch);
+  // Crown spire
+  const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.5, height * 0.08, 6), darkMat);
+  spire.position.y = height * 0.96;
+  g.add(spire);
+  return g;
+}
+
 // Imperial Palace: walled compound with a main pagoda-roofed building, two
 // flanking pavilions, garden ground, and trees inside the walls.
 function makeImperialPalaceMesh(size = 60) {
@@ -500,6 +1074,58 @@ export class Building {
       this.group.add(panel);
     }
 
+    // Roof variant for visual variety: pagoda / dome / stepped tile.
+    // Layered on top of the existing IM cube body so it doesn't add to
+    // building-grid complexity. Probability gated to keep mesh count sane.
+    if (Math.random() < 0.18) {
+      const variant = Math.random();
+      if (variant < 0.4) {
+        // Pagoda: 4-sided pyramid roof, dark blue tiles, red ridge spine
+        const roof = new THREE.Mesh(
+          new THREE.ConeGeometry(Math.max(w, d) * 0.62, Math.max(3, h * 0.18), 4),
+          new THREE.MeshStandardMaterial({ color: 0x223844, roughness: 0.5, metalness: 0.35 })
+        );
+        roof.position.y = h + Math.max(3, h * 0.18) / 2;
+        roof.rotation.y = Math.PI / 4;
+        this.group.add(roof);
+        // Red accent strip just under the roof
+        const accent = new THREE.Mesh(
+          new THREE.BoxGeometry(w + 0.4, 0.7, d + 0.4),
+          new THREE.MeshStandardMaterial({ color: 0xa12b2b, roughness: 0.6 })
+        );
+        accent.position.y = h - 0.4;
+        this.group.add(accent);
+      } else if (variant < 0.7) {
+        // Dome roof for office tower: copper hemisphere
+        const r = Math.min(w, d) * 0.55;
+        const dome = new THREE.Mesh(
+          new THREE.SphereGeometry(r, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+          new THREE.MeshStandardMaterial({ color: 0x4a6677, roughness: 0.4, metalness: 0.6 })
+        );
+        dome.position.y = h;
+        this.group.add(dome);
+        // Spire tip
+        const spire = new THREE.Mesh(
+          new THREE.ConeGeometry(0.25, 4, 6),
+          new THREE.MeshStandardMaterial({ color: 0x222222 })
+        );
+        spire.position.y = h + r + 2;
+        this.group.add(spire);
+      } else {
+        // Stepped / setback roof: 2 smaller stacked boxes
+        for (let s = 0; s < 2; s++) {
+          const sz = 1 - (s + 1) * 0.25;
+          const stepH = Math.max(2, h * 0.08);
+          const setback = new THREE.Mesh(
+            new THREE.BoxGeometry(w * sz, stepH, d * sz),
+            new THREE.MeshStandardMaterial({ color: this.bodyColor, roughness: 0.85 })
+          );
+          setback.position.y = h + stepH / 2 + s * stepH;
+          this.group.add(setback);
+        }
+      }
+    }
+
     // Side neon sign(s) -- usually 0 or 1, rare 2
     const sideSignCount = h > 12 ? (Math.random() < 0.45 ? 1 : 0) : 0;
     for (let i = 0; i < sideSignCount; i++) {
@@ -759,20 +1385,42 @@ export function buildCity(scene, world, opts = {}) {
     const curbZ2 = curbZ1.clone(); curbZ2.position.x = i - STREET / 2 + 0.2; scene.add(curbZ2);
   }
 
-  // Reserved zones (squared distance) where landmarks / parks live.
-  // Procedural buildings skip any block whose centre lands inside one.
+  // Reserved zones where landmarks / parks / districts live. Procedural
+  // buildings skip any block whose centre lands inside one.
+  // Each entry is either a circle { kind:'c', x, z, r } (default) or a
+  // rect { kind:'r', x1, z1, x2, z2 }.
+  const RIVER_Z = lite ? 60 : 80;
+  const RIVER_WIDTH = 26;
   const RESERVED = [
-    { x: 160, z: -160, r: 28 },  // Tokyo Tower
-    { x: -180, z: 140, r: 50 },  // Imperial Palace compound
-    { x: 200, z: 200, r: 28 },   // Park 1
-    { x: -200, z: -200, r: 28 }, // Park 2
-    { x: 220, z: 60, r: 22 },    // Park 3
+    { kind: 'c', x: 160, z: -160, r: 28 },     // Tokyo Tower
+    { kind: 'c', x: -180, z: 140, r: 50 },     // Imperial Palace compound
+    { kind: 'c', x: 200, z: 200, r: 28 },      // Park 1
+    { kind: 'c', x: -200, z: -200, r: 28 },    // Park 2
+    { kind: 'c', x: 220, z: 60, r: 22 },       // Park 3
+    { kind: 'c', x: 240, z: -200, r: 64 },     // Factory district
+    { kind: 'c', x: -240, z: -200, r: 60 },    // Nuclear plant
+    // Real-Tokyo landmark towers
+    { kind: 'c', x:  220, z: -40,  r: 22 },    // Tokyo Skytree
+    { kind: 'c', x:  120, z:  160, r: 18 },    // Cocoon Tower
+    { kind: 'c', x: -100, z: -180, r: 26 },    // Asahi HQ
+    { kind: 'c', x:  -60, z:  220, r: 22 },    // NTT DOCOMO
+    { kind: 'c', x:   60, z:  220, r: 22 },    // Kabukiza
+    { kind: 'c', x:  -60, z: -100, r: 18 },    // Mori JP Tower
+    { kind: 'c', x: -120, z:   60, r: 22 },    // Shibuya Scramble Square
+    // River: a horizontal strip across the whole map at z = RIVER_Z
+    { kind: 'r',
+      x1: -CITY_RADIUS - 50, z1: RIVER_Z - RIVER_WIDTH / 2 - 4,
+      x2:  CITY_RADIUS + 50, z2: RIVER_Z + RIVER_WIDTH / 2 + 4 },
   ];
   function isReserved(bx, bz) {
     for (let i = 0; i < RESERVED.length; i++) {
       const r = RESERVED[i];
-      const dx = bx - r.x, dz = bz - r.z;
-      if (dx * dx + dz * dz < r.r * r.r) return true;
+      if (r.kind === 'r') {
+        if (bx > r.x1 && bx < r.x2 && bz > r.z1 && bz < r.z2) return true;
+      } else {
+        const dx = bx - r.x, dz = bz - r.z;
+        if (dx * dx + dz * dz < r.r * r.r) return true;
+      }
     }
     return false;
   }
@@ -786,10 +1434,12 @@ export function buildCity(scene, world, opts = {}) {
       if (isReserved(bx, bz)) continue;
       const distFromCenter = Math.sqrt(bx*bx + bz*bz);
 
-      // skip some blocks entirely on lite mode
-      if (lite && Math.random() < 0.35) continue;
-      // 1-2 buildings per block
-      const n = lite ? 1 : (Math.random() < 0.55 ? 2 : 1);
+      // skip some blocks entirely on lite mode (lower than before for fuller city)
+      if (lite && Math.random() < 0.18) continue;
+      // 1-3 buildings per block on desktop, 1-2 on lite
+      const n = lite
+        ? (Math.random() < 0.4 ? 2 : 1)
+        : (Math.random() < 0.4 ? 3 : (Math.random() < 0.7 ? 2 : 1));
       for (let i = 0; i < n; i++) {
         const w = rand(8, BLOCK - STREET - 4) * (n === 1 ? 1.0 : 0.5);
         const d = rand(8, BLOCK - STREET - 4) * (n === 1 ? 1.0 : 0.5);
@@ -867,6 +1517,49 @@ export function buildCity(scene, world, opts = {}) {
   ]) {
     scene.add(makePark(p.x, p.z, p.size));
   }
+
+  // ---------- Industrial / power districts ----------
+  {
+    const fac = makeFactoryDistrict();
+    fac.position.set(240, 0, -200);
+    scene.add(fac);
+  }
+  {
+    const np = makeNuclearPlant();
+    np.position.set(-240, 0, -200);
+    scene.add(np);
+  }
+
+  // ---------- River + bridges ----------
+  scene.add(makeRiver(CITY_RADIUS, RIVER_Z, RIVER_WIDTH));
+  // Drop a bridge wherever a major street crosses the river (~every 2 blocks)
+  for (let bx = -CITY_RADIUS + BLOCK; bx <= CITY_RADIUS - BLOCK; bx += BLOCK * 2) {
+    scene.add(makeBridge(bx, RIVER_Z, RIVER_WIDTH));
+  }
+
+  // ---------- Real Tokyo landmark towers (custom destructible meshes) ----------
+  function addLandmark(spec) {
+    const b = new Building(spec.x, spec.z, spec.w, spec.d, spec.h, { color: spec.color || 0xb0b8c4 });
+    b.group.matrixAutoUpdate = false; b.group.updateMatrix();
+    b._skipBodyIM = true;
+    b.customMesh = spec.mesh;
+    b.customMesh.position.set(spec.x, 0, spec.z);
+    if (spec.rotY) b.customMesh.rotation.y = spec.rotY;
+    b.customMesh.matrixAutoUpdate = false; b.customMesh.updateMatrix();
+    if (spec.hp) { b.maxHp = spec.hp; b.hp = spec.hp; }
+    scene.add(b.group);
+    scene.add(b.customMesh);
+    buildings.push(b);
+    grid.add(b);
+    return b;
+  }
+  addLandmark({ x:  220, z: -40,  w: 18, d: 18, h: 130, hp: 320, mesh: makeSkytreeMesh(130) });           // Tokyo Skytree
+  addLandmark({ x:  120, z: 160,  w: 14, d: 14, h:  80, hp: 220, mesh: makeCocoonTowerMesh(80) });        // Mode Gakuen Cocoon
+  addLandmark({ x: -100, z: -180, w: 18, d: 26, h:  46, hp: 180, mesh: makeAsahiMesh() });                // Asahi HQ + Flame
+  addLandmark({ x:  -60, z:  220, w: 16, d: 16, h:  78, hp: 220, mesh: makeNTTDocomoMesh(78) });          // NTT DOCOMO clock tower
+  addLandmark({ x:   60, z:  220, w: 26, d: 16, h:  18, hp: 140, mesh: makeKabukizaMesh() });             // Kabukiza Theatre
+  addLandmark({ x:  -60, z: -100, w: 14, d: 14, h: 110, hp: 280, mesh: makeMoriJPMesh(110) });            // Azabudai Hills Mori JP Tower
+  addLandmark({ x: -120, z:   60, w: 22, d: 22, h:  70, hp: 220, mesh: makeShibuyaScrambleMesh(70) });    // Shibuya Scramble Square
 
   // Build the global body + window InstancedMeshes now that all buildings exist.
   const bodiesIM = buildGlobalBodies(scene, buildings);
