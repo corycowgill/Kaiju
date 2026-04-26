@@ -144,6 +144,32 @@ const skyMat = new THREE.ShaderMaterial({
 const sky = new THREE.Mesh(skyGeom, skyMat);
 scene.add(sky);
 
+// Phase 3 of graphics plan: image-based lighting via PMREMGenerator. Render
+// the procedural sky shader once into a CubeRenderTarget, prefilter through
+// PMREM, and feed it as scene.environment. All MeshStandardMaterials get
+// reflections/ambient automatically. Skipped on mobile to keep the GPU
+// budget for bloom + emissive windows.
+if (!isMobile) {
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+    // Render the sky into a small cube render target by temporarily replacing
+    // scene.background with a copy of the sky and using fromScene.
+    // Cheaper alternative: use a CubeCamera to capture the sky dome.
+    const cubeTarget = new THREE.WebGLCubeRenderTarget(256, { generateMipmaps: false });
+    const cubeCam = new THREE.CubeCamera(1, 2000, cubeTarget);
+    // Update the sky shader once before capture
+    skyMat.uniforms.time.value = 0;
+    cubeCam.position.set(0, 50, 0);
+    cubeCam.update(renderer, scene);
+    const env = pmrem.fromCubemap(cubeTarget.texture).texture;
+    scene.environment = env;
+    scene.environmentIntensity = 0.55;
+    cubeTarget.dispose();
+    pmrem.dispose();
+  } catch (e) { console.warn('PMREM env failed:', e); }
+}
+
 // ------------------------- World object -------------------------
 // Shared shell geometry + per-type materials so each shot doesn't
 // allocate a fresh BufferGeometry / MeshBasicMaterial pair.
