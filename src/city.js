@@ -2229,17 +2229,21 @@ export function buildCity(scene, world, opts = {}) {
   }
 
   // ---- Street trees scattered on sidewalks ----
-  // Two InstancedMeshes (trunk + foliage). Trees sit just past the curb
-  // along major streets, alternating sides every 18u.
+  // Trunk shared, leaves split into 3 colour buckets (oak green / sakura
+  // pink / autumn orange) for visual variety. Each tree is randomly
+  // assigned a bucket on placement.
   {
     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.95 });
-    const leafMat  = new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 });
     const trunkGeom = new THREE.CylinderGeometry(0.32, 0.42, 3.4, 6);
     const leafGeom  = new THREE.SphereGeometry(1.7, 8, 6);
+    const LEAF_BUCKETS = [
+      { name: 'green',  mat: new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 }), weight: 0.62 },
+      { name: 'sakura', mat: new THREE.MeshStandardMaterial({ color: 0xff9bbf, roughness: 0.75, emissive: 0xff5588, emissiveIntensity: 0.15 }), weight: 0.22 },
+      { name: 'autumn', mat: new THREE.MeshStandardMaterial({ color: 0xd96a22, roughness: 0.85 }), weight: 0.16 },
+    ];
     const treePositions = [];
-    const STREET_OFFSET = STREET / 2 + 2.4; // sit just past the curb
+    const STREET_OFFSET = STREET / 2 + 2.4;
     for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += BLOCK) {
-      // East-west streets at z=i: place trees along the +z and -z sides
       for (let along = -CITY_RADIUS + 12; along < CITY_RADIUS; along += 18) {
         if (isReserved(along, i + STREET_OFFSET) || Math.abs(along) < BLOCK / 2) continue;
         if (Math.random() < 0.55) {
@@ -2251,25 +2255,50 @@ export function buildCity(scene, world, opts = {}) {
       }
     }
     if (treePositions.length) {
+      // Bucket every tree
+      const buckets = LEAF_BUCKETS.map(() => []);
+      for (const t of treePositions) {
+        const r = Math.random();
+        let acc = 0; let bIdx = 0;
+        for (let i = 0; i < LEAF_BUCKETS.length; i++) {
+          acc += LEAF_BUCKETS[i].weight;
+          if (r < acc) { bIdx = i; break; }
+        }
+        buckets[bIdx].push(t);
+      }
+      // Trunks share one IM (all trees regardless of leaf colour)
       const trunkIM = new THREE.InstancedMesh(trunkGeom, trunkMat, treePositions.length);
-      const leafIM  = new THREE.InstancedMesh(leafGeom,  leafMat,  treePositions.length);
-      trunkIM.frustumCulled = false; leafIM.frustumCulled = false;
+      trunkIM.frustumCulled = false;
       const dummy = new THREE.Object3D();
-      for (let k = 0; k < treePositions.length; k++) {
-        const t = treePositions[k];
-        dummy.position.set(t.x, 1.7 * t.scale, t.z);
-        dummy.scale.set(t.scale, t.scale, t.scale);
-        dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
-        dummy.updateMatrix();
-        trunkIM.setMatrixAt(k, dummy.matrix);
-        dummy.position.y = 4.2 * t.scale;
-        dummy.scale.set(1.2 * t.scale, 1.0 * t.scale, 1.2 * t.scale);
-        dummy.updateMatrix();
-        leafIM.setMatrixAt(k, dummy.matrix);
+      let trunkIdx = 0;
+      for (const list of buckets) {
+        for (const t of list) {
+          dummy.position.set(t.x, 1.7 * t.scale, t.z);
+          dummy.scale.set(t.scale, t.scale, t.scale);
+          dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+          dummy.updateMatrix();
+          trunkIM.setMatrixAt(trunkIdx++, dummy.matrix);
+        }
       }
       trunkIM.instanceMatrix.needsUpdate = true;
-      leafIM.instanceMatrix.needsUpdate = true;
-      scene.add(trunkIM); scene.add(leafIM);
+      scene.add(trunkIM);
+      // Three leaf IMs, one per colour bucket
+      for (let i = 0; i < LEAF_BUCKETS.length; i++) {
+        const list = buckets[i];
+        if (!list.length) continue;
+        const leafIM = new THREE.InstancedMesh(leafGeom, LEAF_BUCKETS[i].mat, list.length);
+        leafIM.frustumCulled = false;
+        for (let k = 0; k < list.length; k++) {
+          const t = list[k];
+          dummy.position.set(t.x, 4.2 * t.scale, t.z);
+          dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+          dummy.scale.set(1.2 * t.scale, 1.0 * t.scale, 1.2 * t.scale);
+          dummy.updateMatrix();
+          leafIM.setMatrixAt(k, dummy.matrix);
+        }
+        leafIM.instanceMatrix.needsUpdate = true;
+        scene.add(leafIM);
+      }
     }
   }
 
@@ -2367,7 +2396,269 @@ export function buildCity(scene, world, opts = {}) {
     scene.add(cs);
   }
 
+  // ---- Telephone poles + sagging power lines ----
+  // Poles run along every other E-W street, alternating sides. Each
+  // pole is a wooden cylinder + horizontal cross-arm + 3 ceramic
+  // insulators + 3 power lines sagging to the next pole.
+  {
+    const poleMat   = new THREE.MeshStandardMaterial({ color: 0x4a3a28, roughness: 0.95 });
+    const armMat    = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.85 });
+    const insMat    = new THREE.MeshStandardMaterial({ color: 0xeae3d0, roughness: 0.5 });
+    const cableMat  = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.95 });
+    const POLE_H = 7.0;
+    const ARM_W = 2.4;
+    const SPAN = BLOCK;            // distance between consecutive poles
+    const STREET_OFFSET_P = STREET / 2 + 1.6;
+    const poles = []; // {x, z}
+    for (let i = -CITY_RADIUS + BLOCK * 2; i <= CITY_RADIUS - BLOCK * 2; i += BLOCK * 2) {
+      // Alternate side per row so the sky doesn't get a uniform grid
+      const side = (Math.floor((i + CITY_RADIUS) / BLOCK) % 2 === 0) ? 1 : -1;
+      const z = i + side * STREET_OFFSET_P;
+      for (let x = -CITY_RADIUS + BLOCK; x <= CITY_RADIUS - BLOCK; x += SPAN) {
+        if (isReserved(x, z) || Math.abs(x) < BLOCK) continue;
+        poles.push({ x, z });
+      }
+    }
+    if (poles.length) {
+      // Pole InstancedMesh
+      const poleGeom = new THREE.CylinderGeometry(0.18, 0.22, POLE_H, 6);
+      const poleIM = new THREE.InstancedMesh(poleGeom, poleMat, poles.length);
+      poleIM.frustumCulled = false;
+      // Cross-arm IM (one per pole)
+      const armGeom = new THREE.BoxGeometry(ARM_W, 0.18, 0.18);
+      const armIM = new THREE.InstancedMesh(armGeom, armMat, poles.length);
+      armIM.frustumCulled = false;
+      // Insulator IM (3 per pole)
+      const insGeom = new THREE.CylinderGeometry(0.13, 0.13, 0.4, 6);
+      const insIM = new THREE.InstancedMesh(insGeom, insMat, poles.length * 3);
+      insIM.frustumCulled = false;
+      const dummy = new THREE.Object3D();
+      for (let k = 0; k < poles.length; k++) {
+        const p = poles[k];
+        dummy.position.set(p.x, POLE_H / 2, p.z); dummy.rotation.set(0,0,0); dummy.scale.set(1,1,1); dummy.updateMatrix();
+        poleIM.setMatrixAt(k, dummy.matrix);
+        dummy.position.set(p.x, POLE_H - 0.4, p.z); dummy.updateMatrix();
+        armIM.setMatrixAt(k, dummy.matrix);
+        for (let i = -1; i <= 1; i++) {
+          dummy.position.set(p.x + i * (ARM_W / 2 - 0.2), POLE_H - 0.2, p.z);
+          dummy.updateMatrix();
+          insIM.setMatrixAt(k * 3 + (i + 1), dummy.matrix);
+        }
+      }
+      poleIM.instanceMatrix.needsUpdate = true;
+      armIM.instanceMatrix.needsUpdate = true;
+      insIM.instanceMatrix.needsUpdate = true;
+      scene.add(poleIM); scene.add(armIM); scene.add(insIM);
+
+      // Sagging cables between consecutive poles in each row
+      // Group poles by z (same row) and sort by x
+      const rows = new Map();
+      for (const p of poles) {
+        const key = Math.round(p.z);
+        if (!rows.has(key)) rows.set(key, []);
+        rows.get(key).push(p);
+      }
+      for (const arr of rows.values()) {
+        arr.sort((a, b) => a.x - b.x);
+        for (let n = 0; n + 1 < arr.length; n++) {
+          const a = arr[n], b = arr[n + 1];
+          if (b.x - a.x > SPAN * 1.5) continue; // skip across reserved gaps
+          for (let line = 0; line < 3; line++) {
+            const offset = (line - 1) * (ARM_W / 2 - 0.2);
+            const start = new THREE.Vector3(a.x + offset, POLE_H - 0.2, a.z);
+            const sag   = new THREE.Vector3((a.x + b.x) / 2 + offset, POLE_H - 0.7, (a.z + b.z) / 2);
+            const end   = new THREE.Vector3(b.x + offset, POLE_H - 0.2, b.z);
+            const curve = new THREE.QuadraticBezierCurve3(start, sag, end);
+            const tube = new THREE.Mesh(
+              new THREE.TubeGeometry(curve, 8, 0.04, 4, false),
+              cableMat
+            );
+            tube.matrixAutoUpdate = false; tube.updateMatrix();
+            scene.add(tube);
+          }
+        }
+      }
+    }
+  }
+
+  // ---- Manhole covers on streets ----
+  {
+    const manholeMat = new THREE.MeshStandardMaterial({ color: 0x252525, roughness: 0.8, metalness: 0.4 });
+    const manholeGeom = new THREE.CylinderGeometry(1.05, 1.05, 0.06, 18);
+    const manholes = [];
+    // Drop a manhole every BLOCK along each street, slight offset variation
+    for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += BLOCK) {
+      for (let j = -CITY_RADIUS + BLOCK; j <= CITY_RADIUS - BLOCK; j += BLOCK) {
+        // E-W street at z=i, manhole somewhere along x mid-block
+        const x1 = j + (Math.random() - 0.5) * (BLOCK * 0.6);
+        if (Math.abs(x1) > 8 && !isReserved(x1, i)) {
+          manholes.push({ x: x1, z: i + (Math.random() - 0.5) * 1.5 });
+        }
+      }
+    }
+    if (manholes.length) {
+      const im = new THREE.InstancedMesh(manholeGeom, manholeMat, manholes.length);
+      im.frustumCulled = false;
+      const dummy = new THREE.Object3D();
+      for (let k = 0; k < manholes.length; k++) {
+        const m = manholes[k];
+        dummy.position.set(m.x, 0.085, m.z);
+        dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        im.setMatrixAt(k, dummy.matrix);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      scene.add(im);
+    }
+  }
+
+  // ---- Parked cars along sidewalks ----
+  // Static instanced meshes that don't move. Body + cabin + 4 wheels in
+  // 4 IMs. We pick a fixed colour palette so the parked rows have variety
+  // without needing per-instance colour.
+  {
+    const PARKED_COLORS = [0xc23030, 0x2266aa, 0x33aa55, 0xeeeeee, 0x222222, 0xeeaa33, 0x995577];
+    const buckets = PARKED_COLORS.map(() => []);
+    const STREET_OFFSET_P = STREET / 2 + 4.8;
+    for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += BLOCK) {
+      for (let along = -CITY_RADIUS + 14; along < CITY_RADIUS; along += 6) {
+        if (isReserved(along, i + STREET_OFFSET_P) || Math.abs(along) < BLOCK / 2) continue;
+        if (Math.random() < 0.18) {
+          const cIdx = Math.floor(Math.random() * PARKED_COLORS.length);
+          buckets[cIdx].push({ x: along, z: i + STREET_OFFSET_P, axis: 'x', dir: 1 });
+        }
+        if (Math.random() < 0.18) {
+          const cIdx = Math.floor(Math.random() * PARKED_COLORS.length);
+          buckets[cIdx].push({ x: along, z: i - STREET_OFFSET_P, axis: 'x', dir: -1 });
+        }
+      }
+    }
+    const bodyGeom = new THREE.BoxGeometry(1.6, 0.8, 3.4);
+    const cabinGeom = new THREE.BoxGeometry(1.4, 0.7, 1.6);
+    const wheelGeom = new THREE.CylinderGeometry(0.3, 0.3, 0.25, 8);
+    const cabinMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, roughness: 0.1, metalness: 0.6 });
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
+    const dummy = new THREE.Object3D();
+    for (let i = 0; i < PARKED_COLORS.length; i++) {
+      const list = buckets[i];
+      if (!list.length) continue;
+      const bodyMat = new THREE.MeshStandardMaterial({ color: PARKED_COLORS[i], roughness: 0.5, metalness: 0.3 });
+      const bodyIM = new THREE.InstancedMesh(bodyGeom, bodyMat, list.length);
+      bodyIM.frustumCulled = false;
+      const cabinIM = new THREE.InstancedMesh(cabinGeom, cabinMat, list.length);
+      cabinIM.frustumCulled = false;
+      const wheelIM = new THREE.InstancedMesh(wheelGeom, wheelMat, list.length * 4);
+      wheelIM.frustumCulled = false;
+      for (let k = 0; k < list.length; k++) {
+        const p = list[k];
+        const yaw = p.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        // Body
+        dummy.position.set(p.x, 0.6, p.z); dummy.rotation.set(0, yaw, 0); dummy.scale.set(1,1,1); dummy.updateMatrix();
+        bodyIM.setMatrixAt(k, dummy.matrix);
+        // Cabin (slightly back of centre)
+        dummy.position.set(p.x - Math.cos(yaw) * -0.1, 1.25, p.z - Math.sin(yaw) * -0.1);
+        dummy.updateMatrix();
+        cabinIM.setMatrixAt(k, dummy.matrix);
+        // Wheels (4 corners)
+        for (let w = 0; w < 4; w++) {
+          const fx = (w & 1) ? 1 : -1;
+          const fz = (w & 2) ? 1 : -1;
+          const lx = fx * 0.7, lz = fz * 1.1;
+          const wx = p.x + Math.cos(yaw) * lx + Math.sin(yaw) * lz;
+          const wz = p.z + Math.sin(yaw) * -lx + Math.cos(yaw) * lz;
+          dummy.position.set(wx, 0.25, wz);
+          dummy.rotation.set(0, yaw, Math.PI / 2);
+          dummy.updateMatrix();
+          wheelIM.setMatrixAt(k * 4 + w, dummy.matrix);
+        }
+      }
+      bodyIM.instanceMatrix.needsUpdate = true;
+      cabinIM.instanceMatrix.needsUpdate = true;
+      wheelIM.instanceMatrix.needsUpdate = true;
+      scene.add(bodyIM); scene.add(cabinIM); scene.add(wheelIM);
+    }
+  }
+
+  // ---- Subway entrance kiosks ----
+  // Small 4u-tall kiosk with a roof, dark stairwell descending into it,
+  // yellow safety railings, and a "地下鉄" sign. Dropped at a few major
+  // intersections.
+  {
+    const subwayPositions = [
+      { x:  60, z:  60 }, { x: -100, z: 100 }, { x:  60, z: -200 },
+      { x: -60, z: -60 }, { x: 200, z: 100 }, { x: -200, z:  40 },
+    ];
+    for (const p of subwayPositions) {
+      if (isReserved(p.x, p.z)) continue;
+      const sub = makeSubwayEntrance();
+      sub.position.set(p.x, 0, p.z);
+      sub.matrixAutoUpdate = false; sub.updateMatrix();
+      scene.add(sub);
+    }
+  }
+
   return { buildings, grid, bodiesIM };
+}
+
+function makeSubwayEntrance() {
+  const g = new THREE.Group();
+  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x9a948c, roughness: 0.9 });
+  const railMat  = new THREE.MeshStandardMaterial({ color: 0xffd11a, roughness: 0.6, emissive: 0xff8811, emissiveIntensity: 0.3 });
+  const darkMat  = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
+  const signMat  = new THREE.MeshStandardMaterial({ color: 0x223a66, emissive: 0x4477aa, emissiveIntensity: 1.2, roughness: 0.4 });
+  const stepMat  = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.95 });
+
+  // Concrete pad rim around the stairwell opening
+  const rim = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.5, 4.4), stoneMat);
+  rim.position.y = 0.25; g.add(rim);
+  // Dark stairwell hole
+  const hole = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.6, 3.0), darkMat);
+  hole.position.set(0, 0.3, 0.4); g.add(hole);
+  // Visible stairs descending into the dark
+  for (let i = 0; i < 4; i++) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.18, 0.6), stepMat);
+    step.position.set(0, 0.5 - i * 0.15, -0.6 + i * 0.6);
+    g.add(step);
+  }
+  // Yellow safety railings on three sides
+  for (const [px, pz, w, d] of [
+    [-2.6, 0, 0.18, 4.4],
+    [ 2.6, 0, 0.18, 4.4],
+    [0, -2.1, 5.4, 0.18],
+  ]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(w, 1.1, d), railMat);
+    rail.position.set(px, 1.05, pz);
+    g.add(rail);
+    // Railing posts at corners
+    if (w > 1) {
+      for (const ox of [-w/2 + 0.3, 0, w/2 - 0.3]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.4, 0.18), railMat);
+        post.position.set(px + ox, 0.9, pz);
+        g.add(post);
+      }
+    } else {
+      for (const oz of [-d/2 + 0.3, 0, d/2 - 0.3]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.4, 0.18), railMat);
+        post.position.set(px, 0.9, pz + oz);
+        g.add(post);
+      }
+    }
+  }
+  // 地下鉄 sign panel on a small post above the entrance
+  const signPost = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.6, 0.18), darkMat);
+  signPost.position.set(0, 2.1, 2.2); g.add(signPost);
+  const signPanel = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.0, 0.18), signMat);
+  signPanel.position.set(0, 3.5, 2.3); g.add(signPanel);
+  // White "M" symbol on the sign (simulating the metro mark)
+  const mark = new THREE.Mesh(
+    new THREE.RingGeometry(0.25, 0.4, 16),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0 })
+  );
+  mark.position.set(0, 3.5, 2.42);
+  g.add(mark);
+
+  return g;
 }
 
 // -------------------- Cars --------------------
