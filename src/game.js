@@ -13,7 +13,7 @@ import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './ene
 import {
   Effect, makeExplosion, makeSparks, makeShockwave,
   makeMuzzleFlash, makeSmokePuff, makeBeam, makeHitPulse, makeSmokeColumn,
-  makeChainLightning, makeMissileSwarm, makeAtomicDome,
+  makeChainLightning, makeMissileSwarm, makeAtomicDome, makeAtomicDevastation,
   makeWingSlash, makeTailSweep, makeAfterburnerTrail, makeDustBurst,
   makeSoundWaveRings, makeBreathCone, makeWingFlap, makeWindStreaks,
   makeMissileLaunchFlash,
@@ -1504,11 +1504,24 @@ function fireCharge() {
   const variant = state.monsterCfg.variant;
   const startPos = state.kaiju.root.position.clone();
   const forward = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
-  // Damage in a cone first so anything we plow through gets demolished
+
+  // GOJIRA TAIL SWEEP -- doesn't dash. Plants and whips tail in a 180 arc,
+  // damaging everything the tail tip passes through. Animation is driven
+  // by _tailSwingT in updateKaijuAnim; that function also samples the tail
+  // tip's world position each frame and applies damage along its path.
+  if (variant === 'gojira') {
+    state._tailSwingT     = 0.75;
+    state._tailSwingD     = 0.75;
+    state._tailSwingDir   = Math.random() < 0.5 ? 1 : -1;
+    state._tailSwingArcSpawned = false;
+    audio.charge();
+    return;
+  }
+
+  // Other variants DASH forward.
   const cone = startPos.clone().addScaledVector(forward, 12);
   damageInRadius(cone, 28, cfg.damage, false);
   state.kaiju.root.position.addScaledVector(forward, 28);
-  // Push out of any building that survived the cone
   resolveBuildingCollisions(state.kaiju.root.position, 0.5);
   const endPos = state.kaiju.root.position.clone();
   world.spawnShockwave(endPos, cfg.color, 25);
@@ -1522,11 +1535,7 @@ function fireCharge() {
   world.effects.push(makeWindStreaks(world, streakOrigin, forward, 0xffffff, 10));
 
   // Per-variant signature trail
-  if (variant === 'gojira') {
-    // TAIL SWEEP: yellow arc trail at the start, plus a dust kick along path
-    world.effects.push(makeTailSweep(world, startPos, state.yaw, cfg.color));
-    world.effects.push(makeDustBurst(world, cone, 14, 10));
-  } else if (variant === 'ghidorah') {
+  if (variant === 'ghidorah') {
     // WING SLAM: magenta crescent slash arc at the end of the dash plus
     // big visible wing-flap fans from each side so the wing-attack reads.
     world.effects.push(makeWingSlash(world, endPos, state.yaw, cfg.color));
@@ -1577,14 +1586,24 @@ function fireUltimate() {
   damageInRadius(center, 130, 250, true);
 
   if (cfg.variant === 'gojira') {
-    // GOJIRA -- ATOMIC DOME BLAST
-    // Slow-expanding green hemisphere covering the kaiju + a bonus
-    // mega-beam straight ahead. Triple-stacked dust burst around the feet.
+    // GOJIRA -- ATOMIC DEVASTATION
+    // Mushroom-cloud nuke. Mega beam + radial blast + radioactive green
+    // dome + full mushroom cloud (stem, cap, debris, wisps) + a cascade of
+    // staggered shockwaves so the "fallout" keeps radiating for a full
+    // second after impact.
     world.spawnBeam(origin, dir, 360, cfg.beam.color, cfg.beam.glow);
-    world.effects.push(makeAtomicDome(world, center, 140, cfg.beam.color));
-    world.effects.push(makeDustBurst(world, center, 90, 18));
-    setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.color, 180), 220);
-    showMessage('☢ ATOMIC DETONATION ☢', 1.4);
+    // Initial green hemispherical blast
+    world.effects.push(makeAtomicDome(world, center, 160, cfg.beam.color));
+    // Mushroom cloud + flash + debris + rising wisps (the showpiece)
+    world.effects.push(makeAtomicDevastation(world, center, cfg.beam.color));
+    // Big rolling dust ring at ground zero
+    world.effects.push(makeDustBurst(world, center, 110, 22));
+    // Cascading shockwaves so the blast keeps "radiating" outward
+    setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.color, 200), 180);
+    setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.glow,  260), 380);
+    setTimeout(() => world.spawnShockwave(center.clone(), 0xeeffaa,       320), 620);
+    setTimeout(() => world.shake(2.0, 0.9), 200);
+    showMessage('☢ ATOMIC DEVASTATION ☢', 1.4);
   } else if (cfg.variant === 'ghidorah') {
     // GHIDORAH -- LIGHTNING STORM
     // Chain lightning from each of the kaiju's heads to every enemy in
@@ -1879,6 +1898,55 @@ function updatePlayer(dt) {
     tail.rotation.x = THREE.MathUtils.damp(tail.rotation.x || 0, tailX, 5, dt);
     // Subtle vertical whip
     tail.position.y = (tail.userData._baseY ?? (tail.userData._baseY = tail.position.y)) + (moving ? sw2 * 0.25 : 0);
+  }
+
+  // ----- TAIL SWEEP ATTACK (gojira charge) -----
+  // Three-phase animation: WINDUP (cock to one side) -> WHIP (180-deg
+  // sweep through 0) -> RECOVERY (ease back). During WHIP, sample the
+  // tail tip's world position each frame and damage everything in radius.
+  state._tailSwingT = Math.max(0, (state._tailSwingT || 0) - dt);
+  if (state._tailSwingT > 0 && tail) {
+    const dur = state._tailSwingD || 0.75;
+    const tt = 1 - state._tailSwingT / dur; // 0..1 progress
+    const dir = state._tailSwingDir || 1;
+    const chargeCfg = state.monsterCfg && state.monsterCfg.charge;
+    let swingY = 0;
+    if (tt < 0.22) {
+      // WINDUP: ease into cocked-back pose
+      const u = tt / 0.22;
+      swingY = dir * 1.65 * (u * u);
+    } else if (tt < 0.62) {
+      // WHIP: fast sweep across through 0 to opposite side (smoothstep)
+      const u = (tt - 0.22) / 0.40;
+      const eased = u * u * (3 - 2 * u);
+      swingY = dir * (1.65 - 3.30 * eased);
+      // Tail-tip world position (approx local space: 0, -3, -10)
+      _tmpV1.set(0, -3, -10);
+      tail.localToWorld(_tmpV1);
+      const dmg = chargeCfg ? chargeCfg.damage * 0.07 : 8;
+      damageInRadius(_tmpV1, 14, dmg, false);
+      // Sparks + dust along the tip path for readability
+      if (Math.random() < 0.55) world.effects.push(makeSparks(world, _tmpV1, 5));
+      if (Math.random() < 0.30) world.effects.push(makeDustBurst(world, _tmpV1, 8, 4));
+      // Spawn the ground-arc visual exactly when the swing crosses the body
+      if (!state._tailSwingArcSpawned && eased > 0.45) {
+        state._tailSwingArcSpawned = true;
+        const arcColor = chargeCfg ? chargeCfg.color : 0xffee44;
+        world.effects.push(makeTailSweep(world, k.root.position, state.yaw - dir * 0.3, arcColor));
+        world.shake(0.8, 0.4);
+      }
+    } else {
+      // RECOVERY: ease tail back toward neutral
+      const u = (tt - 0.62) / 0.38;
+      swingY = -dir * 1.65 * (1 - u);
+    }
+    // Override tail rotation/lift driven by the standard logic above
+    tail.rotation.y = swingY;
+    tail.rotation.x = -0.22 - 0.20 * Math.abs(Math.sin(tt * Math.PI));
+    tail.position.y = (tail.userData._baseY ?? tail.position.y) + 0.7 * Math.abs(Math.sin(tt * Math.PI));
+    // Body counter-twist + slight crouch so the swing has visible effort
+    k.root.rotation.y = state.yaw + (-dir * 0.32 * Math.sin(tt * Math.PI));
+    k.root.rotation.x = (k.root.rotation.x || 0) + 0.10 * Math.sin(tt * Math.PI);
   }
 
   // ----- Head (counter-sway, idle scan, attack stances) -----

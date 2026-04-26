@@ -752,3 +752,167 @@ export function makeMissileLaunchFlash(world, pos) {
     if (t >= 1) { world.scene.remove(flash); world.scene.remove(smoke); }
   });
 }
+
+// ============== Atomic devastation (gojira ultimate) ==============
+// Layered nuclear blast: blinding flash, mushroom-cloud stem + cap that
+// rises and balloons, debris flung outward, and the cap "boils" via slow
+// rotation of an offset core. Lives 3.5s so the player sees the cloud
+// ascend before it dissipates.
+export function makeAtomicDevastation(world, pos, color = 0x66ff66) {
+  // 1. Blinding white flash at ground zero
+  const flash = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 24, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1.0, depthWrite: false })
+  );
+  flash.position.copy(pos); flash.position.y = 8;
+  flash.scale.setScalar(10);
+  world.scene.add(flash);
+
+  // 2. Toxic-green fireball (the radioactive "core" of the explosion)
+  const fireball = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 20, 14),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false })
+  );
+  fireball.position.copy(pos); fireball.position.y = 10;
+  world.scene.add(fireball);
+
+  // 3. Mushroom STEM -- cylinder rising from ground to cap height
+  const stemMat = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: 0.0,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(10, 22, 1, 18, 1, true), stemMat);
+  stem.position.copy(pos); stem.position.y = 0.5;
+  world.scene.add(stem);
+  // Inner stem core -- brighter, slimmer, gives depth
+  const stemCoreMat = new THREE.MeshBasicMaterial({
+    color: 0xeeffcc, transparent: true, opacity: 0.0,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+  const stemCore = new THREE.Mesh(new THREE.CylinderGeometry(5, 12, 1, 14, 1, true), stemCoreMat);
+  stemCore.position.copy(pos); stemCore.position.y = 0.5;
+  world.scene.add(stemCore);
+
+  // 4. Mushroom CAP -- squashed sphere that rides up the stem and balloons
+  const capMat = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: 0.0, depthWrite: false,
+  });
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), capMat);
+  cap.position.copy(pos); cap.position.y = 60;
+  world.scene.add(cap);
+  // Bright inner cap "boiling" core
+  const capCoreMat = new THREE.MeshBasicMaterial({
+    color: 0xddffaa, transparent: true, opacity: 0.0, depthWrite: false,
+  });
+  const capCore = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), capCoreMat);
+  capCore.position.copy(cap.position);
+  world.scene.add(capCore);
+
+  // 5. Radial debris -- 16 chunks flung outward + upward, falling under gravity
+  const debris = [];
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2 + Math.random() * 0.4;
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(2 + Math.random() * 2.5, 2 + Math.random() * 2.5, 2 + Math.random() * 2.5),
+      new THREE.MeshBasicMaterial({ color: 0x3a4a2a, transparent: true, opacity: 0.85, depthWrite: false })
+    );
+    m.position.copy(pos);
+    m.position.y = 6 + Math.random() * 4;
+    const speed = 50 + Math.random() * 40;
+    m.userData.vel = new THREE.Vector3(
+      Math.cos(a) * speed,
+      28 + Math.random() * 30,
+      Math.sin(a) * speed,
+    );
+    m.userData.spin = new THREE.Vector3(
+      (Math.random() - 0.5) * 5,
+      (Math.random() - 0.5) * 5,
+      (Math.random() - 0.5) * 5,
+    );
+    world.scene.add(m);
+    debris.push(m);
+  }
+
+  // 6. Rising green smoke wisps along the stem (8 puffs at staggered heights)
+  const wisps = [];
+  for (let i = 0; i < 8; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 8 + Math.random() * 12;
+    const m = new THREE.Mesh(
+      G_FIRE,
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.0, depthWrite: false })
+    );
+    m.position.set(pos.x + Math.cos(a) * r, 8 + i * 9, pos.z + Math.sin(a) * r);
+    m.userData.startY = m.position.y;
+    m.userData.delay = i * 0.08;
+    m.scale.setScalar(3 + Math.random() * 2);
+    world.scene.add(m);
+    wisps.push(m);
+  }
+
+  const totalLife = 3.5;
+  return new Effect(flash, totalLife, (dt, t) => {
+    // Flash: peaks instantly, fades in 1/6 of the lifetime
+    flash.scale.setScalar(10 + t * 50);
+    flash.material.opacity = Math.max(0, 1 - t * 6);
+
+    // Fireball: balloons fast for first 25% then collapses upward into stem
+    const fbT = Math.min(1, t * 4);
+    fireball.scale.setScalar(8 + fbT * 26);
+    fireball.position.y = 10 + Math.min(1, t * 2.5) * 35;
+    fireball.material.opacity = (1 - Math.pow(t, 0.6)) * 0.9;
+
+    // Stem: rises to ~95u then holds + thins out
+    const stemH = THREE.MathUtils.lerp(4, 95, Math.min(1, t * 1.4));
+    stem.scale.set(1 + t * 0.4, stemH, 1 + t * 0.4);
+    stem.position.y = stemH / 2;
+    stemCore.scale.set(1, stemH * 0.95, 1);
+    stemCore.position.y = stemH / 2;
+    const stemFade = (1 - Math.max(0, t - 0.55) / 0.45);
+    stemMat.opacity = Math.min(0.7, t * 3) * stemFade;
+    stemCoreMat.opacity = Math.min(0.85, t * 3) * stemFade * 0.9;
+
+    // Cap: rises up the stem and balloons outward into squashed mushroom
+    const capRise = THREE.MathUtils.lerp(35, 115, Math.min(1, t * 1.15));
+    cap.position.y = capRise;
+    capCore.position.y = capRise;
+    const capR = THREE.MathUtils.lerp(10, 60, Math.min(1, Math.pow(t, 0.55)));
+    cap.scale.set(capR, capR * 0.65, capR);
+    capCore.scale.set(capR * 0.55, capR * 0.5, capR * 0.55);
+    const capFade = (1 - Math.max(0, t - 0.6) / 0.4);
+    capMat.opacity = Math.min(0.7, t * 2.5) * capFade;
+    capCoreMat.opacity = Math.min(0.95, t * 2.5) * capFade;
+    // Slow boil rotation
+    cap.rotation.y  += dt * 0.35;
+    capCore.rotation.y -= dt * 0.55;
+    capCore.rotation.x = Math.sin(t * 4) * 0.15;
+
+    // Debris: ballistic trajectory, fade out as they land
+    for (const d of debris) {
+      d.position.addScaledVector(d.userData.vel, dt);
+      d.userData.vel.y -= 38 * dt;
+      d.rotation.x += d.userData.spin.x * dt;
+      d.rotation.y += d.userData.spin.y * dt;
+      d.rotation.z += d.userData.spin.z * dt;
+      if (d.position.y < 0.5) { d.position.y = 0.5; d.userData.vel.set(0, 0, 0); }
+      d.material.opacity = Math.max(0, 0.85 - t * 0.9);
+    }
+
+    // Wisps: rise up the stem with their delay; fade in then out
+    for (const w of wisps) {
+      const local = Math.max(0, t - w.userData.delay / totalLife);
+      w.position.y = w.userData.startY + local * 75;
+      const fade = Math.min(1, local * 4) * (1 - local) * 0.55;
+      w.material.opacity = fade;
+      w.scale.setScalar(3 + local * 8);
+    }
+
+    if (t >= 1) {
+      world.scene.remove(flash); world.scene.remove(fireball);
+      world.scene.remove(stem); world.scene.remove(stemCore);
+      world.scene.remove(cap); world.scene.remove(capCore);
+      for (const d of debris) world.scene.remove(d);
+      for (const w of wisps) world.scene.remove(w);
+    }
+  });
+}
