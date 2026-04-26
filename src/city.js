@@ -12,6 +12,262 @@ const NEON_COLORS = [0xff3366, 0x33ddff, 0xffaa22, 0xaa66ff, 0x66ff99, 0xffee44]
 function rand(min, max) { return min + Math.random() * (max - min); }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+// ----------------------- Landmark mesh helpers -----------------------
+
+// Single tree: trunk cylinder + sphere foliage. Positioned at (x, 0, z) inside its parent.
+function makeTree(x = 0, z = 0, scale = 1) {
+  const tree = new THREE.Group();
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.95 });
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 });
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * scale, 0.5 * scale, 4 * scale, 6), trunkMat);
+  trunk.position.y = 2 * scale;
+  tree.add(trunk);
+  const leaves = new THREE.Mesh(new THREE.SphereGeometry(2 * scale, 8, 6), leafMat);
+  leaves.position.y = 5 * scale;
+  leaves.scale.set(1.2, 1.0, 1.2);
+  tree.add(leaves);
+  tree.position.set(x, 0, z);
+  tree.matrixAutoUpdate = false; tree.updateMatrix();
+  return tree;
+}
+
+// City park: grass square with a path, scattered trees, optional pond.
+function makePark(x, z, size = 32) {
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.95 });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(size, size), grassMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = 0.12;
+  ground.receiveShadow = true;
+  group.add(ground);
+  // Cross-shaped path
+  const pathMat = new THREE.MeshStandardMaterial({ color: 0xb0a890, roughness: 0.95 });
+  const p1 = new THREE.Mesh(new THREE.PlaneGeometry(2.4, size * 0.95), pathMat);
+  p1.rotation.x = -Math.PI / 2; p1.position.y = 0.16; group.add(p1);
+  const p2 = new THREE.Mesh(new THREE.PlaneGeometry(size * 0.95, 2.4), pathMat);
+  p2.rotation.x = -Math.PI / 2; p2.position.y = 0.16; group.add(p2);
+  // Trees scattered (avoiding the cross paths)
+  const half = size / 2 - 2;
+  for (let i = 0; i < 14; i++) {
+    const tx = rand(-half, half), tz = rand(-half, half);
+    if (Math.abs(tx) < 1.6 || Math.abs(tz) < 1.6) continue; // skip on path
+    const sc = 0.8 + Math.random() * 0.5;
+    group.add(makeTree(tx, tz, sc));
+  }
+  // Optional pond
+  if (Math.random() < 0.6) {
+    const pondMat = new THREE.MeshStandardMaterial({
+      color: 0x336a99, roughness: 0.2, metalness: 0.6,
+      emissive: 0x224466, emissiveIntensity: 0.2,
+    });
+    const pond = new THREE.Mesh(new THREE.CircleGeometry(size * 0.18, 18), pondMat);
+    pond.rotation.x = -Math.PI / 2;
+    pond.position.set(size * 0.22, 0.18, size * 0.15);
+    group.add(pond);
+  }
+  // Park bench (stylized)
+  const benchMat = new THREE.MeshStandardMaterial({ color: 0x664433, roughness: 0.9 });
+  for (let i = 0; i < 3; i++) {
+    const bench = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.18, 0.7), benchMat);
+    seat.position.y = 0.7;
+    bench.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 0.12), benchMat);
+    back.position.set(0, 1.25, -0.3);
+    bench.add(back);
+    bench.position.set(rand(-half + 1, half - 1), 0, rand(-half + 1, half - 1));
+    bench.rotation.y = Math.random() * Math.PI * 2;
+    group.add(bench);
+  }
+  group.matrixAutoUpdate = false; group.updateMatrix();
+  return group;
+}
+
+// Tokyo Tower: red/white lattice with observation deck, antenna spire, and beacon.
+function makeTokyoTowerMesh(height = 90) {
+  const group = new THREE.Group();
+  const redMat   = new THREE.MeshStandardMaterial({ color: 0xd72b35, roughness: 0.55, metalness: 0.2 });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.7  });
+  const darkMat  = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9  });
+
+  const baseR = 7.0, midR = 2.6, topR = 0.9;
+  // Four legs - tapered along the height. We split into two segments so the
+  // colour can split red/white realistically.
+  function leg(sx, sz) {
+    const segs = 12;
+    const path = [];
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      const r = baseR * (1 - t) + topR * t;
+      path.push(new THREE.Vector3(sx * r, t * height, sz * r));
+    }
+    // Use a simple cylinder strip approximated by a thin box per segment.
+    for (let i = 0; i < segs; i++) {
+      const a = path[i], b = path[i + 1];
+      const mid = a.clone().add(b).multiplyScalar(0.5);
+      const len = a.distanceTo(b);
+      const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, len + 0.1, 5), redMat);
+      seg.position.copy(mid);
+      // orient cylinder Y-axis along (a -> b)
+      const dir = new THREE.Vector3().subVectors(b, a).normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      seg.quaternion.copy(q);
+      group.add(seg);
+    }
+  }
+  leg(-1, -1); leg( 1, -1); leg(-1,  1); leg( 1,  1);
+
+  // Horizontal cross-bracing rings every ~12u
+  for (let i = 1; i < 8; i++) {
+    const t = i / 8;
+    const y = t * height * 0.85;
+    const r = baseR * (1 - t) + topR * t;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.05, 0.18, 5, 12), redMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = y;
+    group.add(ring);
+    // X bracing
+    for (const ang of [Math.PI / 4, -Math.PI / 4]) {
+      const brace = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, r * 2.2, 4), redMat);
+      brace.position.y = y;
+      brace.rotation.z = ang;
+      group.add(brace);
+    }
+  }
+
+  // Lower observation deck (small white box with windows)
+  const deck1 = new THREE.Mesh(new THREE.CylinderGeometry(midR * 1.2, midR * 1.4, 4.0, 12), whiteMat);
+  deck1.position.y = height * 0.55;
+  group.add(deck1);
+  // Window strip
+  const windows = new THREE.Mesh(
+    new THREE.CylinderGeometry(midR * 1.21, midR * 1.21, 1.6, 12, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0x223344, emissive: 0xffeeaa, emissiveIntensity: 0.7 })
+  );
+  windows.position.y = height * 0.55;
+  group.add(windows);
+
+  // Upper observation deck (smaller, higher)
+  const deck2 = new THREE.Mesh(new THREE.CylinderGeometry(topR * 2.2, topR * 2.8, 2.5, 10), whiteMat);
+  deck2.position.y = height * 0.78;
+  group.add(deck2);
+
+  // Antenna spire (dark)
+  const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.55, height * 0.22, 6), darkMat);
+  spire.position.y = height * 0.91;
+  group.add(spire);
+
+  // Red beacon at top
+  const beacon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.7, 10, 10),
+    new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff3344, emissiveIntensity: 2.5 })
+  );
+  beacon.position.y = height * 1.02;
+  group.add(beacon);
+
+  group.matrixAutoUpdate = false; group.updateMatrix();
+  return group;
+}
+
+// Imperial Palace: walled compound with a main pagoda-roofed building, two
+// flanking pavilions, garden ground, and trees inside the walls.
+function makeImperialPalaceMesh(size = 60) {
+  const group = new THREE.Group();
+  const wallMat   = new THREE.MeshStandardMaterial({ color: 0xa49888, roughness: 0.85 });
+  const palaceMat = new THREE.MeshStandardMaterial({ color: 0xeae3d2, roughness: 0.65 });
+  const roofMat   = new THREE.MeshStandardMaterial({ color: 0x223844, roughness: 0.5, metalness: 0.35 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: 0xa12b2b, roughness: 0.6 });
+  const grassMat  = new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.95 });
+  const stoneMat  = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.95 });
+
+  // Garden ground inside the walls
+  const garden = new THREE.Mesh(new THREE.PlaneGeometry(size - 2, size - 2), grassMat);
+  garden.rotation.x = -Math.PI / 2; garden.position.y = 0.12;
+  garden.receiveShadow = true;
+  group.add(garden);
+
+  // Stone pathway from "south gate" to main palace
+  const path = new THREE.Mesh(new THREE.PlaneGeometry(3, size * 0.45), stoneMat);
+  path.rotation.x = -Math.PI / 2;
+  path.position.set(0, 0.16, size * 0.25);
+  group.add(path);
+
+  // Outer wall (4 sides), short
+  const wallH = 4;
+  const wallT = 1.2;
+  for (const [px, pz, w, d] of [
+    [0,  size / 2, size, wallT],
+    [0, -size / 2, size, wallT],
+    [ size / 2, 0, wallT, size],
+    [-size / 2, 0, wallT, size],
+  ]) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, d), wallMat);
+    wall.position.set(px, wallH / 2, pz);
+    group.add(wall);
+    // Tile cap (slightly wider, dark)
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(w * 1.02, 0.5, d * 1.5), roofMat);
+    cap.position.set(px, wallH + 0.25, pz);
+    group.add(cap);
+  }
+
+  // Main palace building
+  const main = new THREE.Mesh(new THREE.BoxGeometry(28, 12, 18), palaceMat);
+  main.position.y = 6;
+  group.add(main);
+  // Red accent strip below the roof
+  const accent = new THREE.Mesh(new THREE.BoxGeometry(28.2, 1.0, 18.2), accentMat);
+  accent.position.y = 11.5;
+  group.add(accent);
+  // Pagoda-style sloped roof: a wide flat box + a 4-sided pyramid (cone with 4 segments)
+  const roofBase = new THREE.Mesh(new THREE.BoxGeometry(34, 1.2, 22), roofMat);
+  roofBase.position.y = 12.6;
+  group.add(roofBase);
+  const pyramid = new THREE.Mesh(new THREE.ConeGeometry(20, 7, 4), roofMat);
+  pyramid.position.y = 17;
+  pyramid.rotation.y = Math.PI / 4;
+  group.add(pyramid);
+  // Roof finial / ornament
+  const finial = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.4, 1.6, 6), accentMat);
+  finial.position.y = 21;
+  group.add(finial);
+
+  // Two flanking pavilions
+  for (const sx of [-1, 1]) {
+    const flank = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 8), palaceMat);
+    flank.position.set(sx * 18, 3, -7);
+    group.add(flank);
+    const fRoof = new THREE.Mesh(new THREE.ConeGeometry(8, 4, 4), roofMat);
+    fRoof.position.set(sx * 18, 8, -7);
+    fRoof.rotation.y = Math.PI / 4;
+    group.add(fRoof);
+    const fAccent = new THREE.Mesh(new THREE.BoxGeometry(10.2, 0.6, 8.2), accentMat);
+    fAccent.position.set(sx * 18, 5.7, -7);
+    group.add(fAccent);
+  }
+
+  // South gate (small structure on the wall facing +Z)
+  const gate = new THREE.Mesh(new THREE.BoxGeometry(7, 5, 3), palaceMat);
+  gate.position.set(0, 2.5, size / 2 - 1);
+  group.add(gate);
+  const gateRoof = new THREE.Mesh(new THREE.ConeGeometry(6, 3, 4), roofMat);
+  gateRoof.position.set(0, 6.5, size / 2 - 1);
+  gateRoof.rotation.y = Math.PI / 4;
+  group.add(gateRoof);
+
+  // Trees scattered inside the walls (avoiding the path + buildings)
+  for (let i = 0; i < 14; i++) {
+    const tx = rand(-size / 2 + 4, size / 2 - 4);
+    const tz = rand(-size / 2 + 4, size / 2 - 4);
+    if (Math.abs(tx) < 16 && Math.abs(tz) < 12) continue; // skip palace + flanks zone
+    if (Math.abs(tx) < 2 && tz > 0) continue;             // skip path
+    group.add(makeTree(tx, tz, 0.9 + Math.random() * 0.4));
+  }
+
+  group.matrixAutoUpdate = false; group.updateMatrix();
+  return group;
+}
+
 // Flush any pending body-IM color/matrix changes once per frame.
 export function flushBodiesIM(im) {
   if (!im) return;
@@ -41,13 +297,21 @@ function buildGlobalBodies(scene, buildings) {
   // only one mesh.
   im.frustumCulled = false;
   const dummy = new THREE.Object3D();
+  const _skipMatrix = new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001);
   for (let i = 0; i < buildings.length; i++) {
     const b = buildings[i];
-    dummy.position.set(b.x, b.h / 2, b.z);
-    dummy.scale.set(b.w, b.h, b.d);
-    dummy.updateMatrix();
-    im.setMatrixAt(i, dummy.matrix);
-    im.setColorAt(i, b.bodyColor);
+    if (b._skipBodyIM) {
+      // Landmark with its own custom mesh -- park its IM slot at zero scale
+      // but still register the index so collapse() can address it.
+      im.setMatrixAt(i, _skipMatrix);
+      im.setColorAt(i, b.bodyColor);
+    } else {
+      dummy.position.set(b.x, b.h / 2, b.z);
+      dummy.scale.set(b.w, b.h, b.d);
+      dummy.updateMatrix();
+      im.setMatrixAt(i, dummy.matrix);
+      im.setColorAt(i, b.bodyColor);
+    }
     b._bodyIM = im;
     b._bodyIndex = i;
   }
@@ -362,6 +626,10 @@ export class Building {
       this._bodyIM.setMatrixAt(this._bodyIndex, _zeroMatrix);
       this._bodyIM._matrixDirty = true;
     }
+    // Custom landmark mesh -- remove it on destruction.
+    if (this.customMesh && this.customMesh.parent) {
+      this.customMesh.parent.remove(this.customMesh);
+    }
     // Hide our slots in the global window InstancedMesh(es)
     if (this.windowEntries && this.windowEntries.length) {
       for (const e of this.windowEntries) e.im.setMatrixAt(e.idx, _zeroMatrix);
@@ -491,11 +759,31 @@ export function buildCity(scene, world, opts = {}) {
     const curbZ2 = curbZ1.clone(); curbZ2.position.x = i - STREET / 2 + 0.2; scene.add(curbZ2);
   }
 
+  // Reserved zones (squared distance) where landmarks / parks live.
+  // Procedural buildings skip any block whose centre lands inside one.
+  const RESERVED = [
+    { x: 160, z: -160, r: 28 },  // Tokyo Tower
+    { x: -180, z: 140, r: 50 },  // Imperial Palace compound
+    { x: 200, z: 200, r: 28 },   // Park 1
+    { x: -200, z: -200, r: 28 }, // Park 2
+    { x: 220, z: 60, r: 22 },    // Park 3
+  ];
+  function isReserved(bx, bz) {
+    for (let i = 0; i < RESERVED.length; i++) {
+      const r = RESERVED[i];
+      const dx = bx - r.x, dz = bz - r.z;
+      if (dx * dx + dz * dz < r.r * r.r) return true;
+    }
+    return false;
+  }
+
   // Buildings on each block (skipping center for spawn)
   for (let bx = -CITY_RADIUS + BLOCK / 2; bx <= CITY_RADIUS - BLOCK / 2; bx += BLOCK) {
     for (let bz = -CITY_RADIUS + BLOCK / 2; bz <= CITY_RADIUS - BLOCK / 2; bz += BLOCK) {
       // leave central plaza open
       if (Math.abs(bx) < BLOCK && Math.abs(bz) < BLOCK) continue;
+      // skip blocks inside a landmark / park reservation
+      if (isReserved(bx, bz)) continue;
       const distFromCenter = Math.sqrt(bx*bx + bz*bz);
 
       // skip some blocks entirely on lite mode
@@ -521,12 +809,10 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
-  // Add some landmark buildings
+  // Add some landmark buildings (regular skyscrapers)
   const landmarks = [
-    { x: 80, z: 60, w: 18, d: 18, h: 110, color: 0xddccaa }, // skyscraper A
-    { x: -90, z: -40, w: 22, d: 22, h: 130, color: 0x99aabb }, // skyscraper B
-    { x: 140, z: -120, w: 14, d: 14, h: 150, color: 0xff8866 }, // tower (Tokyo Tower-ish)
-    { x: -160, z: 140, w: 30, d: 16, h: 80, color: 0xc0d0e0 },
+    { x: 80, z: 60, w: 18, d: 18, h: 110, color: 0xddccaa },
+    { x: -90, z: -40, w: 22, d: 22, h: 130, color: 0x99aabb },
   ];
   for (const lm of landmarks) {
     const b = new Building(lm.x, lm.z, lm.w, lm.d, lm.h, { color: lm.color });
@@ -534,6 +820,52 @@ export function buildCity(scene, world, opts = {}) {
     scene.add(b.group);
     buildings.push(b);
     grid.add(b);
+  }
+
+  // ---------- Iconic Tokyo landmarks ----------
+  // Tokyo Tower: tall, destructible, custom lattice mesh.
+  {
+    const tx = 160, tz = -160, th = 90;
+    const tower = new Building(tx, tz, 14, 14, th, { color: 0xd72b35 });
+    tower.group.matrixAutoUpdate = false; tower.group.updateMatrix();
+    // Hide the InstancedMesh body slot for the tower; we render the lattice instead.
+    tower._skipBodyIM = true;
+    tower.customMesh = makeTokyoTowerMesh(th);
+    tower.customMesh.position.set(tx, 0, tz);
+    tower.customMesh.matrixAutoUpdate = false; tower.customMesh.updateMatrix();
+    // Bonus HP so it takes a couple of beam shots to bring down.
+    tower.maxHp = Math.max(tower.maxHp, 220);
+    tower.hp = tower.maxHp;
+    scene.add(tower.group);
+    scene.add(tower.customMesh);
+    buildings.push(tower);
+    grid.add(tower);
+  }
+
+  // Imperial Palace: large walled compound with sloped pagoda-style roof.
+  {
+    const px = -180, pz = 140, ps = 60;
+    const palace = new Building(px, pz, 28, 28, 22, { color: 0xeae3d2 });
+    palace.group.matrixAutoUpdate = false; palace.group.updateMatrix();
+    palace._skipBodyIM = true;
+    palace.customMesh = makeImperialPalaceMesh(ps);
+    palace.customMesh.position.set(px, 0, pz);
+    palace.customMesh.matrixAutoUpdate = false; palace.customMesh.updateMatrix();
+    palace.maxHp = Math.max(palace.maxHp, 280);
+    palace.hp = palace.maxHp;
+    scene.add(palace.group);
+    scene.add(palace.customMesh);
+    buildings.push(palace);
+    grid.add(palace);
+  }
+
+  // Parks: indestructible decoration, no collision.
+  for (const p of [
+    { x: 200, z: 200, size: 36 },
+    { x: -200, z: -200, size: 36 },
+    { x: 220, z: 60, size: 28 },
+  ]) {
+    scene.add(makePark(p.x, p.z, p.size));
   }
 
   // Build the global body + window InstancedMeshes now that all buildings exist.
@@ -622,17 +954,49 @@ export class Car {
     this.root = root;
   }
 
-  update(dt, world, kaijuPos, cityRadius) {
+  update(dt, world, kaijuPos, cityRadius, blockSize) {
     if (this.dead) return;
-    if (this.axis === 'x') this.root.position.x += this.speed * this.dir * dt;
-    else this.root.position.z += this.speed * this.dir * dt;
+    const BLOCK = blockSize || 40;
+    const root = this.root;
+    // Move along the current axis
+    if (this.axis === 'x') root.position.x += this.speed * this.dir * dt;
+    else                   root.position.z += this.speed * this.dir * dt;
+
+    // Decide whether we're crossing an intersection. Intersections sit at every
+    // multiple of BLOCK along the perpendicular axis. We compute distance from
+    // the nearest intersection on the axis we're DRIVING along.
+    const along = this.axis === 'x' ? root.position.x : root.position.z;
+    const phase = ((along + BLOCK / 2) % BLOCK + BLOCK) % BLOCK; // 0..BLOCK
+    const distToCenter = Math.abs(phase - BLOCK / 2);
+    const stepLen = Math.abs(this.speed * dt);
+    if (distToCenter <= stepLen && (this._lastCrossDist || 1e9) > distToCenter) {
+      // Just crossed an intersection -- 25% chance to turn 90°.
+      if (Math.random() < 0.25) {
+        // Snap to the intersection so the turn looks clean
+        const snap = Math.round(along / BLOCK) * BLOCK;
+        if (this.axis === 'x') root.position.x = snap;
+        else                   root.position.z = snap;
+        // Switch axis and pick a new direction (left or right turn).
+        this.axis = this.axis === 'x' ? 'z' : 'x';
+        this.dir = Math.random() < 0.5 ? 1 : -1;
+        // Set lane offset so we drive on the correct side of the road
+        if (this.axis === 'x') {
+          root.position.z = Math.round(root.position.z / BLOCK) * BLOCK + (this.dir > 0 ? -2 : 2);
+          root.rotation.y = this.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        } else {
+          root.position.x = Math.round(root.position.x / BLOCK) * BLOCK + (this.dir > 0 ? 2 : -2);
+          root.rotation.y = this.dir > 0 ? 0 : Math.PI;
+        }
+      }
+    }
+    this._lastCrossDist = distToCenter;
 
     // Wrap around city bounds
     const lim = cityRadius + 30;
-    if (this.root.position.x > lim) this.root.position.x = -lim;
-    if (this.root.position.x < -lim) this.root.position.x = lim;
-    if (this.root.position.z > lim) this.root.position.z = -lim;
-    if (this.root.position.z < -lim) this.root.position.z = lim;
+    if (root.position.x > lim) root.position.x = -lim;
+    if (root.position.x < -lim) root.position.x = lim;
+    if (root.position.z > lim) root.position.z = -lim;
+    if (root.position.z < -lim) root.position.z = lim;
 
     // Stomped by kaiju
     const dx = kaijuPos.x - this.root.position.x;

@@ -627,7 +627,7 @@ function startGame(key) {
   buildPowersBar();
 
   // Spawn initial cars driving around the city
-  state.cars = spawnCars(scene, isMobile ? 8 : 16, 380, 36);
+  state.cars = spawnCars(scene, isMobile ? 8 : 16, 380, isMobile ? 48 : 40);
 
   // Kick off looping background music. Tries assets/music.{mp3,ogg,wav};
   // falls back to a procedural ambient drone if no asset is present.
@@ -1164,9 +1164,11 @@ function fireStomp() {
   state.rage -= 15;
   state.cooldowns.stomp = 1.5;
   const center = state.kaiju.root.position.clone();
-  world.spawnShockwave(center, 0xffcc44, 35);
-  world.shake(0.6, 0.4);
-  damageInRadius(center, 24, 22, false);
+  world.spawnShockwave(center, 0xffcc44, 45);
+  world.shake(0.7, 0.4);
+  // Stomp now hits a wider radius hard enough to one-shot small buildings
+  // and shred any ground unit unlucky enough to be near. Aerial included.
+  damageInRadius(center, 32, 180, true);
   audio.stomp();
 }
 
@@ -1300,7 +1302,10 @@ function updatePlayer(dt) {
     state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
   }
   const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
-  const speed = state.monsterCfg.stats.speed * (sprint ? 18 : 11) * state.upgrades.speedMult;
+  // Speed multipliers bumped: walk ~16 (was 11), sprint ~28 (was 18). Combined
+  // with the per-monster `stats.speed` scalar this is roughly +50% across the
+  // board so the kaiju actually feels like a kaiju.
+  const speed = state.monsterCfg.stats.speed * (sprint ? 28 : 16) * state.upgrades.speedMult;
 
   let mx = 0, mz = 0;
   if (keys.KeyW) mz += 1;
@@ -1383,10 +1388,11 @@ function updatePlayer(dt) {
     const phase = state.walkPhase % (Math.PI * 2);
     if (!state._lastPhase) state._lastPhase = phase;
     if ((state._lastPhase < Math.PI && phase >= Math.PI) || (state._lastPhase > phase)) {
-      // crossed step
+      // crossed step -- foot impact hits a small radius hard enough to
+      // demolish vehicles / soldiers walked over and chip nearby buildings
       const footPos = k.root.position.clone();
-      damageInRadius(footPos, 5, 4, false);
-      world.shake(0.05, 0.1);
+      damageInRadius(footPos, 7, 60, false);
+      world.shake(0.08, 0.12);
       audio.footstep();
     }
     state._lastPhase = phase;
@@ -1591,11 +1597,11 @@ function updateWorld(dt) {
   for (let i = state.cars.length - 1; i >= 0; i--) {
     const c = state.cars[i];
     if (c.dead) { state.cars.splice(i, 1); continue; }
-    c.update(dt, world, kpos, 380);
+    c.update(dt, world, kpos, 380, isMobile ? 48 : 40);
   }
   // Re-spawn cars over time (keep ~12 active)
   if (state.cars.length < 12 && Math.random() < dt * 0.6) {
-    const news = spawnCars(scene, 1, 380, 36);
+    const news = spawnCars(scene, 1, 380, isMobile ? 48 : 40);
     state.cars.push(...news);
   }
 

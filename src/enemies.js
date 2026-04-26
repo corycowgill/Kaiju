@@ -53,6 +53,8 @@ export class Tank {
     const myPos = this.root.position;
     _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
     const dist = _aiVA.length();
+    // Walked over by the kaiju -> instant explosion.
+    if (dist < 4.5) { this.die(world); return; }
     if (dist < 0.0001) return;
     _aiVA.divideScalar(dist); // normalize without alloc
 
@@ -252,6 +254,7 @@ export class Mech {
     const myPos = this.root.position;
     _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
     const dist = _aiVA.length();
+    if (dist < 5) { this.die(world); return; } // crushed under kaiju foot
     if (dist > 0.001) {
       _aiVA.divideScalar(dist);
       let dx = 0, dz = 0;
@@ -457,6 +460,7 @@ export class Artillery {
     const dx = kaijuPos.x - myPos.x;
     const dz = kaijuPos.z - myPos.z;
     const dist = Math.hypot(dx, dz);
+    if (dist < 5) { this.die(world); return; } // squashed
     this.turret.rotation.y = Math.atan2(dx, dz);
 
     this.cooldown -= dt;
