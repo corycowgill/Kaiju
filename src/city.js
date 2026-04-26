@@ -1379,10 +1379,15 @@ export class Building {
       const c = pick(NEON_COLORS);
       const phrase = pick(NEON_PHRASES);
       const tex = makeNeonSignTexture(phrase, c);
-      // Sign aspect ratio matches the texture (256x96 ~= 8:3) so the glyphs
-      // don't squish: scale width relative to height accordingly.
-      const sh = h * (0.18 + Math.random() * 0.18);
-      const sw = sh * (256 / 96);
+      // Sign uses fixed real-world dimensions (a Tokyo neon is roughly
+      // 4-7m wide at the building scale we're rendering at), not relative
+      // to building height -- otherwise tall towers got billboards bigger
+      // than the building itself. Width is also clamped so the sign never
+      // exceeds 70% of the smaller building face dimension.
+      const SIGN_W_MIN = 4.0, SIGN_W_MAX = 7.5;
+      const maxFaceW = Math.min(w, d) * 0.7;
+      const sw = Math.min(SIGN_W_MIN + Math.random() * (SIGN_W_MAX - SIGN_W_MIN), maxFaceW);
+      const sh = sw * (96 / 256); // preserve texture aspect (8:3)
       const sign = new THREE.Mesh(
         new THREE.BoxGeometry(sw, sh, 0.4),
         new THREE.MeshStandardMaterial({
@@ -2112,4 +2117,119 @@ export function spawnCars(scene, count, cityRadius = 380, blockSize = 36) {
     cars.push(c);
   }
   return cars;
+}
+
+// -------------------- Civilians --------------------
+// Tiny 2u-tall pedestrians who wander the city. They panic and sprint away
+// when the kaiju is within 30u, and instantly die if the kaiju is within
+// 3u. Each squashed civilian fires world.onCivilianStomped() (small score
+// + rage bonus). Pure ambient flavour -- not registered with the spatial
+// grid, no collision against buildings (they're tiny enough to clip OK).
+const CIVILIAN_TORSO_COLORS = [0xff5577, 0x55aaff, 0x88dd66, 0xffcc44, 0xaa66dd, 0xeebb99, 0xff9933, 0x66ccaa];
+const CIVILIAN_LEG_COLORS   = [0x223344, 0x441122, 0x113322, 0x223300, 0x332244];
+
+export class Civilian {
+  constructor(x, z) {
+    this.dead = false;
+    this.speed = 4 + Math.random() * 2;
+    this.heading = Math.random() * Math.PI * 2;
+    this.headingChangeT = 1 + Math.random() * 2;
+    this.walkPhase = Math.random() * Math.PI * 2;
+
+    const root = new THREE.Group();
+    root.position.set(x, 0, z);
+
+    const torsoColor = CIVILIAN_TORSO_COLORS[Math.floor(Math.random() * CIVILIAN_TORSO_COLORS.length)];
+    const legColor   = CIVILIAN_LEG_COLORS[Math.floor(Math.random() * CIVILIAN_LEG_COLORS.length)];
+    const skinMat  = new THREE.MeshStandardMaterial({ color: 0xeac199, roughness: 0.85 });
+    const torsoMat = new THREE.MeshStandardMaterial({ color: torsoColor, roughness: 0.85 });
+    const legMat   = new THREE.MeshStandardMaterial({ color: legColor, roughness: 0.95 });
+    const hairMat  = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+    // Legs (animated via swing in update)
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.2), legMat);
+    legL.position.set(-0.12, 0.35, 0); root.add(legL);
+    const legR = legL.clone(); legR.position.x = 0.12; root.add(legR);
+    this.legL = legL; this.legR = legR;
+    // Torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), torsoMat);
+    torso.position.y = 1.05;
+    root.add(torso);
+    // Arms
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.6, 6), torsoMat);
+      arm.position.set(sx * 0.32, 1.05, 0);
+      root.add(arm);
+    }
+    // Head + hair
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), skinMat);
+    head.position.y = 1.55;
+    root.add(head);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.19, 10, 10, 0, Math.PI * 2, 0, Math.PI / 2), hairMat);
+    hair.position.y = 1.6;
+    root.add(hair);
+
+    this.root = root;
+  }
+
+  update(dt, world, kaijuPos, cityRadius) {
+    if (this.dead) return;
+    const myPos = this.root.position;
+    const dx = kaijuPos.x - myPos.x;
+    const dz = kaijuPos.z - myPos.z;
+    const distSq = dx * dx + dz * dz;
+
+    // Squashed
+    if (distSq < 9) { this.die(world); return; }
+
+    let speed = this.speed;
+    let panicking = false;
+    if (distSq < 900) { // 30u panic radius
+      const d = Math.sqrt(distSq) || 1;
+      this.heading = Math.atan2(-dx / d, -dz / d);
+      speed *= 2.6;
+      panicking = true;
+    } else {
+      this.headingChangeT -= dt;
+      if (this.headingChangeT <= 0) {
+        this.heading += (Math.random() - 0.5) * Math.PI;
+        this.headingChangeT = 1.5 + Math.random() * 2;
+      }
+    }
+
+    myPos.x += Math.sin(this.heading) * speed * dt;
+    myPos.z += Math.cos(this.heading) * speed * dt;
+    // Wrap to keep them in the city
+    const lim = cityRadius;
+    if (myPos.x > lim)  myPos.x = -lim;
+    if (myPos.x < -lim) myPos.x =  lim;
+    if (myPos.z > lim)  myPos.z = -lim;
+    if (myPos.z < -lim) myPos.z =  lim;
+
+    this.root.rotation.y = this.heading;
+    // Walk cycle (legs swing). Faster when panicking.
+    this.walkPhase += dt * (panicking ? 18 : 8);
+    const sw = Math.sin(this.walkPhase) * 0.5;
+    this.legL.rotation.x =  sw;
+    this.legR.rotation.x = -sw;
+  }
+
+  die(world) {
+    if (this.dead) return;
+    this.dead = true;
+    if (this.root.parent) this.root.parent.remove(this.root);
+    world.onCivilianStomped?.();
+  }
+}
+
+export function spawnCivilians(scene, count, cityRadius) {
+  const arr = [];
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 50 + Math.random() * (cityRadius - 80);
+    const c = new Civilian(Math.cos(a) * r, Math.sin(a) * r);
+    scene.add(c.root);
+    arr.push(c);
+  }
+  return arr;
 }

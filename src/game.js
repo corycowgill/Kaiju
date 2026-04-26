@@ -8,7 +8,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
-import { Building, buildCity, spawnCars, flushBodiesIM } from './city.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
 import {
   Effect, makeExplosion, makeSparks, makeShockwave,
@@ -332,6 +332,11 @@ const state = {
   popups: [],          // floating score numbers
   slowMoUntil: 0,      // performance.now() ms until slow-mo ends
   slowMoScale: 1,
+  civilians: [],       // tiny pedestrians fleeing the kaiju
+  civiliansStomped: 0,
+  // Per-wave destruction objective: smash N buildings during the wave for
+  // a bonus. Resets each startWave().
+  waveObjective: { goal: 0, current: 0, complete: false },
 };
 
 const keys = {};
@@ -715,6 +720,8 @@ function startGame(key) {
 
   // Spawn initial cars driving around the city
   state.cars = spawnCars(scene, isMobile ? 8 : 16, 380, isMobile ? 48 : 40);
+  // Spawn ambient pedestrians who panic + flee when the kaiju approaches
+  state.civilians = spawnCivilians(scene, isMobile ? 14 : 24, 350);
 
   // Kick off looping background music. Tries assets/music.{mp3,ogg,wav};
   // falls back to a procedural ambient drone if no asset is present.
@@ -860,6 +867,16 @@ function showWaveBanner(text, sub) {
 function startWave(n) {
   state.wave = n;
   state.inWave = true;
+
+  // Wave objective: smash a target number of buildings during the wave for
+  // a bonus. Goal scales with wave so it stays a stretch but always
+  // achievable if the kaiju is being aggressive.
+  state.waveObjective.goal = 4 + Math.min(8, Math.floor(n * 1.2));
+  state.waveObjective.current = 0;
+  state.waveObjective.complete = false;
+  const objEl = document.getElementById('wave-objective');
+  if (objEl) objEl.style.display = 'block';
+  updateWaveObjectiveText();
 
   const isBossWave = n > 0 && n % 4 === 0;
   if (isBossWave) {
@@ -1038,6 +1055,15 @@ world.onCarDestroyed = () => {
   state.carsCrushed++;
   addScore(80); addRage(2);
 };
+world.onCivilianStomped = () => {
+  state.civiliansStomped++;
+  addScore(35); addRage(1);
+  // Tiny popup so the player gets feedback on every flatten
+  if (state.kaiju) {
+    _tmpV1.copy(state.kaiju.root.position); _tmpV1.y += 6;
+    spawnPopup(_tmpV1, '+35', '#ffaaaa');
+  }
+};
 world.onPickup = (type, pos) => {
   audio.pickup(type);
   if (pos) world.spawnSparks(pos.clone().setY(2.5), 12);
@@ -1052,8 +1078,37 @@ world.onPickup = (type, pos) => {
     if (pos) spawnPopup(pos.clone().setY(4), '+500', '#ffcc44');
   }
 };
+function updateWaveObjectiveText() {
+  const text = document.getElementById('wave-objective-text');
+  if (!text) return;
+  const o = state.waveObjective;
+  if (o.complete) {
+    text.textContent = `OBJECTIVE COMPLETE · ${o.goal} / ${o.goal}`;
+    text.style.color = '#66ff99';
+    text.style.textShadow = '0 0 10px #33ee88';
+  } else {
+    text.textContent = `SMASH ${o.goal} BUILDINGS · ${o.current} / ${o.goal}`;
+    text.style.color = '#ffe6c8';
+    text.style.textShadow = '0 0 8px #ff8866';
+  }
+}
+
 world.onBuildingDestroyed = (b) => {
   state.buildingsDestroyed++;
+  // Wave objective progress
+  const obj = state.waveObjective;
+  if (!obj.complete) {
+    obj.current++;
+    if (obj.current >= obj.goal) {
+      obj.complete = true;
+      const bonus = 1500 + state.wave * 250;
+      addScore(bonus);
+      addRage(20);
+      toast(`OBJECTIVE COMPLETE · +${Math.floor(bonus * comboMult())}`, 'good');
+      audio.tone(660, 0.12); audio.tone(880, 0.16); audio.tone(1320, 0.22);
+    }
+    updateWaveObjectiveText();
+  }
   const base = Math.floor(b.maxHp * 1.5);
   addScore(base);
   addRage(6);
@@ -1103,6 +1158,8 @@ function gameOver(victory) {
   document.getElementById('powers').classList.add('hidden');
   document.getElementById('help').classList.add('hidden');
   document.getElementById('boss-bar').style.display = 'none';
+  const oo = document.getElementById('wave-objective');
+  if (oo) oo.style.display = 'none';
   const ce = document.getElementById('combo');
   if (ce) ce.style.opacity = '0';
   document.getElementById('goTitle').textContent = victory ? 'TOKYO FALLS' : 'DEFEATED';
@@ -1690,6 +1747,18 @@ function updateWorld(dt) {
     const c = state.cars[i];
     if (c.dead) { state.cars.splice(i, 1); continue; }
     c.update(dt, world, kpos, 380, isMobile ? 48 : 40);
+  }
+
+  // ----- Civilians -----
+  for (let i = state.civilians.length - 1; i >= 0; i--) {
+    const cv = state.civilians[i];
+    if (cv.dead) { state.civilians.splice(i, 1); continue; }
+    cv.update(dt, world, kpos, 350);
+  }
+  // Trickle-respawn so the streets don't go empty after a rampage
+  if (state.civilians.length < (isMobile ? 12 : 20) && Math.random() < dt * 0.8) {
+    const news = spawnCivilians(scene, 1, 350);
+    state.civilians.push(...news);
   }
   // Re-spawn cars over time (keep ~12 active)
   if (state.cars.length < 12 && Math.random() < dt * 0.6) {
