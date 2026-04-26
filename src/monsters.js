@@ -554,39 +554,108 @@ export function buildKaiju(cfg) {
   addFaceDetails(head, variant);
 
   if (variant === 'ghidorah') {
-    // Two additional flanking heads on curved necks coming out of the shoulders.
+    // ---------- Two flanking heads on richly detailed necks ----------
     function makeSideHead(side) {
       const g = new THREE.Group();
-      // Neck: 5 spheres curving outward and forward
+      // Neck: 6 spheres curving outward and forward, with bony spine
+      // ridge spikes along each segment.
       let nx = 0, ny = 0, nz = 0;
-      for (let i = 0; i < 5; i++) {
-        const t = i / 4;
-        const seg = new THREE.Mesh(new THREE.SphereGeometry(0.7 - t * 0.2, 10, 8), bodyMat);
+      const neckSpheres = [];
+      for (let i = 0; i < 7; i++) {
+        const t = i / 6;
+        const r = 0.85 - t * 0.3;
+        const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), bodyMat);
         seg.position.set(nx, ny, nz);
         g.add(seg);
-        nx += side * 0.45;
-        ny += 0.55 - t * 0.1;
-        nz += 0.4;
+        // Belly scute under the segment (lighter colour)
+        const sc = new THREE.Mesh(new THREE.SphereGeometry(r * 0.7, 8, 6), bellyMat);
+        sc.scale.y = 0.4;
+        sc.position.set(nx, ny - r * 0.7, nz);
+        g.add(sc);
+        // Spine ridge spike on top of each segment
+        if (i < 6) {
+          const ridge = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.55, 5), spineMat);
+          ridge.position.set(nx, ny + r * 0.85, nz - 0.05);
+          ridge.rotation.x = -0.2;
+          g.add(ridge);
+        }
+        neckSpheres.push({ x: nx, y: ny, z: nz });
+        nx += side * 0.42;
+        ny += 0.5 - t * 0.08;
+        nz += 0.42;
       }
-      // Mini head at tip of neck
+      // Head -- much more detailed than before
       const hg = new THREE.Group();
-      const sk = new THREE.Mesh(new THREE.SphereGeometry(1.0, 12, 10), bodyMat);
+      const sk = new THREE.Mesh(new THREE.SphereGeometry(1.0, 14, 12), bodyMat);
       sk.scale.set(1.1, 0.9, 1.4);
       hg.add(sk);
-      const sn = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.55, 1.2, 10), bodyMat);
+      // Snout (tapered cylinder with a bulb tip)
+      const sn = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.55, 1.3, 10), bodyMat);
       sn.rotation.x = Math.PI / 2;
       sn.position.set(0, -0.1, 1.0);
       hg.add(sn);
-      // Eyes
-      const eL = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 10), eyeMat);
-      eL.position.set(-0.45, 0.18, 0.85);
-      hg.add(eL);
-      const eR = eL.clone(); eR.position.x = 0.45; hg.add(eR);
-      // Forehead horn
-      const fh = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.1, 5), spineMat);
-      fh.position.set(0, 0.85, -0.05);
+      const noseTip = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 10), bodyMat);
+      noseTip.position.set(0, -0.05, 1.65);
+      hg.add(noseTip);
+      // Nostrils
+      const nostrilMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
+      for (const sx of [-1, 1]) {
+        const nostr = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), nostrilMat);
+        nostr.position.set(sx * 0.22, 0.05, 1.95);
+        hg.add(nostr);
+      }
+      // Eyes (golden slit) + dark eye socket backing
+      const goldEye = new THREE.MeshStandardMaterial({ color: 0xffcc33, emissive: 0xffaa00, emissiveIntensity: 2.2 });
+      for (const sx of [-1, 1]) {
+        const socket = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 10), nostrilMat);
+        socket.position.set(sx * 0.45, 0.18, 0.9);
+        socket.scale.set(1, 1, 0.5);
+        hg.add(socket);
+        const ey = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), goldEye);
+        ey.position.set(sx * 0.45, 0.18, 0.95);
+        hg.add(ey);
+        const slit = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.42, 0.04), nostrilMat);
+        slit.position.set(sx * 0.45, 0.18, 1.05);
+        hg.add(slit);
+      }
+      // Brow ridges + paired horn over each eye
+      for (const sx of [-1, 1]) {
+        const brow = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), bodyDark);
+        brow.scale.set(1.6, 0.45, 1.0);
+        brow.position.set(sx * 0.45, 0.55, 0.7);
+        brow.rotation.z = sx * -0.2;
+        hg.add(brow);
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.4, 6), spineMat);
+        horn.position.set(sx * 0.5, 0.95, -0.05);
+        horn.rotation.x = -0.4;
+        horn.rotation.z = sx * 0.2;
+        hg.add(horn);
+      }
+      // Center forehead horn (slightly larger)
+      const fh = new THREE.Mesh(new THREE.ConeGeometry(0.28, 1.4, 6), spineMat);
+      fh.position.set(0, 0.95, -0.1);
       fh.rotation.x = -0.3;
       hg.add(fh);
+      // Lower jaw + teeth
+      const jaw = new THREE.Mesh(new THREE.SphereGeometry(0.85, 12, 8), bodyMat);
+      jaw.scale.set(1.1, 0.4, 1.4);
+      jaw.position.set(0, -0.65, 1.0);
+      hg.add(jaw);
+      const sharpMat = new THREE.MeshStandardMaterial({ color: 0xfff5d8, roughness: 0.3 });
+      for (let i = 0; i < 6; i++) {
+        const t = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.32, 4), sharpMat);
+        t.position.set(-0.65 + i * 0.26, -0.5, 1.6);
+        t.rotation.x = Math.PI;
+        hg.add(t);
+      }
+      // Whisker barbels under chin
+      for (const sx of [-1, 1]) {
+        const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.02, 1.2, 4), bodyMat);
+        wh.position.set(sx * 0.3, -0.95, 1.3);
+        wh.rotation.x = -0.6;
+        wh.rotation.z = sx * 0.4;
+        hg.add(wh);
+      }
       hg.position.set(nx, ny, nz);
       g.add(hg);
       g.position.set(side * 2.2, 12.4, 0.4);
@@ -595,47 +664,216 @@ export function buildKaiju(cfg) {
     root.add(makeSideHead(-1));
     root.add(makeSideHead( 1));
 
-    // Wing membranes: two angled fan-like meshes off the upper back
-    const wingMat = new THREE.MeshStandardMaterial({
+    // ---------- Detailed wings ----------
+    // Each wing is a multi-mesh assembly: a curved membrane with serrated
+    // trailing edge, a leading-edge wing-arm, four wing-finger bones
+    // dividing the membrane into sections, hooked claws at finger tips,
+    // a shoulder muscle blob where the wing meets the body, and small
+    // emissive glow patches between the fingers.
+    const wingSkin = new THREE.MeshStandardMaterial({
       color: cfg.spineColor, side: THREE.DoubleSide,
-      roughness: 0.6, metalness: 0.2,
-      emissive: cfg.spineColor, emissiveIntensity: 0.3,
+      roughness: 0.55, metalness: 0.18,
+      emissive: cfg.spineColor, emissiveIntensity: 0.22,
     });
+    const wingDark = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cfg.spineColor).multiplyScalar(0.45),
+      side: THREE.DoubleSide, roughness: 0.7,
+    });
+    const wingBoneMat = new THREE.MeshStandardMaterial({ color: 0x3a2a18, roughness: 0.55, metalness: 0.3 });
+    const wingClawMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4, metalness: 0.4 });
+    const wingGlowMat = new THREE.MeshStandardMaterial({
+      color: cfg.spineColor, emissive: cfg.spineColor, emissiveIntensity: 0.9,
+      roughness: 0.4, side: THREE.DoubleSide,
+    });
+
     function makeWing(side) {
-      // Use a stretched plane with skew via geometry
-      const w = 7.0, h = 5.5;
-      const wing = new THREE.Mesh(new THREE.PlaneGeometry(w, h, 1, 1), wingMat);
-      wing.position.set(side * 3.5, 13.0, -2.0);
-      wing.rotation.y = side * -0.35;
-      wing.rotation.z = side * -0.6;
-      wing.rotation.x = -0.25;
+      const wing = new THREE.Group();
+      // Shoulder muscle blob
+      const muscle = new THREE.Mesh(new THREE.SphereGeometry(1.1, 14, 10), bodyMat);
+      muscle.scale.set(1.0, 0.9, 1.2);
+      wing.add(muscle);
+      // Leading-edge wing-arm (3 segments: humerus, forearm, hand)
+      const humerus = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.42, 2.2, 8), wingBoneMat);
+      humerus.rotation.z = side * -Math.PI / 2 - side * 0.5;
+      humerus.position.set(side * 1.0, -0.2, -0.2);
+      wing.add(humerus);
+      const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), wingBoneMat);
+      elbow.position.set(side * 2.0, -0.45, -0.45);
+      wing.add(elbow);
+      const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.34, 2.6, 8), wingBoneMat);
+      forearm.rotation.z = side * -Math.PI / 2 - side * 0.2;
+      forearm.position.set(side * 3.4, -0.7, -0.55);
+      wing.add(forearm);
+      const wrist = new THREE.Mesh(new THREE.SphereGeometry(0.36, 10, 8), wingBoneMat);
+      wrist.position.set(side * 4.7, -0.92, -0.65);
+      wing.add(wrist);
+      // Wing membrane shape: a Shape with 4 "fingers" giving it the
+      // classic dragon look (tail of membrane between each pair of bones).
+      const memShape = new THREE.Shape();
+      memShape.moveTo(0, 0);
+      memShape.bezierCurveTo(2.0, -0.3, 4.5, -1.0, 6.0, -1.5);     // leading edge to wing tip
+      // Trailing edge with 4 dragon-finger scallops
+      const fingers = [
+        { x: 5.6, y: -3.0 },
+        { x: 4.4, y: -3.6 },
+        { x: 3.0, y: -3.8 },
+        { x: 1.6, y: -3.7 },
+      ];
+      let prev = { x: 6.0, y: -1.5 };
+      for (const f of fingers) {
+        memShape.bezierCurveTo(prev.x - 0.3, prev.y - 0.5, f.x + 0.3, f.y - 0.4, f.x, f.y);
+        prev = f;
+      }
+      memShape.bezierCurveTo(0.7, -3.5, 0.3, -2.0, 0, 0);
+      const memGeom = new THREE.ShapeGeometry(memShape, 16);
+      const membrane = new THREE.Mesh(memGeom, wingSkin);
+      // Apply a side-flip via scale.x for the right wing
+      membrane.scale.set(side, 1, 1);
+      wing.add(membrane);
+      // Inset darker membrane for ribbed shading
+      const innerShape = new THREE.Shape();
+      innerShape.moveTo(0.3, -0.2);
+      innerShape.bezierCurveTo(2.0, -0.5, 4.5, -1.2, 5.7, -1.6);
+      for (const f of fingers) {
+        innerShape.lineTo(f.x - 0.3, f.y - 0.15);
+      }
+      innerShape.lineTo(0.5, -1.5);
+      innerShape.lineTo(0.3, -0.2);
+      const innerMem = new THREE.Mesh(new THREE.ShapeGeometry(innerShape, 12), wingDark);
+      innerMem.position.z = 0.02;
+      innerMem.scale.set(side, 1, 1);
+      wing.add(innerMem);
+      // Wing-finger bones (4 bones radiating from wrist to each finger tip)
+      for (let i = 0; i < 4; i++) {
+        const f = fingers[i];
+        const dx = f.x, dy = f.y;
+        const len = Math.hypot(dx, dy);
+        const ang = Math.atan2(dy, dx);
+        const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.16, len, 6), wingBoneMat);
+        bone.position.set(side * (dx * 0.5), dy * 0.5, -0.6);
+        bone.rotation.z = side * (ang + Math.PI / 2);
+        wing.add(bone);
+        // Hooked claw at the wing-finger tip
+        const claw = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.6, 6), wingClawMat);
+        claw.position.set(side * dx, dy, -0.65);
+        claw.rotation.z = side * (ang - Math.PI / 2);
+        wing.add(claw);
+        // Small emissive glow patch in the middle of each membrane section
+        if (i < 3) {
+          const next = fingers[i + 1];
+          const gx = (dx + next.x) / 2;
+          const gy = (dy + next.y) / 2;
+          const glow = new THREE.Mesh(new THREE.CircleGeometry(0.4, 12), wingGlowMat);
+          glow.position.set(side * gx, gy, 0.05);
+          wing.add(glow);
+        }
+      }
+      // Leading-edge spikes / claws along the top of the wing
+      for (let i = 0; i < 3; i++) {
+        const t = (i + 1) / 4;
+        const lx = 6.0 * t;
+        const ly = -1.5 * t;
+        const sp = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.55, 5), spineMat);
+        sp.position.set(side * lx, ly + 0.25, -0.15);
+        sp.rotation.z = side * 0.15;
+        wing.add(sp);
+      }
+      wing.position.set(side * 3.0, 13.4, -2.2);
+      wing.rotation.y = side * -0.45;
+      wing.rotation.z = side * -0.4;
+      wing.rotation.x = -0.18;
       return wing;
     }
     root.add(makeWing(-1));
     root.add(makeWing(1));
 
+    // Tail crest: extra serrated dorsal blades for ghidorah's serpentine vibe
+    for (let i = 1; i < 9; i++) {
+      const t = i / 9;
+      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.45 - t * 0.25, 1.6 - t * 0.6, 4), spineMat);
+      blade.position.set(0, 0.6, -i * 1.1);
+      blade.rotation.x = -0.1;
+      tail.add(blade);
+    }
+
   } else if (variant === 'mecha') {
-    // Glowing chest core
+    // ---------- Shared mecha materials ----------
     const coreMat = new THREE.MeshStandardMaterial({
       color: cfg.spineColor, emissive: cfg.spineColor, emissiveIntensity: 2.6, roughness: 0.3, metalness: 0.7,
     });
+    const panelMat   = new THREE.MeshStandardMaterial({ color: 0x6a7a8a, roughness: 0.4, metalness: 0.7 });
+    const panelDark  = new THREE.MeshStandardMaterial({ color: 0x222a32, roughness: 0.5, metalness: 0.7 });
+    const seamMat    = new THREE.MeshStandardMaterial({ color: cfg.spineColor, emissive: cfg.spineColor, emissiveIntensity: 1.4, roughness: 0.4 });
+    const pistonMat  = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, metalness: 0.95, roughness: 0.18 });
+    const cableMat   = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.85 });
+    const rivetMat   = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8 });
+    const ventMat    = new THREE.MeshStandardMaterial({ color: 0x110000, emissive: 0xff5522, emissiveIntensity: 1.4 });
+
+    // ---------- Chest core (large) + secondary core ----------
     const core = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.6, 16), coreMat);
     core.rotation.x = Math.PI / 2;
     core.position.set(0, 11.2, 2.4);
     root.add(core);
+    // Inner glow disc behind the core (gives more bloom depth)
+    const coreInner = new THREE.Mesh(new THREE.CircleGeometry(0.65, 18),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }));
+    coreInner.position.copy(core.position);
+    coreInner.position.z += 0.32;
+    root.add(coreInner);
     // Outer ring around core
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(1.1, 0.18, 8, 24),
-      new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.3 })
+      panelDark
     );
     ring.position.copy(core.position);
     root.add(ring);
+    // 8 rivets around the ring
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const rv = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), rivetMat);
+      rv.position.set(Math.cos(a) * 1.1, 11.2 + Math.sin(a) * 1.1, 2.4);
+      root.add(rv);
+    }
+    // Sub-cores: two smaller emissive ports flanking the main core
+    for (const sx of [-1, 1]) {
+      const sub = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 12), coreMat);
+      sub.position.set(sx * 1.7, 12.5, 2.05);
+      root.add(sub);
+      const subRing = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.06, 6, 14), panelDark);
+      subRing.position.copy(sub.position);
+      subRing.rotation.x = Math.PI / 2;
+      root.add(subRing);
+    }
 
-    // Antenna / sensor on the head
-    const ant = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.1, 1.6, 5),
-      new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.7 })
-    );
+    // ---------- Layered chest plating ----------
+    // Thin armor slabs over the existing torso for visible "bolted on" feel
+    const chestPlate = new THREE.Mesh(new THREE.BoxGeometry(4.6, 3.0, 0.2), panelMat);
+    chestPlate.position.set(0, 11.5, 2.7);
+    root.add(chestPlate);
+    // Diagonal accent stripe across the chest plate (emissive)
+    const accentStripe = new THREE.Mesh(new THREE.BoxGeometry(4.7, 0.18, 0.05), seamMat);
+    accentStripe.position.set(0, 11.7, 2.82);
+    accentStripe.rotation.z = -0.18;
+    root.add(accentStripe);
+    // Side chest plates angled outward
+    for (const sx of [-1, 1]) {
+      const sp = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.6, 0.18), panelDark);
+      sp.position.set(sx * 2.6, 11.4, 2.0);
+      sp.rotation.y = sx * -0.35;
+      root.add(sp);
+    }
+    // Hexagonal panel array on the upper torso
+    for (let i = -1; i <= 1; i++) {
+      for (let j = 0; j <= 1; j++) {
+        const hex = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 6), panelDark);
+        hex.rotation.x = Math.PI / 2;
+        hex.position.set(i * 0.55, 13.0 + j * 0.5, 2.85);
+        root.add(hex);
+      }
+    }
+
+    // ---------- Antenna + secondary sensors ----------
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 1.6, 5), pistonMat);
     ant.position.set(0, 16.5, -0.1);
     root.add(ant);
     const tip = new THREE.Mesh(
@@ -644,43 +882,190 @@ export function buildKaiju(cfg) {
     );
     tip.position.set(0, 17.4, -0.1);
     root.add(tip);
-
-    // Shoulder pistons (small cylinders sticking out)
-    const pistonMat = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.9, roughness: 0.2 });
+    // Side sensors / dish-radar units
     for (const sx of [-1, 1]) {
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.6, 8), pistonMat);
-      p.position.set(sx * 2.7, 13.1, 1.2);
-      p.rotation.z = sx * 0.3;
-      root.add(p);
+      const dishStem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 6), pistonMat);
+      dishStem.position.set(sx * 0.85, 16.3, -0.1);
+      root.add(dishStem);
+      const dish = new THREE.Mesh(
+        new THREE.SphereGeometry(0.22, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        panelMat
+      );
+      dish.position.set(sx * 0.85, 16.6, -0.1);
+      dish.rotation.x = Math.PI;
+      root.add(dish);
+      const dishCore = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), seamMat);
+      dishCore.position.set(sx * 0.85, 16.5, -0.1);
+      root.add(dishCore);
     }
 
-    // Rivet ring around the torso (small spheres along the seam)
-    for (let i = 0; i < 12; i++) {
-      const ang = (i / 12) * Math.PI * 2;
-      const rv = new THREE.Mesh(
-        new THREE.SphereGeometry(0.12, 6, 6),
-        new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8 })
-      );
+    // ---------- Multi-lens visor on the head ----------
+    const visorBacking = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, 0.2), panelDark);
+    visorBacking.position.set(0, 14.3, 1.55);
+    root.add(visorBacking);
+    // 3 sub-lenses across the visor
+    const lensMat = new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff2233, emissiveIntensity: 2.6, roughness: 0.2, metalness: 0.6 });
+    for (let i = -1; i <= 1; i++) {
+      const lens = new THREE.Mesh(new THREE.CircleGeometry(0.32, 16), lensMat);
+      lens.position.set(i * 0.85, 14.3, 1.66);
+      root.add(lens);
+      // Lens housing rim
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 6, 14), panelDark);
+      rim.position.copy(lens.position);
+      rim.position.z -= 0.01;
+      root.add(rim);
+    }
+
+    // ---------- Layered shoulder pauldrons ----------
+    for (const sx of [-1, 1]) {
+      // Outer pauldron
+      const pauld = new THREE.Mesh(new THREE.SphereGeometry(1.05, 14, 10), panelMat);
+      pauld.scale.set(1.0, 0.85, 1.1);
+      pauld.position.set(sx * 2.85, 13.4, 0);
+      root.add(pauld);
+      // Inner accent ring
+      const pauldRing = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.06, 6, 18), seamMat);
+      pauldRing.position.copy(pauld.position);
+      pauldRing.position.x -= sx * 0.55;
+      pauldRing.rotation.y = sx * Math.PI / 2;
+      root.add(pauldRing);
+      // Twin pistons sticking out the back of the pauldron
+      for (let i = 0; i < 2; i++) {
+        const p = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.4, 8), pistonMat);
+        p.position.set(sx * 2.7, 13.2 + i * 0.5, -0.6);
+        p.rotation.z = sx * 0.3;
+        p.rotation.x = -0.2;
+        root.add(p);
+        // Hydraulic seal ring on each piston
+        const seal = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.04, 5, 10), rivetMat);
+        seal.position.copy(p.position);
+        seal.rotation.copy(p.rotation);
+        seal.rotateX(Math.PI / 2);
+        root.add(seal);
+      }
+      // Rivet cluster on the pauldron front
+      for (let r = 0; r < 4; r++) {
+        const a = r * (Math.PI / 6) - Math.PI / 6;
+        const rivet = new THREE.Mesh(new THREE.SphereGeometry(0.085, 6, 6), rivetMat);
+        rivet.position.set(sx * 2.85 + Math.cos(a) * 0.55, 13.4 + Math.sin(a) * 0.55, 0.95);
+        root.add(rivet);
+      }
+    }
+
+    // ---------- Cable bundles at neck + waist (thick black tubes) ----------
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 1.3, 6), cableMat);
+      cable.position.set(Math.cos(a) * 1.1, 13.7, Math.sin(a) * 1.1);
+      cable.rotation.z = 0.05;
+      root.add(cable);
+    }
+    // Waist cables wrapping the seam
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 0.9, 6), cableMat);
+      cable.position.set(Math.cos(a) * 2.7, 8.5, Math.sin(a) * 2.7);
+      cable.rotation.x = Math.PI / 2;
+      cable.rotation.z = a;
+      root.add(cable);
+    }
+
+    // ---------- Rivet seam around the torso ----------
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      const rv = new THREE.Mesh(new THREE.SphereGeometry(0.10, 6, 6), rivetMat);
       rv.position.set(Math.cos(ang) * 2.95, 9.0, Math.sin(ang) * 2.95);
       root.add(rv);
     }
-    // Vent slits on chest
-    const vent = new THREE.MeshStandardMaterial({ color: 0x110000, emissive: 0x661100, emissiveIntensity: 0.6 });
+
+    // ---------- Vent slits + grills ----------
     for (let i = 0; i < 3; i++) {
-      const v = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.1), vent);
-      v.position.set(0, 12.5 - i * 0.4, 1.95);
+      const v = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.1), ventMat);
+      v.position.set(0, 12.5 - i * 0.4, 2.95);
       root.add(v);
     }
+    // Side grills (perpendicular vent strips along the ribs)
+    for (const sx of [-1, 1]) {
+      for (let i = 0; i < 4; i++) {
+        const v = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.6, 0.1), panelDark);
+        v.position.set(sx * 2.7, 11.5 - i * 0.4, 1.4);
+        root.add(v);
+      }
+    }
+    // Backpack heat-sink fins (visible from behind)
+    for (let i = 0; i < 4; i++) {
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 0.18), panelDark);
+      fin.position.set(0, 12.5 - i * 0.6, -1.85);
+      fin.rotation.x = -0.18;
+      root.add(fin);
+    }
+    // Rear glow strip between the heat sinks (engine glow)
+    const rearGlow = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.6, 0.1), seamMat);
+    rearGlow.position.set(0, 11.4, -1.95);
+    root.add(rearGlow);
+
+    // ---------- Mech hand / knuckle detail ----------
+    // Find the existing arm groups (named 'armL' / 'armR' in the base build)
+    const armL = root.getObjectByName('armL');
+    const armR = root.getObjectByName('armR');
+    function addKnuckles(arm) {
+      if (!arm) return;
+      // 4 small knuckle-rivets on the palm (palm is at relative y -6.2)
+      for (let i = 0; i < 4; i++) {
+        const k = new THREE.Mesh(new THREE.SphereGeometry(0.13, 6, 6), rivetMat);
+        k.position.set(-0.45 + i * 0.3, -6.0, 0.6);
+        arm.add(k);
+      }
+      // Wrist cuff rim
+      const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.08, 6, 14), seamMat);
+      cuff.position.set(0, -5.7, 0);
+      cuff.rotation.x = Math.PI / 2;
+      arm.add(cuff);
+      // Forearm panel-line glow strip
+      const arf = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.2, 0.06), seamMat);
+      arf.position.set(0, -4.4, 0.45);
+      arm.add(arf);
+    }
+    addKnuckles(armL);
+    addKnuckles(armR);
+
+    // ---------- Knee armour pads + hydraulic pistons on legs ----------
+    const legL = root.getObjectByName('legL');
+    const legR = root.getObjectByName('legR');
+    function addLegDetails(leg) {
+      if (!leg) return;
+      // Knee armour pad (around the existing knee sphere at y -3.4)
+      const kneePad = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.4), panelMat);
+      kneePad.position.set(0, -3.4, 0.2);
+      leg.add(kneePad);
+      // Hydraulic piston on outer side of thigh
+      const piston = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.6, 6), pistonMat);
+      piston.position.set(0.6, -2.4, -0.4);
+      leg.add(piston);
+      // Shin glow stripe
+      const shinGlow = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.6, 0.08), seamMat);
+      shinGlow.position.set(0, -5.0, 0.36);
+      leg.add(shinGlow);
+    }
+    addLegDetails(legL);
+    addLegDetails(legR);
 
   } else { // gojira
-    // Iconic maple-leaf-shaped dorsal fins via custom shape geometry along the back.
-    // We replace nothing -- the standard cones already exist; we just LAYER bigger
-    // angular plates around them so the silhouette reads as classic-G.
+    // ---------- Iconic maple-leaf dorsal fins with atomic glow ----------
     const finMat = new THREE.MeshStandardMaterial({
       color: cfg.spineColor, emissive: cfg.spineColor, emissiveIntensity: 0.7,
       roughness: 0.3, metalness: 0.5, side: THREE.DoubleSide,
     });
-    // Build a "maple leaf" shape (5 lobes)
+    const finGlowMat = new THREE.MeshStandardMaterial({
+      color: 0xeeffcc, emissive: 0xaaff77, emissiveIntensity: 2.6,
+      roughness: 0.2, side: THREE.DoubleSide,
+    });
+    const scarMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
+    const scaleMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cfg.color).multiplyScalar(1.2),
+      roughness: 0.85,
+    });
+    // Maple leaf shape (5 lobes)
     function makeMapleShape(s) {
       const sh = new THREE.Shape();
       sh.moveTo(0, 0);
@@ -694,21 +1079,130 @@ export function buildKaiju(cfg) {
       sh.lineTo(0, 0);
       return sh;
     }
-    for (let i = 0; i < 9; i++) {
-      const t = i / 8;
-      const sz = 1.6 - 1.0 * t;
-      const fin = new THREE.Mesh(new THREE.ShapeGeometry(makeMapleShape(sz)), finMat);
-      fin.rotation.y = Math.PI / 2; // face sideways
-      fin.position.set(0, 14.0 - t * 8.5, -1.35 - t * 0.2);
-      root.add(fin);
+    // Inner-glow shape (smaller, runs down the centre of each fin)
+    function makeGlowShape(s) {
+      const sh = new THREE.Shape();
+      sh.moveTo(0, 0);
+      sh.lineTo(s * 0.35, s * 0.4);
+      sh.lineTo(s * 0.55, s * 0.85);
+      sh.lineTo(s * 0.40, s * 1.0);
+      sh.lineTo(s * 0.15, s * 0.7);
+      sh.lineTo(0, 0);
+      return sh;
     }
-    // Extra cheek scales / chest scars
-    const scarMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
-    for (let i = 0; i < 4; i++) {
-      const s = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), scarMat);
-      s.position.set(-1.4 + i * 0.9, 11.5 - i * 0.4, 2.4);
+    // 11 dorsal fin pairs (the original 9 plus 2 more for fuller plate row)
+    for (let i = 0; i < 11; i++) {
+      const t = i / 10;
+      const sz = 1.7 - 1.05 * t;
+      const fin = new THREE.Mesh(new THREE.ShapeGeometry(makeMapleShape(sz)), finMat);
+      fin.rotation.y = Math.PI / 2;
+      fin.position.set(0, 14.4 - t * 9.0, -1.35 - t * 0.18);
+      root.add(fin);
+      // Atomic-glow inner plate (slightly in front of the fin so it shines through)
+      const glow = new THREE.Mesh(new THREE.ShapeGeometry(makeGlowShape(sz)), finGlowMat);
+      glow.rotation.y = Math.PI / 2;
+      glow.position.set(0.05, 14.4 - t * 9.0 + sz * 0.05, -1.35 - t * 0.18);
+      root.add(glow);
+      // Backing dark ridge plate so the fin reads against the body in silhouette
+      const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.18, sz * 0.9, 0.12), scarMat);
+      ridge.position.set(0, 14.4 - t * 9.0 + sz * 0.4, -1.4 - t * 0.18);
+      root.add(ridge);
+    }
+    // Lateral fin row -- smaller offset fins on each side
+    for (let i = 1; i < 7; i++) {
+      const t = i / 6;
+      const sz = 0.9 - 0.5 * t;
+      for (const sx of [-0.55, 0.55]) {
+        const lat = new THREE.Mesh(new THREE.ShapeGeometry(makeMapleShape(sz)), finMat);
+        lat.rotation.y = Math.PI / 2;
+        lat.position.set(sx, 13.0 - t * 7.0, -1.55 - t * 0.18);
+        lat.scale.set(0.7, 0.7, 0.7);
+        root.add(lat);
+      }
+    }
+
+    // ---------- Bumpy reptilian scale clusters along the back / shoulders ----------
+    for (let i = 0; i < 14; i++) {
+      const sx = (Math.random() - 0.5) * 4;
+      const sy = 7 + Math.random() * 6;
+      const sz = -1.4 + Math.random() * 0.4;
+      const sc = new THREE.Mesh(new THREE.SphereGeometry(0.18 + Math.random() * 0.08, 6, 6), scaleMat);
+      sc.position.set(sx, sy, sz);
+      sc.scale.y = 0.5;
+      root.add(sc);
+    }
+    // ---------- Chest scars (existing) -- now beefier ----------
+    for (let i = 0; i < 5; i++) {
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 6), scarMat);
+      s.position.set(-1.6 + i * 0.8, 11.5 - i * 0.3, 2.45);
       s.scale.set(1.0, 0.3, 0.4);
       root.add(s);
+    }
+    // Old battle scar across the chest (long diagonal slash)
+    const slash = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.1), scarMat);
+    slash.position.set(0.6, 11.6, 2.55);
+    slash.rotation.z = -0.5;
+    root.add(slash);
+
+    // ---------- Knee + elbow + shoulder spikes ----------
+    // Shoulder spike clusters (3 small spikes per shoulder)
+    for (const sx of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const sp = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.55, 5), spineMat);
+        sp.position.set(sx * 2.7, 12.6 + i * 0.45, -0.4 - i * 0.08);
+        sp.rotation.x = -0.3;
+        sp.rotation.z = sx * 0.4;
+        root.add(sp);
+      }
+    }
+    // Elbow spurs (find the existing arm groups)
+    {
+      const armL = root.getObjectByName('armL');
+      const armR = root.getObjectByName('armR');
+      function addElbowSpike(arm, sign) {
+        if (!arm) return;
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 5), spineMat);
+        spike.position.set(sign * 0.6, -3.0, -0.2);
+        spike.rotation.z = sign * Math.PI / 2;
+        arm.add(spike);
+      }
+      addElbowSpike(armL, -1);
+      addElbowSpike(armR,  1);
+    }
+    // Knee spurs
+    {
+      const legL = root.getObjectByName('legL');
+      const legR = root.getObjectByName('legR');
+      function addKneeSpike(leg) {
+        if (!leg) return;
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.6, 5), spineMat);
+        spike.position.set(0, -3.4, 0.7);
+        spike.rotation.x = -Math.PI / 2;
+        leg.add(spike);
+      }
+      addKneeSpike(legL); addKneeSpike(legR);
+    }
+
+    // ---------- Tail crest (extra row of plates running down the tail) ----------
+    for (let i = 1; i < 8; i++) {
+      const t = i / 8;
+      const sz = 0.9 - 0.5 * t;
+      const plate = new THREE.Mesh(new THREE.ShapeGeometry(makeMapleShape(sz)), finMat);
+      plate.rotation.y = Math.PI / 2;
+      plate.position.set(0, 0.5 - t * 0.2, -i * 1.05);
+      tail.add(plate);
+      // Glow strip inside each tail plate too
+      const tailGlow = new THREE.Mesh(new THREE.ShapeGeometry(makeGlowShape(sz)), finGlowMat);
+      tailGlow.rotation.y = Math.PI / 2;
+      tailGlow.position.set(0.05, 0.5 - t * 0.2 + sz * 0.05, -i * 1.05);
+      tail.add(tailGlow);
+    }
+    // Two big spikes along the tail's underside
+    for (let i = 0; i < 4; i++) {
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.7, 5), scarMat);
+      sp.position.set(0, -0.6, -1.5 - i * 1.5);
+      sp.rotation.x = Math.PI;
+      tail.add(sp);
     }
   }
 

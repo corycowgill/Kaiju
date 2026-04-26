@@ -62,57 +62,108 @@ export class Effect {
   }
 }
 
+// Pre-built shared geometry for the explosion ground-shockwave ring (a flat
+// disc that scales out fast then fades).
+const G_RING = new THREE.RingGeometry(0.9, 1.0, 36);
+
 export function makeExplosion(world, pos, scale = 1.0) {
   const group = new THREE.Group();
   group.position.copy(pos);
   world.scene.add(group);
 
-  // Fireball
-  const fireMat = new THREE.MeshBasicMaterial({
-    color: 0xffaa33, transparent: true, opacity: 1.0,
-  });
+  // Inner white-hot core flash (scaled HUGE for the first ~10% of life)
+  const flashMat = new THREE.MeshBasicMaterial({ color: 0xfff4d8, transparent: true, opacity: 1.0, depthWrite: false });
+  const flash = new THREE.Mesh(G_FIRE, flashMat);
+  group.add(flash);
+
+  // Outer fireball (orange)
+  const fireMat = new THREE.MeshBasicMaterial({ color: 0xff7722, transparent: true, opacity: 1.0, depthWrite: false });
   const fire = new THREE.Mesh(G_FIRE, fireMat);
   group.add(fire);
 
-  // Inner core
-  const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffcc, transparent: true, opacity: 1.0 });
+  // Mid yellow-hot ball
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xffee88, transparent: true, opacity: 1.0, depthWrite: false });
   const core = new THREE.Mesh(G_CORE, coreMat);
   group.add(core);
 
-  // Pooled point light -- track which one we're using so we don't fade
-  // a light that has been hijacked by a newer explosion.
+  // Ground shockwave ring (sits flat on the ground, expands outward)
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 1.0, side: THREE.DoubleSide, depthWrite: false });
+  const ring = new THREE.Mesh(G_RING, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = -pos.y + 0.15; // sit at world y=0.15 regardless of source y
+  group.add(ring);
+
+  // Smoke puff lifting off (lingers after the fireball fades)
+  const smokeMat = new THREE.MeshBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.8, depthWrite: false });
+  const smoke = new THREE.Mesh(G_FIRE, smokeMat);
+  smoke.position.y = 0;
+  group.add(smoke);
+
+  // Pooled point light
   const light = acquireLight(world.scene);
   light.position.copy(pos);
-  light.intensity = 6 * scale;
-  light.distance = 60;
-  // Sequence id so we know if this explosion still owns the light
+  light.intensity = 7 * scale;
+  light.distance = 70;
   const seq = (light._seq = (light._seq || 0) + 1);
 
-  // Shrapnel sparks
-  const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffeeaa });
+  // Shrapnel chunks (more, larger, with rotation)
+  const sparkMat  = new THREE.MeshBasicMaterial({ color: 0xffeeaa });
+  const emberMat  = new THREE.MeshBasicMaterial({ color: 0xff5522, transparent: true, opacity: 1.0 });
   const sparks = [];
-  for (let i = 0; i < 14; i++) {
-    const s = new THREE.Mesh(G_SHRAPNEL, sparkMat);
+  for (let i = 0; i < 22; i++) {
+    const useEmber = i < 10;
+    const s = new THREE.Mesh(G_SHRAPNEL, useEmber ? emberMat : sparkMat);
+    const speed = (8 + Math.random() * 16) * scale;
+    const yaw = Math.random() * Math.PI * 2;
+    const pitch = Math.PI * 0.18 + Math.random() * Math.PI * 0.45;
     s.userData.vel = new THREE.Vector3(
-      (Math.random() - 0.5) * 18,
-      Math.random() * 14,
-      (Math.random() - 0.5) * 18
-    ).multiplyScalar(scale);
+      Math.cos(yaw) * Math.cos(pitch) * speed,
+      Math.sin(pitch) * speed * 1.4,
+      Math.sin(yaw) * Math.cos(pitch) * speed,
+    );
+    s.userData.spin = new THREE.Vector3(
+      (Math.random() - 0.5) * 10,
+      (Math.random() - 0.5) * 10,
+      (Math.random() - 0.5) * 10,
+    );
+    s.userData.ember = useEmber;
     group.add(s);
     sparks.push(s);
   }
 
-  return new Effect(group, 1.2, (dt, t) => {
-    const s = (1 + t * 8) * scale;
+  return new Effect(group, 1.4, (dt, t) => {
+    // Initial hot flash (first 10% of life): super-bright + fast scale
+    const flashT = Math.min(1, t / 0.10);
+    flash.scale.setScalar((1 + flashT * 5) * scale);
+    flashMat.opacity = (1 - flashT) * 1.2;
+    // Fireball expansion + colour shift orange -> red
+    const s = (1 + t * 9) * scale;
     fire.scale.setScalar(s);
-    core.scale.setScalar(s * 0.5);
-    fireMat.opacity = 1 - t;
-    coreMat.opacity = 1 - t * 1.5;
-    // Only fade *our* light; if a newer explosion hijacked it, leave it alone
-    if (light._seq === seq) light.intensity = (1 - t) * 6 * scale;
+    core.scale.setScalar(s * 0.55);
+    fireMat.opacity = (1 - t) * 0.95;
+    coreMat.opacity = (1 - t * 1.4) * 0.9;
+    fireMat.color.setHSL(0.07 - t * 0.05, 0.95, 0.55 - t * 0.25);
+    // Ground ring blasts out then thins
+    const ringR = (1 + t * 18) * scale;
+    ring.scale.set(ringR, ringR, 1);
+    ringMat.opacity = (1 - t) * 0.95;
+    // Smoke lifts and grows, fades second half of life
+    smoke.scale.setScalar((0.6 + t * 4.5) * scale);
+    smoke.position.y = -pos.y + 0.1 + t * 6.0 * scale; // rises in world y
+    smokeMat.opacity = t < 0.4 ? 0.0 : Math.min(0.7, (t - 0.4) * 1.4) * (1.4 - t);
+    // Light fades
+    if (light._seq === seq) light.intensity = (1 - t) * 7 * scale;
+    // Sparks: arc + tumble
     for (const sp of sparks) {
       sp.position.addScaledVector(sp.userData.vel, dt);
-      sp.userData.vel.y -= 30 * dt;
+      sp.userData.vel.y -= 32 * dt;
+      sp.rotation.x += sp.userData.spin.x * dt;
+      sp.rotation.y += sp.userData.spin.y * dt;
+      sp.rotation.z += sp.userData.spin.z * dt;
+      // Embers fade out as they cool
+      if (sp.userData.ember) {
+        sp.material.opacity = Math.max(0, 1 - t * 1.6);
+      }
     }
     if (t >= 1) {
       if (light._seq === seq) light.intensity = 0;
