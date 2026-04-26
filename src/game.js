@@ -13,6 +13,8 @@ import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './ene
 import {
   Effect, makeExplosion, makeSparks, makeShockwave,
   makeMuzzleFlash, makeSmokePuff, makeBeam, makeHitPulse, makeSmokeColumn,
+  makeChainLightning, makeMissileSwarm, makeAtomicDome,
+  makeWingSlash, makeTailSweep, makeAfterburnerTrail, makeDustBurst,
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
@@ -1239,6 +1241,29 @@ function fireBeam() {
   world.shake(0.3, 0.4);
   audio.beam();
 
+  // Per-variant beam signature: a few extras spawned alongside the beam.
+  const variant = state.monsterCfg.variant;
+  if (variant === 'ghidorah') {
+    // Gravity beam = chain lightning along the beam path. Spawn a few jagged
+    // bolts forking off the main ray so the beam reads as electrical.
+    for (let i = 0; i < 3; i++) {
+      const distAlong = 60 + i * 70;
+      const fromP = _beamOrigin.clone().addScaledVector(_beamDir, distAlong - 40);
+      const toP   = _beamOrigin.clone().addScaledVector(_beamDir, distAlong);
+      // Add some lateral jitter
+      toP.x += (Math.random() - 0.5) * 8;
+      toP.y += (Math.random() - 0.5) * 4;
+      toP.z += (Math.random() - 0.5) * 8;
+      world.effects.push(makeChainLightning(world, fromP, toP, cfg.color, 0.35, 8));
+    }
+  } else if (variant === 'gojira') {
+    // Atomic breath = pulsing green hit-pulses dotted along the beam path.
+    for (let i = 0; i < 4; i++) {
+      const p = _beamOrigin.clone().addScaledVector(_beamDir, 30 + i * 40);
+      world.spawnHitPulse(p, cfg.color);
+    }
+  }
+
   // Hit detection along ray -- single raycast against the global body IM
   _beamRay.set(_beamOrigin, _beamDir);
   _beamRay.near = 0.5; _beamRay.far = length;
@@ -1251,6 +1276,16 @@ function fireBeam() {
       if (!b || b.destroyed) continue;
       b.damage(beamDmg, h.point, world);
       world.spawnExplosion(h.point, 0.8);
+      // Variant-specific impact signature at the hit point
+      if (variant === 'gojira') {
+        world.spawnHitPulse(h.point, cfg.color); // bright green flash
+      } else if (variant === 'mecha') {
+        // Plasma cannon: secondary explosion ring for double-impact
+        world.spawnShockwave(h.point.clone().setY(0.3), cfg.color, 14);
+      } else if (variant === 'ghidorah') {
+        // Final lightning crack from origin to hit point
+        world.effects.push(makeChainLightning(world, _beamOrigin, h.point, cfg.color, 0.3));
+      }
       break;
     }
   }
@@ -1276,11 +1311,44 @@ function fireRoar() {
   state.rage -= cfg.cost;
   state.cooldowns.roar = 5.0;
 
+  const variant = state.monsterCfg.variant;
   const center = state.kaiju.root.position.clone();
   world.spawnShockwave(center, cfg.color, cfg.radius);
   world.shake(0.8, 0.5);
   damageInRadius(center, cfg.radius, cfg.damage, true);
   audio.roar();
+
+  // Per-variant signature VFX layered on top of the shared shockwave.
+  if (variant === 'gojira') {
+    // PRIMAL ROAR: thick brown dust burst kicked up around the kaiju
+    world.effects.push(makeDustBurst(world, center, cfg.radius * 0.4, 14));
+  } else if (variant === 'ghidorah') {
+    // STORM CRY: chain lightning to every enemy in the radius. Plus a few
+    // stray bolts striking the ground for atmosphere.
+    const head = state.kaiju.head;
+    const headPos = new THREE.Vector3();
+    head.getWorldPosition(headPos);
+    let arcs = 0;
+    for (const e of world.enemies) {
+      if (e.dead || arcs > 10) continue;
+      const ep = e.root.position.clone();
+      const dx = ep.x - center.x, dz = ep.z - center.z;
+      if (dx * dx + dz * dz > cfg.radius * cfg.radius) continue;
+      ep.y += 4;
+      world.effects.push(makeChainLightning(world, headPos, ep, cfg.color, 0.4));
+      arcs++;
+    }
+    // Random ground strikes within radius
+    for (let i = 0; i < 4; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = cfg.radius * (0.4 + Math.random() * 0.55);
+      const target = new THREE.Vector3(center.x + Math.cos(a) * r, 0.5, center.z + Math.sin(a) * r);
+      world.effects.push(makeChainLightning(world, headPos, target, cfg.color, 0.45));
+    }
+  } else if (variant === 'mecha') {
+    // MISSILE BARRAGE: 8 missiles arcing outward, each exploding on impact.
+    makeMissileSwarm(world, center, cfg.radius, 8);
+  }
 }
 
 function fireCharge() {
@@ -1288,19 +1356,35 @@ function fireCharge() {
   if (state.rage < cfg.cost || state.cooldowns.charge > 0) return;
   state.rage -= cfg.cost;
   state.cooldowns.charge = 6.0;
-  // Dash forward and damage anything in front
+
+  const variant = state.monsterCfg.variant;
+  const startPos = state.kaiju.root.position.clone();
   const forward = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
   // Damage in a cone first so anything we plow through gets demolished
-  const cone = state.kaiju.root.position.clone().addScaledVector(forward, 12);
+  const cone = startPos.clone().addScaledVector(forward, 12);
   damageInRadius(cone, 28, cfg.damage, false);
   state.kaiju.root.position.addScaledVector(forward, 28);
   // Push out of any building that survived the cone
   resolveBuildingCollisions(state.kaiju.root.position, 0.5);
-  world.spawnShockwave(state.kaiju.root.position.clone(), cfg.color, 25);
+  const endPos = state.kaiju.root.position.clone();
+  world.spawnShockwave(endPos, cfg.color, 25);
   world.shake(0.7, 0.4);
-  // Final cleanup AOE at landing point
-  damageInRadius(state.kaiju.root.position, 24, cfg.damage * 0.5, false);
+  damageInRadius(endPos, 24, cfg.damage * 0.5, false);
   audio.charge();
+
+  // Per-variant signature trail
+  if (variant === 'gojira') {
+    // TAIL SWEEP: yellow arc trail at the start, plus a dust kick along path
+    world.effects.push(makeTailSweep(world, startPos, state.yaw, cfg.color));
+    world.effects.push(makeDustBurst(world, cone, 14, 10));
+  } else if (variant === 'ghidorah') {
+    // WING SLAM: magenta crescent slash arc at the end of the dash
+    world.effects.push(makeWingSlash(world, endPos, state.yaw, cfg.color));
+  } else if (variant === 'mecha') {
+    // ROCKET DASH: blue afterburner cone behind the dash path
+    const trail = makeAfterburnerTrail(world, startPos, endPos, cfg.color);
+    if (trail) world.effects.push(trail);
+  }
 }
 
 function fireStomp() {
@@ -1334,18 +1418,66 @@ function fireUltimate() {
   camera.getWorldDirection(dir); dir.y *= 0.4; dir.normalize();
   origin.addScaledVector(dir, 4.0);
 
-  // Mega-beam: extra wide, very long
-  world.spawnBeam(origin, dir, 360, cfg.beam.color, cfg.beam.glow);
   world.shake(2.5, 1.4);
-
-  // Triple expanding shockwave
   const center = state.kaiju.root.position.clone();
-  world.spawnShockwave(center, 0xffffff, 100);
-  setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.color, 140), 120);
-  setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.glow, 180), 260);
-
-  // Massive AOE damage everywhere within 130
+  // Massive AOE damage in all variants -- the *visual* differs.
   damageInRadius(center, 130, 250, true);
+
+  if (cfg.variant === 'gojira') {
+    // GOJIRA -- ATOMIC DOME BLAST
+    // Slow-expanding green hemisphere covering the kaiju + a bonus
+    // mega-beam straight ahead. Triple-stacked dust burst around the feet.
+    world.spawnBeam(origin, dir, 360, cfg.beam.color, cfg.beam.glow);
+    world.effects.push(makeAtomicDome(world, center, 140, cfg.beam.color));
+    world.effects.push(makeDustBurst(world, center, 90, 18));
+    setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.color, 180), 220);
+    showMessage('☢ ATOMIC DETONATION ☢', 1.4);
+  } else if (cfg.variant === 'ghidorah') {
+    // GHIDORAH -- LIGHTNING STORM
+    // Chain lightning from each of the kaiju's heads to every enemy in
+    // range, plus a flurry of ground strikes for atmosphere.
+    const heads = [state.kaiju.head];
+    // Find side-head groups (added in monsters.js) heuristically
+    state.kaiju.root.traverse((o) => { if (o.userData && o.userData.isSideHead) heads.push(o); });
+    let arcs = 0;
+    for (const e of world.enemies) {
+      if (e.dead || arcs > 16) continue;
+      const ep = e.root.position.clone();
+      const dx = ep.x - center.x, dz = ep.z - center.z;
+      if (dx * dx + dz * dz > 130 * 130) continue;
+      ep.y += 4;
+      const fromH = heads[arcs % heads.length];
+      const fromP = new THREE.Vector3();
+      fromH.getWorldPosition(fromP);
+      world.effects.push(makeChainLightning(world, fromP, ep, cfg.beam.color, 0.55));
+      arcs++;
+    }
+    // Random sky-to-ground strikes
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 130 * (0.4 + Math.random() * 0.55);
+      const skyP = new THREE.Vector3(center.x + Math.cos(a) * r, 80, center.z + Math.sin(a) * r);
+      const groundP = new THREE.Vector3(skyP.x, 0.6, skyP.z);
+      world.effects.push(makeChainLightning(world, skyP, groundP, cfg.beam.color, 0.5, 12));
+      // Each strike kicks a small explosion at impact
+      setTimeout(() => world.spawnExplosion?.(groundP, 0.8), 250);
+    }
+    setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.glow, 160), 200);
+    showMessage('⚡ THUNDERSTORM ⚡', 1.4);
+  } else if (cfg.variant === 'mecha') {
+    // MECHAKAI -- MISSILE BARRAGE + PLASMA BEAM
+    // 16 missiles ringing outward in two staggered waves + a giant plasma
+    // beam covering the front arc + secondary shockwaves.
+    world.spawnBeam(origin, dir, 360, cfg.beam.color, cfg.beam.glow);
+    makeMissileSwarm(world, center, 120, 10);
+    setTimeout(() => makeMissileSwarm(world, center, 130, 8), 280);
+    setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.color, 170), 180);
+    showMessage('☄ MISSILE BARRAGE ☄', 1.4);
+  } else {
+    // Generic fallback (shouldn't hit, but kept for safety)
+    world.spawnBeam(origin, dir, 360, cfg.beam.color, cfg.beam.glow);
+    world.spawnShockwave(center, 0xffffff, 100);
+  }
 
   // Beam line damage too -- pierce up to 3 instances along the path
   const ray = new THREE.Raycaster(origin, dir, 0.5, 360);

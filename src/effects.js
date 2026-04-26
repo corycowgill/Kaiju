@@ -369,3 +369,226 @@ export function makeBeam(world, origin, dir, length, color = 0x66ff66, glowColor
     }
   });
 }
+
+// ============== Power-tailored VFX helpers ==============
+
+// Chain lightning bolt: jagged poly-line from a -> b in `color`.
+// Built once at spawn (LineSegments via BufferGeometry) and faded over `life`.
+export function makeChainLightning(world, a, b, color = 0xffee66, life = 0.45, segs = 14) {
+  const points = [];
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = dir.length();
+  // Two perpendicular axes for jitter
+  const up = Math.abs(dir.y) > 0.99 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  const right = new THREE.Vector3().crossVectors(dir, up).normalize();
+  const updir = new THREE.Vector3().crossVectors(right, dir).normalize();
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const p = new THREE.Vector3().copy(a).addScaledVector(dir, t);
+    if (i > 0 && i < segs) {
+      const offsetMag = (Math.random() - 0.5) * len * 0.08;
+      const offsetMag2 = (Math.random() - 0.5) * len * 0.08;
+      p.addScaledVector(right, offsetMag);
+      p.addScaledVector(updir, offsetMag2);
+    }
+    points.push(p);
+  }
+  // Build a thick "bolt" via a TubeGeometry along the polyline
+  const curve = new THREE.CatmullRomCurve3(points);
+  const tube = new THREE.Mesh(
+    new THREE.TubeGeometry(curve, segs * 2, 0.18, 5, false),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1.0 })
+  );
+  const halo = new THREE.Mesh(
+    new THREE.TubeGeometry(curve, segs * 2, 0.55, 6, false),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 })
+  );
+  world.scene.add(halo);
+  world.scene.add(tube);
+  return new Effect(tube, life, (dt, t) => {
+    tube.material.opacity = 1 - t;
+    halo.material.opacity = 0.55 * (1 - t);
+    if (t >= 1) {
+      world.scene.remove(tube); world.scene.remove(halo);
+      tube.geometry.dispose(); halo.geometry.dispose();
+    }
+  });
+}
+
+// Missile swarm: spawn N small projectiles that arc outward from origin
+// landing at random positions inside `radius`, each exploding on impact.
+export function makeMissileSwarm(world, origin, radius = 60, count = 8) {
+  const trailMat = new THREE.MeshBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.95 });
+  const missileMat = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.7, roughness: 0.4, emissive: 0xff5522, emissiveIntensity: 0.6 });
+  const missileGeom = new THREE.CylinderGeometry(0.18, 0.06, 1.0, 8);
+  for (let i = 0; i < count; i++) {
+    const ang = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+    const r = radius * (0.5 + Math.random() * 0.5);
+    const target = new THREE.Vector3(origin.x + Math.cos(ang) * r, 0.5, origin.z + Math.sin(ang) * r);
+    // Initial velocity: lobbed arc to land at target after T sec
+    const T = 0.7 + Math.random() * 0.3;
+    const g = 22;
+    const vy = (target.y - origin.y) / T + 0.5 * g * T;
+    const vx = (target.x - origin.x) / T;
+    const vz = (target.z - origin.z) / T;
+    const m = new THREE.Mesh(missileGeom, missileMat);
+    m.position.copy(origin);
+    world.scene.add(m);
+    // Trail puffs while flying
+    const trail = new THREE.Mesh(G_FIRE, trailMat.clone());
+    trail.scale.setScalar(0.5);
+    trail.position.copy(origin);
+    world.scene.add(trail);
+    const vel = new THREE.Vector3(vx, vy, vz);
+    let timeLeft = T + 0.05;
+    world.effects.push(new Effect(m, T + 0.1, (dt, t) => {
+      timeLeft -= dt;
+      vel.y -= g * dt;
+      m.position.addScaledVector(vel, dt);
+      // Orient nose along velocity
+      const lookDir = vel.clone().normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), lookDir);
+      m.quaternion.copy(q);
+      // Trail follows body, slight delay
+      trail.position.lerp(m.position, 0.7);
+      trail.material.opacity = 0.9 * (1 - t * 0.6);
+      trail.scale.setScalar(0.5 + t * 1.2);
+      if (timeLeft <= 0 || m.position.y <= 0.4) {
+        world.scene.remove(m); world.scene.remove(trail);
+        // Explode where we landed
+        world.spawnExplosion?.(m.position.clone().setY(0.5), 0.7);
+      }
+    }));
+  }
+}
+
+// Atomic dome: slow-expanding green-glowing hemisphere covering a big radius.
+// Used as Gojira's ultimate signature.
+export function makeAtomicDome(world, pos, maxRadius = 130, color = 0x66ff66) {
+  const geom = new THREE.SphereGeometry(1, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
+  const dome = new THREE.Mesh(geom, mat);
+  dome.position.copy(pos); dome.position.y = 0.3;
+  world.scene.add(dome);
+  // Bright inner core dome
+  const innerMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.65, side: THREE.DoubleSide, depthWrite: false });
+  const inner = new THREE.Mesh(geom, innerMat);
+  inner.position.copy(dome.position);
+  world.scene.add(inner);
+  return new Effect(dome, 1.1, (dt, t) => {
+    const r = maxRadius * t;
+    dome.scale.set(r, r, r);
+    inner.scale.set(r * 0.85, r * 0.85, r * 0.85);
+    mat.opacity = 0.4 * (1 - t);
+    innerMat.opacity = 0.7 * (1 - t * 1.2);
+    if (t >= 1) {
+      world.scene.remove(dome); world.scene.remove(inner);
+    }
+  });
+}
+
+// Crescent wing-slash arc: a curved ring segment that flashes through.
+// Used for Ghidorah's Wing Slam charge.
+export function makeWingSlash(world, pos, yawRad, color = 0xff66ff) {
+  const inner = 6, outer = 16;
+  const arc = new THREE.Mesh(
+    new THREE.RingGeometry(inner, outer, 24, 1, -Math.PI * 0.6, Math.PI * 1.2),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false })
+  );
+  arc.rotation.x = -Math.PI / 2;
+  arc.rotation.z = -yawRad;
+  arc.position.copy(pos); arc.position.y = 1.2;
+  world.scene.add(arc);
+  // White inner highlight
+  const arc2 = new THREE.Mesh(
+    new THREE.RingGeometry(inner * 0.9, inner * 1.05, 24, 1, -Math.PI * 0.6, Math.PI * 1.2),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1.0, side: THREE.DoubleSide, depthWrite: false })
+  );
+  arc2.rotation.copy(arc.rotation);
+  arc2.position.copy(arc.position);
+  world.scene.add(arc2);
+  return new Effect(arc, 0.45, (dt, t) => {
+    const s = 1 + t * 0.6;
+    arc.scale.set(s, s, 1);
+    arc2.scale.set(s, s, 1);
+    arc.material.opacity = 0.95 * (1 - t);
+    arc2.material.opacity = (1 - t * 1.4);
+    if (t >= 1) { world.scene.remove(arc); world.scene.remove(arc2); }
+  });
+}
+
+// Tail-sweep arc: dust + emissive arc trail. Used for Gojira's Tail Sweep.
+export function makeTailSweep(world, pos, yawRad, color = 0xffee44) {
+  const inner = 4, outer = 18;
+  const arc = new THREE.Mesh(
+    new THREE.RingGeometry(inner, outer, 24, 1, -Math.PI * 0.4, Math.PI * 0.8),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false })
+  );
+  arc.rotation.x = -Math.PI / 2;
+  arc.rotation.z = -yawRad - Math.PI / 6;
+  arc.position.copy(pos); arc.position.y = 0.6;
+  world.scene.add(arc);
+  return new Effect(arc, 0.4, (dt, t) => {
+    arc.material.opacity = 0.9 * (1 - t);
+    arc.scale.set(1 + t * 0.4, 1 + t * 0.4, 1);
+    if (t >= 1) world.scene.remove(arc);
+  });
+}
+
+// Afterburner trail: a stretched cyan/blue cone behind the kaiju on dash.
+export function makeAfterburnerTrail(world, fromPos, toPos, color = 0x66aaff) {
+  const dir = new THREE.Vector3().subVectors(toPos, fromPos);
+  const len = dir.length();
+  if (len < 0.01) return null;
+  const mid = new THREE.Vector3().addVectors(fromPos, toPos).multiplyScalar(0.5);
+  const cone = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.2, 0.4, len, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false })
+  );
+  cone.position.copy(mid); cone.position.y += 4;
+  // Orient along (fromPos -> toPos)
+  const up = new THREE.Vector3(0, 1, 0);
+  const q = new THREE.Quaternion().setFromUnitVectors(up, dir.clone().normalize());
+  cone.quaternion.copy(q);
+  world.scene.add(cone);
+  // Bright inner streak
+  const inner = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.8, 0.15, len, 8, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false })
+  );
+  inner.quaternion.copy(q);
+  inner.position.copy(cone.position);
+  world.scene.add(inner);
+  return new Effect(cone, 0.55, (dt, t) => {
+    cone.material.opacity = 0.7 * (1 - t);
+    inner.material.opacity = 0.95 * (1 - t * 1.2);
+    if (t >= 1) { world.scene.remove(cone); world.scene.remove(inner); }
+  });
+}
+
+// Dust burst: kicked-up brown dust ring from the ground around `pos`.
+// Used to flesh out Gojira's roar / stomp / charge.
+export function makeDustBurst(world, pos, radius = 14, count = 8) {
+  const dustMat = new THREE.MeshBasicMaterial({ color: 0xa68864, transparent: true, opacity: 0.65, depthWrite: false });
+  const puffs = [];
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+    const r = radius * (0.6 + Math.random() * 0.4);
+    const m = new THREE.Mesh(G_FIRE, dustMat.clone());
+    m.scale.setScalar(2 + Math.random() * 1.5);
+    m.position.set(pos.x + Math.cos(a) * r, 0.4, pos.z + Math.sin(a) * r);
+    m.userData.outVel = new THREE.Vector3(Math.cos(a) * 6, 1.2 + Math.random() * 1.0, Math.sin(a) * 6);
+    world.scene.add(m);
+    puffs.push(m);
+  }
+  // Use the first puff as the Effect's mesh; tick all in one update.
+  return new Effect(puffs[0], 1.1, (dt, t) => {
+    for (const m of puffs) {
+      m.position.addScaledVector(m.userData.outVel, dt);
+      m.userData.outVel.y -= 4 * dt;
+      m.scale.setScalar((2 + t * 4));
+      m.material.opacity = 0.65 * (1 - t);
+    }
+    if (t >= 1) for (const m of puffs) world.scene.remove(m);
+  });
+}
