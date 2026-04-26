@@ -1229,6 +1229,7 @@ function fireBeam() {
   state.rage -= cfg.cost;
   state.cooldowns.beam = 4.0;
 
+  state._beamStanceT = 0.6; // pose: head leans forward, jaw opens
   state.kaiju.head.getWorldPosition(_beamOrigin);
   _beamOrigin.y += 0.5;
   // direction = camera forward, biased horizontally toward enemies
@@ -1310,6 +1311,7 @@ function fireRoar() {
   if (state.rage < cfg.cost || state.cooldowns.roar > 0) return;
   state.rage -= cfg.cost;
   state.cooldowns.roar = 5.0;
+  state._roarStanceT = 0.7; // pose: head tilts BACK, jaw wide open
 
   const variant = state.monsterCfg.variant;
   const center = state.kaiju.root.position.clone();
@@ -1356,6 +1358,7 @@ function fireCharge() {
   if (state.rage < cfg.cost || state.cooldowns.charge > 0) return;
   state.rage -= cfg.cost;
   state.cooldowns.charge = 6.0;
+  state._chargeStanceT = 0.45; // pose: deep forward lean, head down
 
   const variant = state.monsterCfg.variant;
   const startPos = state.kaiju.root.position.clone();
@@ -1620,39 +1623,133 @@ function updatePlayer(dt) {
   k.root.position.x = THREE.MathUtils.clamp(k.root.position.x, -limit, limit);
   k.root.position.z = THREE.MathUtils.clamp(k.root.position.z, -limit, limit);
 
-  // Face direction of yaw
+  // ============== Animation ==============
+  // Walk cycle: legs swing in opposition, body bobs UP-DOWN twice per
+  // step (heel/toe peaks), torso leans FORWARD when moving (more so when
+  // sprinting), and ROLLS side-to-side with the planted foot. Tail follows
+  // body yaw with a damped lag so it whips behind the kaiju on turns.
+  // Head counter-rolls the body sway and bobs slightly out of phase, so
+  // the silhouette reads like a real heavy creature instead of a robot.
+  const moving = move.lengthSq() > 0;
+  if (moving) state.walkPhase += dt * (sprint ? 6.5 : 4.5);
+  const sw  = Math.sin(state.walkPhase);
+  const sw2 = Math.abs(Math.sin(state.walkPhase * 1.0)); // 0..1, peaks twice per cycle
+  const tIdle = world.time;
+
+  // Stance timers tick down -- set externally by fireBeam / fireRoar /
+  // fireCharge so the kaiju visibly reacts to firing each power.
+  state._beamStanceT   = Math.max(0, (state._beamStanceT   || 0) - dt);
+  state._roarStanceT   = Math.max(0, (state._roarStanceT   || 0) - dt);
+  state._chargeStanceT = Math.max(0, (state._chargeStanceT || 0) - dt);
+
+  // ----- Body lean / sway / yaw -----
+  // Forward lean when moving, big lean when sprinting, plus a small roar-
+  // recoil that pushes the body BACK when roaring.
+  let leanTarget = moving ? (sprint ? 0.20 : 0.11) : 0.04;
+  if (state._beamStanceT > 0)   leanTarget += 0.10 * (state._beamStanceT / 0.6);
+  if (state._roarStanceT > 0)   leanTarget -= 0.12 * (state._roarStanceT / 0.6);
+  if (state._chargeStanceT > 0) leanTarget += 0.18 * (state._chargeStanceT / 0.45);
+  k.root.rotation.x = THREE.MathUtils.damp(k.root.rotation.x || 0, leanTarget, 7, dt);
+  // Side roll synced to walk cycle (waddle), tiny when idle
+  k.root.rotation.z = moving ? sw * 0.08 : Math.sin(tIdle * 0.7) * 0.012;
+  // Yaw stays driven by player input
   k.root.rotation.y = state.yaw;
 
-  // Walking animation
-  const moving = move.lengthSq() > 0;
-  if (moving) state.walkPhase += dt * 4.5;
-  const sw = Math.sin(state.walkPhase);
+  // ----- Vertical bob -----
+  // Vertical lift peaks twice per leg cycle (foot strikes), heavier when
+  // sprinting. Idle: gentle breathing oscillation.
+  const bobAmt = moving ? (sprint ? 0.95 : 0.70) : 0.0;
+  k.root.position.y = moving
+    ? sw2 * bobAmt
+    : Math.sin(tIdle * 1.5) * 0.18; // breathing
+
+  // ----- Legs -----
   const legL = k.root.getObjectByName('legL');
   const legR = k.root.getObjectByName('legR');
   if (legL && legR) {
-    legL.rotation.x = moving ? sw * 0.5 : 0;
-    legR.rotation.x = moving ? -sw * 0.5 : 0;
+    if (moving) {
+      legL.rotation.x =  sw * 0.85;
+      legR.rotation.x = -sw * 0.85;
+      // Lift the swinging leg higher during the forward swing half of cycle
+      legL.position.y = (legL.userData._baseY ?? (legL.userData._baseY = legL.position.y)) + Math.max(0, sw) * 0.35;
+      legR.position.y = (legR.userData._baseY ?? (legR.userData._baseY = legR.position.y)) + Math.max(0, -sw) * 0.35;
+    } else {
+      legL.rotation.x = 0; legR.rotation.x = 0;
+      // Snap legs back to base height so they don't drift after stop
+      if (legL.userData._baseY != null) legL.position.y = legL.userData._baseY;
+      if (legR.userData._baseY != null) legR.position.y = legR.userData._baseY;
+    }
   }
-  // Body bob
-  k.root.position.y = moving ? Math.abs(sw) * 0.4 : 0;
 
-  // Tail sway
+  // ----- Tail (with yaw lag + walk sway + lift on charge/sprint) -----
   const tail = k.root.getObjectByName('tail');
-  if (tail) tail.rotation.y = Math.sin(world.time * 1.5) * 0.2 + (moving ? sw * 0.3 : 0);
+  if (tail) {
+    state._tailYaw = state._tailYaw == null ? state.yaw : state._tailYaw;
+    state._tailYaw = THREE.MathUtils.damp(state._tailYaw, state.yaw, 4, dt);
+    const yawLag = state._tailYaw - state.yaw;
+    tail.rotation.y = yawLag * 0.7 + Math.sin(tIdle * 1.3) * 0.18 + (moving ? sw * 0.45 : 0);
+    // Tail lifts during sprint and during charge stance, droops at rest
+    let tailX = moving ? (sprint ? -0.22 : -0.12) : 0.05;
+    if (state._chargeStanceT > 0) tailX -= 0.25 * (state._chargeStanceT / 0.45);
+    tail.rotation.x = THREE.MathUtils.damp(tail.rotation.x || 0, tailX, 5, dt);
+    // Subtle vertical whip
+    tail.position.y = (tail.userData._baseY ?? (tail.userData._baseY = tail.position.y)) + (moving ? sw2 * 0.25 : 0);
+  }
 
-  // Arm swing animation (and melee swing)
+  // ----- Head (counter-sway, idle scan, attack stances) -----
+  if (k.head) {
+    const head = k.head;
+    if (head.userData._baseY == null) head.userData._baseY = head.position.y;
+    // Pitch: tiny down-tilt when moving, with bob; idle has slow scanning;
+    // beam stance leans head forward; roar stance tilts head BACK (looking up
+    // and roaring); charge stance leans head forward + slightly down.
+    let pitch = moving ? -0.04 + sw * 0.07 : Math.sin(tIdle * 1.0) * 0.05;
+    if (state._beamStanceT > 0)   pitch -= 0.32 * (state._beamStanceT / 0.6);
+    if (state._roarStanceT > 0)   pitch += 0.55 * (state._roarStanceT / 0.6);
+    if (state._chargeStanceT > 0) pitch -= 0.18 * (state._chargeStanceT / 0.45);
+    head.rotation.x = THREE.MathUtils.damp(head.rotation.x || 0, pitch, 9, dt);
+    // Yaw scan when idle (creature surveying); counter-roll when moving
+    const headYaw = moving ? -sw * 0.06 : Math.sin(tIdle * 0.4) * 0.18;
+    head.rotation.y = THREE.MathUtils.damp(head.rotation.y || 0, headYaw, 8, dt);
+    // Counter-roll the body sway so the head stays more stable
+    head.rotation.z = moving ? -sw * 0.08 : Math.sin(tIdle * 0.6) * 0.025;
+    // Head bobs slightly out of phase with the body
+    head.position.y = head.userData._baseY - (moving ? sw2 * 0.15 : 0);
+
+    // Jaw opens during beam / roar
+    const jaw = head.getObjectByName('jaw');
+    if (jaw) {
+      let openAmt = 0;
+      if (state._beamStanceT > 0) openAmt = 0.5 * (state._beamStanceT / 0.6);
+      if (state._roarStanceT > 0) openAmt = Math.max(openAmt, 0.7 * (state._roarStanceT / 0.6));
+      jaw.rotation.x = THREE.MathUtils.damp(jaw.rotation.x || 0, openAmt, 12, dt);
+    }
+  }
+
+  // ----- Arms (opposite swing, melee retains its own animation) -----
   const armL = k.root.getObjectByName('armL');
   const armR = k.root.getObjectByName('armR');
-  if (armL) armL.rotation.x = moving ? -sw * 0.3 : 0;
+  if (armL) armL.rotation.x = THREE.MathUtils.damp(
+    armL.rotation.x || 0,
+    moving ? -sw * 0.55 : Math.sin(tIdle * 0.8) * 0.05,
+    8, dt,
+  );
   if (armR) {
     const swing = armR.userData.swing || 0;
     if (swing > 0) {
-      armR.rotation.x = -1.3 * Math.sin(swing * Math.PI / 0.4);
+      armR.rotation.x = -1.5 * Math.sin(swing * Math.PI / 0.4);
       armR.userData.swing = Math.max(0, swing - dt);
     } else {
-      armR.rotation.x = moving ? sw * 0.3 : 0;
+      armR.rotation.x = THREE.MathUtils.damp(
+        armR.rotation.x || 0,
+        moving ? sw * 0.55 : -Math.sin(tIdle * 0.8) * 0.05,
+        8, dt,
+      );
     }
   }
+  // Arm side-roll on the swing for an organic shoulder feel
+  if (armL) armL.rotation.z = THREE.MathUtils.damp(armL.rotation.z || 0, moving ? -0.15 + sw * 0.08 : -0.12, 6, dt);
+  if (armR) armR.rotation.z = THREE.MathUtils.damp(armR.rotation.z || 0, moving ?  0.15 - sw * 0.08 :  0.12, 6, dt);
 
   // Cooldowns tick
   for (const k2 of Object.keys(state.cooldowns)) {
