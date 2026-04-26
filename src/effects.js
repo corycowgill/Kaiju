@@ -393,15 +393,18 @@ export function makeChainLightning(world, a, b, color = 0xffee66, life = 0.45, s
     }
     points.push(p);
   }
-  // Build a thick "bolt" via a TubeGeometry along the polyline
+  // Build a thick "bolt" via TubeGeometries along the polyline.
+  // Two layers: bright white core + colored halo. Sized larger now so the
+  // bolts are visibly dominant, not subtle (Ghidorah needs to read as
+  // a lightning kaiju at gameplay distance).
   const curve = new THREE.CatmullRomCurve3(points);
   const tube = new THREE.Mesh(
-    new THREE.TubeGeometry(curve, segs * 2, 0.18, 5, false),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1.0 })
+    new THREE.TubeGeometry(curve, segs * 2, 0.30, 6, false),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1.0, depthWrite: false })
   );
   const halo = new THREE.Mesh(
-    new THREE.TubeGeometry(curve, segs * 2, 0.55, 6, false),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 })
+    new THREE.TubeGeometry(curve, segs * 2, 0.95, 8, false),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75, depthWrite: false })
   );
   world.scene.add(halo);
   world.scene.add(tube);

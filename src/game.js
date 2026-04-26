@@ -1358,17 +1358,31 @@ function fireBeam() {
   // Per-variant beam signature: a few extras spawned alongside the beam.
   const variant = state.monsterCfg.variant;
   if (variant === 'ghidorah') {
-    // Gravity beam = chain lightning along the beam path. Spawn a few jagged
-    // bolts forking off the main ray so the beam reads as electrical.
-    for (let i = 0; i < 3; i++) {
-      const distAlong = 60 + i * 70;
-      const fromP = _beamOrigin.clone().addScaledVector(_beamDir, distAlong - 40);
-      const toP   = _beamOrigin.clone().addScaledVector(_beamDir, distAlong);
-      // Add some lateral jitter
-      toP.x += (Math.random() - 0.5) * 8;
-      toP.y += (Math.random() - 0.5) * 4;
-      toP.z += (Math.random() - 0.5) * 8;
-      world.effects.push(makeChainLightning(world, fromP, toP, cfg.color, 0.35, 8));
+    // GRAVITY BEAM = a continuous chain of lightning bolts running the
+    // FULL beam length, plus extra branching arcs every 50u for the
+    // electrical-storm read. Bolts are thick + last 0.65s so they're
+    // dominant, not a subtle fork next to a green tube.
+    const SEGS = 6;
+    const segLen = length / SEGS;
+    for (let i = 0; i < SEGS; i++) {
+      const a = _beamOrigin.clone().addScaledVector(_beamDir, i * segLen);
+      const b = _beamOrigin.clone().addScaledVector(_beamDir, (i + 1) * segLen);
+      // Stagger the segments slightly off-axis so they read as one
+      // continuous-but-jagged bolt
+      b.x += (Math.random() - 0.5) * 1.2;
+      b.y += (Math.random() - 0.5) * 0.6;
+      b.z += (Math.random() - 0.5) * 1.2;
+      world.effects.push(makeChainLightning(world, a, b, cfg.color, 0.65, 12));
+    }
+    // Branching forks coming off the main bolt
+    for (let f = 0; f < 5; f++) {
+      const distAlong = 40 + Math.random() * (length - 80);
+      const fromP = _beamOrigin.clone().addScaledVector(_beamDir, distAlong);
+      const toP = fromP.clone();
+      toP.x += (Math.random() - 0.5) * 18;
+      toP.y += (Math.random() - 0.5) * 10;
+      toP.z += (Math.random() - 0.5) * 18;
+      world.effects.push(makeChainLightning(world, fromP, toP, cfg.color, 0.5, 8));
     }
   } else if (variant === 'gojira') {
     // Atomic breath = pulsing green hit-pulses dotted along the beam path.
