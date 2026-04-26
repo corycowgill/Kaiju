@@ -57,7 +57,9 @@ renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.0) : Math.
 renderer.setSize(window.innerWidth, window.innerHeight);
 // Shadows are off entirely now -- biggest single fps win for a city of this
 // size. The brighter lighting + bloom carry the look without them.
-renderer.shadowMap.enabled = false;
+// Phase 4: shadow casting on desktop only -- the kaiju + nearest few
+// buildings cast soft shadows. Mobile keeps shadows off entirely.
+renderer.shadowMap.enabled = !isMobile;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
@@ -91,18 +93,40 @@ let bloomPass = null;
 }
 
 // Lighting: dramatic dusk
-// Lighting: warm dusk + strong fill so the city reads clearly
-const hemi = new THREE.HemisphereLight(0xffaa88, 0x44334a, 1.1);
+// Phase 4 lighting: low-angle synthwave-dusk sun + reduced ambient (IBL
+// from Phase 3 handles fill on desktop), plus 6 neon point lights as set
+// dressing. Hemisphere kept as a cheap colour fill on mobile (no IBL there).
+const hemi = new THREE.HemisphereLight(0xff7780, 0x1a0633, isMobile ? 0.55 : 0.30);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffdcb0, 1.7);
-sun.position.set(120, 180, 60);
-sun.castShadow = false;
+const sun = new THREE.DirectionalLight(0xff8866, 1.45);
+sun.position.set(-90, 60, 40); // low-angle sunset rake from the side
+if (!isMobile) {
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  // Tight frustum: kaiju + ~80u radius around it. We retarget per frame
+  // (see updateCamera) so distant buildings never enter the shadow camera.
+  sun.shadow.camera.left = -90; sun.shadow.camera.right = 90;
+  sun.shadow.camera.top = 90;   sun.shadow.camera.bottom = -90;
+  sun.shadow.camera.near = 1;   sun.shadow.camera.far = 260;
+  sun.shadow.bias = -0.0005;
+}
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0x88aaff, 0.55);
-fill.position.set(-100, 80, -120);
-scene.add(fill);
-const ambient = new THREE.AmbientLight(0x556677, 0.7);
+const ambient = new THREE.AmbientLight(0x334455, isMobile ? 0.45 : 0.10);
 scene.add(ambient);
+
+// Six neon point lights scattered through the city as set dressing. Short
+// distance + decay so they only colour the immediate street level.
+const NEON_PALETTE = [0xff3388, 0x33ddff, 0xffaa44, 0xff66ff, 0x66ff99, 0xffee44];
+const _neonLights = [];
+for (let i = 0; i < (isMobile ? 4 : 6); i++) {
+  const c = NEON_PALETTE[i % NEON_PALETTE.length];
+  const a = (i / 6) * Math.PI * 2;
+  const r = 110 + Math.random() * 80;
+  const pl = new THREE.PointLight(c, 4.5, 38, 2);
+  pl.position.set(Math.cos(a) * r, 6, Math.sin(a) * r);
+  scene.add(pl);
+  _neonLights.push(pl);
+}
 
 // Sky dome with stars
 const skyGeom = new THREE.SphereGeometry(1500, 24, 16);
@@ -639,6 +663,12 @@ function startGame(key) {
 
   const k = buildKaiju(state.monsterCfg);
   k.root.position.set(0, 0, 0);
+  // Phase 4: kaiju is the only object that casts shadows. Traverse its mesh
+  // tree once and flip the flags so the shadow pass picks up every limb.
+  k.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  // Sun targets the kaiju so the tight 180u shadow camera frustum follows it.
+  sun.target = k.root;
+  scene.add(sun.target);
   scene.add(k.root);
   state.kaiju = k;
 
@@ -1452,6 +1482,11 @@ const _camCandidates = []; // reused across frames -- we only mutate length
 function updateCamera() {
   const k = state.kaiju;
   if (!k) return;
+  // Sun offset stays constant relative to the kaiju so shadows follow it
+  // through the city without ever overflowing the 90u shadow camera.
+  if (sun && !isMobile) {
+    sun.position.set(k.root.position.x - 90, 90, k.root.position.z + 40);
+  }
   k.head.getWorldPosition(_camHead);
   const desiredDist = 28;
   _camOffset.set(

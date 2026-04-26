@@ -870,6 +870,9 @@ function buildGlobalBodies(scene, buildings) {
   // bounding-sphere test by disabling object-level frustum culling. There's
   // only one mesh.
   im.frustumCulled = false;
+  // Buildings receive the kaiju's shadow but don't cast (1024 shadow map is
+  // tight enough that distant casters would alias badly).
+  im.receiveShadow = true;
   const dummy = new THREE.Object3D();
   const _skipMatrix = new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001);
   for (let i = 0; i < buildings.length; i++) {
