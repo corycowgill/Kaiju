@@ -68,7 +68,10 @@ game.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x281a30);
-scene.fog = new THREE.Fog(0x6a4a5a, 240, 1100);
+// Phase 6: exponential fog matched to the sunset palette. Distance buildings
+// fade smoothly into haze instead of popping at a linear cut. Density tuned
+// so things ~150u away stay readable but the city horizon dissolves.
+scene.fog = new THREE.FogExp2(0x4a1a3a, 0.0042);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 2000);
 
