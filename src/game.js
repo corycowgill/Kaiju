@@ -223,6 +223,100 @@ if (Q_HIGH) {
   } catch (e) { console.warn('PMREM env failed:', e); }
 }
 
+// Distant horizon scenery: silhouette skyline + far mountains. Without
+// this, walking to the edge of the play area shows blank ground meeting
+// blank sky. This populates the 480-1300u radius zone with non-interactive
+// dark scenery so the boundary reads as "city continues into haze."
+{
+  // ---- Silhouette skyline ring ----
+  // ~120 dark buildings ringed around the play area at radius 480-720.
+  // Single InstancedMesh, no shadows, frustum-cull off (it's not worth
+  // computing per-instance bounds for a backdrop).
+  const RING_COUNT = 120;
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0x141022, roughness: 0.95, metalness: 0.0,
+    emissive: 0x2a1a3a, emissiveIntensity: 0.15,
+  });
+  const ringGeom = new THREE.BoxGeometry(1, 1, 1);
+  const ringIM = new THREE.InstancedMesh(ringGeom, ringMat, RING_COUNT);
+  ringIM.frustumCulled = false;
+  const ringDummy = new THREE.Object3D();
+  for (let i = 0; i < RING_COUNT; i++) {
+    const a = (i / RING_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.04;
+    const r = 480 + Math.random() * 240;
+    const w = 18 + Math.random() * 36;
+    const d = 18 + Math.random() * 36;
+    const h = 30 + Math.random() * 110;
+    ringDummy.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r);
+    ringDummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+    ringDummy.scale.set(w, h, d);
+    ringDummy.updateMatrix();
+    ringIM.setMatrixAt(i, ringDummy.matrix);
+  }
+  ringIM.instanceMatrix.needsUpdate = true;
+  scene.add(ringIM);
+
+  // ---- A few "lit" silhouette towers with a faint emissive face ----
+  // Just enough scattered glow so the backdrop reads as alive at night.
+  const litMat = new THREE.MeshStandardMaterial({
+    color: 0x1a1430, roughness: 0.85,
+    emissive: 0xff66cc, emissiveIntensity: 0.45,
+  });
+  const litIM = new THREE.InstancedMesh(ringGeom, litMat, 14);
+  litIM.frustumCulled = false;
+  for (let i = 0; i < 14; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 500 + Math.random() * 200;
+    const w = 14 + Math.random() * 18;
+    const d = 14 + Math.random() * 18;
+    const h = 80 + Math.random() * 100;
+    ringDummy.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r);
+    ringDummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+    ringDummy.scale.set(w, h, d);
+    ringDummy.updateMatrix();
+    litIM.setMatrixAt(i, ringDummy.matrix);
+  }
+  litIM.instanceMatrix.needsUpdate = true;
+  scene.add(litIM);
+
+  // ---- Distant mountain silhouettes ----
+  // 9 low-poly cones at radius ~1000, dark blue-purple matching the
+  // horizon haze. Inside the fog falloff so they fade to sky color.
+  const mountMat = new THREE.MeshStandardMaterial({
+    color: 0x2a1f3a, roughness: 1.0, metalness: 0.0,
+    emissive: 0x1a0f2a, emissiveIntensity: 0.2,
+  });
+  const mountGeom = new THREE.ConeGeometry(1, 1, 6);
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+    const r = 950 + Math.random() * 350;
+    const baseR = 120 + Math.random() * 180;
+    const h = 180 + Math.random() * 220;
+    const m = new THREE.Mesh(mountGeom, mountMat);
+    m.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r);
+    m.rotation.y = Math.random() * Math.PI * 2;
+    m.scale.set(baseR, h, baseR * (0.8 + Math.random() * 0.5));
+    m.matrixAutoUpdate = false; m.updateMatrix();
+    scene.add(m);
+  }
+
+  // ---- Soft barrier ring at the play limit ----
+  // Faint cyan vertical band at radius 330 to give the player a visible
+  // edge they're not meant to push against. Low opacity, no z-write so
+  // it doesn't compete with foreground bloom.
+  const barrierMat = new THREE.MeshBasicMaterial({
+    color: 0x66ddff, transparent: true, opacity: 0.06,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+  const barrierGeom = new THREE.CylinderGeometry(338, 338, 22, 64, 1, true);
+  const barrier = new THREE.Mesh(barrierGeom, barrierMat);
+  barrier.position.y = 11;
+  scene.add(barrier);
+  // Animate barrier opacity each frame so it pulses faintly when the
+  // kaiju gets close. Stash refs for the main update loop to read.
+  window.__barrier = { mesh: barrier, mat: barrierMat };
+}
+
 // ------------------------- World object -------------------------
 // Shared shell geometry + per-type materials so each shot doesn't
 // allocate a fresh BufferGeometry / MeshBasicMaterial pair.
@@ -1792,8 +1886,10 @@ function updatePlayer(dt) {
   k.root.position.x += state.vel.x * dt;
   k.root.position.z += state.vel.z * dt;
   resolveBuildingCollisions(k.root.position, dt);
-  // Clamp to map bounds
-  const limit = 380;
+  // Clamp to play area. The visible distant scenery (silhouette skyline +
+  // mountains) starts beyond ~480u so the boundary always reads as
+  // "city extends into the distance" instead of "edge of the world".
+  const limit = 330;
   k.root.position.x = THREE.MathUtils.clamp(k.root.position.x, -limit, limit);
   k.root.position.z = THREE.MathUtils.clamp(k.root.position.z, -limit, limit);
 
@@ -2230,6 +2326,20 @@ function updateWorld(dt) {
     for (let i = 0; i < world.cityAnimators.length; i++) {
       world.cityAnimators[i].update(dt, world.time);
     }
+  }
+
+  // ----- Boundary barrier pulse -----
+  // The cyan ring at the play-area edge fades in only when the kaiju is
+  // within 60u of the boundary, so it stays invisible during normal play
+  // but gives clear visual feedback the moment the player tries to wander
+  // past the city limits.
+  if (window.__barrier && state.kaiju) {
+    const kx = state.kaiju.root.position.x;
+    const kz = state.kaiju.root.position.z;
+    const maxDist = Math.max(Math.abs(kx), Math.abs(kz));
+    const closeness = Math.max(0, (maxDist - 270) / 60); // 0 below 270, 1 at limit
+    const pulse = 0.5 + 0.5 * Math.sin(world.time * 6);
+    window.__barrier.mat.opacity = closeness * (0.18 + 0.20 * pulse);
   }
 
   // ----- Cars -----
