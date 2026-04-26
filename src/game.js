@@ -1,3 +1,5 @@
+// Build stamp for the on-page console (visible via ?debug in the URL).
+console.info('[KAIJU HAVOC] build', '7d47202+', new Date().toISOString());
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -519,6 +521,7 @@ for (const key of Object.keys(MONSTERS)) {
   cardsDiv.appendChild(card);
   _cardEls[key] = card;
 }
+console.info('[KAIJU HAVOC] menu cards built:', cardsDiv.children.length, 'isMobile:', isMobile);
 // Portrait priority chain:
 //   1. Static image at assets/<key>.{png,jpg,jpeg,webp}  (artist-supplied; wins)
 //   2. 3D-rendered preview from buildKaiju()             (procedural fallback)

@@ -769,6 +769,16 @@
   }
 }
 </script>
+<!-- Mobile dev console: append ?debug to the URL to load Eruda. -->
+<script>
+  (function () {
+    if (!/[?&]debug\b/.test(location.search)) return;
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/eruda';
+    s.onload = function () { try { eruda.init(); } catch (e) {} };
+    document.body.appendChild(s);
+  })();
+</script>
 <script type="module" src="./src/game.js"></script>
 </body>
 </html>
