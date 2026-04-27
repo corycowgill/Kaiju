@@ -1306,8 +1306,11 @@ function pickWindowBucket() {
 }
 
 function buildGlobalWindows(scene) {
-  if (_windowQueue.length === 0) return;
+  if (_windowQueue.length === 0) return null;
   const geom = new THREE.BoxGeometry(0.6, 1.2, 0.15);
+  // Track the lit emissive materials so we can pulse their intensity
+  // on a slow sin wave. Returned to buildCity for cityAnimators wiring.
+  const litMats = [];
   // Bucket every window. Buildings whose owner had `lit:false` (we tag this
   // at queue time) skew heavily to the 'off' bucket; otherwise they pick
   // from the synthwave palette weights.
@@ -1345,8 +1348,20 @@ function buildGlobalWindows(scene) {
     }
     im.instanceMatrix.needsUpdate = true;
     scene.add(im);
+    if (i > 0) litMats.push({ mat, base: cfg.intensity, phase: i * 1.7 });
   }
   _windowQueue = [];
+  // Animator: pulse each lit bucket on its own sin wave so the city
+  // breathes. Each colour gets a different phase so they don't pulse
+  // in unison. Amplitude is small (15%) -- just enough to feel alive.
+  return {
+    update(dt, time) {
+      for (const m of litMats) {
+        const pulse = 0.85 + 0.15 * Math.sin(time * 0.6 + m.phase);
+        m.mat.emissiveIntensity = m.base * pulse;
+      }
+    },
+  };
 }
 
 let LITE_MODE = false;
@@ -2055,7 +2070,7 @@ export function buildCity(scene, world, opts = {}) {
 
   // Build the global body + window InstancedMeshes now that all buildings exist.
   const bodiesIM = buildGlobalBodies(scene, buildings);
-  buildGlobalWindows(scene);
+  const windowPulse = buildGlobalWindows(scene);
 
   // Lamp posts -- one InstancedMesh for posts and one for bulbs (was 2
   // draw calls per lamp; ~30 lamps → 60 draws → 2 draws total).
@@ -2791,7 +2806,9 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
-  return { buildings, grid, bodiesIM, cityAnimators: [flock] };
+  const animators = [flock];
+  if (windowPulse) animators.push(windowPulse);
+  return { buildings, grid, bodiesIM, cityAnimators: animators };
 }
 
 // Tokyo "koban" -- small two-story police box. Sky-blue trim, white wall,

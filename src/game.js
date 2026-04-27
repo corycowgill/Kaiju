@@ -7,6 +7,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
@@ -116,6 +117,61 @@ let bloomPass = null;
     0.7                                     // threshold
   );
   composer.addPass(bloomPass);
+
+  // Cinematic post pass: vignette + film grain + chromatic aberration.
+  // Runs in linear-light space (before OutputPass) so the grain blends
+  // with bloom rather than being clamped post-tonemap. Strength varies
+  // by quality tier; LOW gets just the vignette, HIGH gets all three.
+  if (!Q_LOW) {
+    const cineUniforms = {
+      tDiffuse: { value: null },
+      time:     { value: 0 },
+      vignette: { value: Q_HIGH ? 0.55 : 0.40 },
+      grain:    { value: Q_HIGH ? 0.045 : 0.025 },
+      ca:       { value: Q_HIGH ? 0.0026 : 0.0014 }, // chromatic aberration
+      resolution: { value: new THREE.Vector2(1, 1) },
+    };
+    const cinePass = new ShaderPass({
+      uniforms: cineUniforms,
+      vertexShader: `
+        varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float time;
+        uniform float vignette;
+        uniform float grain;
+        uniform float ca;
+        uniform vec2  resolution;
+        varying vec2 vUv;
+        // Hash for grain (3-input, cheap)
+        float hash(vec2 p, float t) {
+          return fract(sin(dot(p, vec2(127.1, 311.7)) + t * 27.13) * 43758.5453);
+        }
+        void main() {
+          // Chromatic aberration: shift R/B outward radially from center.
+          vec2 c = vUv - 0.5;
+          float r2 = dot(c, c);
+          vec2 dir = c * (1.0 + r2 * 1.4);
+          vec3 col;
+          col.r = texture2D(tDiffuse, vUv + dir * ca).r;
+          col.g = texture2D(tDiffuse, vUv).g;
+          col.b = texture2D(tDiffuse, vUv - dir * ca).b;
+          // Vignette: smooth radial darkening
+          float vig = smoothstep(0.85, 0.30, length(c) * 1.4);
+          col *= mix(1.0, vig, vignette);
+          // Film grain: subtle additive noise that animates each frame.
+          float n = hash(gl_FragCoord.xy, time) - 0.5;
+          col += n * grain;
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,
+    });
+    composer.addPass(cinePass);
+    window.__cinePass = cinePass;
+  }
+
   composer.addPass(new OutputPass());
 }
 
@@ -2660,6 +2716,7 @@ function tick(now) {
   // Menu navigation (gamepad) -- runs whenever the menu or upgrade modal
   // is on screen, regardless of paused/gameOver state.
   pollMenuGamepad(dtRaw);
+  if (window.__cinePass) window.__cinePass.uniforms.time.value = world.time;
   if (composer) composer.render();
   else renderer.render(scene, camera);
   requestAnimationFrame(tick);
