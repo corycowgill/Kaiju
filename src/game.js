@@ -1080,10 +1080,20 @@ function startWave(n) {
   state.wave = n;
   state.inWave = true;
 
-  // Wave objective: smash a target number of buildings during the wave for
-  // a bonus. Goal scales with wave so it stays a stretch but always
-  // achievable if the kaiju is being aggressive.
-  state.waveObjective.goal = 4 + Math.min(8, Math.floor(n * 1.2));
+  // Wave objective: pick a random kind so each wave gives the player a
+  // different stretch goal. Each kind has its own goal scaling tuned to
+  // be tough-but-achievable if the kaiju plays aggressively.
+  const OBJ_KINDS = [
+    { kind: 'buildings', label: 'SMASH',   noun: 'BUILDINGS', goal: 4 + Math.min(8, Math.floor(n * 1.2)) },
+    { kind: 'civilians', label: 'STOMP',   noun: 'CIVILIANS', goal: 8 + Math.min(20, n * 3) },
+    { kind: 'tanks',     label: 'DESTROY', noun: 'TANKS',     goal: Math.max(2, Math.min(8, 2 + Math.floor(n * 0.8))) },
+    { kind: 'cars',      label: 'CRUSH',   noun: 'CARS',      goal: 5 + Math.min(15, n * 2) },
+  ];
+  const oc = OBJ_KINDS[Math.floor(Math.random() * OBJ_KINDS.length)];
+  state.waveObjective.kind = oc.kind;
+  state.waveObjective.label = oc.label;
+  state.waveObjective.noun  = oc.noun;
+  state.waveObjective.goal  = oc.goal;
   state.waveObjective.current = 0;
   state.waveObjective.complete = false;
   const objEl = document.getElementById('wave-objective');
@@ -1091,14 +1101,26 @@ function startWave(n) {
   updateWaveObjectiveText();
 
   const isBossWave = n > 0 && n % 4 === 0;
+  // Wave themes pick a flavour for non-boss waves so each wave feels
+  // distinct rather than "more of the same". Each theme tweaks the
+  // baseline counts plus shows a unique sub-banner.
+  const THEMES = [
+    { id: 'standard', name: 'THE MILITARY STRIKES BACK', mods: { tank: 1.0, heli: 1.0, mech: 1.0, jet: 1.0, arty: 1.0, soldier: 1.0 } },
+    { id: 'swarm',    name: 'INFANTRY SWARM',            mods: { tank: 0.5, heli: 0.5, mech: 0.0, jet: 0.0, arty: 0.0, soldier: 4.0 } },
+    { id: 'armor',    name: 'ARMORED COLUMN',            mods: { tank: 2.0, heli: 0.5, mech: 1.5, jet: 0.0, arty: 0.5, soldier: 0.0 } },
+    { id: 'air',      name: 'AIR DOMINANCE',             mods: { tank: 0.5, heli: 2.5, mech: 0.0, jet: 2.5, arty: 0.0, soldier: 0.0 } },
+    { id: 'siege',    name: 'ARTILLERY SIEGE',           mods: { tank: 0.5, heli: 0.5, mech: 1.2, jet: 0.5, arty: 3.0, soldier: 0.5 } },
+  ];
+  const theme = isBossWave ? null : (n <= 1 ? THEMES[0] : THEMES[Math.floor(Math.random() * THEMES.length)]);
   if (isBossWave) {
     showWaveBanner(`WAVE ${n}`, 'BOSS APPROACHING');
     toast('⚠ BOSS WAVE ⚠', 'bad');
     audio.bossSpawn();
   } else {
-    showWaveBanner(`WAVE ${n}`, 'THE MILITARY STRIKES BACK');
+    showWaveBanner(`WAVE ${n}`, theme.name);
     audio.waveStart();
   }
+  state._waveTheme = theme;
 
   const enemies = world.enemies;
   const kpos = state.kaiju.root.position;
@@ -1117,13 +1139,14 @@ function startWave(n) {
     document.getElementById('boss-bar').style.display = 'block';
   }
 
-  // Standard scaling
-  const tankCount = 2 + n * 2;
-  const heliCount = Math.min(8, Math.floor(n * 1.2));
-  const mechCount = (n >= 3 && !isBossWave) ? Math.floor((n - 2) * 1.0) : 0;
-  const jetCount = n >= 2 ? Math.min(5, Math.floor(n / 2)) : 0;
-  const artyCount = n >= 3 ? Math.min(4, Math.floor((n - 1) / 2)) : 0;
-  const soldierSquads = n >= 2 ? Math.floor(n / 2) : 0;
+  // Baseline scaling, then theme-modulated
+  const m = theme ? theme.mods : { tank: 1.0, heli: 1.0, mech: 1.0, jet: 1.0, arty: 1.0, soldier: 1.0 };
+  const tankCount   = Math.round((2 + n * 2) * m.tank);
+  const heliCount   = Math.min(12, Math.round(Math.floor(n * 1.2) * m.heli));
+  const mechCount   = (n >= 3 && !isBossWave) ? Math.max(0, Math.round((n - 2) * m.mech)) : 0;
+  const jetCount    = n >= 2 ? Math.min(8, Math.round(Math.floor(n / 2) * m.jet)) : 0;
+  const artyCount   = n >= 3 ? Math.min(8, Math.round(Math.floor((n - 1) / 2) * m.arty)) : 0;
+  const soldierSquads = Math.max(0, Math.round((n >= 2 ? Math.floor(n / 2) : 0) * m.soldier));
 
   for (let i = 0; i < tankCount; i++) {
     const [x, z] = spawnPos(160 + Math.random() * 80);
@@ -1201,6 +1224,37 @@ function bumpCombo() {
   if (state.combo === 25) toast('UNSTOPPABLE!', 'good');
   if (state.combo === 50) toast('CITY WRECKER!', 'good');
 }
+// Multikill detection: each registered kill within MULTIKILL_WINDOW of the
+// last one increments the streak. Crossing 2/3/4/5/6+ triggers escalating
+// callouts plus a tiny freeze-frame so the player feels each tier.
+const MULTIKILL_WINDOW = 1.4;
+const MULTIKILL_TIERS = [
+  null, null,
+  { label: 'DOUBLE KILL',   color: 'good', score: 200,  slow: 0.55, slowDur: 0.18 },
+  { label: 'TRIPLE KILL',   color: 'good', score: 500,  slow: 0.45, slowDur: 0.22 },
+  { label: 'MEGA KILL',     color: 'good', score: 1000, slow: 0.35, slowDur: 0.28 },
+  { label: 'ULTRA KILL',    color: 'good', score: 2000, slow: 0.30, slowDur: 0.32 },
+  { label: 'KAIJU CARNAGE', color: 'good', score: 4000, slow: 0.25, slowDur: 0.40 },
+];
+function registerKill() {
+  const now = world.time;
+  if (now - (state._lastKillT || 0) <= MULTIKILL_WINDOW) {
+    state._multikill = (state._multikill || 1) + 1;
+  } else {
+    state._multikill = 1;
+  }
+  state._lastKillT = now;
+  const tier = MULTIKILL_TIERS[Math.min(state._multikill, MULTIKILL_TIERS.length - 1)];
+  if (tier) {
+    toast(`${tier.label} +${tier.score}`, tier.color);
+    state.score += tier.score;
+    if (tier.slow && typeof slowMo === 'function') slowMo(tier.slow, tier.slowDur);
+    if (state.kaiju) {
+      _tmpV1.copy(state.kaiju.root.position); _tmpV1.y += 18;
+      spawnPopup(_tmpV1, tier.label + '!', '#ffaa66');
+    }
+  }
+}
 function addScore(base) {
   state.score += Math.floor(base * comboMult());
 }
@@ -1224,28 +1278,29 @@ function maybeDropPickup(pos, source = 'building') {
 
 world.onTankKilled = () => {
   state.tanksKilled++;
-  addScore(250); addRage(8); bumpCombo();
+  addScore(250); addRage(8); bumpCombo(); registerKill();
+  progressObjective('tanks');
 };
 world.onHeliKilled = () => {
   state.helisKilled++;
-  addScore(350); addRage(10); bumpCombo();
+  addScore(350); addRage(10); bumpCombo(); registerKill();
 };
 world.onMechKilled = () => {
   state.mechsKilled++;
-  addScore(700); addRage(18); bumpCombo();
+  addScore(700); addRage(18); bumpCombo(); registerKill();
 };
 world.onJetKilled = () => {
   state.jetsKilled++;
-  addScore(450); addRage(12); bumpCombo();
+  addScore(450); addRage(12); bumpCombo(); registerKill();
   toast('JET DOWN!', 'good');
 };
 world.onArtilleryKilled = () => {
   state.artilleryKilled++;
-  addScore(400); addRage(10); bumpCombo();
+  addScore(400); addRage(10); bumpCombo(); registerKill();
 };
 world.onSoldierKilled = () => {
   state.soldiersKilled++;
-  addScore(50); addRage(2);
+  addScore(50); addRage(2); registerKill();
 };
 world.onBossKilled = () => {
   state.bossesKilled++;
@@ -1266,10 +1321,12 @@ world.onBossSlam = () => {
 world.onCarDestroyed = () => {
   state.carsCrushed++;
   addScore(80); addRage(2);
+  progressObjective('cars');
 };
 world.onCivilianStomped = () => {
   state.civiliansStomped++;
   addScore(35); addRage(1);
+  progressObjective('civilians');
   // Tiny popup so the player gets feedback on every flatten
   if (state.kaiju) {
     _tmpV1.copy(state.kaiju.root.position); _tmpV1.y += 6;
@@ -1299,28 +1356,29 @@ function updateWaveObjectiveText() {
     text.style.color = '#66ff99';
     text.style.textShadow = '0 0 10px #33ee88';
   } else {
-    text.textContent = `SMASH ${o.goal} BUILDINGS · ${o.current} / ${o.goal}`;
+    const lbl = o.label || 'SMASH';
+    const noun = o.noun || 'BUILDINGS';
+    text.textContent = `${lbl} ${o.goal} ${noun} · ${o.current} / ${o.goal}`;
     text.style.color = '#ffe6c8';
     text.style.textShadow = '0 0 8px #ff8866';
   }
 }
+function progressObjective(kind) {
+  const obj = state.waveObjective;
+  if (!obj || obj.complete || obj.kind !== kind) return;
+  obj.current++;
+  if (obj.current >= obj.goal) {
+    obj.complete = true;
+    const bonus = 1500 + state.wave * 250;
+    addScore(bonus);
+    toast(`OBJECTIVE COMPLETE · +${Math.floor(bonus * comboMult())}`, 'good');
+  }
+  updateWaveObjectiveText();
+}
 
 world.onBuildingDestroyed = (b) => {
   state.buildingsDestroyed++;
-  // Wave objective progress
-  const obj = state.waveObjective;
-  if (!obj.complete) {
-    obj.current++;
-    if (obj.current >= obj.goal) {
-      obj.complete = true;
-      const bonus = 1500 + state.wave * 250;
-      addScore(bonus);
-      addRage(20);
-      toast(`OBJECTIVE COMPLETE · +${Math.floor(bonus * comboMult())}`, 'good');
-      audio.tone(660, 0.12); audio.tone(880, 0.16); audio.tone(1320, 0.22);
-    }
-    updateWaveObjectiveText();
-  }
+  progressObjective('buildings');
   const base = Math.floor(b.maxHp * 1.5);
   addScore(base);
   addRage(6);
