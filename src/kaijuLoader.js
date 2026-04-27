@@ -1,11 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-const MODEL_BASE = './assets/kaiju_model/Meshy_AI_I_want_to_create_a_Ka_biped/Meshy_AI_I_want_to_create_a_Ka_biped_';
-
-// Animation file suffixes mapped to logical action names.
-// 'idle' and 'walk' share the same file, so we de-duplicate when loading.
-const ANIM_FILES = {
+// ---- Godzilla (lizard kaiju) ----
+const GODZILLA_BASE = './assets/kaiju_model/Meshy_AI_I_want_to_create_a_Ka_biped/Meshy_AI_I_want_to_create_a_Ka_biped_';
+const GODZILLA_ANIMS = {
   idle:       'Animation_Alert_withSkin.glb',
   walk:       'Animation_Walking_withSkin.glb',
   run:        'Animation_Running_withSkin.glb',
@@ -27,10 +25,48 @@ const ANIM_FILES = {
   agree:      'Animation_Agree_Gesture_withSkin.glb',
 };
 
+// ---- Ghidorah (three-headed dragon kaiju) ----
+const GHIDORAH_BASE = './assets/ghidorah_model/Meshy_AI_I_want_to_create_a_Ka_biped/Meshy_AI_I_want_to_create_a_Ka_biped_';
+const GHIDORAH_ANIMS = {
+  idle:       'Animation_Alert_withSkin.glb',
+  idle2:      'Animation_Idle_3_withSkin.glb',
+  walk:       'Animation_Walking_withSkin.glb',
+  run:        'Animation_Running_withSkin.glb',
+  sprint:     'Animation_Run_02_withSkin.glb',
+  turnLeft:   'Animation_Run_Turn_Left_withSkin.glb',
+  turnRight:  'Animation_Run_Turn_Right_withSkin.glb',
+  walkTurnL:  'Animation_Walk_Turn_Left_withSkin.glb',
+  walkTurnR:  'Animation_Walk_Turn_Right_withSkin.glb',
+  skill1:     'Animation_Skill_01_withSkin.glb',
+  skill2:     'Animation_Skill_02_withSkin.glb',
+  skill3:     'Animation_Skill_03_withSkin.glb',
+  stomp:      'Animation_Angry_Stomp_withSkin.glb',
+  jump:       'Animation_Regular_Jump_withSkin.glb',
+  punch:      'Animation_Punch_Combo_1_withSkin.glb',
+  dance:      'Animation_Victory_Cheer_withSkin.glb',
+  cheer:      'Animation_Cheer_with_Both_Hands_withSkin.glb',
+  cast1:      'Animation_mage_soell_cast_1_withSkin.glb',
+  cast2:      'Animation_mage_soell_cast_2_withSkin.glb',
+  cast3:      'Animation_mage_soell_cast_3_withSkin.glb',
+};
+
+// One-shot animations (play once then return to previous)
+const ONE_SHOT = new Set([
+  'skill1', 'skill2', 'skill3', 'stomp', 'stomp2', 'jump',
+  'death', 'punch', 'tantrum', 'flex', 'agree', 'cheer',
+  'cast1', 'cast2', 'cast3',
+]);
+
+// Model configs by monster key
+const MODEL_CONFIGS = {
+  godzilla: { base: GODZILLA_BASE, anims: GODZILLA_ANIMS },
+  ghidorah: { base: GHIDORAH_BASE, anims: GHIDORAH_ANIMS },
+};
+
 // De-duplicate files so we don't load the same GLB twice
-function getUniqueFiles() {
-  const seen = new Map(); // file -> [names]
-  for (const [name, file] of Object.entries(ANIM_FILES)) {
+function getUniqueFiles(animFiles) {
+  const seen = new Map();
+  for (const [name, file] of Object.entries(animFiles)) {
     if (seen.has(file)) seen.get(file).push(name);
     else seen.set(file, [name]);
   }
@@ -45,14 +81,18 @@ function getUniqueFiles() {
  */
 
 /**
- * Loads the Kaiju GLB model and all animation clips.
+ * Loads a Kaiju GLB model and all animation clips.
+ * @param {string} monsterKey - 'godzilla' or 'ghidorah'
  * @param {ProgressCallback} [onProgress] - optional progress callback
  * @returns {Promise<Object>} { root, mixer, animations, head, tail, play, playOnce }
  */
-export async function loadKaijuModel(onProgress) {
+export async function loadKaijuModel(monsterKey, onProgress) {
+  const config = MODEL_CONFIGS[monsterKey];
+  if (!config) throw new Error(`No GLB model config for "${monsterKey}"`);
+
+  const { base, anims } = config;
   const loader = new GLTFLoader();
-  const uniqueFiles = getUniqueFiles();
-  // +1 for the base model load
+  const uniqueFiles = getUniqueFiles(anims);
   const totalSteps = uniqueFiles.size + 1;
   let loaded = 0;
 
@@ -61,9 +101,9 @@ export async function loadKaijuModel(onProgress) {
     if (onProgress) onProgress(loaded, totalSteps, label);
   }
 
-  // Load the base model (use the Running file — it has the full skinned mesh)
+  // Load the base model (use the Running file — full skinned mesh)
   if (onProgress) onProgress(0, totalSteps, 'Loading base model');
-  const baseGltf = await loader.loadAsync(MODEL_BASE + 'Animation_Running_withSkin.glb');
+  const baseGltf = await loader.loadAsync(base + 'Animation_Running_withSkin.glb');
   const root = baseGltf.scene;
   root.name = 'kaiju';
   report('Base model loaded');
@@ -92,13 +132,12 @@ export async function loadKaijuModel(onProgress) {
 
   // Load remaining animation files (de-duplicated)
   for (const [file, names] of uniqueFiles) {
-    // Skip the base file (already loaded as 'run')
     if (file === 'Animation_Running_withSkin.glb') {
       report('Running animation');
       continue;
     }
     try {
-      const gltf = await loader.loadAsync(MODEL_BASE + file);
+      const gltf = await loader.loadAsync(base + file);
       if (gltf.animations.length > 0) {
         const clip = gltf.animations[0];
         for (const name of names) {
@@ -114,7 +153,7 @@ export async function loadKaijuModel(onProgress) {
 
   // Configure one-shot vs looping
   for (const [name, action] of Object.entries(actions)) {
-    if (['skill1', 'skill2', 'stomp', 'stomp2', 'jump', 'death', 'punch', 'tantrum', 'flex', 'agree'].includes(name)) {
+    if (ONE_SHOT.has(name)) {
       action.setLoop(THREE.LoopOnce);
       action.clampWhenFinished = true;
     } else {

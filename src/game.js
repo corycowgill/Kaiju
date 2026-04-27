@@ -1029,14 +1029,15 @@ async function startGame(key) {
   const loadingStatus = document.getElementById('loading-status');
 
   let k;
-  if (key === 'godzilla') {
+  const hasGLB = key === 'godzilla' || key === 'ghidorah';
+  if (hasGLB) {
     // Show loading screen
     loadingScreen.classList.add('visible');
     loadingBar.style.width = '0%';
     loadingPct.textContent = '0%';
     loadingStatus.textContent = 'INITIALIZING';
 
-    const glb = await loadKaijuModel((loaded, total, label) => {
+    const glb = await loadKaijuModel(key, (loaded, total, label) => {
       const pct = Math.round((loaded / total) * 100);
       loadingBar.style.width = pct + '%';
       loadingPct.textContent = pct + '%';
@@ -1466,7 +1467,10 @@ world.onBossKilled = () => {
   slowMo(0.25, 0.7);
   world.shake(2.0, 1.0);
   // Flex after boss kill
-  if (state.kaiju && state.kaiju.glb) state.kaiju.glb.playOnce('flex', 0.2);
+  if (state.kaiju && state.kaiju.glb) {
+    const anim = state.monsterCfg.variant === 'ghidorah' ? 'cheer' : 'flex';
+    state.kaiju.glb.playOnce(anim, 0.2);
+  }
 };
 world.onBossSlam = () => {
   // Damage to player if too close
@@ -1581,10 +1585,12 @@ function gameOver(victory) {
   state.gameOver = true;
   // Play death or dance animation on GLB model
   if (state.kaiju && state.kaiju.glb) {
+    const glb = state.kaiju.glb;
     if (victory) {
-      state.kaiju.glb.play('dance', 0.3);
+      glb.play('dance', 0.3);
     } else {
-      state.kaiju.glb.playOnce('death', 0.2);
+      // Godzilla has a dedicated death anim; Ghidorah falls back to stomp
+      glb.playOnce(glb.actions.death ? 'death' : 'stomp', 0.2);
     }
   }
   document.exitPointerLock?.();
@@ -1684,7 +1690,10 @@ function fireBeam() {
   state.cooldowns.beam = 4.0;
 
   state._beamStanceT = 0.6; // pose: head leans forward, jaw opens
-  if (state.kaiju.glb) state.kaiju.glb.playOnce('skill1', 0.15);
+  if (state.kaiju.glb) {
+    const anim = state.monsterCfg.variant === 'ghidorah' ? 'cast1' : 'skill1';
+    state.kaiju.glb.playOnce(anim, 0.15);
+  }
   state.kaiju.head.getWorldPosition(_beamOrigin);
   _beamOrigin.y += 0.5;
   // direction = camera forward, biased horizontally toward enemies
@@ -1781,7 +1790,10 @@ function fireRoar() {
   state.rage -= cfg.cost;
   state.cooldowns.roar = 5.0;
   state._roarStanceT = 0.7; // pose: head tilts BACK, jaw wide open
-  if (state.kaiju.glb) state.kaiju.glb.playOnce('tantrum', 0.15);
+  if (state.kaiju.glb) {
+    const anim = state.monsterCfg.variant === 'ghidorah' ? 'cast2' : 'tantrum';
+    state.kaiju.glb.playOnce(anim, 0.15);
+  }
 
   const variant = state.monsterCfg.variant;
   const center = state.kaiju.root.position.clone();
@@ -1841,7 +1853,10 @@ function fireCharge() {
   state.rage -= cfg.cost;
   state.cooldowns.charge = 6.0;
   state._chargeStanceT = 0.45; // pose: deep forward lean, head down
-  if (state.kaiju.glb) state.kaiju.glb.playOnce('stomp', 0.15);
+  if (state.kaiju.glb) {
+    const anim = state.monsterCfg.variant === 'ghidorah' ? 'skill3' : 'stomp';
+    state.kaiju.glb.playOnce(anim, 0.15);
+  }
 
   const variant = state.monsterCfg.variant;
   const startPos = state.kaiju.root.position.clone();
@@ -1922,7 +1937,10 @@ function fireUltimate() {
   toast('ULTIMATE UNLEASHED!', 'good');
   showMessage('!!! KAIJU FURY !!!', 1.4);
   audio.ult();
-  if (state.kaiju.glb) state.kaiju.glb.playOnce('stomp2', 0.1);
+  if (state.kaiju.glb) {
+    const anim = state.monsterCfg.variant === 'ghidorah' ? 'cast3' : 'stomp2';
+    state.kaiju.glb.playOnce(anim, 0.1);
+  }
   slowMo(0.45, 0.5);
 
   const cfg = state.monsterCfg;
