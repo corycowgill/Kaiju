@@ -2177,9 +2177,9 @@ function updatePlayer(dt) {
           glb.play(yawDelta > 0 ? 'walkTurnL' : 'walkTurnR', 0.2);
         }
       } else if (sprint) {
-        glb.play('sprint', 0.25);
-      } else {
         glb.play('run', 0.25);
+      } else {
+        glb.play('walk', 0.25);
       }
     } else {
       glb.play('idle', 0.4, 0.5); // half-speed walking as idle
