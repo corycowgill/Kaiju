@@ -9,6 +9,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
+import { loadKaijuModel } from './kaijuLoader.js';
 import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
 import {
@@ -1001,7 +1002,7 @@ window.addEventListener('touchstart', () => audio.resume(), { passive: true, onc
 window.addEventListener('mousedown', () => audio.resume());
 
 // ------------------------- Start game -------------------------
-function startGame(key) {
+async function startGame(key) {
   state.monsterKey = key;
   state.monsterCfg = MONSTERS[key];
   state.maxHp = state.monsterCfg.stats.hp;
@@ -1010,7 +1011,15 @@ function startGame(key) {
   state.rage = 0;
   state.wave = 0;
 
-  const k = buildKaiju(state.monsterCfg);
+  let k;
+  if (key === 'godzilla') {
+    // Load GLB model for Godzilla
+    showMessage('LOADING KAIJU...', 2.0);
+    const glb = await loadKaijuModel();
+    k = { root: glb.root, head: glb.head, tail: glb.tail, mixer: glb.mixer, glb };
+  } else {
+    k = buildKaiju(state.monsterCfg);
+  }
   k.root.position.set(0, 0, 0);
   // Phase 4: kaiju is the only object that casts shadows. Traverse its mesh
   // tree once and flip the flags so the shadow pass picks up every limb.
@@ -1630,6 +1639,7 @@ function fireBeam() {
   state.cooldowns.beam = 4.0;
 
   state._beamStanceT = 0.6; // pose: head leans forward, jaw opens
+  if (state.kaiju.glb) state.kaiju.glb.playOnce('skill1', 0.15);
   state.kaiju.head.getWorldPosition(_beamOrigin);
   _beamOrigin.y += 0.5;
   // direction = camera forward, biased horizontally toward enemies
@@ -1726,6 +1736,7 @@ function fireRoar() {
   state.rage -= cfg.cost;
   state.cooldowns.roar = 5.0;
   state._roarStanceT = 0.7; // pose: head tilts BACK, jaw wide open
+  if (state.kaiju.glb) state.kaiju.glb.playOnce('stomp2', 0.15);
 
   const variant = state.monsterCfg.variant;
   const center = state.kaiju.root.position.clone();
@@ -1785,6 +1796,7 @@ function fireCharge() {
   state.rage -= cfg.cost;
   state.cooldowns.charge = 6.0;
   state._chargeStanceT = 0.45; // pose: deep forward lean, head down
+  if (state.kaiju.glb) state.kaiju.glb.playOnce('stomp', 0.15);
 
   const variant = state.monsterCfg.variant;
   const startPos = state.kaiju.root.position.clone();
@@ -1795,10 +1807,19 @@ function fireCharge() {
   // by _tailSwingT in updateKaijuAnim; that function also samples the tail
   // tip's world position each frame and applies damage along its path.
   if (variant === 'gojira') {
-    state._tailSwingT     = 0.75;
-    state._tailSwingD     = 0.75;
-    state._tailSwingDir   = Math.random() < 0.5 ? 1 : -1;
-    state._tailSwingArcSpawned = false;
+    if (state.kaiju.glb) {
+      // GLB model: apply tail sweep damage directly (animation handles visuals)
+      const sweepCenter = state.kaiju.root.position.clone().addScaledVector(forward, -8);
+      damageInRadius(sweepCenter, 18, cfg.damage, false);
+      world.spawnShockwave(sweepCenter, cfg.color, 20);
+      world.shake(0.8, 0.4);
+      world.effects.push(makeTailSweep(world, state.kaiju.root.position, state.yaw, cfg.color));
+    } else {
+      state._tailSwingT     = 0.75;
+      state._tailSwingD     = 0.75;
+      state._tailSwingDir   = Math.random() < 0.5 ? 1 : -1;
+      state._tailSwingArcSpawned = false;
+    }
     audio.charge();
     return;
   }
@@ -1844,6 +1865,7 @@ function fireStomp() {
   state._stompJumpT = 0.55;
   state._stompJumpD = 0.55;
   state._stompImpacted = false;
+  if (state.kaiju.glb) state.kaiju.glb.playOnce('jump', 0.1);
   audio.charge && audio.charge(); // launch whoosh
 }
 
@@ -1855,6 +1877,7 @@ function fireUltimate() {
   toast('ULTIMATE UNLEASHED!', 'good');
   showMessage('!!! KAIJU FURY !!!', 1.4);
   audio.ult();
+  if (state.kaiju.glb) state.kaiju.glb.playOnce('stomp2', 0.1);
   slowMo(0.45, 0.5);
 
   const cfg = state.monsterCfg;
@@ -1963,9 +1986,13 @@ function fireMelee() {
   const dmg = state.monsterCfg.stats.melee;
   damageInRadius(center, 14, dmg, false);
   state.rage = Math.min(state.maxRage, state.rage + 4);
-  // Animate arm swing
-  const armR = state.kaiju.root.getObjectByName('armR');
-  if (armR) armR.userData.swing = 0.4;
+  // Animate arm swing (GLB uses skill animation, procedural uses armR swing)
+  if (state.kaiju.glb) {
+    state.kaiju.glb.playOnce('skill2', 0.15, 1.5);
+  } else {
+    const armR = state.kaiju.root.getObjectByName('armR');
+    if (armR) armR.userData.swing = 0.4;
+  }
   audio.hit();
 }
 
@@ -2084,13 +2111,103 @@ function updatePlayer(dt) {
   k.root.position.z = THREE.MathUtils.clamp(k.root.position.z, -limit, limit);
 
   // ============== Animation ==============
+  const moving = move.lengthSq() > 0;
+
+  // --- GLB model animation (Godzilla with loaded model) ---
+  if (k.glb) {
+    const glb = k.glb;
+    // Update the animation mixer
+    glb.mixer.update(dt);
+
+    // Determine turning direction based on yaw change
+    const yawDelta = (state._prevYaw != null) ? (state.yaw - state._prevYaw) : 0;
+    state._prevYaw = state.yaw;
+
+    // Determine which animation to play based on state
+    if (state._beamStanceT > 0) {
+      glb.playOnce('skill1', 0.2);
+    } else if (state._roarStanceT > 0) {
+      glb.playOnce('skill2', 0.2);
+    } else if (state._stompJumpT > 0) {
+      glb.playOnce('jump', 0.15);
+    } else if (state._chargeStanceT > 0) {
+      glb.playOnce('stomp', 0.2);
+    } else if (moving) {
+      const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
+      if (Math.abs(yawDelta) > 0.015) {
+        // Turning while moving
+        if (sprint) {
+          glb.play(yawDelta > 0 ? 'turnLeft' : 'turnRight', 0.2);
+        } else {
+          glb.play(yawDelta > 0 ? 'walkTurnL' : 'walkTurnR', 0.2);
+        }
+      } else if (sprint) {
+        glb.play('sprint', 0.25);
+      } else {
+        glb.play('run', 0.25);
+      }
+    } else {
+      glb.play('idle', 0.4, 0.5); // half-speed walking as idle
+    }
+
+    // Keep yaw rotation driven by player input
+    k.root.rotation.y = state.yaw;
+
+    // Vertical bob for stomp jump (parabolic arc)
+    state._stompJumpT = Math.max(0, (state._stompJumpT || 0) - dt);
+    if (state._stompJumpT > 0) {
+      const dur = state._stompJumpD || 0.55;
+      const t = 1 - state._stompJumpT / dur;
+      const JUMP_PEAK_H = 18;
+      k.root.position.y = JUMP_PEAK_H * 4 * t * (1 - t);
+    } else {
+      if (!state._stompImpacted && state._stompJumpD) {
+        state._stompImpacted = true;
+        state._stompJumpD = 0;
+        const impactPos = k.root.position.clone();
+        world.spawnShockwave(impactPos, 0xffcc44, 55);
+        world.spawnShockwave(impactPos, 0xffaa66, 30);
+        world.effects.push(makeDustBurst(world, impactPos, 22, 14));
+        world.shake(1.2, 0.55);
+        damageInRadius(impactPos, 36, 220, true);
+        audio.stomp();
+      }
+      k.root.position.y = 0;
+    }
+
+    // Stance timers tick down
+    state._beamStanceT   = Math.max(0, (state._beamStanceT   || 0) - dt);
+    state._roarStanceT   = Math.max(0, (state._roarStanceT   || 0) - dt);
+    state._chargeStanceT = Math.max(0, (state._chargeStanceT || 0) - dt);
+
+    // Walk phase for footstep damage (keep it ticking for game logic)
+    if (moving) {
+      const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
+      state.walkPhase += dt * (sprint ? 6.5 : 4.5);
+      const phase = state.walkPhase % (Math.PI * 2);
+      if (!state._lastPhase) state._lastPhase = phase;
+      if ((state._lastPhase < Math.PI && phase >= Math.PI) || (state._lastPhase > phase)) {
+        const footPos = k.root.position.clone();
+        damageInRadius(footPos, 7, 60, false);
+        world.shake(0.08, 0.12);
+        audio.footstep();
+      }
+      state._lastPhase = phase;
+    }
+
+    // Cooldowns tick
+    for (const k2 of Object.keys(state.cooldowns)) {
+      state.cooldowns[k2] = Math.max(0, state.cooldowns[k2] - dt);
+    }
+
+  } else {
+  // --- Procedural animation (Ghidorah, Mecha, fallback) ---
   // Walk cycle: legs swing in opposition, body bobs UP-DOWN twice per
   // step (heel/toe peaks), torso leans FORWARD when moving (more so when
   // sprinting), and ROLLS side-to-side with the planted foot. Tail follows
   // body yaw with a damped lag so it whips behind the kaiju on turns.
   // Head counter-rolls the body sway and bobs slightly out of phase, so
   // the silhouette reads like a real heavy creature instead of a robot.
-  const moving = move.lengthSq() > 0;
   if (moving) state.walkPhase += dt * (sprint ? 6.5 : 4.5);
   const sw  = Math.sin(state.walkPhase);
   const sw2 = Math.abs(Math.sin(state.walkPhase * 1.0)); // 0..1, peaks twice per cycle
@@ -2310,6 +2427,7 @@ function updatePlayer(dt) {
     }
     state._lastPhase = phase;
   }
+  } // end else (procedural animation)
 
   // Trigger powers
   if (keys.Digit1 || padInput.pressed.beam) fireBeam();
