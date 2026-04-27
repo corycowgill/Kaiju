@@ -1465,6 +1465,8 @@ world.onBossKilled = () => {
   state.boss = null;
   slowMo(0.25, 0.7);
   world.shake(2.0, 1.0);
+  // Flex after boss kill
+  if (state.kaiju && state.kaiju.glb) state.kaiju.glb.playOnce('flex', 0.2);
 };
 world.onBossSlam = () => {
   // Damage to player if too close
@@ -2190,7 +2192,7 @@ function updatePlayer(dt) {
         glb.play('walk', 0.25);
       }
     } else {
-      glb.play('idle', 0.4, 0.5); // half-speed walking as idle
+      glb.play('idle', 0.4);
     }
 
     // Keep yaw rotation driven by player input

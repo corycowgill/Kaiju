@@ -6,7 +6,7 @@ const MODEL_BASE = './assets/kaiju_model/Meshy_AI_I_want_to_create_a_Ka_biped/Me
 // Animation file suffixes mapped to logical action names.
 // 'idle' and 'walk' share the same file, so we de-duplicate when loading.
 const ANIM_FILES = {
-  idle:       'Animation_Walking_withSkin.glb',
+  idle:       'Animation_Alert_withSkin.glb',
   walk:       'Animation_Walking_withSkin.glb',
   run:        'Animation_Running_withSkin.glb',
   sprint:     'Animation_Run_02_withSkin.glb',
@@ -23,6 +23,8 @@ const ANIM_FILES = {
   dance:      'Animation_You_Groove_withSkin.glb',
   punch:      'Animation_Punch_Combo_1_withSkin.glb',
   tantrum:    'Animation_Angry_To_Tantrum_Sit_withSkin.glb',
+  flex:       'Animation_Show_Both_Arm_Muscles_withSkin.glb',
+  agree:      'Animation_Agree_Gesture_withSkin.glb',
 };
 
 // De-duplicate files so we don't load the same GLB twice
@@ -112,7 +114,7 @@ export async function loadKaijuModel(onProgress) {
 
   // Configure one-shot vs looping
   for (const [name, action] of Object.entries(actions)) {
-    if (['skill1', 'skill2', 'stomp', 'stomp2', 'jump', 'death', 'punch', 'tantrum'].includes(name)) {
+    if (['skill1', 'skill2', 'stomp', 'stomp2', 'jump', 'death', 'punch', 'tantrum', 'flex', 'agree'].includes(name)) {
       action.setLoop(THREE.LoopOnce);
       action.clampWhenFinished = true;
     } else {
@@ -190,7 +192,6 @@ export async function loadKaijuModel(onProgress) {
 
   // Start idle
   if (actions.idle) {
-    actions.idle.setEffectiveTimeScale(0.5);
     actions.idle.play();
     currentAction = actions.idle;
     currentName = 'idle';
