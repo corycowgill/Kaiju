@@ -1577,6 +1577,14 @@ world.spawnArtilleryShell = (origin, target) => {
 
 function gameOver(victory) {
   state.gameOver = true;
+  // Play death or dance animation on GLB model
+  if (state.kaiju && state.kaiju.glb) {
+    if (victory) {
+      state.kaiju.glb.play('dance', 0.3);
+    } else {
+      state.kaiju.glb.playOnce('death', 0.2);
+    }
+  }
   document.exitPointerLock?.();
   document.getElementById('hud').classList.add('hidden');
   document.getElementById('powers').classList.add('hidden');
@@ -1771,7 +1779,7 @@ function fireRoar() {
   state.rage -= cfg.cost;
   state.cooldowns.roar = 5.0;
   state._roarStanceT = 0.7; // pose: head tilts BACK, jaw wide open
-  if (state.kaiju.glb) state.kaiju.glb.playOnce('stomp2', 0.15);
+  if (state.kaiju.glb) state.kaiju.glb.playOnce('tantrum', 0.15);
 
   const variant = state.monsterCfg.variant;
   const center = state.kaiju.root.position.clone();
@@ -2021,9 +2029,9 @@ function fireMelee() {
   const dmg = state.monsterCfg.stats.melee;
   damageInRadius(center, 14, dmg, false);
   state.rage = Math.min(state.maxRage, state.rage + 4);
-  // Animate arm swing (GLB uses skill animation, procedural uses armR swing)
+  // Animate arm swing (GLB uses punch combo, procedural uses armR swing)
   if (state.kaiju.glb) {
-    state.kaiju.glb.playOnce('skill2', 0.15, 1.5);
+    state.kaiju.glb.playOnce('punch', 0.1, 1.4);
   } else {
     const armR = state.kaiju.root.getObjectByName('armR');
     if (armR) armR.userData.swing = 0.4;
@@ -2634,6 +2642,10 @@ function updateWorld(dt) {
       offerUpgrades();
     }, 1800);
     showMessage('WAVE CLEARED · +1000', 2.0);
+    // Victory dance on wave clear
+    if (state.kaiju && state.kaiju.glb) {
+      state.kaiju.glb.play('dance', 0.3);
+    }
   }
 
   // Slowly regenerate small rage when idle (rageGain upgrade)
@@ -2942,6 +2954,11 @@ function tick(now) {
     if (now - (state._lastMini || 0) > 66) { drawMinimap(); state._lastMini = now; }
     updatePopups(dt);
   } else if (state.kaiju) {
+    // Keep GLB animation mixer running during pause/gameOver so
+    // death, dance, and idle animations continue playing
+    if (state.kaiju.mixer) {
+      state.kaiju.mixer.update(Math.min(0.05, dtRaw));
+    }
     updateCamera();
     updatePopups(dt);
   }

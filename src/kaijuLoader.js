@@ -19,6 +19,10 @@ const ANIM_FILES = {
   stomp:      'Animation_Angry_Ground_Stomp_withSkin.glb',
   stomp2:     'Animation_Angry_Ground_Stomp_2_withSkin.glb',
   jump:       'Animation_Basic_Jump_withSkin.glb',
+  death:      'Animation_Shot_and_Blown_Back_withSkin.glb',
+  dance:      'Animation_You_Groove_withSkin.glb',
+  punch:      'Animation_Punch_Combo_1_withSkin.glb',
+  tantrum:    'Animation_Angry_To_Tantrum_Sit_withSkin.glb',
 };
 
 // De-duplicate files so we don't load the same GLB twice
@@ -108,7 +112,7 @@ export async function loadKaijuModel(onProgress) {
 
   // Configure one-shot vs looping
   for (const [name, action] of Object.entries(actions)) {
-    if (['skill1', 'skill2', 'stomp', 'stomp2', 'jump'].includes(name)) {
+    if (['skill1', 'skill2', 'stomp', 'stomp2', 'jump', 'death', 'punch', 'tantrum'].includes(name)) {
       action.setLoop(THREE.LoopOnce);
       action.clampWhenFinished = true;
     } else {
