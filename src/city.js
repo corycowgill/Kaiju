@@ -1811,7 +1811,9 @@ export class Building {
 const _glbLoader = new GLTFLoader();
 
 function loadBuildingGLB(url, targetHeight, building, scene) {
+  console.log('[BuildingGLB] Starting load:', url);
   return _glbLoader.loadAsync(url).then((gltf) => {
+    console.log('[BuildingGLB] Loaded OK:', url);
     // If the building was already destroyed before the model loaded, bail.
     if (building.destroyed) return;
 
@@ -1831,12 +1833,21 @@ function loadBuildingGLB(url, targetHeight, building, scene) {
       }
     });
 
-    // Shift so the bottom of the model sits at y=0 (some exports have offset origins)
+    // Re-measure after scaling to get the actual world-space footprint
     const boxScaled = new THREE.Box3().setFromObject(root);
+
+    // Update the building's collision dimensions to match the GLB model
+    building.w = boxScaled.max.x - boxScaled.min.x;
+    building.d = boxScaled.max.z - boxScaled.min.z;
+    building.h = boxScaled.max.y - boxScaled.min.y;
+
+    // Shift so the bottom of the model sits at y=0 (some exports have offset origins)
     const yOffset = Math.abs(boxScaled.min.y) > 0.5 ? -boxScaled.min.y : 0;
 
-    // Position at the building's world location
-    root.position.set(building.x, yOffset, building.z);
+    // Center the model on the building's x/z so the AABB hitbox aligns
+    const centerX = (boxScaled.min.x + boxScaled.max.x) / 2;
+    const centerZ = (boxScaled.min.z + boxScaled.max.z) / 2;
+    root.position.set(building.x - centerX, yOffset, building.z - centerZ);
     root.matrixAutoUpdate = false;
     root.updateMatrix();
 
@@ -1848,8 +1859,9 @@ function loadBuildingGLB(url, targetHeight, building, scene) {
     // Wire up the new GLB mesh
     building.customMesh = root;
     scene.add(root);
+    console.log('[BuildingGLB] Placed:', url, 'at', building.x, building.z, 'w', building.w.toFixed(1), 'd', building.d.toFixed(1), 'h', building.h.toFixed(1));
   }).catch((err) => {
-    console.warn('[BuildingGLB] Failed to load', url, err.message);
+    console.error('[BuildingGLB] Failed to load', url, err);
   });
 }
 
@@ -2018,7 +2030,7 @@ export function buildCity(scene, world, opts = {}) {
 
   // Tokyo Metropolitan Government Building (Twin Towers): GLB model from Meshy AI.
   {
-    const tt = new Building(-90, -40, 22, 22, 130, { color: 0x99aabb, skipWindows: true });
+    const tt = new Building(-90, -40, 22, 22, 75, { color: 0x99aabb, skipWindows: true });
     tt.group.matrixAutoUpdate = false; tt.group.updateMatrix();
     tt._skipBodyIM = true;
     tt.maxHp = Math.max(tt.maxHp, 300);
@@ -2026,7 +2038,7 @@ export function buildCity(scene, world, opts = {}) {
     scene.add(tt.group);
     buildings.push(tt);
     grid.add(tt);
-    _glbPromises.push(loadBuildingGLB('./assets/buildings/twin_towers.glb', 130, tt, scene));
+    _glbPromises.push(loadBuildingGLB('./assets/buildings/twin_towers.glb', 75, tt, scene));
   }
 
   // ---------- Iconic Tokyo landmarks ----------
@@ -2101,14 +2113,14 @@ export function buildCity(scene, world, opts = {}) {
   }
   // Nuclear plant: GLB model from Meshy AI
   {
-    const np = new Building(-240, -200, 130, 110, 88, { color: 0xa6a6a4, skipWindows: true });
+    const np = new Building(-240, -200, 130, 110, 45, { color: 0xa6a6a4, skipWindows: true });
     np.group.matrixAutoUpdate = false; np.group.updateMatrix();
     np._skipBodyIM = true;
     np.maxHp = 900; np.hp = np.maxHp;
     scene.add(np.group);
     buildings.push(np);
     grid.add(np);
-    _glbPromises.push(loadBuildingGLB('./assets/buildings/nuclear_plant.glb', 88, np, scene));
+    _glbPromises.push(loadBuildingGLB('./assets/buildings/nuclear_plant.glb', 45, np, scene));
   }
 
   // ---------- River + bridges ----------
