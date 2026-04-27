@@ -1599,6 +1599,28 @@ function damageInRadius(center, radius, amount, isAerialAlso = true) {
       }
     }
   }
+  // Catch cars + civilians too -- any attack in their radius should
+  // wreck them outright, not just stomping. Both are 1-shot squishy.
+  if (state.cars) {
+    for (let i = 0; i < state.cars.length; i++) {
+      const c = state.cars[i];
+      if (c.dead) continue;
+      const cp = c.root.position;
+      const dx = cp.x - center.x;
+      const dz = cp.z - center.z;
+      if (dx * dx + dz * dz < radiusSq) c.explode(world);
+    }
+  }
+  if (state.civilians) {
+    for (let i = 0; i < state.civilians.length; i++) {
+      const cv = state.civilians[i];
+      if (cv.dead) continue;
+      const cp = cv.root.position;
+      const dx = cp.x - center.x;
+      const dz = cp.z - center.z;
+      if (dx * dx + dz * dz < radiusSq) cv.die(world);
+    }
+  }
 }
 
 function fireBeam() {
