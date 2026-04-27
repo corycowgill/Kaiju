@@ -486,11 +486,12 @@ const world = {
 // Build city
 window.__dbg && window.__dbg('DBG · buildCity starting…');
 {
-  const { buildings, grid, bodiesIM, cityAnimators } = buildCity(scene, world, { lite: isMobile });
+  const { buildings, grid, bodiesIM, cityAnimators, buildingGLBs } = buildCity(scene, world, { lite: isMobile });
   world.buildings = buildings;
   world.buildingGrid = grid;
   world.bodiesIM = bodiesIM;
   world.cityAnimators = cityAnimators || [];
+  world.buildingGLBs = buildingGLBs; // awaited during loading screen
 }
 window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
 
@@ -1037,12 +1038,16 @@ async function startGame(key) {
     loadingPct.textContent = '0%';
     loadingStatus.textContent = 'INITIALIZING';
 
-    const glb = await loadKaijuModel(key, (loaded, total, label) => {
-      const pct = Math.round((loaded / total) * 100);
-      loadingBar.style.width = pct + '%';
-      loadingPct.textContent = pct + '%';
-      loadingStatus.textContent = label.toUpperCase();
-    });
+    // Load kaiju model + landmark building GLBs in parallel
+    const [glb] = await Promise.all([
+      loadKaijuModel(key, (loaded, total, label) => {
+        const pct = Math.round((loaded / total) * 100);
+        loadingBar.style.width = pct + '%';
+        loadingPct.textContent = pct + '%';
+        loadingStatus.textContent = label.toUpperCase();
+      }),
+      world.buildingGLBs,
+    ]);
 
     // Brief pause at 100% so it feels complete
     loadingBar.style.width = '100%';
