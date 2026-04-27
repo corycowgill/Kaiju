@@ -118,19 +118,25 @@ let bloomPass = null;
   );
   composer.addPass(bloomPass);
 
-  // Cinematic post pass: vignette + film grain + chromatic aberration.
-  // Runs in linear-light space (before OutputPass) so the grain blends
-  // with bloom rather than being clamped post-tonemap. Strength varies
-  // by quality tier; LOW gets just the vignette, HIGH gets all three.
+  // Cinematic post pass: chromatic aberration, vignette, film grain,
+  // god-ray sun shafts, and a synthwave-dusk colour grade. Runs in
+  // linear-light space (before OutputPass) so grain blends with bloom
+  // rather than being clamped post-tonemap. Strength tuned per quality
+  // tier; LOW skips the pass entirely to keep the mobile budget.
   if (!Q_LOW) {
     const cineUniforms = {
       tDiffuse: { value: null },
       time:     { value: 0 },
       vignette: { value: Q_HIGH ? 0.55 : 0.40 },
       grain:    { value: Q_HIGH ? 0.045 : 0.025 },
-      ca:       { value: Q_HIGH ? 0.0026 : 0.0014 }, // chromatic aberration
-      resolution: { value: new THREE.Vector2(1, 1) },
+      ca:       { value: Q_HIGH ? 0.0026 : 0.0014 },
+      // Sun screen position is fed each frame from a world-space sun dir.
+      sunPos:   { value: new THREE.Vector2(0.85, 0.62) },
+      // God-ray strength + sample density. HIGH does 12 samples; MED 6.
+      godStr:   { value: Q_HIGH ? 0.55 : 0.30 },
+      gradeMix: { value: Q_HIGH ? 0.65 : 0.40 },
     };
+    const SAMPLES = Q_HIGH ? 12 : 6;
     const cinePass = new ShaderPass({
       uniforms: cineUniforms,
       vertexShader: `
@@ -143,14 +149,31 @@ let bloomPass = null;
         uniform float vignette;
         uniform float grain;
         uniform float ca;
-        uniform vec2  resolution;
+        uniform vec2  sunPos;
+        uniform float godStr;
+        uniform float gradeMix;
         varying vec2 vUv;
-        // Hash for grain (3-input, cheap)
         float hash(vec2 p, float t) {
           return fract(sin(dot(p, vec2(127.1, 311.7)) + t * 27.13) * 43758.5453);
         }
+        // Synthwave-dusk grade: lift shadows toward magenta, warm
+        // highlights toward gold, slight contrast push.
+        vec3 grade(vec3 c) {
+          // Filmic contrast curve
+          c = c * (c * (c * 0.305 + 0.476) + 0.012) /
+              (c * (c * 0.295 + 0.477) + 0.0666);
+          // Tint shadows + highlights
+          float lum = dot(c, vec3(0.299, 0.587, 0.114));
+          vec3 shadowTint = vec3(0.55, 0.32, 0.78);
+          vec3 highTint   = vec3(1.05, 0.92, 0.74);
+          float sMix = 1.0 - smoothstep(0.0, 0.45, lum);
+          float hMix = smoothstep(0.55, 1.0, lum);
+          c = mix(c, c * shadowTint, sMix * 0.45);
+          c = mix(c, c * highTint,   hMix * 0.55);
+          return c;
+        }
         void main() {
-          // Chromatic aberration: shift R/B outward radially from center.
+          // Chromatic aberration
           vec2 c = vUv - 0.5;
           float r2 = dot(c, c);
           vec2 dir = c * (1.0 + r2 * 1.4);
@@ -158,12 +181,39 @@ let bloomPass = null;
           col.r = texture2D(tDiffuse, vUv + dir * ca).r;
           col.g = texture2D(tDiffuse, vUv).g;
           col.b = texture2D(tDiffuse, vUv - dir * ca).b;
-          // Vignette: smooth radial darkening
+
+          // God rays: radial blur from the sun's screen position. Each
+          // sample steps toward the sun and we take a small contribution.
+          // Cheap: only the bright pixels (luminance threshold) contribute.
+          if (godStr > 0.0) {
+            vec2 toSun = sunPos - vUv;
+            vec3 ray = vec3(0.0);
+            float decay = 1.0;
+            for (int i = 0; i < ${SAMPLES}; i++) {
+              float t = float(i) / float(${SAMPLES});
+              vec2 sUV = vUv + toSun * (t * 0.45);
+              vec3 s = texture2D(tDiffuse, sUV).rgb;
+              float lum = dot(s, vec3(0.299, 0.587, 0.114));
+              ray += s * smoothstep(0.55, 1.4, lum) * decay;
+              decay *= 0.92;
+            }
+            ray /= float(${SAMPLES});
+            // Sun-direction tint: warm orange streaks
+            ray *= vec3(1.10, 0.85, 0.55);
+            col += ray * godStr;
+          }
+
+          // Colour grade
+          col = mix(col, grade(col), gradeMix);
+
+          // Vignette
           float vig = smoothstep(0.85, 0.30, length(c) * 1.4);
           col *= mix(1.0, vig, vignette);
-          // Film grain: subtle additive noise that animates each frame.
+
+          // Film grain
           float n = hash(gl_FragCoord.xy, time) - 0.5;
           col += n * grain;
+
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -390,6 +440,7 @@ const SHELL_PROFILES = {
 const _tmpV1 = new THREE.Vector3();
 const _tmpV2 = new THREE.Vector3();
 const _tmpV3 = new THREE.Vector3();
+const _tmpSun = new THREE.Vector3();
 const _beamOrigin = new THREE.Vector3();
 const _beamDir = new THREE.Vector3();
 const _beamRay = new THREE.Raycaster();
@@ -986,10 +1037,13 @@ function startGame(key) {
   }
   buildPowersBar();
 
-  // Spawn initial cars driving around the city
-  state.cars = spawnCars(scene, isMobile ? 18 : 44, 380, isMobile ? 48 : 40);
+  // Spawn initial cars driving around the city. Desktop runs ~200 cars
+  // and ~100 civilians for a properly populated Tokyo. Mobile gets a
+  // smaller cap (60 cars, 50 civilians) so the per-frame AI loop stays
+  // under budget on weaker GPUs.
+  state.cars = spawnCars(scene, isMobile ? 60 : 200, 380, isMobile ? 48 : 40);
   // Spawn ambient pedestrians who panic + flee when the kaiju approaches
-  state.civilians = spawnCivilians(scene, isMobile ? 24 : 50, 350);
+  state.civilians = spawnCivilians(scene, isMobile ? 50 : 100, 350);
 
   // Kick off looping background music. Tries assets/music.{mp3,ogg,wav};
   // falls back to a procedural ambient drone if no asset is present.
@@ -2469,15 +2523,18 @@ function updateWorld(dt) {
     if (cv.dead) { state.civilians.splice(i, 1); continue; }
     cv.update(dt, world, kpos, 350);
   }
-  // Trickle-respawn so the streets don't go empty after a rampage
-  if (state.civilians.length < (isMobile ? 22 : 44) && Math.random() < dt * 1.2) {
+  // Trickle-respawn -- target population caps. Spawn rate scales with
+  // the deficit so a big rampage triggers a flood of fresh civilians/
+  // cars rather than a slow trickle.
+  const civCap = isMobile ? 45 : 90;
+  const civDeficit = Math.max(0, civCap - state.civilians.length);
+  if (civDeficit > 0 && Math.random() < dt * Math.min(8, civDeficit * 0.35)) {
     const news = spawnCivilians(scene, 1, 350);
     state.civilians.push(...news);
   }
-  // Re-spawn cars over time so traffic stays alive and the CRUSH-cars
-  // objective always has fresh targets. Quicker re-spawn so the kaiju
-  // doesn't run out of moving cars mid-wave.
-  if (state.cars.length < (isMobile ? 16 : 38) && Math.random() < dt * 1.6) {
+  const carCap = isMobile ? 55 : 180;
+  const carDeficit = Math.max(0, carCap - state.cars.length);
+  if (carDeficit > 0 && Math.random() < dt * Math.min(10, carDeficit * 0.3)) {
     const news = spawnCars(scene, 1, 380, isMobile ? 48 : 40);
     state.cars.push(...news);
   }
@@ -2716,7 +2773,21 @@ function tick(now) {
   // Menu navigation (gamepad) -- runs whenever the menu or upgrade modal
   // is on screen, regardless of paused/gameOver state.
   pollMenuGamepad(dtRaw);
-  if (window.__cinePass) window.__cinePass.uniforms.time.value = world.time;
+  if (window.__cinePass) {
+    window.__cinePass.uniforms.time.value = world.time;
+    // Project the sun's world position into screen space so god rays
+    // streak from wherever the sun actually is in the camera's view.
+    // When the sun is behind the camera the screen-pos is off-screen
+    // and the god-ray contribution naturally fades to zero.
+    _tmpSun.copy(sun.position).project(camera);
+    window.__cinePass.uniforms.sunPos.value.set(
+      (_tmpSun.x + 1) * 0.5,
+      (_tmpSun.y + 1) * 0.5,
+    );
+    // Cull god rays when sun is well off-screen (clip space outside +/-1.4)
+    const off = Math.max(Math.abs(_tmpSun.x), Math.abs(_tmpSun.y)) > 1.4 || _tmpSun.z > 1;
+    window.__cinePass.uniforms.godStr.value = off ? 0.0 : (Q_HIGH ? 0.55 : 0.30);
+  }
   if (composer) composer.render();
   else renderer.render(scene, camera);
   requestAnimationFrame(tick);
