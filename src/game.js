@@ -1029,7 +1029,7 @@ async function startGame(key) {
   const loadingStatus = document.getElementById('loading-status');
 
   let k;
-  const hasGLB = key === 'godzilla' || key === 'ghidorah';
+  const hasGLB = key === 'godzilla' || key === 'ghidorah' || key === 'mecha';
   if (hasGLB) {
     // Show loading screen
     loadingScreen.classList.add('visible');
@@ -1468,7 +1468,8 @@ world.onBossKilled = () => {
   world.shake(2.0, 1.0);
   // Flex after boss kill
   if (state.kaiju && state.kaiju.glb) {
-    const anim = state.monsterCfg.variant === 'ghidorah' ? 'cheer' : 'flex';
+    const v = state.monsterCfg.variant;
+    const anim = v === 'ghidorah' ? 'cheer' : v === 'mecha' ? 'shrug' : 'flex';
     state.kaiju.glb.playOnce(anim, 0.2);
   }
 };
@@ -1691,7 +1692,8 @@ function fireBeam() {
 
   state._beamStanceT = 0.6; // pose: head leans forward, jaw opens
   if (state.kaiju.glb) {
-    const anim = state.monsterCfg.variant === 'ghidorah' ? 'cast1' : 'skill1';
+    const v = state.monsterCfg.variant;
+    const anim = v === 'ghidorah' ? 'cast1' : v === 'mecha' ? 'cast1' : 'skill1';
     state.kaiju.glb.playOnce(anim, 0.15);
   }
   state.kaiju.head.getWorldPosition(_beamOrigin);
@@ -1791,7 +1793,8 @@ function fireRoar() {
   state.cooldowns.roar = 5.0;
   state._roarStanceT = 0.7; // pose: head tilts BACK, jaw wide open
   if (state.kaiju.glb) {
-    const anim = state.monsterCfg.variant === 'ghidorah' ? 'cast2' : 'tantrum';
+    const v = state.monsterCfg.variant;
+    const anim = v === 'ghidorah' ? 'cast2' : v === 'mecha' ? 'cast2' : 'tantrum';
     state.kaiju.glb.playOnce(anim, 0.15);
   }
 
@@ -1854,7 +1857,8 @@ function fireCharge() {
   state.cooldowns.charge = 6.0;
   state._chargeStanceT = 0.45; // pose: deep forward lean, head down
   if (state.kaiju.glb) {
-    const anim = state.monsterCfg.variant === 'ghidorah' ? 'skill3' : 'stomp';
+    const v = state.monsterCfg.variant;
+    const anim = v === 'ghidorah' ? 'skill3' : v === 'mecha' ? 'skill3' : 'stomp';
     state.kaiju.glb.playOnce(anim, 0.15);
   }
 
@@ -1938,7 +1942,8 @@ function fireUltimate() {
   showMessage('!!! KAIJU FURY !!!', 1.4);
   audio.ult();
   if (state.kaiju.glb) {
-    const anim = state.monsterCfg.variant === 'ghidorah' ? 'cast3' : 'stomp2';
+    const v = state.monsterCfg.variant;
+    const anim = v === 'ghidorah' ? 'cast3' : v === 'mecha' ? 'cast3' : 'stomp2';
     state.kaiju.glb.playOnce(anim, 0.1);
   }
   slowMo(0.45, 0.5);
@@ -2198,8 +2203,8 @@ function updatePlayer(dt) {
     } else if (moving) {
       const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
       if (Math.abs(yawDelta) > 0.015) {
-        // Turning while moving
-        if (sprint) {
+        // Turning while moving — fall back to walk turns if run turns unavailable
+        if (sprint && glb.actions.turnLeft) {
           glb.play(yawDelta > 0 ? 'turnLeft' : 'turnRight', 0.2);
         } else {
           glb.play(yawDelta > 0 ? 'walkTurnL' : 'walkTurnR', 0.2);

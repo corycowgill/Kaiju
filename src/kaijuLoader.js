@@ -50,17 +50,43 @@ const GHIDORAH_ANIMS = {
   cast3:      'Animation_mage_soell_cast_3_withSkin.glb',
 };
 
+// ---- Mecha (robot kaiju) ----
+const MECHA_BASE = './assets/mecha_model/Meshy_AI_I_want_to_create_a_Ro_biped/Meshy_AI_I_want_to_create_a_Ro_biped_';
+const MECHA_ANIMS = {
+  idle:       'Animation_Alert_withSkin.glb',
+  idle2:      'Animation_Idle_4_withSkin.glb',
+  walk:       'Animation_Walking_withSkin.glb',
+  run:        'Animation_Running_withSkin.glb',
+  sprint:     'Animation_Run_02_withSkin.glb',
+  walkTurnL:  'Animation_Walk_Turn_Left_withSkin.glb',
+  walkTurnR:  'Animation_Walk_Turn_Right_withSkin.glb',
+  skill1:     'Animation_Skill_01_withSkin.glb',
+  skill2:     'Animation_Skill_02_withSkin.glb',
+  skill3:     'Animation_Skill_03_withSkin.glb',
+  stomp:      'Animation_Angry_Stomp_withSkin.glb',
+  punch:      'Animation_Punch_Combo_withSkin.glb',
+  death:      'Animation_Dead_withSkin.glb',
+  dance:      'Animation_victory_withSkin.glb',
+  shrug:      'Animation_Shrug_withSkin.glb',
+  cast1:      'Animation_mage_soell_cast_1_withSkin.glb',
+  cast2:      'Animation_mage_soell_cast_withSkin.glb',
+  cast3:      'Animation_mage_soell_cast_3_withSkin.glb',
+  walkBack:   'Animation_Walk_Backward_withSkin.glb',
+  walkBackIP: 'Animation_Walk_Backward_inplace_withSkin.glb',
+};
+
 // One-shot animations (play once then return to previous)
 const ONE_SHOT = new Set([
   'skill1', 'skill2', 'skill3', 'stomp', 'stomp2', 'jump',
   'death', 'punch', 'tantrum', 'flex', 'agree', 'cheer',
-  'cast1', 'cast2', 'cast3',
+  'cast1', 'cast2', 'cast3', 'shrug',
 ]);
 
 // Model configs by monster key
 const MODEL_CONFIGS = {
   godzilla: { base: GODZILLA_BASE, anims: GODZILLA_ANIMS },
   ghidorah: { base: GHIDORAH_BASE, anims: GHIDORAH_ANIMS },
+  mecha:    { base: MECHA_BASE,    anims: MECHA_ANIMS },
 };
 
 // De-duplicate files so we don't load the same GLB twice
