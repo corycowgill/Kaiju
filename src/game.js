@@ -931,7 +931,7 @@ function startGame(key) {
   buildPowersBar();
 
   // Spawn initial cars driving around the city
-  state.cars = spawnCars(scene, isMobile ? 14 : 32, 380, isMobile ? 48 : 40);
+  state.cars = spawnCars(scene, isMobile ? 18 : 44, 380, isMobile ? 48 : 40);
   // Spawn ambient pedestrians who panic + flee when the kaiju approaches
   state.civilians = spawnCivilians(scene, isMobile ? 24 : 50, 350);
 
@@ -1087,7 +1087,7 @@ function startWave(n) {
     { kind: 'buildings', label: 'SMASH',   noun: 'BUILDINGS', goal: 4 + Math.min(8, Math.floor(n * 1.2)) },
     { kind: 'civilians', label: 'STOMP',   noun: 'CIVILIANS', goal: 8 + Math.min(20, n * 3) },
     { kind: 'tanks',     label: 'DESTROY', noun: 'TANKS',     goal: Math.max(2, Math.min(8, 2 + Math.floor(n * 0.8))) },
-    { kind: 'cars',      label: 'CRUSH',   noun: 'CARS',      goal: 5 + Math.min(15, n * 2) },
+    { kind: 'cars',      label: 'CRUSH',   noun: 'CARS',      goal: 3 + Math.min(6, Math.floor(n * 0.7)) },
   ];
   const oc = OBJ_KINDS[Math.floor(Math.random() * OBJ_KINDS.length)];
   state.waveObjective.kind = oc.kind;
@@ -2418,8 +2418,10 @@ function updateWorld(dt) {
     const news = spawnCivilians(scene, 1, 350);
     state.civilians.push(...news);
   }
-  // Re-spawn cars over time so traffic stays alive
-  if (state.cars.length < (isMobile ? 12 : 26) && Math.random() < dt * 1.0) {
+  // Re-spawn cars over time so traffic stays alive and the CRUSH-cars
+  // objective always has fresh targets. Quicker re-spawn so the kaiju
+  // doesn't run out of moving cars mid-wave.
+  if (state.cars.length < (isMobile ? 16 : 38) && Math.random() < dt * 1.6) {
     const news = spawnCars(scene, 1, 380, isMobile ? 48 : 40);
     state.cars.push(...news);
   }
