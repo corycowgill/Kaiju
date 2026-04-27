@@ -3,9 +3,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const MODEL_BASE = './assets/kaiju_model/Meshy_AI_I_want_to_create_a_Ka_biped/Meshy_AI_I_want_to_create_a_Ka_biped_';
 
-// Animation file suffixes mapped to logical action names
+// Animation file suffixes mapped to logical action names.
+// 'idle' and 'walk' share the same file, so we de-duplicate when loading.
 const ANIM_FILES = {
-  idle:       'Animation_Walking_withSkin.glb',   // use walking as idle (slow blend)
+  idle:       'Animation_Walking_withSkin.glb',
   walk:       'Animation_Walking_withSkin.glb',
   run:        'Animation_Running_withSkin.glb',
   sprint:     'Animation_Run_02_withSkin.glb',
@@ -20,23 +21,51 @@ const ANIM_FILES = {
   jump:       'Animation_Basic_Jump_withSkin.glb',
 };
 
+// De-duplicate files so we don't load the same GLB twice
+function getUniqueFiles() {
+  const seen = new Map(); // file -> [names]
+  for (const [name, file] of Object.entries(ANIM_FILES)) {
+    if (seen.has(file)) seen.get(file).push(name);
+    else seen.set(file, [name]);
+  }
+  return seen;
+}
+
+/**
+ * @callback ProgressCallback
+ * @param {number} loaded - files loaded so far
+ * @param {number} total - total files to load
+ * @param {string} label - human-readable description of current step
+ */
+
 /**
  * Loads the Kaiju GLB model and all animation clips.
- * Returns { root, mixer, animations, head, tail, play }
+ * @param {ProgressCallback} [onProgress] - optional progress callback
+ * @returns {Promise<Object>} { root, mixer, animations, head, tail, play, playOnce }
  */
-export async function loadKaijuModel() {
+export async function loadKaijuModel(onProgress) {
   const loader = new GLTFLoader();
+  const uniqueFiles = getUniqueFiles();
+  // +1 for the base model load
+  const totalSteps = uniqueFiles.size + 1;
+  let loaded = 0;
 
-  // Load the base model (use the Running file as it has the full skinned mesh)
+  function report(label) {
+    loaded++;
+    if (onProgress) onProgress(loaded, totalSteps, label);
+  }
+
+  // Load the base model (use the Running file — it has the full skinned mesh)
+  if (onProgress) onProgress(0, totalSteps, 'Loading base model');
   const baseGltf = await loader.loadAsync(MODEL_BASE + 'Animation_Running_withSkin.glb');
   const root = baseGltf.scene;
   root.name = 'kaiju';
+  report('Base model loaded');
 
-  // Scale and orient the model to match the game's coordinate system
-  // Meshy models are typically much smaller - scale up to match procedural kaiju (~15 units tall)
+  // Scale to match the game (~15 units tall)
   root.scale.setScalar(8);
 
-  // Enable shadows on all meshes
+  // Enable shadows
   root.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = true;
@@ -44,36 +73,40 @@ export async function loadKaijuModel() {
     }
   });
 
-  // Create animation mixer
+  // Animation mixer
   const mixer = new THREE.AnimationMixer(root);
-
-  // Store all loaded animation clips by name
   const animations = {};
   const actions = {};
 
-  // Load the base animation from the initial file
+  // The base file already has the 'run' animation baked in
   if (baseGltf.animations.length > 0) {
     animations.run = baseGltf.animations[0];
     actions.run = mixer.clipAction(animations.run);
   }
 
-  // Load all other animation files
-  const loadPromises = Object.entries(ANIM_FILES).map(async ([name, file]) => {
-    if (name === 'run') return; // already loaded
+  // Load remaining animation files (de-duplicated)
+  for (const [file, names] of uniqueFiles) {
+    // Skip the base file (already loaded as 'run')
+    if (file === 'Animation_Running_withSkin.glb') {
+      report('Running animation');
+      continue;
+    }
     try {
       const gltf = await loader.loadAsync(MODEL_BASE + file);
       if (gltf.animations.length > 0) {
-        animations[name] = gltf.animations[0];
-        actions[name] = mixer.clipAction(gltf.animations[0]);
+        const clip = gltf.animations[0];
+        for (const name of names) {
+          animations[name] = clip;
+          actions[name] = mixer.clipAction(clip);
+        }
       }
     } catch (e) {
-      console.warn(`[KaijuLoader] Failed to load animation "${name}":`, e.message);
+      console.warn(`[KaijuLoader] Failed to load "${file}":`, e.message);
     }
-  });
+    report(names[0] + ' animation');
+  }
 
-  await Promise.all(loadPromises);
-
-  // Configure action defaults
+  // Configure one-shot vs looping
   for (const [name, action] of Object.entries(actions)) {
     if (['skill1', 'skill2', 'stomp', 'stomp2', 'jump'].includes(name)) {
       action.setLoop(THREE.LoopOnce);
@@ -83,7 +116,7 @@ export async function loadKaijuModel() {
     }
   }
 
-  // Find head bone for beam origin (search common bone names)
+  // Find head/tail bones for beam origin + camera
   let head = null;
   let tail = null;
   root.traverse((o) => {
@@ -91,11 +124,10 @@ export async function loadKaijuModel() {
     if (!head && (n.includes('head') || n.includes('skull'))) head = o;
     if (!tail && (n.includes('tail') || n.includes('hips'))) tail = o;
   });
-  // Fallback: create dummy nodes at expected positions if bones not found
   if (!head) {
     head = new THREE.Object3D();
     head.name = 'head';
-    head.position.set(0, 1.8, 0.3); // relative to scaled model
+    head.position.set(0, 1.8, 0.3);
     root.add(head);
   }
   if (!tail) {
@@ -105,24 +137,16 @@ export async function loadKaijuModel() {
     root.add(tail);
   }
 
-  // Active animation state
+  // Animation state
   let currentAction = null;
   let currentName = '';
 
-  /**
-   * Crossfade to a named animation.
-   * @param {string} name - animation key from ANIM_FILES
-   * @param {number} fadeTime - crossfade duration in seconds
-   * @param {number} [timeScale=1] - playback speed
-   */
   function play(name, fadeTime = 0.25, timeScale = 1) {
     const action = actions[name];
     if (!action) return;
     if (currentName === name && currentAction?.isRunning()) return;
 
-    if (currentAction) {
-      currentAction.fadeOut(fadeTime);
-    }
+    if (currentAction) currentAction.fadeOut(fadeTime);
 
     action.reset();
     action.setEffectiveTimeScale(timeScale);
@@ -134,19 +158,13 @@ export async function loadKaijuModel() {
     currentName = name;
   }
 
-  /**
-   * Play a one-shot animation (skill/stomp) then return to previous.
-   */
   function playOnce(name, fadeTime = 0.15, timeScale = 1) {
     const action = actions[name];
     if (!action) return;
-    // Don't re-trigger if this one-shot is already playing
     if (currentName === name && currentAction?.isRunning()) return;
 
     const prevName = currentName;
-    if (currentAction) {
-      currentAction.fadeOut(fadeTime);
-    }
+    if (currentAction) currentAction.fadeOut(fadeTime);
 
     action.reset();
     action.setEffectiveTimeScale(timeScale);
@@ -157,7 +175,6 @@ export async function loadKaijuModel() {
     currentAction = action;
     currentName = name;
 
-    // When done, return to previous animation
     const onFinished = (e) => {
       if (e.action === action) {
         mixer.removeEventListener('finished', onFinished);
@@ -167,27 +184,17 @@ export async function loadKaijuModel() {
     mixer.addEventListener('finished', onFinished);
   }
 
-  // Start with idle
+  // Start idle
   if (actions.idle) {
+    actions.idle.setEffectiveTimeScale(0.5);
     actions.idle.play();
     currentAction = actions.idle;
     currentName = 'idle';
-  } else if (actions.walk) {
-    actions.walk.setEffectiveTimeScale(0.5);
-    actions.walk.play();
-    currentAction = actions.walk;
-    currentName = 'walk';
   }
 
   return {
-    root,
-    mixer,
-    animations,
-    actions,
-    head,
-    tail,
-    play,
-    playOnce,
+    root, mixer, animations, actions, head, tail,
+    play, playOnce,
     get currentName() { return currentName; },
   };
 }

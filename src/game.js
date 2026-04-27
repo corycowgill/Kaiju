@@ -1002,7 +1002,18 @@ window.addEventListener('touchstart', () => audio.resume(), { passive: true, onc
 window.addEventListener('mousedown', () => audio.resume());
 
 // ------------------------- Start game -------------------------
+let _startingGame = false; // guard against double-start during async load
 async function startGame(key) {
+  if (_startingGame) return;
+  _startingGame = true;
+
+  // Clean up any previous kaiju from scene (restart / retry)
+  if (state.kaiju && state.kaiju.root) {
+    scene.remove(state.kaiju.root);
+    if (state.kaiju.mixer) state.kaiju.mixer.stopAllAction();
+    state.kaiju = null;
+  }
+
   state.monsterKey = key;
   state.monsterCfg = MONSTERS[key];
   state.maxHp = state.monsterCfg.stats.hp;
@@ -1011,11 +1022,34 @@ async function startGame(key) {
   state.rage = 0;
   state.wave = 0;
 
+  // Loading screen elements
+  const loadingScreen = document.getElementById('loading-screen');
+  const loadingBar    = document.getElementById('loading-bar');
+  const loadingPct    = document.getElementById('loading-percent');
+  const loadingStatus = document.getElementById('loading-status');
+
   let k;
   if (key === 'godzilla') {
-    // Load GLB model for Godzilla
-    showMessage('LOADING KAIJU...', 2.0);
-    const glb = await loadKaijuModel();
+    // Show loading screen
+    loadingScreen.classList.add('visible');
+    loadingBar.style.width = '0%';
+    loadingPct.textContent = '0%';
+    loadingStatus.textContent = 'INITIALIZING';
+
+    const glb = await loadKaijuModel((loaded, total, label) => {
+      const pct = Math.round((loaded / total) * 100);
+      loadingBar.style.width = pct + '%';
+      loadingPct.textContent = pct + '%';
+      loadingStatus.textContent = label.toUpperCase();
+    });
+
+    // Brief pause at 100% so it feels complete
+    loadingBar.style.width = '100%';
+    loadingPct.textContent = '100%';
+    loadingStatus.textContent = 'KAIJU READY';
+    await new Promise(r => setTimeout(r, 400));
+    loadingScreen.classList.remove('visible');
+
     k = { root: glb.root, head: glb.head, tail: glb.tail, mixer: glb.mixer, glb };
   } else {
     k = buildKaiju(state.monsterCfg);
@@ -1029,6 +1063,7 @@ async function startGame(key) {
   scene.add(sun.target);
   scene.add(k.root);
   state.kaiju = k;
+  _startingGame = false;
 
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');

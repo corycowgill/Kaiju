@@ -658,6 +658,94 @@
     outline-offset: 4px;
     box-shadow: 0 0 50px rgba(255, 209, 102, 0.95), 0 8px 28px rgba(0,0,0,0.7), inset 0 0 22px rgba(0,0,0,0.4) !important;
   }
+
+  /* Loading screen */
+  #loading-screen {
+    position: fixed; inset: 0; z-index: 200;
+    background:
+      radial-gradient(ellipse at 50% 80%, rgba(211,37,60,0.12) 0%, transparent 55%),
+      linear-gradient(180deg, #260308 0%, #0a0103 100%);
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    overflow: hidden;
+  }
+  #loading-screen.visible { display: flex; }
+  /* Giant kanji watermark */
+  #loading-screen::before {
+    content: '\53C2\6226'; /* 参戦 = "entering battle" */
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Yuji Boku', 'Yuji Mai', serif;
+    font-size: clamp(200px, 45vh, 550px);
+    color: rgba(180, 28, 50, 0.08);
+    letter-spacing: -0.05em;
+    pointer-events: none; z-index: 0;
+    white-space: nowrap;
+    text-shadow: 0 0 80px rgba(255, 50, 70, 0.05);
+  }
+  /* Film-strip borders matching main menu */
+  #loading-screen::after {
+    content: '';
+    position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+    pointer-events: none; z-index: 0;
+    background:
+      repeating-linear-gradient(90deg,
+        rgba(0,0,0,0.92) 0 12px, rgba(255, 230, 200, 0.06) 12px 18px,
+        rgba(0,0,0,0.92) 18px 30px) 0 0 / 100% 14px no-repeat,
+      repeating-linear-gradient(90deg,
+        rgba(0,0,0,0.92) 0 12px, rgba(255, 230, 200, 0.06) 12px 18px,
+        rgba(0,0,0,0.92) 18px 30px) 0 100% / 100% 14px no-repeat;
+  }
+  #loading-screen > * { position: relative; z-index: 1; }
+  #loading-title {
+    font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 48px; letter-spacing: 6px;
+    color: #ffe6c8;
+    text-shadow:
+      0 0 40px #ff2244,
+      0 0 14px #ff8866,
+      0 4px 0 #1a0006,
+      0 5px 14px rgba(0,0,0,0.85);
+    margin-bottom: 8px;
+  }
+  #loading-subtitle {
+    font-family: 'Yuji Mai', 'Noto Sans JP', serif;
+    font-size: 16px; color: #ffcc66; letter-spacing: 8px;
+    margin-bottom: 32px;
+  }
+  #loading-bar-wrap {
+    width: min(380px, 70vw); height: 18px;
+    background: rgba(20, 4, 8, 0.85);
+    border: 2px solid #883344;
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: 0 0 20px rgba(211, 37, 60, 0.3), inset 0 1px 4px rgba(0,0,0,0.6);
+  }
+  #loading-bar {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #d3253c, #ff8866, #ffcc66);
+    box-shadow: 0 0 12px rgba(255, 136, 102, 0.6);
+    transition: width 0.2s ease-out;
+    border-radius: 1px;
+  }
+  #loading-status {
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 13px; letter-spacing: 5px;
+    color: rgba(255, 230, 200, 0.6);
+    margin-top: 14px;
+  }
+  #loading-percent {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px; letter-spacing: 4px;
+    color: #ff8866;
+    margin-top: 6px;
+    text-shadow: 0 0 8px rgba(255, 136, 102, 0.4);
+  }
+  @keyframes loading-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+  #loading-status { animation: loading-pulse 1.8s ease-in-out infinite; }
 </style>
 </head>
 <body>
@@ -814,6 +902,15 @@
   <div class="stats-row">Buildings Destroyed: <b id="finalBuildings">0</b></div>
   <div class="stats-row">Tanks Crushed: <b id="finalTanks">0</b></div>
   <button class="start-btn" onclick="location.reload()">UNLEASH AGAIN</button>
+</div>
+
+<!-- Loading screen -->
+<div id="loading-screen">
+  <div id="loading-title">SUMMONING</div>
+  <div id="loading-subtitle">怪獣召喚中</div>
+  <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+  <div id="loading-percent">0%</div>
+  <div id="loading-status">LOADING KAIJU ASSETS</div>
 </div>
 
 <script type="importmap">
