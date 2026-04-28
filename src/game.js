@@ -421,10 +421,10 @@ const SHARED_SHELL_GEOM = new THREE.SphereGeometry(0.35, 6, 6);
 const SHELL_PROFILES = {
   tank:  { speed: 80,  damage: 9,  size: 0.35, mat: new THREE.MeshBasicMaterial({ color: 0xffaa44 }) },
   heli:  { speed: 90,  damage: 6,  size: 0.30, mat: new THREE.MeshBasicMaterial({ color: 0xffeeaa }) },
-  mech:  { speed: 70,  damage: 14, size: 0.40, mat: new THREE.MeshBasicMaterial({ color: 0xff8844 }) },
+  mech:  { speed: 70,  damage: 20, size: 0.40, mat: new THREE.MeshBasicMaterial({ color: 0xff8844 }) },
   jet:   { speed: 110, damage: 11, size: 0.32, mat: new THREE.MeshBasicMaterial({ color: 0xff5533 }) },
   rifle: { speed: 140, damage: 2,  size: 0.18, mat: new THREE.MeshBasicMaterial({ color: 0xffeecc }) },
-  boss:  { speed: 75,  damage: 22, size: 0.55, mat: new THREE.MeshBasicMaterial({ color: 0xff3322 }) },
+  boss:  { speed: 75,  damage: 32, size: 0.55, mat: new THREE.MeshBasicMaterial({ color: 0xff3322 }) },
 };
 
 // Reusable temp vectors so hot loops don't allocate a Vector3 per call.
@@ -1671,7 +1671,10 @@ function gameOver(victory) {
 }
 
 // ------------------------- Powers / damage -------------------------
-function damageInRadius(center, radius, amount, isAerialAlso = true) {
+// isTrample = true means the damage source is a footstep stomp. Armoured
+// enemies (mech, boss) shrug most of it off - the player has to commit
+// to a real attack to kill them rather than just jogging through.
+function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample = false) {
   amount = amount * (state.upgrades?.dmgMult || 1);
   const radiusSq = radius * radius;
   // Spatial-grid query so we only touch buildings in nearby cells
@@ -1698,7 +1701,8 @@ function damageInRadius(center, radius, amount, isAerialAlso = true) {
     const dx = ep.x - center.x;
     const dz = ep.z - center.z;
     if (dx * dx + dz * dz < radiusSq) {
-      e.damage(amount, world);
+      const dealt = (isTrample && e.armored) ? amount * 0.15 : amount;
+      e.damage(dealt, world);
       _tmpV1.set(ep.x, ep.y + 4, ep.z);
       world.spawnHitPulse(_tmpV1, 0xffffff);
       if (e.dead && e.type !== 'soldier') {
@@ -2308,7 +2312,7 @@ function updatePlayer(dt) {
       if (!state._lastPhase) state._lastPhase = phase;
       if ((state._lastPhase < Math.PI && phase >= Math.PI) || (state._lastPhase > phase)) {
         const footPos = k.root.position.clone();
-        damageInRadius(footPos, 7, 60, false);
+        damageInRadius(footPos, 7, 60, false, true);
         world.shake(0.08, 0.12);
         audio.footstep();
       }
@@ -2541,7 +2545,7 @@ function updatePlayer(dt) {
       // crossed step -- foot impact hits a small radius hard enough to
       // demolish vehicles / soldiers walked over and chip nearby buildings
       const footPos = k.root.position.clone();
-      damageInRadius(footPos, 7, 60, false);
+      damageInRadius(footPos, 7, 60, false, true);
       world.shake(0.08, 0.12);
       audio.footstep();
     }

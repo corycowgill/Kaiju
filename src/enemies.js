@@ -344,9 +344,12 @@ export class Mech {
   // Mini-mech that walks toward kaiju and shoots missiles - tougher
   constructor(x, z) {
     this.type = 'mech';
-    this.hp = 110;
-    this.maxHp = 110;
+    this.hp = 220;
+    this.maxHp = 220;
     this.dead = false;
+    // Heavy armour - footstep trample only chips them. Forces the player
+    // to actually aim a beam / roar / charge instead of jogging through.
+    this.armored = true;
     this.cooldown = 2.0 + Math.random();
     this.speed = 5.0;
     this.legPhase = 0;
@@ -860,9 +863,12 @@ export class Soldier {
 export class BossMech {
   constructor(x, z) {
     this.type = 'boss';
-    this.hp = 600;
-    this.maxHp = 600;
+    this.hp = 1500;
+    this.maxHp = 1500;
     this.dead = false;
+    // Boss is heavily armoured - trample stomps barely scratch the
+    // paint. Player has to use proper attacks to kill it.
+    this.armored = true;
     this.cooldown = 3.0;
     this.specialCooldown = 8.0;
     this.speed = 4.5;
