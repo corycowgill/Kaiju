@@ -1922,13 +1922,25 @@ function _cloneDebris(targetSize) {
 }
 
 /** Clone a loaded template, scale to targetHeight, wire onto Building. */
-function placeBuildingGLB(url, targetHeight, building, scene) {
+function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD) {
   const tpl = _glbTemplates.get(url);
   if (!tpl || building.destroyed) return;
 
   const root = tpl.scene.clone(true);
+  const rawW = tpl.box.max.x - tpl.box.min.x;
+  const rawD = tpl.box.max.z - tpl.box.min.z;
   const rawH = tpl.box.max.y - tpl.box.min.y;
-  const s = rawH > 0 ? targetHeight / rawH : 1;
+
+  // Scale to target height first
+  let s = rawH > 0 ? targetHeight / rawH : 1;
+
+  // If a max footprint was specified, clamp so the model doesn't overflow
+  if (maxW > 0 && maxD > 0 && rawW > 0 && rawD > 0) {
+    const sW = maxW / rawW;
+    const sD = maxD / rawD;
+    s = Math.min(s, sW, sD);
+  }
+
   root.scale.setScalar(s);
 
   const boxScaled = new THREE.Box3().setFromObject(root);
@@ -1961,7 +1973,7 @@ function pickBuildingGLB(h) {
 /** Called after templates load to clone + place every queued building. */
 export function flushPendingGLBBuildings(scene) {
   for (const entry of _pendingGLBBuildings) {
-    placeBuildingGLB(entry.url, entry.h, entry.building, scene);
+    placeBuildingGLB(entry.url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0);
   }
   _pendingGLBBuildings.length = 0;
 }
@@ -2086,17 +2098,32 @@ export function buildCity(scene, world, opts = {}) {
 
       // skip some blocks entirely on lite mode (lower than before for fuller city)
       if (lite && Math.random() < 0.18) continue;
-      // 1-3 buildings per block on desktop, 1-2 on lite
+      // Available buildable area within this block
+      const buildableW = BLOCK - STREET;
+      const buildableD = BLOCK - STREET;
+      // 1-2 buildings per block (was 1-3, reduced to prevent crowding with GLBs)
       const n = lite
-        ? (Math.random() < 0.4 ? 2 : 1)
-        : (Math.random() < 0.4 ? 3 : (Math.random() < 0.7 ? 2 : 1));
+        ? (Math.random() < 0.3 ? 2 : 1)
+        : (Math.random() < 0.45 ? 2 : 1);
       for (let i = 0; i < n; i++) {
-        const w = rand(8, BLOCK - STREET - 4) * (n === 1 ? 1.0 : 0.5);
-        const d = rand(8, BLOCK - STREET - 4) * (n === 1 ? 1.0 : 0.5);
+        // Subdivide the buildable area for multi-building blocks
+        const cellW = n === 1 ? buildableW : buildableW / 2;
+        const cellD = buildableD;
+        const maxW = cellW - 2; // 2-unit gap between buildings
+        const maxD = cellD - 2;
+        const w = Math.min(rand(8, buildableW) * (n === 1 ? 1.0 : 0.5), maxW);
+        const d = Math.min(rand(8, buildableD) * (n === 1 ? 1.0 : 0.5), maxD);
         const tallness = THREE.MathUtils.clamp(1.0 - distFromCenter / (CITY_RADIUS * 1.2), 0.2, 1.0);
         const h = rand(8, 60) * (0.4 + tallness);
-        const offX = n === 2 ? (i === 0 ? -BLOCK/4 : BLOCK/4) : rand(-2, 2);
-        const offZ = rand(-2, 2);
+        // Position within the subdivided cell
+        let offX, offZ;
+        if (n === 2) {
+          offX = i === 0 ? -cellW / 2 : cellW / 2;
+          offZ = rand(-2, 2);
+        } else {
+          offX = rand(-2, 2);
+          offZ = rand(-2, 2);
+        }
         const b = new Building(bx + offX, bz + offZ, w, d, h, { skipWindows: true });
         b._skipBodyIM = true;
         b.group.matrixAutoUpdate = false;
@@ -2104,7 +2131,7 @@ export function buildCity(scene, world, opts = {}) {
         scene.add(b.group);
         buildings.push(b);
         grid.add(b);
-        _pendingGLBBuildings.push({ url: pickBuildingGLB(h), h, building: b });
+        _pendingGLBBuildings.push({ url: pickBuildingGLB(h), h, building: b, maxW, maxD });
       }
     }
   }
@@ -2118,7 +2145,8 @@ export function buildCity(scene, world, opts = {}) {
     scene.add(b.group);
     buildings.push(b);
     grid.add(b);
-    _pendingGLBBuildings.push({ url, h, building: b });
+    // Landmarks use w, d as max footprint to prevent overflow into neighbors
+    _pendingGLBBuildings.push({ url, h, building: b, maxW: w * 2, maxD: d * 2 });
     return b;
   }
 
