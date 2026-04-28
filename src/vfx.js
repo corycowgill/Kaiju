@@ -678,6 +678,441 @@ function _spawnSparksShader(opts) {
   });
 }
 
+// ----- Shader-based ring/arc (wingSlash, tailSweep, wingFlap) -----
+//
+// All three effects are flat ring or arc geometry that flashes through.
+// One shared shader: a radial gradient peaked at the ring's mid-width
+// (so the ring reads as a bright centerline edge with soft falloff)
+// plus an animated noise scroll around the circumference. The legacy
+// versions of wingSlash and wingFlap each used two ring meshes for the
+// inner highlight; the shader produces the highlight via vUv.y math
+// from a single mesh.
+const _RING_FS = `
+  uniform sampler2D noiseTex;
+  uniform vec3 baseColor;
+  uniform float time;
+  uniform float fade;
+  varying vec2 vUv;
+  void main() {
+    float band = 1.0 - abs(vUv.y - 0.5) * 2.0;
+    band = pow(max(band, 0.0), 1.5);
+    float n = texture2D(noiseTex, vec2(vUv.x * 3.0 + time * 0.5, vUv.y)).r;
+    vec3 col = mix(baseColor, vec3(1.0), pow(band, 2.0));
+    col += vec3(0.1) * n;
+    float a = band * fade * (0.7 + n * 0.3);
+    gl_FragColor = vec4(col, a);
+  }
+`;
+
+function _makeRingMaterial(colorHex) {
+  const uniforms = {
+    noiseTex:  { value: NOISE_TEX },
+    baseColor: { value: new THREE.Color(colorHex) },
+    time:      { value: 0 },
+    fade:      { value: 1.0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: _FIREBALL_VS,
+    fragmentShader: _RING_FS,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  return { mat, uniforms };
+}
+
+function _spawnWingSlashShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const yawRad = args[0];
+  const color = args[1] !== undefined ? args[1] : 0xff66ff;
+
+  const inner = 6, outer = 16;
+  const gear = _makeRingMaterial(color);
+  const arc = new THREE.Mesh(
+    new THREE.RingGeometry(inner, outer, 24, 1, -Math.PI * 0.6, Math.PI * 1.2),
+    gear.mat,
+  );
+  arc.rotation.x = -Math.PI / 2;
+  arc.rotation.z = -yawRad;
+  arc.position.copy(pos); arc.position.y = 1.2;
+  world.scene.add(arc);
+
+  return new VFXEffect(arc, 0.45, (dt, t) => {
+    gear.uniforms.time.value = (gear.uniforms.time.value + dt) % 1000;
+    gear.uniforms.fade.value = 1 - t;
+    const s = 1 + t * 0.6;
+    arc.scale.set(s, s, 1);
+    if (t >= 1) {
+      world.scene.remove(arc);
+      arc.geometry.dispose();
+      gear.mat.dispose();
+    }
+  });
+}
+
+function _spawnTailSweepShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const yawRad = args[0];
+  const color = args[1] !== undefined ? args[1] : 0xffee44;
+
+  const inner = 4, outer = 18;
+  const gear = _makeRingMaterial(color);
+  const arc = new THREE.Mesh(
+    new THREE.RingGeometry(inner, outer, 24, 1, -Math.PI * 0.4, Math.PI * 0.8),
+    gear.mat,
+  );
+  arc.rotation.x = -Math.PI / 2;
+  arc.rotation.z = -yawRad - Math.PI / 6;
+  arc.position.copy(pos); arc.position.y = 0.6;
+  world.scene.add(arc);
+
+  return new VFXEffect(arc, 0.4, (dt, t) => {
+    gear.uniforms.time.value = (gear.uniforms.time.value + dt) % 1000;
+    gear.uniforms.fade.value = 1 - t;
+    arc.scale.set(1 + t * 0.4, 1 + t * 0.4, 1);
+    if (t >= 1) {
+      world.scene.remove(arc);
+      arc.geometry.dispose();
+      gear.mat.dispose();
+    }
+  });
+}
+
+function _spawnWingFlapShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const side = args[0];
+  const color = args[1] !== undefined ? args[1] : 0xff66ff;
+
+  const gear = _makeRingMaterial(color);
+  const wing = new THREE.Mesh(
+    new THREE.RingGeometry(2, 10, 14, 1, -Math.PI / 4, Math.PI / 1.6),
+    gear.mat,
+  );
+  wing.rotation.x = -Math.PI / 2;
+  wing.rotation.z = side * Math.PI / 2.2;
+  wing.position.copy(pos);
+  wing.position.y += 6;
+  world.scene.add(wing);
+
+  return new VFXEffect(wing, 0.55, (dt, t) => {
+    gear.uniforms.time.value = (gear.uniforms.time.value + dt) % 1000;
+    gear.uniforms.fade.value = 1 - t;
+    const s = 1 + t * 0.7;
+    wing.scale.set(s, s, 1);
+    if (t >= 1) {
+      world.scene.remove(wing);
+      wing.geometry.dispose();
+      gear.mat.dispose();
+    }
+  });
+}
+
+// ----- Shader-based breath cone (replaces makeBreathCone, effects.js:723) -----
+//
+// Cone geometry + shader: dense at the base (apex), fades at the tip.
+// Animated noise along the cone's length adds a wispy "exhale" feel.
+const _CONE_FS = `
+  uniform sampler2D noiseTex;
+  uniform vec3 baseColor;
+  uniform float time;
+  uniform float fade;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    // vUv.y goes from 0 (apex) to 1 (base) on a cone in three.js
+    float density = smoothstep(0.0, 0.3, vUv.y) * (1.0 - smoothstep(0.7, 1.0, vUv.y));
+    float n = texture2D(noiseTex, vec2(vUv.x * 2.0, vUv.y * 3.0 - time * 0.6)).r;
+    float fres = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+    vec3 col = baseColor * (0.7 + n * 0.6);
+    float a = density * fade * (fres * 0.5 + 0.4 + n * 0.3);
+    gl_FragColor = vec4(col, a);
+  }
+`;
+
+function _spawnBreathConeShader(opts) {
+  const { world, origin, dir, length = 28, color = 0xffaa66, life = 0.7 } = opts;
+  const uniforms = {
+    noiseTex:  { value: NOISE_TEX },
+    baseColor: { value: new THREE.Color(color) },
+    time:      { value: 0 },
+    fade:      { value: 1.0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: _FIREBALL_VS,
+    fragmentShader: _CONE_FS,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.3, length, 14, 1, true), mat);
+  const up = new THREE.Vector3(0, 1, 0);
+  cone.quaternion.setFromUnitVectors(up, dir.clone().normalize());
+  cone.position.copy(origin).addScaledVector(dir, length / 2);
+  world.scene.add(cone);
+
+  return new VFXEffect(cone, life, (dt, t) => {
+    uniforms.time.value = (uniforms.time.value + dt) % 1000;
+    uniforms.fade.value = Math.min(1, t * 4) * (1 - t) * 0.6;
+    const widen = 1 + t * 8;
+    cone.scale.set(widen, 1, widen);
+    if (t >= 1) {
+      world.scene.remove(cone);
+      cone.geometry.dispose();
+      mat.dispose();
+    }
+  });
+}
+
+// ----- Shader-based afterburner trail (replaces makeAfterburnerTrail, effects.js:624) -----
+//
+// One cylinder + ring shader replaces the legacy 2-cylinder stack.
+function _spawnAfterburnerShader(opts) {
+  const { world, fromPos, toPos, color = 0x66aaff } = opts;
+  const dir = new THREE.Vector3().subVectors(toPos, fromPos);
+  const len = dir.length();
+  if (len < 0.01) return null;
+  const mid = new THREE.Vector3().addVectors(fromPos, toPos).multiplyScalar(0.5);
+  const gear = _makeRingMaterial(color);
+  const cone = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.2, 0.4, len, 12, 1, true),
+    gear.mat,
+  );
+  cone.position.copy(mid); cone.position.y += 4;
+  const up = new THREE.Vector3(0, 1, 0);
+  cone.quaternion.setFromUnitVectors(up, dir.clone().normalize());
+  world.scene.add(cone);
+
+  return new VFXEffect(cone, 0.55, (dt, t) => {
+    gear.uniforms.time.value = (gear.uniforms.time.value + dt) % 1000;
+    gear.uniforms.fade.value = (1 - t) * 0.85;
+    if (t >= 1) {
+      world.scene.remove(cone);
+      cone.geometry.dispose();
+      gear.mat.dispose();
+    }
+  });
+}
+
+// ----- Shader-based wind streaks (replaces makeWindStreaks, effects.js:784) -----
+//
+// 10 cylinders fanning forward; replaces flat MeshBasicMaterial with the
+// hot-point spark shader so each streak reads as a glowing dash of speed.
+function _spawnWindStreaksShader(opts) {
+  const { world, origin, dir, color = 0xffffff, count = 10 } = opts;
+  const group = new THREE.Group();
+  world.scene.add(group);
+
+  const uniforms = {
+    sparkColor: { value: new THREE.Color(color) },
+    fade:       { value: 1.0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: _FIREBALL_VS,
+    fragmentShader: _SPARK_FS,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+
+  const streaks = [];
+  for (let i = 0; i < count; i++) {
+    const yawJit = (Math.random() - 0.5) * 0.55;
+    const pitchJit = (Math.random() - 0.5) * 0.25;
+    const yaw = Math.atan2(dir.x, dir.z) + yawJit;
+    const pitch = Math.asin(Math.max(-1, Math.min(1, dir.y))) + pitchJit;
+    const dirOut = new THREE.Vector3(
+      Math.sin(yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      Math.cos(yaw) * Math.cos(pitch),
+    );
+    const streak = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.04, 4 + Math.random() * 3, 5),
+      mat,
+    );
+    const up = new THREE.Vector3(0, 1, 0);
+    streak.quaternion.setFromUnitVectors(up, dirOut);
+    streak.position.copy(origin).addScaledVector(dirOut, 6 + Math.random() * 8);
+    streak.userData.vel = dirOut.clone().multiplyScalar(40 + Math.random() * 25);
+    group.add(streak);
+    streaks.push(streak);
+  }
+
+  return new VFXEffect(group, 0.55, (dt, t) => {
+    uniforms.fade.value = 1 - t;
+    for (const s of streaks) s.position.addScaledVector(s.userData.vel, dt);
+    if (t >= 1) {
+      world.scene.remove(group);
+      mat.dispose();
+      for (const s of streaks) s.geometry.dispose();
+    }
+  });
+}
+
+// ----- Shader-based dust burst (replaces makeDustBurst, effects.js:656) -----
+//
+// 8 dust puffs ejected radially with gravity. Reuses the smoke shader
+// with a tan/brown color so the puffs look like kicked-up dirt instead
+// of solid colored balls.
+const _G_DUST_PUFF = new THREE.SphereGeometry(1, 10, 8);
+
+function _spawnDustBurstShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const radius = args[0] !== undefined ? args[0] : 14;
+  const count = args[1] !== undefined ? args[1] : 8;
+
+  const puffs = [];
+  const gears = [];
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+    const r = radius * (0.6 + Math.random() * 0.4);
+    const gear = _makeSmokeMaterial(0xa68864);
+    const m = new THREE.Mesh(_G_DUST_PUFF, gear.mat);
+    m.scale.setScalar(2 + Math.random() * 1.5);
+    m.position.set(pos.x + Math.cos(a) * r, 0.4, pos.z + Math.sin(a) * r);
+    m.userData.outVel = new THREE.Vector3(Math.cos(a) * 6, 1.2 + Math.random() * 1.0, Math.sin(a) * 6);
+    world.scene.add(m);
+    puffs.push(m);
+    gears.push(gear);
+  }
+
+  return new VFXEffect(puffs[0], 1.1, (dt, t) => {
+    for (let i = 0; i < puffs.length; i++) {
+      const m = puffs[i];
+      const gear = gears[i];
+      gear.uniforms.time.value = (gear.uniforms.time.value + dt) % 1000;
+      m.position.addScaledVector(m.userData.outVel, dt);
+      m.userData.outVel.y -= 4 * dt;
+      m.scale.setScalar(2 + t * 4);
+      gear.uniforms.fade.value = 0.65 * (1 - t);
+    }
+    if (t >= 1) {
+      for (let i = 0; i < puffs.length; i++) {
+        world.scene.remove(puffs[i]);
+        gears[i].mat.dispose();
+      }
+    }
+  });
+}
+
+// ----- Shader-based muzzle flash (replaces makeMuzzleFlash, effects.js:332) -----
+//
+// Single sphere + energy-field shader. Brief 0.12s burst.
+function _spawnMuzzleFlashShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const scale = args[0] !== undefined ? args[0] : 0.5;
+
+  const gear = _makeEnergyMaterial(0xffee88);
+  const m = new THREE.Mesh(_G_AD_FLASH, gear.mat);
+  m.scale.setScalar(scale);
+  m.position.copy(pos);
+  world.scene.add(m);
+  const baseScale = scale;
+
+  return new VFXEffect(m, 0.12, (dt, t) => {
+    gear.uniforms.time.value = (gear.uniforms.time.value + dt) % 1000;
+    gear.uniforms.t01.value = t;
+    m.scale.setScalar(baseScale * (1 + t * 2));
+    if (t >= 1) {
+      world.scene.remove(m);
+      gear.mat.dispose();
+    }
+  });
+}
+
+// ----- Shader-based missile launch flash (replaces makeMissileLaunchFlash, effects.js:821) -----
+//
+// Energy flash + smoke combo at the launch point.
+function _spawnMissileLaunchFlashShader(opts) {
+  const { world, pos } = opts;
+  const flashGear = _makeEnergyMaterial(0xffeebb);
+  const flash = new THREE.Mesh(_G_AD_FLASH, flashGear.mat);
+  flash.position.copy(pos);
+  flash.scale.setScalar(0.6);
+  world.scene.add(flash);
+  const smokeGear = _makeSmokeMaterial(0x444444);
+  const smoke = new THREE.Mesh(_G_AD_FLASH, smokeGear.mat);
+  smoke.position.copy(pos);
+  smoke.scale.setScalar(0.4);
+  world.scene.add(smoke);
+
+  return new VFXEffect(flash, 0.5, (dt, t) => {
+    flashGear.uniforms.time.value = (flashGear.uniforms.time.value + dt) % 1000;
+    flashGear.uniforms.t01.value = t;
+    flash.scale.setScalar(0.6 + t * 3.5);
+    smokeGear.uniforms.time.value = (smokeGear.uniforms.time.value + dt) % 1000;
+    smoke.scale.setScalar(0.4 + t * 3.6);
+    smoke.position.y += 4 * dt;
+    smokeGear.uniforms.fade.value = 0.7 * (1 - t);
+    if (t >= 1) {
+      world.scene.remove(flash);
+      world.scene.remove(smoke);
+      flashGear.mat.dispose();
+      smokeGear.mat.dispose();
+    }
+  });
+}
+
+// ----- Shader-based missile swarm (replaces makeMissileSwarm, effects.js:497) -----
+//
+// 8 ballistic missiles. The bodies stay solid metallic (they're meant to
+// look like physical objects), but trails get the smoke/fire shader so
+// the swarm has a real fire-trail look instead of stretched orange spheres.
+const _G_MISSILE = new THREE.CylinderGeometry(0.18, 0.06, 1.0, 8);
+const _M_MISSILE_BODY = new THREE.MeshStandardMaterial({
+  color: 0x666666, metalness: 0.7, roughness: 0.4,
+  emissive: 0xff5522, emissiveIntensity: 0.6,
+});
+
+function _spawnMissileSwarmShader(opts) {
+  const { world, origin, radius = 60, count = 8 } = opts;
+  for (let i = 0; i < count; i++) {
+    const ang = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+    const r = radius * (0.5 + Math.random() * 0.5);
+    const target = new THREE.Vector3(origin.x + Math.cos(ang) * r, 0.5, origin.z + Math.sin(ang) * r);
+    const T = 0.7 + Math.random() * 0.3;
+    const g = 22;
+    const vy = (target.y - origin.y) / T + 0.5 * g * T;
+    const vx = (target.x - origin.x) / T;
+    const vz = (target.z - origin.z) / T;
+    const m = new THREE.Mesh(_G_MISSILE, _M_MISSILE_BODY);
+    m.position.copy(origin);
+    world.scene.add(m);
+    // Fire trail: smoke shader with hot orange tint, additive feel
+    // approximated by warm color; falls back to NormalBlending which
+    // matches legacy trail occlusion.
+    const trailGear = _makeSmokeMaterial(0xff8844);
+    const trail = new THREE.Mesh(_G_AD_FLASH, trailGear.mat);
+    trail.scale.setScalar(0.5);
+    trail.position.copy(origin);
+    world.scene.add(trail);
+    const vel = new THREE.Vector3(vx, vy, vz);
+    let timeLeft = T + 0.05;
+    world.effects.push(new VFXEffect(m, T + 0.1, (dt, t) => {
+      timeLeft -= dt;
+      vel.y -= g * dt;
+      m.position.addScaledVector(vel, dt);
+      const lookDir = vel.clone().normalize();
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lookDir);
+      trailGear.uniforms.time.value = (trailGear.uniforms.time.value + dt) % 1000;
+      trail.position.lerp(m.position, 0.7);
+      trailGear.uniforms.fade.value = 0.9 * (1 - t * 0.6);
+      trail.scale.setScalar(0.5 + t * 1.2);
+      if (timeLeft <= 0 || m.position.y <= 0.4) {
+        world.scene.remove(m);
+        world.scene.remove(trail);
+        trailGear.mat.dispose();
+        world.spawnExplosion?.(m.position.clone().setY(0.5), 0.7);
+      }
+    }));
+  }
+}
+
 // ----- Shader-based atomic devastation (replaces makeAtomicDevastation, effects.js:827) -----
 //
 // Gojira's ultimate. Six layered meshes (flash, green fireball, stem,
@@ -1151,19 +1586,18 @@ export function registerLegacyEffects(legacy) {
   registerBuilder('explosion',          wrapPosArgs(legacy._makeExplosionLegacy || legacy.makeExplosion));
   registerBuilder('sparks',             wrapPosArgs(legacy._makeSparksLegacy || legacy.makeSparks));
   registerBuilder('shockwave',          wrapPosArgs(legacy._makeShockwaveLegacy || legacy.makeShockwave));
-  registerBuilder('muzzleFlash',        wrapPosArgs(legacy.makeMuzzleFlash));
+  registerBuilder('muzzleFlash',        wrapPosArgs(legacy._makeMuzzleFlashLegacy || legacy.makeMuzzleFlash));
   registerBuilder('smokePuff',          wrapPosArgs(legacy._makeSmokePuffLegacy || legacy.makeSmokePuff));
   registerBuilder('smokeColumn',        wrapPosArgs(legacy._makeSmokeColumnLegacy || legacy.makeSmokeColumn));
   registerBuilder('hitPulse',           wrapPosArgs(legacy._makeHitPulseLegacy || legacy.makeHitPulse));
   registerBuilder('atomicDome',         wrapPosArgs(legacy._makeAtomicDomeLegacy || legacy.makeAtomicDome));
   registerBuilder('atomicDevastation',  wrapPosArgs(legacy._makeAtomicDevastationLegacy || legacy.makeAtomicDevastation));
   registerBuilder('soundRings',         wrapPosArgs(legacy._makeSoundWaveRingsLegacy || legacy.makeSoundWaveRings));
-  registerBuilder('wingSlash',          wrapPosArgs(legacy.makeWingSlash));
-  registerBuilder('tailSweep',          wrapPosArgs(legacy.makeTailSweep));
-  registerBuilder('dustBurst',          wrapPosArgs(legacy.makeDustBurst));
-  registerBuilder('soundRings',         wrapPosArgs(legacy.makeSoundWaveRings));
-  registerBuilder('wingFlap',           wrapPosArgs(legacy.makeWingFlap));
-  registerBuilder('missileLaunchFlash', wrapPosArgs(legacy.makeMissileLaunchFlash));
+  registerBuilder('wingSlash',          wrapPosArgs(legacy._makeWingSlashLegacy || legacy.makeWingSlash));
+  registerBuilder('tailSweep',          wrapPosArgs(legacy._makeTailSweepLegacy || legacy.makeTailSweep));
+  registerBuilder('dustBurst',          wrapPosArgs(legacy._makeDustBurstLegacy || legacy.makeDustBurst));
+  registerBuilder('wingFlap',           wrapPosArgs(legacy._makeWingFlapLegacy || legacy.makeWingFlap));
+  registerBuilder('missileLaunchFlash', wrapPosArgs(legacy._makeMissileLaunchFlashLegacy || legacy.makeMissileLaunchFlash));
   // Explicit-shape makers - signatures verified against the actual definitions
   // in src/effects.js (line numbers in comments).
   // For names that have shimmed exports (beam, chainLightning), the legacy
@@ -1177,16 +1611,16 @@ export function registerLegacyEffects(legacy) {
   registerBuilder('chainLightning', (opts) => (legacy._makeChainLightningLegacy || legacy.makeChainLightning)(
     opts.world, opts.a, opts.b, opts.color, opts.life, opts.segs));
   // makeMissileSwarm(world, origin, radius, count) - effects.js:423
-  registerBuilder('missileSwarm', (opts) => legacy.makeMissileSwarm(
+  registerBuilder('missileSwarm', (opts) => (legacy._makeMissileSwarmLegacy || legacy.makeMissileSwarm)(
     opts.world, opts.origin, opts.radius, opts.count));
   // makeAfterburnerTrail(world, fromPos, toPos, color) - effects.js:542
-  registerBuilder('afterburner', (opts) => legacy.makeAfterburnerTrail(
+  registerBuilder('afterburner', (opts) => (legacy._makeAfterburnerTrailLegacy || legacy.makeAfterburnerTrail)(
     opts.world, opts.fromPos, opts.toPos, opts.color));
   // makeBreathCone(world, origin, dir, length, color, life) - effects.js:633
-  registerBuilder('breathCone', (opts) => legacy.makeBreathCone(
+  registerBuilder('breathCone', (opts) => (legacy._makeBreathConeLegacy || legacy.makeBreathCone)(
     opts.world, opts.origin, opts.dir, opts.length, opts.color, opts.life));
   // makeWindStreaks(world, origin, dir, color, count) - effects.js:694
-  registerBuilder('windStreaks', (opts) => legacy.makeWindStreaks(
+  registerBuilder('windStreaks', (opts) => (legacy._makeWindStreaksLegacy || legacy.makeWindStreaks)(
     opts.world, opts.origin, opts.dir, opts.color, opts.count));
 }
 
@@ -1219,6 +1653,16 @@ function _registerUpgradedBuilders() {
   registerBuilder('smokePuff',         _spawnSmokePuffShader);
   registerBuilder('smokeColumn',       _spawnSmokeColumnShader);
   registerBuilder('sparks',            _spawnSparksShader);
+  registerBuilder('wingSlash',         _spawnWingSlashShader);
+  registerBuilder('tailSweep',         _spawnTailSweepShader);
+  registerBuilder('wingFlap',          _spawnWingFlapShader);
+  registerBuilder('breathCone',        _spawnBreathConeShader);
+  registerBuilder('afterburner',       _spawnAfterburnerShader);
+  registerBuilder('windStreaks',       _spawnWindStreaksShader);
+  registerBuilder('dustBurst',         _spawnDustBurstShader);
+  registerBuilder('muzzleFlash',       _spawnMuzzleFlashShader);
+  registerBuilder('missileLaunchFlash', _spawnMissileLaunchFlashShader);
+  registerBuilder('missileSwarm',      _spawnMissileSwarmShader);
 }
 
 // Convenience: register legacy fallbacks first, then upgrade overrides.

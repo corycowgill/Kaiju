@@ -329,7 +329,15 @@ export function _makeHitPulseLegacy(world, pos, color = 0xffffff) {
   });
 }
 
+// Public makeMuzzleFlash shim. Routes through vfx.spawn for the shader-based
+// flash in src/vfx.js, with the legacy fallback preserved.
 export function makeMuzzleFlash(world, pos, scale = 0.5) {
+  if (LEGACY_VFX) return _makeMuzzleFlashLegacy(world, pos, scale);
+  const e = vfx.spawn('muzzleFlash', { world, pos, args: [scale] });
+  return e || _makeMuzzleFlashLegacy(world, pos, scale);
+}
+
+export function _makeMuzzleFlashLegacy(world, pos, scale = 0.5) {
   const m = new THREE.Mesh(
     G_MUZZLE,
     new THREE.MeshBasicMaterial({ color: 0xffee88, transparent: true, opacity: 0.9 })
@@ -494,7 +502,15 @@ export function _makeChainLightningLegacy(world, a, b, color = 0xffee66, life = 
 
 // Missile swarm: spawn N small projectiles that arc outward from origin
 // landing at random positions inside `radius`, each exploding on impact.
+// Public makeMissileSwarm shim. Routes through vfx.spawn for the shader
+// trail version in src/vfx.js, with the legacy fallback preserved.
 export function makeMissileSwarm(world, origin, radius = 60, count = 8) {
+  if (LEGACY_VFX) return _makeMissileSwarmLegacy(world, origin, radius, count);
+  const e = vfx.spawn('missileSwarm', { world, origin, radius, count });
+  return e !== null ? e : _makeMissileSwarmLegacy(world, origin, radius, count);
+}
+
+export function _makeMissileSwarmLegacy(world, origin, radius = 60, count = 8) {
   const trailMat = new THREE.MeshBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.95 });
   const missileMat = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.7, roughness: 0.4, emissive: 0xff5522, emissiveIntensity: 0.6 });
   const missileGeom = new THREE.CylinderGeometry(0.18, 0.06, 1.0, 8);
@@ -574,7 +590,15 @@ export function _makeAtomicDomeLegacy(world, pos, maxRadius = 130, color = 0x66f
 
 // Crescent wing-slash arc: a curved ring segment that flashes through.
 // Used for Ghidorah's Wing Slam charge.
+// Public makeWingSlash shim. Routes through vfx.spawn for the shader-based
+// arc in src/vfx.js, with the legacy fallback preserved.
 export function makeWingSlash(world, pos, yawRad, color = 0xff66ff) {
+  if (LEGACY_VFX) return _makeWingSlashLegacy(world, pos, yawRad, color);
+  const e = vfx.spawn('wingSlash', { world, pos, args: [yawRad, color] });
+  return e || _makeWingSlashLegacy(world, pos, yawRad, color);
+}
+
+export function _makeWingSlashLegacy(world, pos, yawRad, color = 0xff66ff) {
   const inner = 6, outer = 16;
   const arc = new THREE.Mesh(
     new THREE.RingGeometry(inner, outer, 24, 1, -Math.PI * 0.6, Math.PI * 1.2),
@@ -602,8 +626,16 @@ export function makeWingSlash(world, pos, yawRad, color = 0xff66ff) {
   });
 }
 
-// Tail-sweep arc: dust + emissive arc trail. Used for Gojira's Tail Sweep.
+// Public makeTailSweep shim. Routes through vfx.spawn for the shader-based
+// arc in src/vfx.js, with the legacy fallback preserved.
 export function makeTailSweep(world, pos, yawRad, color = 0xffee44) {
+  if (LEGACY_VFX) return _makeTailSweepLegacy(world, pos, yawRad, color);
+  const e = vfx.spawn('tailSweep', { world, pos, args: [yawRad, color] });
+  return e || _makeTailSweepLegacy(world, pos, yawRad, color);
+}
+
+// Tail-sweep arc: dust + emissive arc trail. Used for Gojira's Tail Sweep.
+export function _makeTailSweepLegacy(world, pos, yawRad, color = 0xffee44) {
   const inner = 4, outer = 18;
   const arc = new THREE.Mesh(
     new THREE.RingGeometry(inner, outer, 24, 1, -Math.PI * 0.4, Math.PI * 0.8),
@@ -620,8 +652,16 @@ export function makeTailSweep(world, pos, yawRad, color = 0xffee44) {
   });
 }
 
-// Afterburner trail: a stretched cyan/blue cone behind the kaiju on dash.
+// Public makeAfterburnerTrail shim. Routes through vfx.spawn for the shader
+// version in src/vfx.js, with the legacy fallback preserved.
 export function makeAfterburnerTrail(world, fromPos, toPos, color = 0x66aaff) {
+  if (LEGACY_VFX) return _makeAfterburnerTrailLegacy(world, fromPos, toPos, color);
+  const e = vfx.spawn('afterburner', { world, fromPos, toPos, color });
+  return e || _makeAfterburnerTrailLegacy(world, fromPos, toPos, color);
+}
+
+// Afterburner trail: a stretched cyan/blue cone behind the kaiju on dash.
+export function _makeAfterburnerTrailLegacy(world, fromPos, toPos, color = 0x66aaff) {
   const dir = new THREE.Vector3().subVectors(toPos, fromPos);
   const len = dir.length();
   if (len < 0.01) return null;
@@ -653,7 +693,15 @@ export function makeAfterburnerTrail(world, fromPos, toPos, color = 0x66aaff) {
 
 // Dust burst: kicked-up brown dust ring from the ground around `pos`.
 // Used to flesh out Gojira's roar / stomp / charge.
+// Public makeDustBurst shim. Routes through vfx.spawn for the shader-based
+// dust puffs in src/vfx.js, with the legacy fallback preserved.
 export function makeDustBurst(world, pos, radius = 14, count = 8) {
+  if (LEGACY_VFX) return _makeDustBurstLegacy(world, pos, radius, count);
+  const e = vfx.spawn('dustBurst', { world, pos, args: [radius, count] });
+  return e || _makeDustBurstLegacy(world, pos, radius, count);
+}
+
+export function _makeDustBurstLegacy(world, pos, radius = 14, count = 8) {
   const dustMat = new THREE.MeshBasicMaterial({ color: 0xa68864, transparent: true, opacity: 0.65, depthWrite: false });
   const puffs = [];
   for (let i = 0; i < count; i++) {
@@ -720,7 +768,15 @@ export function _makeSoundWaveRingsLegacy(world, pos, color = 0xffffff, count = 
 
 // Breath cone: a wispy expanding cone fired from origin in dir. Used as a
 // "this is literally a roar coming out of the mouth" visual cue.
+// Public makeBreathCone shim. Routes through vfx.spawn for the shader-based
+// cone in src/vfx.js, with the legacy fallback preserved.
 export function makeBreathCone(world, origin, dir, length = 28, color = 0xffaa66, life = 0.7) {
+  if (LEGACY_VFX) return _makeBreathConeLegacy(world, origin, dir, length, color, life);
+  const e = vfx.spawn('breathCone', { world, origin, dir, length, color, life });
+  return e || _makeBreathConeLegacy(world, origin, dir, length, color, life);
+}
+
+export function _makeBreathConeLegacy(world, origin, dir, length = 28, color = 0xffaa66, life = 0.7) {
   const cone = new THREE.Mesh(
     new THREE.ConeGeometry(0.3, length, 14, 1, true),
     new THREE.MeshBasicMaterial({
@@ -743,9 +799,17 @@ export function makeBreathCone(world, origin, dir, length = 28, color = 0xffaa66
   });
 }
 
+// Public makeWingFlap shim. Routes through vfx.spawn for the shader-based
+// arc in src/vfx.js, with the legacy fallback preserved.
+export function makeWingFlap(world, pos, side, color = 0xff66ff) {
+  if (LEGACY_VFX) return _makeWingFlapLegacy(world, pos, side, color);
+  const e = vfx.spawn('wingFlap', { world, pos, args: [side, color] });
+  return e || _makeWingFlapLegacy(world, pos, side, color);
+}
+
 // Wing-flap arc: a fan-shaped slab sweeping outward from the kaiju on
 // charge attacks. One per side. Reads as "the wings just slammed".
-export function makeWingFlap(world, pos, side, color = 0xff66ff) {
+export function _makeWingFlapLegacy(world, pos, side, color = 0xff66ff) {
   const wing = new THREE.Mesh(
     new THREE.RingGeometry(2, 10, 14, 1, -Math.PI / 4, Math.PI / 1.6),
     new THREE.MeshBasicMaterial({
@@ -779,9 +843,17 @@ export function makeWingFlap(world, pos, side, color = 0xff66ff) {
   });
 }
 
+// Public makeWindStreaks shim. Routes through vfx.spawn for the shader
+// version in src/vfx.js, with the legacy fallback preserved.
+export function makeWindStreaks(world, origin, dir, color = 0xffffff, count = 10) {
+  if (LEGACY_VFX) return _makeWindStreaksLegacy(world, origin, dir, color, count);
+  const e = vfx.spawn('windStreaks', { world, origin, dir, color, count });
+  return e || _makeWindStreaksLegacy(world, origin, dir, color, count);
+}
+
 // Wind streaks: 10 line-segment trails fanning forward from origin. Used
 // for charge / dash to show motion + impact direction.
-export function makeWindStreaks(world, origin, dir, color = 0xffffff, count = 10) {
+export function _makeWindStreaksLegacy(world, origin, dir, color = 0xffffff, count = 10) {
   const group = new THREE.Group();
   world.scene.add(group);
   const streaks = [];
@@ -816,9 +888,17 @@ export function makeWindStreaks(world, origin, dir, color = 0xffffff, count = 10
   });
 }
 
+// Public makeMissileLaunchFlash shim. Routes through vfx.spawn for the
+// shader-based flash in src/vfx.js, with the legacy fallback preserved.
+export function makeMissileLaunchFlash(world, pos) {
+  if (LEGACY_VFX) return _makeMissileLaunchFlashLegacy(world, pos);
+  const e = vfx.spawn('missileLaunchFlash', { world, pos });
+  return e || _makeMissileLaunchFlashLegacy(world, pos);
+}
+
 // Missile launch flash: bright fireball + dark smoke puff at the launch
 // point. Pairs with makeMissileSwarm for visible source feedback.
-export function makeMissileLaunchFlash(world, pos) {
+export function _makeMissileLaunchFlashLegacy(world, pos) {
   const flash = new THREE.Mesh(
     G_FIRE,
     new THREE.MeshBasicMaterial({ color: 0xffeebb, transparent: true, opacity: 1.0, depthWrite: false })
