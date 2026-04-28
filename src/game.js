@@ -1961,7 +1961,10 @@ function fireStomp() {
 function fireUltimate() {
   if (state.rage < 100 || state.cooldowns.ult > 0) return;
   state.rage = 0;
-  state.cooldowns.ult = 1.5;
+  // Long cooldown to keep ultimates as a real moment of power instead
+  // of a spammable spell. The HUD power bar already shows the countdown
+  // generically from state.cooldowns[id].
+  state.cooldowns.ult = 20.0;
   state._announcedUlt = false;
   toast('ULTIMATE UNLEASHED!', 'good');
   showMessage('!!! KAIJU FURY !!!', 1.4);
