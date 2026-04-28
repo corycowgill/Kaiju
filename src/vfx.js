@@ -485,6 +485,182 @@ function _spawnAtomicDomeShader(opts) {
   });
 }
 
+// ----- Shader-based shockwave (replaces makeShockwave from effects.js:212) -----
+//
+// One ring + shader replaces the legacy 2-ring stack (white inner +
+// colored outer scaled to 60%). The shader reads vUv.y (0..1 across the
+// ring's width) and pushes a soft gaussian band of brightness through it
+// with animated noise scroll, so the ring looks like an actual shock
+// front instead of a flat colored disc.
+const _SHOCK_VS = _FIREBALL_VS;
+const _SHOCK_FS = `
+  uniform sampler2D noiseTex;
+  uniform vec3 baseColor;
+  uniform float time;
+  uniform float t01;
+  varying vec2 vUv;
+  void main() {
+    // Soft band peaked at the middle of the ring's width.
+    float band = 1.0 - abs(vUv.y - 0.5) * 2.0;
+    band = pow(max(band, 0.0), 1.5);
+    // Scroll noise around the ring (vUv.x runs the circumference).
+    float n = texture2D(noiseTex, vec2(vUv.x * 4.0 + time * 0.4, vUv.y)).r;
+    // White core where the band peaks, colored elsewhere; noise modulates
+    // both intensity and alpha so the front feels turbulent.
+    vec3 col = mix(baseColor, vec3(1.0), pow(band, 2.0));
+    col += vec3(0.1) * n;
+    float a = band * (1.0 - t01) * (0.6 + n * 0.5);
+    gl_FragColor = vec4(col, a);
+  }
+`;
+const _G_SHOCK = new THREE.RingGeometry(0.5, 1.0, 48);
+
+function _spawnShockwaveShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const color = args[0] !== undefined ? args[0] : 0xffcc44;
+  const maxRadius = args[1] !== undefined ? args[1] : 60;
+
+  const uniforms = {
+    noiseTex:  { value: NOISE_TEX },
+    baseColor: { value: new THREE.Color(color) },
+    time:      { value: 0 },
+    t01:       { value: 0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: _SHOCK_VS,
+    fragmentShader: _SHOCK_FS,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const ring = new THREE.Mesh(_G_SHOCK, mat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.copy(pos);
+  ring.position.y += 0.3;
+  world.scene.add(ring);
+
+  return new VFXEffect(ring, 0.9, (dt, t) => {
+    uniforms.time.value = (uniforms.time.value + dt) % 1000;
+    uniforms.t01.value = t;
+    const r = t * maxRadius + 0.001;
+    ring.scale.set(r, r, 1);
+    if (t >= 1) {
+      world.scene.remove(ring);
+      mat.dispose();
+    }
+  });
+}
+
+// ----- Shader-based sound wave rings (replaces makeSoundWaveRings, effects.js:645) -----
+//
+// Three concentric spheres with a fresnel-rim shader replaces the legacy
+// wireframe spheres. The shader makes each sphere read as a glowing
+// energy bubble whose surface only shows up at the rim, so the rings
+// feel like actual sound waves expanding outward instead of a wireframe
+// gizmo. Same staggered-delay spawning so they pulse out one after the
+// other from the kaiju roar.
+const _SOUND_FS = `
+  uniform vec3 baseColor;
+  uniform float t01;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    float fres = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+    fres = pow(fres, 3.0);
+    vec3 col = baseColor * (1.0 + fres * 2.0);
+    float a = fres * (1.0 - t01) * 0.7;
+    gl_FragColor = vec4(col, a);
+  }
+`;
+const _G_SOUND_SPHERE = new THREE.SphereGeometry(1, 18, 12);
+
+function _spawnSoundRingsShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const color = args[0] !== undefined ? args[0] : 0xffffff;
+  const count = args[1] !== undefined ? args[1] : 3;
+  const maxRadius = args[2] !== undefined ? args[2] : 80;
+  const life = args[3] !== undefined ? args[3] : 1.4;
+
+  const group = new THREE.Group();
+  group.position.copy(pos);
+  world.scene.add(group);
+
+  const mats = [];
+  const meshes = [];
+  for (let i = 0; i < count; i++) {
+    const uniforms = {
+      baseColor: { value: new THREE.Color(color) },
+      t01:       { value: 0 },
+    };
+    const mat = new THREE.ShaderMaterial({
+      uniforms,
+      vertexShader: _FIREBALL_VS,
+      fragmentShader: _SOUND_FS,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+    const m = new THREE.Mesh(_G_SOUND_SPHERE, mat);
+    m.userData.delay = i * 0.18;
+    m.userData.uniforms = uniforms;
+    group.add(m);
+    mats.push(mat);
+    meshes.push(m);
+  }
+
+  return new VFXEffect(group, life, (dt, t) => {
+    for (const m of meshes) {
+      const local01 = Math.max(0, t - m.userData.delay / life);
+      const r = 1 + local01 * maxRadius;
+      m.scale.setScalar(r);
+      m.userData.uniforms.t01.value = local01;
+    }
+    if (t >= 1) {
+      world.scene.remove(group);
+      for (const mat of mats) mat.dispose();
+    }
+  });
+}
+
+// ----- Shader-based hit pulse (replaces makeHitPulse from effects.js:286) -----
+//
+// Single sphere + fresnel rim shader replaces the flat colored sphere.
+// Only on screen for 0.22s but fires every time anything takes damage,
+// so the visual upgrade is felt across constant gameplay.
+function _spawnHitPulseShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const color = args[0] !== undefined ? args[0] : 0xffffff;
+
+  const uniforms = {
+    baseColor: { value: new THREE.Color(color) },
+    t01:       { value: 0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: _FIREBALL_VS,
+    fragmentShader: _SOUND_FS,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const m = new THREE.Mesh(_G_SOUND_SPHERE, mat);
+  m.position.copy(pos);
+  world.scene.add(m);
+
+  return new VFXEffect(m, 0.22, (dt, t) => {
+    m.scale.setScalar(1 + t * 6);
+    uniforms.t01.value = t;
+    if (t >= 1) {
+      world.scene.remove(m);
+      mat.dispose();
+    }
+  });
+}
+
 // ----- Shader-based chain lightning (replaces makeChainLightning, effects.js:377) -----
 //
 // Keeps the polyline jitter generation (it works well visually) but replaces
@@ -577,13 +753,14 @@ export function registerLegacyEffects(legacy) {
   // the legacy fallback registration doesn't recurse through the shim.
   registerBuilder('explosion',          wrapPosArgs(legacy._makeExplosionLegacy || legacy.makeExplosion));
   registerBuilder('sparks',             wrapPosArgs(legacy.makeSparks));
-  registerBuilder('shockwave',          wrapPosArgs(legacy.makeShockwave));
+  registerBuilder('shockwave',          wrapPosArgs(legacy._makeShockwaveLegacy || legacy.makeShockwave));
   registerBuilder('muzzleFlash',        wrapPosArgs(legacy.makeMuzzleFlash));
   registerBuilder('smokePuff',          wrapPosArgs(legacy.makeSmokePuff));
   registerBuilder('smokeColumn',        wrapPosArgs(legacy.makeSmokeColumn));
-  registerBuilder('hitPulse',           wrapPosArgs(legacy.makeHitPulse));
+  registerBuilder('hitPulse',           wrapPosArgs(legacy._makeHitPulseLegacy || legacy.makeHitPulse));
   registerBuilder('atomicDome',         wrapPosArgs(legacy._makeAtomicDomeLegacy || legacy.makeAtomicDome));
   registerBuilder('atomicDevastation',  wrapPosArgs(legacy.makeAtomicDevastation));
+  registerBuilder('soundRings',         wrapPosArgs(legacy._makeSoundWaveRingsLegacy || legacy.makeSoundWaveRings));
   registerBuilder('wingSlash',          wrapPosArgs(legacy.makeWingSlash));
   registerBuilder('tailSweep',          wrapPosArgs(legacy.makeTailSweep));
   registerBuilder('dustBurst',          wrapPosArgs(legacy.makeDustBurst));
@@ -638,6 +815,9 @@ function _registerUpgradedBuilders() {
   registerBuilder('chainLightning', _spawnChainLightningShader);
   registerBuilder('explosion',      _spawnExplosionShader);
   registerBuilder('atomicDome',     _spawnAtomicDomeShader);
+  registerBuilder('shockwave',      _spawnShockwaveShader);
+  registerBuilder('soundRings',     _spawnSoundRingsShader);
+  registerBuilder('hitPulse',       _spawnHitPulseShader);
 }
 
 // Convenience: register legacy fallbacks first, then upgrade overrides.

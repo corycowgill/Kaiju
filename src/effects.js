@@ -209,7 +209,15 @@ export function makeSparks(world, pos, count = 8) {
   });
 }
 
+// Public makeShockwave shim. Routes through vfx.spawn for the shader-based
+// ring in src/vfx.js, with the legacy fallback preserved.
 export function makeShockwave(world, pos, color = 0xffcc44, maxRadius = 60) {
+  if (LEGACY_VFX) return _makeShockwaveLegacy(world, pos, color, maxRadius);
+  const e = vfx.spawn('shockwave', { world, pos, args: [color, maxRadius] });
+  return e || _makeShockwaveLegacy(world, pos, color, maxRadius);
+}
+
+export function _makeShockwaveLegacy(world, pos, color = 0xffcc44, maxRadius = 60) {
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.5, 1.0, 48),
     new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
@@ -283,7 +291,15 @@ export function makeSmokeColumn(world, pos, height = 30) {
 }
 
 // Quick expanding glow at a hit point. Tactile feedback for impact.
+// Public makeHitPulse shim. Routes through vfx.spawn for the shader-based
+// flash in src/vfx.js, with the legacy fallback preserved.
 export function makeHitPulse(world, pos, color = 0xffffff) {
+  if (LEGACY_VFX) return _makeHitPulseLegacy(world, pos, color);
+  const e = vfx.spawn('hitPulse', { world, pos, args: [color] });
+  return e || _makeHitPulseLegacy(world, pos, color);
+}
+
+export function _makeHitPulseLegacy(world, pos, color = 0xffffff) {
   const m = new THREE.Mesh(
     G_HITPULSE,
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 })
@@ -642,7 +658,15 @@ export function makeDustBurst(world, pos, radius = 14, count = 8) {
 
 // Sound-wave rings: 3 expanding wireframe spheres staggered 0.18s apart so
 // they read as concentric pressure waves emanating from a roar source.
+// Public makeSoundWaveRings shim. Routes through vfx.spawn for the shader
+// rim-glow spheres in src/vfx.js, with the legacy fallback preserved.
 export function makeSoundWaveRings(world, pos, color = 0xffffff, count = 3, maxRadius = 80, life = 1.4) {
+  if (LEGACY_VFX) return _makeSoundWaveRingsLegacy(world, pos, color, count, maxRadius, life);
+  const e = vfx.spawn('soundRings', { world, pos, args: [color, count, maxRadius, life] });
+  return e || _makeSoundWaveRingsLegacy(world, pos, color, count, maxRadius, life);
+}
+
+export function _makeSoundWaveRingsLegacy(world, pos, color = 0xffffff, count = 3, maxRadius = 80, life = 1.4) {
   const group = new THREE.Group();
   group.position.copy(pos);
   world.scene.add(group);
