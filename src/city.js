@@ -1842,15 +1842,21 @@ const ALL_BUILDING_GLBS = [
 ];
 
 /** Load all unique building GLB templates once. */
-export function loadBuildingTemplates() {
+export function loadBuildingTemplates(onProgress) {
   const unique = [...new Set(ALL_BUILDING_GLBS)];
+  let loaded = 0;
+  const total = unique.length;
   return Promise.all(unique.map((url) =>
     _glbLoader.loadAsync(url).then((gltf) => {
       const s = gltf.scene;
       s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       _glbTemplates.set(url, { scene: s, box: new THREE.Box3().setFromObject(s) });
+      loaded++;
+      if (onProgress) onProgress(loaded, total, url.split('/').pop().replace('.glb', ''));
     }).catch((err) => {
       console.warn('[BuildingGLB] Failed to load template', url, err.message);
+      loaded++;
+      if (onProgress) onProgress(loaded, total, 'error');
     })
   ));
 }
