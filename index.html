@@ -564,10 +564,46 @@
     to   { opacity: 0; transform: translateY(-8px); }
   }
 
+  /* Mini-toast feed (left rail). Smaller, less intrusive than #toasts.
+     Used for combo milestones, destruction tier feedback, jet kills,
+     ultimate-ready hint, gamepad connect/disconnect - high-frequency or
+     low-priority events that previously cluttered the center toast slot. */
+  #mini-toasts {
+    position: fixed; top: 100px; left: 16px; z-index: 11;
+    pointer-events: none;
+    display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+    max-width: 260px;
+  }
+  .mini-toast {
+    background: linear-gradient(90deg, rgba(35, 6, 12, 0.85), rgba(10, 0, 5, 0.55));
+    color: #ffee66;
+    padding: 3px 10px;
+    border-radius: 2px;
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-weight: 400; letter-spacing: 2px;
+    border-left: 2px solid #ffcc66;
+    font-size: 12px;
+    text-shadow: 0 0 4px #ff8866, 1px 1px 0 #1a0006;
+    animation: miniToastIn 0.25s ease-out, miniToastOut 0.4s ease-in 1.6s forwards;
+    white-space: nowrap;
+  }
+  .mini-toast.bad  { color: #ff8866; border-color: #ff5544; }
+  .mini-toast.good { color: #66ffaa; border-color: #44ddaa; }
+  @keyframes miniToastIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes miniToastOut {
+    from { opacity: 1; }
+    to   { opacity: 0; transform: translateX(-12px); }
+  }
+
   body.mobile #combo { top: 180px; right: 10px; }
   body.mobile #combo-mult { font-size: 22px; }
   body.mobile #boss-bar { top: 50px; width: 80%; }
   body.mobile #toasts { top: 100px; }
+  body.mobile #mini-toasts { top: 60px; left: 8px; max-width: 55vw; }
+  body.mobile .mini-toast { font-size: 10px; padding: 2px 6px; letter-spacing: 1px; }
 
   /* Score popup */
   .popup {
@@ -851,6 +887,7 @@
 </div>
 
 <div id="toasts" style="position:fixed; top:160px; left:50%; transform:translateX(-50%); z-index:11; pointer-events:none; display:flex; flex-direction:column; gap:6px; align-items:center;"></div>
+<div id="mini-toasts"></div>
 
 <!-- Mini-map -->
 <canvas id="minimap" width="220" height="220" class="hidden"></canvas>

@@ -643,10 +643,10 @@ function readGamepad() {
 }
 
 window.addEventListener('gamepadconnected', (e) => {
-  toast('GAMEPAD CONNECTED · ' + (e.gamepad?.id?.slice(0, 24) || ''), 'good');
+  toastMini('GAMEPAD CONNECTED · ' + (e.gamepad?.id?.slice(0, 24) || ''), 'good');
 });
 window.addEventListener('gamepaddisconnected', () => {
-  toast('GAMEPAD DISCONNECTED', 'bad');
+  toastMini('GAMEPAD DISCONNECTED', 'bad');
 });
 
 // ------------------------- Menu navigation (gamepad + keyboard) -------------------------
@@ -1219,6 +1219,20 @@ function toast(text, kind = '') {
   wrap.appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
+// Smaller left-rail toast for high-frequency / low-priority events
+// (combo milestones, destruction tier feedback, jet kills, gamepad
+// connect/disconnect). Same kind suffix ('good' / 'bad') applies.
+// Reserve toast() for big game events that genuinely warrant a center
+// banner.
+function toastMini(text, kind = '') {
+  const wrap = document.getElementById('mini-toasts');
+  if (!wrap) return;
+  const el = document.createElement('div');
+  el.className = 'mini-toast' + (kind ? ' ' + kind : '');
+  el.textContent = text;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
 function showWaveBanner(text, sub) {
   const el = document.getElementById('wave-banner');
   el.innerHTML = text + (sub ? `<small>${sub}</small>` : '');
@@ -1370,9 +1384,9 @@ function comboMult() { return Math.min(5, 1 + state.combo * 0.1); }
 function bumpCombo() {
   state.combo += 1;
   state.comboTimer = state.comboMaxTimer;
-  if (state.combo === 10) toast('COMBO x2!', 'good');
-  if (state.combo === 25) toast('UNSTOPPABLE!', 'good');
-  if (state.combo === 50) toast('CITY WRECKER!', 'good');
+  if (state.combo === 10) toastMini('COMBO x2!', 'good');
+  if (state.combo === 25) toastMini('UNSTOPPABLE!', 'good');
+  if (state.combo === 50) toastMini('CITY WRECKER!', 'good');
 }
 // Multikill detection: each registered kill within MULTIKILL_WINDOW of the
 // last one increments the streak. Crossing 2/3/4/5/6+ triggers escalating
@@ -1396,7 +1410,7 @@ function registerKill() {
   state._lastKillT = now;
   const tier = MULTIKILL_TIERS[Math.min(state._multikill, MULTIKILL_TIERS.length - 1)];
   if (tier) {
-    toast(`${tier.label} +${tier.score}`, tier.color);
+    toastMini(`${tier.label} +${tier.score}`, tier.color);
     state.score += tier.score;
     if (tier.slow && typeof slowMo === 'function') slowMo(tier.slow, tier.slowDur);
     if (state.kaiju) {
@@ -1412,7 +1426,7 @@ function addRage(amount) {
   state.rage = Math.min(state.maxRage, state.rage + amount * (state.upgrades?.rageGainMult || 1));
   if (state.rage >= state.maxRage && !state._announcedUlt) {
     state._announcedUlt = true;
-    toast('ULTIMATE READY · Q', 'good');
+    toastMini('ULTIMATE READY · Q', 'good');
   }
   if (state.rage < state.maxRage) state._announcedUlt = false;
 }
@@ -1442,7 +1456,7 @@ world.onMechKilled = () => {
 world.onJetKilled = () => {
   state.jetsKilled++;
   addScore(450); addRage(12); bumpCombo(); registerKill();
-  toast('JET DOWN!', 'good');
+  toastMini('JET DOWN!', 'good');
 };
 world.onArtilleryKilled = () => {
   state.artilleryKilled++;
@@ -2685,7 +2699,7 @@ function updateWorld(dt) {
   if (state.combo > 0) {
     state.comboTimer -= dt;
     if (state.comboTimer <= 0) {
-      if (state.combo >= 8) toast(`COMBO ENDED · x${state.combo}`, '');
+      if (state.combo >= 8) toastMini(`COMBO ENDED · x${state.combo}`, '');
       state.combo = 0;
     }
   }
