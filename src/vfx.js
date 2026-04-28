@@ -1,37 +1,32 @@
-// VFX manager. Owns the three.quarks BatchedRenderer, the flipbook texture
-// cache, and a registry of effect builders that game/enemy code spawns by
-// name. This is the foundation for the procedural-to-flipbook migration
-// outlined in the graphics upgrade plan.
+// VFX manager. Owns the named effect registry and the (eventual) flipbook
+// texture cache. All current effect upgrades are pure THREE.ShaderMaterial
+// builders; no external particle library is loaded today.
 //
-// Phase 1 of the rollout (this file): wire up BatchedRenderer, expose
-// init/tick/spawn, and route every name to the legacy effects.js
-// implementations as a transparent passthrough. Subsequent PRs replace
-// individual builders with three.quarks emitters and shader materials.
-//
-// Concretely, today vfx.spawn('explosion', ...) calls makeExplosion from
-// effects.js. Tomorrow it calls a three.quarks-powered builder living in
-// this file. Call sites in game.js / enemies.js never change.
+// Originally this module also imported three.quarks BatchedRenderer for
+// future GPU particle emitters. That import was removed because (a) no
+// quarks emitters are actually used yet, and (b) the unpkg ESM build was
+// failing to resolve the bare `three` specifier in some browsers, which
+// broke the entire import chain (vfx.js -> effects.js -> game.js) and
+// took the whole title screen down with it. When real GPU particles are
+// needed, re-add three.quarks via an esm.sh URL or a dynamic import that
+// degrades gracefully on failure.
 
 import * as THREE from 'three';
-import { BatchedRenderer } from 'three.quarks';
 import { QUALITY_PROFILE, LEGACY_VFX } from './quality.js';
 
-// Singleton BatchedRenderer attached to the active scene at init time. All
-// quark emitters share one renderer to amortize draw calls. Ticked every
-// frame from the main game loop with delta-time.
-let batched = null;
 let initialized = false;
 
-// Legacy passthrough table. As effect-by-effect upgrades land, entries here
-// get swapped for three.quarks-backed builders that consume flipbook
-// textures from the cache below. Until then, vfx.spawn delegates to the
-// matching makeXxx export so the game's behavior is unchanged.
+// Legacy passthrough table. Upgraded shader builders override entries
+// here via _registerUpgradedBuilders below; anything not yet upgraded
+// falls through to the original makeXxx maker in src/effects.js.
 const builders = Object.create(null);
 
-// Flipbook texture cache. Lazily loads a sprite sheet by base name (e.g.
-// 'explosion_fireball_8x8') and resolves the per-quality resolution suffix
-// (`@512`, `@1k`, `@2k`). Returns a Promise for the THREE.Texture so multiple
-// concurrent spawns share one decode.
+// Flipbook texture cache. Lazily loads a sprite sheet by base name
+// (e.g. 'explosion_fireball_8x8') and resolves the per-quality
+// resolution suffix (`@512`, `@1k`, `@2k`). Returns a Promise for the
+// THREE.Texture so multiple concurrent spawns share one decode. No
+// effect uses flipbooks yet, but the cache is wired up for when one
+// does.
 const _flipbookCache = new Map();
 const _loader = new THREE.TextureLoader();
 
@@ -46,7 +41,6 @@ export function loadFlipbook(baseName) {
   const url = _resolveFlipbookURL(baseName);
   const promise = new Promise((resolve, reject) => {
     _loader.load(url, (tex) => {
-      // three.quarks expects flipY=false on flipbook atlases.
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.flipY = false;
       tex.generateMipmaps = true;
@@ -60,16 +54,15 @@ export function loadFlipbook(baseName) {
   return promise;
 }
 
-export function init(scene) {
-  if (initialized) return;
-  batched = new BatchedRenderer();
-  scene.add(batched);
+// init/tick are no-ops today. They exist so game.js's setup +
+// render-loop integration is in place for when a particle system or
+// other per-frame VFX state needs to be ticked.
+export function init(_scene) {
   initialized = true;
 }
 
-export function tick(dt) {
-  if (!initialized || !batched) return;
-  batched.update(dt);
+export function tick(_dt) {
+  if (!initialized) return;
 }
 
 // Register a builder for a named effect. Replaces any existing entry, so
@@ -78,8 +71,10 @@ export function registerBuilder(name, fn) {
   builders[name] = fn;
 }
 
+// Stub kept for forward compatibility. Returns null until a real GPU
+// particle renderer is wired up; callers should null-check.
 export function getBatchedRenderer() {
-  return batched;
+  return null;
 }
 
 // ----- Procedural textures (no asset files needed) -----

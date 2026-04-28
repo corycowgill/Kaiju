@@ -78,11 +78,10 @@ game.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x281a30);
-// Foundation for the VFX pipeline upgrade (three.quarks BatchedRenderer +
-// flipbook cache + named effect registry). Today every effect routes back
-// through the legacy makeXxx makers below; subsequent PRs swap individual
-// builders for GPU-particle / shader-based replacements without touching
-// call sites in game.js or enemies.js.
+// Initialize the VFX manager and populate its named-effect registry.
+// All current upgrades are pure THREE.ShaderMaterial builders; init/tick
+// are no-ops today but the integration is wired up for future per-frame
+// VFX state (particle systems, etc).
 vfx.init(scene);
 vfx.registerAllBuilders(legacyEffects);
 // Phase 6: exponential fog matched to the sunset palette. Distance buildings
