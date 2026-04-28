@@ -27,6 +27,12 @@ export const Q_HIGH = QUALITY === 'high';
 export const Q_MED  = QUALITY === 'med';
 export const Q_LOW  = QUALITY === 'low';
 
+// Rollback escape hatch for the VFX upgrade. With ?vfx=legacy the new
+// shader/quark builders are skipped and every effect falls back to the
+// original procedural implementation in src/effects.js. Lets us ship
+// upgrades branch-by-branch without code changes if a regression appears.
+export const LEGACY_VFX = /[?&]vfx=legacy\b/.test(location.search);
+
 // VFX-facing tuning knobs. Particle counts and texture resolutions scale
 // with the tier; soft particles (depth-aware) only kick in on high.
 export const QUALITY_PROFILE = {

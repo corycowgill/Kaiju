@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import vfx from './vfx.js';
+import { LEGACY_VFX } from './quality.js';
 
 // Shared geometries / materials so high-rate effect spawns (sparks, smoke,
 // hit pulses, muzzle flashes) don't churn through GC.
@@ -318,8 +320,21 @@ export function makeSmokePuff(world, pos, scale = 1.0) {
   });
 }
 
-// A laser/beam emanating from origin in a direction. Damage handled in world.
+// Public makeBeam shim. Routes through vfx.spawn so the shader-based beam
+// in src/vfx.js takes over. Falls back to _makeBeamLegacy if the registry
+// hasn't been populated yet (rare boot-order edge case) or if ?vfx=legacy
+// is set on the URL.
 export function makeBeam(world, origin, dir, length, color = 0x66ff66, glowColor = 0xaaffaa) {
+  if (LEGACY_VFX) return _makeBeamLegacy(world, origin, dir, length, color, glowColor);
+  const e = vfx.spawn('beam', { world, origin, dir, length, color, glowColor });
+  return e || _makeBeamLegacy(world, origin, dir, length, color, glowColor);
+}
+
+// A laser/beam emanating from origin in a direction. Damage handled in world.
+// Renamed from makeBeam: the public makeBeam above is a shim that delegates
+// to vfx.spawn so the new shader-based renderer in src/vfx.js handles it.
+// With ?vfx=legacy this raw function is what runs.
+export function _makeBeamLegacy(world, origin, dir, length, color = 0x66ff66, glowColor = 0xaaffaa) {
   const beam = new THREE.Group();
   const len = length;
   const core = new THREE.Mesh(
@@ -372,9 +387,19 @@ export function makeBeam(world, origin, dir, length, color = 0x66ff66, glowColor
 
 // ============== Power-tailored VFX helpers ==============
 
+// Public makeChainLightning shim. Routes through vfx.spawn so the
+// shader-based bolt in src/vfx.js takes over.
+export function makeChainLightning(world, a, b, color = 0xffee66, life = 0.45, segs = 14) {
+  if (LEGACY_VFX) return _makeChainLightningLegacy(world, a, b, color, life, segs);
+  const e = vfx.spawn('chainLightning', { world, a, b, color, life, segs });
+  return e || _makeChainLightningLegacy(world, a, b, color, life, segs);
+}
+
 // Chain lightning bolt: jagged poly-line from a -> b in `color`.
 // Built once at spawn (LineSegments via BufferGeometry) and faded over `life`.
-export function makeChainLightning(world, a, b, color = 0xffee66, life = 0.45, segs = 14) {
+// Renamed from makeChainLightning; the public makeChainLightning above is a
+// shim that delegates to the shader builder unless ?vfx=legacy is set.
+export function _makeChainLightningLegacy(world, a, b, color = 0xffee66, life = 0.45, segs = 14) {
   const points = [];
   const dir = new THREE.Vector3().subVectors(b, a);
   const len = dir.length();

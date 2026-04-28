@@ -84,7 +84,7 @@ scene.background = new THREE.Color(0x281a30);
 // builders for GPU-particle / shader-based replacements without touching
 // call sites in game.js or enemies.js.
 vfx.init(scene);
-vfx.registerLegacyEffects(legacyEffects);
+vfx.registerAllBuilders(legacyEffects);
 // Phase 6: exponential fog matched to the sunset palette. Distance buildings
 // fade smoothly into haze instead of popping at a linear cut. Density tuned
 // so things ~150u away stay readable but the city horizon dissolves.
