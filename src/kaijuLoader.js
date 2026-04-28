@@ -135,7 +135,7 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   report('Base model loaded');
 
   // Scale to match the game (~15 units tall)
-  root.scale.setScalar(24);
+  root.scale.setScalar(18);
 
   // Enable shadows
   root.traverse((o) => {
