@@ -2885,10 +2885,15 @@ function drawMinimap() {
     else { ctx.fillStyle = '#ff5544'; ctx.fillRect(x - 2, y - 2, 4, 4); }
   }
 
-  // Kaiju arrow at center
+  // Kaiju arrow at center.
+  // Forward in world is (sin(yaw), 0, cos(yaw)). The minimap maps world
+  // (+X, +Z) to screen (+X, +Y), so the arrow tip should aim at screen
+  // (sin(yaw), cos(yaw)) from center. The triangle is drawn pointing
+  // canvas-up; after ctx.rotate(R) the tip lands at (sin(R), -cos(R)).
+  // Equating the two gives R = PI - yaw.
   ctx.save();
   ctx.translate(cw / 2, ch / 2);
-  ctx.rotate(state.yaw + Math.PI);
+  ctx.rotate(Math.PI - state.yaw);
   ctx.fillStyle = '#66ff99';
   ctx.beginPath();
   ctx.moveTo(0, -7); ctx.lineTo(5, 5); ctx.lineTo(-5, 5); ctx.closePath();
