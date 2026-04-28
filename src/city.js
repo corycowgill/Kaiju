@@ -2923,7 +2923,7 @@ export function buildCity(scene, world, opts = {}) {
 
   const animators = [flock];
   if (windowPulse) animators.push(windowPulse);
-  return { buildings, grid, bodiesIM, cityAnimators: animators, buildingGLBs: Promise.all(_glbPromises) };
+  return { buildings, grid, bodiesIM, cityAnimators: animators, buildingGLBs: Promise.all(_glbPromises), cityRadius: CITY_RADIUS };
 }
 
 // Tokyo "koban" -- small two-story police box. Sky-blue trim, white wall,

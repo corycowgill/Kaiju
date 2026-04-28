@@ -1304,9 +1304,33 @@ function startWave(n) {
 
   const enemies = world.enemies;
   const kpos = state.kaiju.root.position;
+  // Keep all spawns inside the city. The naive ring-spawn around the
+  // kaiju used to fling artillery 320u "outward" from a kaiju already
+  // near the edge, dropping enemies in the void beyond CITY_RADIUS
+  // where the player can see nothing and can't reach them.
+  const cityRadius = world.cityRadius || 320;
+  const spawnMargin = 25;
+  const maxSpawnR = cityRadius - spawnMargin;
   function spawnPos(radius) {
-    const a = Math.random() * Math.PI * 2;
-    return [kpos.x + Math.cos(a) * radius, kpos.z + Math.sin(a) * radius];
+    const maxR2 = maxSpawnR * maxSpawnR;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const a = Math.random() * Math.PI * 2;
+      const x = kpos.x + Math.cos(a) * radius;
+      const z = kpos.z + Math.sin(a) * radius;
+      if (x * x + z * z <= maxR2) return [x, z];
+    }
+    // Every angle landed outside (kaiju is hugging the edge). Drop the
+    // enemy on a ring of radius `radius` biased back toward the city
+    // center so it stays inside and the player can still close on it.
+    const toCenter = Math.atan2(-kpos.z, -kpos.x);
+    const jitter = (Math.random() - 0.5) * Math.PI * 0.6;
+    const a = toCenter + jitter;
+    const r = Math.min(radius, Math.max(40, maxSpawnR - Math.hypot(kpos.x, kpos.z) * 0.3));
+    let x = kpos.x + Math.cos(a) * r;
+    let z = kpos.z + Math.sin(a) * r;
+    const d = Math.hypot(x, z);
+    if (d > maxSpawnR) { const k = maxSpawnR / d; x *= k; z *= k; }
+    return [x, z];
   }
 
   // Boss replaces big mech spawn on boss waves
