@@ -12,6 +12,7 @@ import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
 import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
+import * as legacyEffects from './effects.js';
 import {
   Effect, makeExplosion, makeSparks, makeShockwave,
   makeMuzzleFlash, makeSmokePuff, makeBeam, makeHitPulse, makeSmokeColumn,
@@ -22,6 +23,8 @@ import {
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
+import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE } from './quality.js';
+import vfx from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
 // ------------------------- High score (localStorage) -------------------------
@@ -37,28 +40,9 @@ function trySetHighScore(s) {
   return false;
 }
 
-// ------------------------- Mobile detect -------------------------
-const isMobile = (() => {
-  const ua = navigator.userAgent || '';
-  const touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-  const ios = /iPhone|iPad|iPod/i.test(ua);
-  const android = /Android/i.test(ua);
-  // Treat any touch-only small screen as mobile
-  return ios || android || (touch && Math.min(window.innerWidth, window.innerHeight) < 820);
-})();
+// Mobile + quality flags now live in src/quality.js so the VFX manager and
+// any future module can read the same source of truth.
 if (isMobile) document.body.classList.add('mobile');
-
-// Phase 8: graphics quality tier. Defaults to auto (low on mobile, high on
-// desktop) and can be overridden with ?q=low | ?q=med | ?q=high.
-function detectQuality() {
-  const m = location.search.match(/[?&]q=(low|med|high)\b/);
-  if (m) return m[1];
-  return isMobile ? 'low' : 'high';
-}
-const QUALITY = detectQuality();
-const Q_HIGH = QUALITY === 'high';
-const Q_MED  = QUALITY === 'med';
-const Q_LOW  = QUALITY === 'low';
 console.info('[KAIJU HAVOC] quality tier =', QUALITY);
 // Highlight the active quality pick on the title screen.
 {
@@ -94,6 +78,13 @@ game.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x281a30);
+// Foundation for the VFX pipeline upgrade (three.quarks BatchedRenderer +
+// flipbook cache + named effect registry). Today every effect routes back
+// through the legacy makeXxx makers below; subsequent PRs swap individual
+// builders for GPU-particle / shader-based replacements without touching
+// call sites in game.js or enemies.js.
+vfx.init(scene);
+vfx.registerLegacyEffects(legacyEffects);
 // Phase 6: exponential fog matched to the sunset palette. Distance buildings
 // fade smoothly into haze instead of popping at a linear cut. Density tuned
 // so things ~150u away stay readable but the city horizon dissolves.
@@ -3010,6 +3001,7 @@ function tick(now) {
     const off = Math.max(Math.abs(_tmpSun.x), Math.abs(_tmpSun.y)) > 1.4 || _tmpSun.z > 1;
     window.__cinePass.uniforms.godStr.value = off ? 0.0 : (Q_HIGH ? 0.55 : 0.30);
   }
+  vfx.tick(dt);
   if (composer) composer.render();
   else renderer.render(scene, camera);
   requestAnimationFrame(tick);
