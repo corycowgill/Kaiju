@@ -68,7 +68,16 @@ export class Effect {
 // disc that scales out fast then fades).
 const G_RING = new THREE.RingGeometry(0.9, 1.0, 36);
 
+// Public makeExplosion shim. Routes through vfx.spawn so the shader-based
+// fireball in src/vfx.js takes over. Falls back to _makeExplosionLegacy if
+// the registry is not yet populated or ?vfx=legacy is set.
 export function makeExplosion(world, pos, scale = 1.0) {
+  if (LEGACY_VFX) return _makeExplosionLegacy(world, pos, scale);
+  const e = vfx.spawn('explosion', { world, pos, args: [scale] });
+  return e || _makeExplosionLegacy(world, pos, scale);
+}
+
+export function _makeExplosionLegacy(world, pos, scale = 1.0) {
   const group = new THREE.Group();
   group.position.copy(pos);
   world.scene.add(group);
@@ -490,9 +499,17 @@ export function makeMissileSwarm(world, origin, radius = 60, count = 8) {
   }
 }
 
+// Public makeAtomicDome shim. Routes through vfx.spawn for the new
+// energy-field shader in src/vfx.js, with the legacy fallback preserved.
+export function makeAtomicDome(world, pos, maxRadius = 130, color = 0x66ff66) {
+  if (LEGACY_VFX) return _makeAtomicDomeLegacy(world, pos, maxRadius, color);
+  const e = vfx.spawn('atomicDome', { world, pos, args: [maxRadius, color] });
+  return e || _makeAtomicDomeLegacy(world, pos, maxRadius, color);
+}
+
 // Atomic dome: slow-expanding green-glowing hemisphere covering a big radius.
 // Used as Gojira's ultimate signature.
-export function makeAtomicDome(world, pos, maxRadius = 130, color = 0x66ff66) {
+export function _makeAtomicDomeLegacy(world, pos, maxRadius = 130, color = 0x66ff66) {
   const geom = new THREE.SphereGeometry(1, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
   const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
   const dome = new THREE.Mesh(geom, mat);

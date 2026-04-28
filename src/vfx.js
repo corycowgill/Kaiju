@@ -220,6 +220,271 @@ function _spawnBeamShader(opts) {
   });
 }
 
+// ----- Shader-based explosion (replaces makeExplosion from effects.js:71) -----
+//
+// One sphere mesh with a heat-ramp shader replaces the legacy 3-layer
+// concentric sphere stack (white core + yellow mid + orange shell). The
+// shader samples scrolling noise twice per pixel and modulates a color
+// ramp (white-yellow center -> orange mid -> dark red rim) keyed off
+// fresnel so the surface looks volumetric. All the supporting structure
+// from the legacy maker (pooled point light, ground shockwave ring, 22
+// shrapnel chunks with ballistic+spin physics, drifting smoke sphere) is
+// ported verbatim because it was already well-tuned.
+const _FIREBALL_VS = `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vViewDir = normalize(-mv.xyz);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+const _FIREBALL_FS = `
+  uniform sampler2D noiseTex;
+  uniform float time;
+  uniform float t01;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+  void main() {
+    // Two-octave noise scrolled across the spherical UVs gives wispy
+    // volumetric structure to what is geometrically just a sphere.
+    vec2 nuv = vUv * 3.0 + vec2(time * 0.4, time * -0.25);
+    float n1 = texture2D(noiseTex, nuv).r;
+    float n2 = texture2D(noiseTex, nuv * 2.5 + vec2(0.31, 0.71)).r;
+    float n = mix(n1, n2, 0.5);
+    // Fresnel: rim dims, center is "deepest" / hottest. Combine with noise
+    // so wisps push through the rim instead of giving a clean ball.
+    float fres = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+    float heat = 1.0 - clamp(fres + n * 0.5, 0.0, 1.0);
+    vec3 c0 = vec3(1.0, 0.95, 0.75);  // white-yellow core
+    vec3 c1 = vec3(1.0, 0.55, 0.10);  // orange mid
+    vec3 c2 = vec3(0.6, 0.10, 0.05);  // dark red rim
+    vec3 col = mix(c2, c1, smoothstep(0.0, 0.6, heat));
+    col     = mix(col, c0, smoothstep(0.5, 1.0, heat));
+    // Cool the whole ball as it ages.
+    col *= mix(1.2, 0.6, t01);
+    // Soft alpha edge plus a hot flash burst in the first 10% of life
+    // (mirrors the legacy flashMat layer).
+    float a = (1.0 - smoothstep(0.7, 1.0, fres)) * (1.0 - t01);
+    float flash = 1.0 - smoothstep(0.0, 0.10, t01);
+    a += flash * 0.6;
+    col += flash * vec3(0.4, 0.4, 0.3);
+    gl_FragColor = vec4(col, a);
+  }
+`;
+
+// Local light pool. Mirrors the one in src/effects.js (lines 13-30); we
+// keep them separate so the legacy and shader explosion paths don't
+// stomp on each other's lights when LEGACY_VFX toggles mid-game.
+const _MAX_LIGHTS = 5;
+const _vfxLightPool = [];
+let   _vfxLightCursor = 0;
+function _acquireLight(scene) {
+  if (_vfxLightPool.length < _MAX_LIGHTS) {
+    const l = new THREE.PointLight(0xffaa33, 0, 60);
+    scene.add(l);
+    _vfxLightPool.push(l);
+    return l;
+  }
+  const l = _vfxLightPool[_vfxLightCursor];
+  _vfxLightCursor = (_vfxLightCursor + 1) % _vfxLightPool.length;
+  return l;
+}
+
+// Shared geometries for explosion bits. Reused across spawns so high-rate
+// combat doesn't churn through allocations (same pattern as effects.js).
+const _G_FIREBALL = new THREE.SphereGeometry(1.0, 24, 18);
+const _G_FIRE_LO  = new THREE.SphereGeometry(1.0, 12, 12);  // smoke/flash use lower poly
+const _G_RING_E   = new THREE.RingGeometry(0.9, 1.0, 36);
+const _G_SHRAPNEL = new THREE.SphereGeometry(0.18, 4, 4);
+
+function _spawnExplosionShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const scale = args[0] !== undefined ? args[0] : 1.0;
+
+  const group = new THREE.Group();
+  group.position.copy(pos);
+  world.scene.add(group);
+
+  // Shader fireball - one mesh replacing legacy flash + fire + core layers.
+  const ballUniforms = {
+    noiseTex: { value: NOISE_TEX },
+    time:     { value: 0 },
+    t01:      { value: 0 },
+  };
+  const ballMat = new THREE.ShaderMaterial({
+    uniforms: ballUniforms,
+    vertexShader: _FIREBALL_VS,
+    fragmentShader: _FIREBALL_FS,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const ball = new THREE.Mesh(_G_FIREBALL, ballMat);
+  group.add(ball);
+
+  // Ground shockwave ring - same as legacy, keeps the gameplay-readable
+  // outward blast indicator on the floor.
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0xffd166, transparent: true, opacity: 1.0,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+  const ring = new THREE.Mesh(_G_RING_E, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = -pos.y + 0.15;
+  group.add(ring);
+
+  // Drifting smoke sphere - lifts off and lingers after the fireball fades.
+  const smokeMat = new THREE.MeshBasicMaterial({
+    color: 0x444444, transparent: true, opacity: 0.0, depthWrite: false,
+  });
+  const smoke = new THREE.Mesh(_G_FIRE_LO, smokeMat);
+  group.add(smoke);
+
+  // Pooled point light (intensity-keyed sequencer matches legacy logic).
+  const light = _acquireLight(world.scene);
+  light.position.copy(pos);
+  light.intensity = 7 * scale;
+  light.distance = 70;
+  const seq = (light._seq = (light._seq || 0) + 1);
+
+  // Shrapnel chunks with ballistic + tumble physics (ported from legacy).
+  const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffeeaa });
+  const emberMat = new THREE.MeshBasicMaterial({ color: 0xff5522, transparent: true, opacity: 1.0 });
+  const sparks = [];
+  for (let i = 0; i < 22; i++) {
+    const useEmber = i < 10;
+    const s = new THREE.Mesh(_G_SHRAPNEL, useEmber ? emberMat : sparkMat);
+    const speed = (8 + Math.random() * 16) * scale;
+    const yaw = Math.random() * Math.PI * 2;
+    const pitch = Math.PI * 0.18 + Math.random() * Math.PI * 0.45;
+    s.userData.vel = new THREE.Vector3(
+      Math.cos(yaw) * Math.cos(pitch) * speed,
+      Math.sin(pitch) * speed * 1.4,
+      Math.sin(yaw) * Math.cos(pitch) * speed,
+    );
+    s.userData.spin = new THREE.Vector3(
+      (Math.random() - 0.5) * 10,
+      (Math.random() - 0.5) * 10,
+      (Math.random() - 0.5) * 10,
+    );
+    s.userData.ember = useEmber;
+    group.add(s);
+    sparks.push(s);
+  }
+
+  return new VFXEffect(group, 1.4, (dt, t) => {
+    ballUniforms.time.value = (ballUniforms.time.value + dt) % 1000;
+    ballUniforms.t01.value = t;
+    // Scale the fireball outward (legacy expanded over ~9x; matches well).
+    const s = (1 + t * 9) * scale;
+    ball.scale.setScalar(s);
+    // Ground ring blasts out then thins.
+    const ringR = (1 + t * 18) * scale;
+    ring.scale.set(ringR, ringR, 1);
+    ringMat.opacity = (1 - t) * 0.95;
+    // Smoke lifts and grows; fades the second half of life.
+    smoke.scale.setScalar((0.6 + t * 4.5) * scale);
+    smoke.position.y = -pos.y + 0.1 + t * 6.0 * scale;
+    smokeMat.opacity = t < 0.4 ? 0.0 : Math.min(0.7, (t - 0.4) * 1.4) * (1.4 - t);
+    // Light fades unless a newer explosion grabbed our slot.
+    if (light._seq === seq) light.intensity = (1 - t) * 7 * scale;
+    // Shrapnel ballistics + tumble.
+    for (const sp of sparks) {
+      sp.position.addScaledVector(sp.userData.vel, dt);
+      sp.userData.vel.y -= 32 * dt;
+      sp.rotation.x += sp.userData.spin.x * dt;
+      sp.rotation.y += sp.userData.spin.y * dt;
+      sp.rotation.z += sp.userData.spin.z * dt;
+      if (sp.userData.ember) {
+        sp.material.opacity = Math.max(0, 1 - t * 1.6);
+      }
+    }
+    if (t >= 1) {
+      if (light._seq === seq) light.intensity = 0;
+      world.scene.remove(group);
+      ballMat.dispose();
+      ringMat.dispose();
+      smokeMat.dispose();
+      sparkMat.dispose();
+      emberMat.dispose();
+    }
+  });
+}
+
+// ----- Shader-based atomic dome (replaces makeAtomicDome from effects.js:495) -----
+//
+// One hemisphere with an energy-field shader replaces the legacy two
+// nested hemispheres (white inner + colored outer). Scrolling noise +
+// fresnel rim makes the dome read as a contained energy bubble instead
+// of two stacked translucent shells.
+const _DOME_VS = _FIREBALL_VS;
+const _DOME_FS = `
+  uniform sampler2D noiseTex;
+  uniform vec3 baseColor;
+  uniform float time;
+  uniform float t01;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+  void main() {
+    vec2 nuv = vUv * 4.0 + vec2(time * 0.2, time * -0.15);
+    float n  = texture2D(noiseTex, nuv).r;
+    float n2 = texture2D(noiseTex, nuv * 2.0 + vec2(0.13, 0.91)).r;
+    float energy = mix(n, n2, 0.5);
+    float fres = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+    fres = pow(fres, 2.0);
+    vec3 col = baseColor + vec3(1.0) * energy * 0.4;
+    col += vec3(1.0) * fres * 1.5;
+    float a = (fres * 0.7 + 0.3 + energy * 0.2) * (1.0 - t01) * 0.7;
+    gl_FragColor = vec4(col, a);
+  }
+`;
+
+// Hemisphere geometry: top half of a sphere (matches legacy effects.js:496).
+const _G_DOME = new THREE.SphereGeometry(1, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+
+function _spawnAtomicDomeShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const maxRadius = args[0] !== undefined ? args[0] : 130;
+  const color = args[1] !== undefined ? args[1] : 0x66ff66;
+
+  const uniforms = {
+    noiseTex:  { value: NOISE_TEX },
+    baseColor: { value: new THREE.Color(color) },
+    time:      { value: 0 },
+    t01:       { value: 0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: _DOME_VS,
+    fragmentShader: _DOME_FS,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const dome = new THREE.Mesh(_G_DOME, mat);
+  dome.position.copy(pos);
+  dome.position.y = 0.3;
+  world.scene.add(dome);
+
+  return new VFXEffect(dome, 1.1, (dt, t) => {
+    uniforms.time.value = (uniforms.time.value + dt) % 1000;
+    uniforms.t01.value = t;
+    const r = maxRadius * t;
+    dome.scale.set(r, r, r);
+    if (t >= 1) {
+      world.scene.remove(dome);
+      mat.dispose();
+    }
+  });
+}
+
 // ----- Shader-based chain lightning (replaces makeChainLightning, effects.js:377) -----
 //
 // Keeps the polyline jitter generation (it works well visually) but replaces
@@ -307,14 +572,17 @@ export function registerLegacyEffects(legacy) {
     const { world, pos, args = [] } = opts;
     return fn(world, pos, ...args);
   };
-  registerBuilder('explosion',          wrapPosArgs(legacy.makeExplosion));
+  // For names with shim wrappers in effects.js (explosion, atomicDome,
+  // beam, chainLightning), use the underscore-prefixed raw reference so
+  // the legacy fallback registration doesn't recurse through the shim.
+  registerBuilder('explosion',          wrapPosArgs(legacy._makeExplosionLegacy || legacy.makeExplosion));
   registerBuilder('sparks',             wrapPosArgs(legacy.makeSparks));
   registerBuilder('shockwave',          wrapPosArgs(legacy.makeShockwave));
   registerBuilder('muzzleFlash',        wrapPosArgs(legacy.makeMuzzleFlash));
   registerBuilder('smokePuff',          wrapPosArgs(legacy.makeSmokePuff));
   registerBuilder('smokeColumn',        wrapPosArgs(legacy.makeSmokeColumn));
   registerBuilder('hitPulse',           wrapPosArgs(legacy.makeHitPulse));
-  registerBuilder('atomicDome',         wrapPosArgs(legacy.makeAtomicDome));
+  registerBuilder('atomicDome',         wrapPosArgs(legacy._makeAtomicDomeLegacy || legacy.makeAtomicDome));
   registerBuilder('atomicDevastation',  wrapPosArgs(legacy.makeAtomicDevastation));
   registerBuilder('wingSlash',          wrapPosArgs(legacy.makeWingSlash));
   registerBuilder('tailSweep',          wrapPosArgs(legacy.makeTailSweep));
@@ -366,8 +634,10 @@ export function spawn(name, opts) {
 // helper that runs both phases in the correct order).
 function _registerUpgradedBuilders() {
   if (LEGACY_VFX) return;
-  registerBuilder('beam', _spawnBeamShader);
+  registerBuilder('beam',           _spawnBeamShader);
   registerBuilder('chainLightning', _spawnChainLightningShader);
+  registerBuilder('explosion',      _spawnExplosionShader);
+  registerBuilder('atomicDome',     _spawnAtomicDomeShader);
 }
 
 // Convenience: register legacy fallbacks first, then upgrade overrides.
