@@ -997,7 +997,23 @@ let _startingGame = false; // guard against double-start during async load
 async function startGame(key) {
   if (_startingGame) return;
   _startingGame = true;
+  try {
+    await _startGameInner(key);
+  } catch (e) {
+    // Any failure during loading (kaiju model fetch, landmark GLB fetch,
+    // anything async) used to leave _startingGame=true forever, which
+    // permanently bricked the start button. The finally below restores
+    // it; the catch surfaces the error to the player so they can retry
+    // instead of staring at a stuck loading screen.
+    console.error('[startGame] failed', e);
+    document.getElementById('loading-screen')?.classList.remove('visible');
+    toast('LOADING FAILED · TAP START TO RETRY', 'bad');
+  } finally {
+    _startingGame = false;
+  }
+}
 
+async function _startGameInner(key) {
   // Clean up any previous kaiju from scene (restart / retry)
   if (state.kaiju && state.kaiju.root) {
     scene.remove(state.kaiju.root);
@@ -1059,7 +1075,7 @@ async function startGame(key) {
   scene.add(sun.target);
   scene.add(k.root);
   state.kaiju = k;
-  _startingGame = false;
+  // _startingGame reset is handled by the outer try/finally in startGame().
 
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');

@@ -1814,55 +1814,64 @@ function loadBuildingGLB(url, targetHeight, building, scene) {
   console.log('[BuildingGLB] Starting load:', url);
   return _glbLoader.loadAsync(url).then((gltf) => {
     console.log('[BuildingGLB] Loaded OK:', url);
-    // If the building was already destroyed before the model loaded, bail.
-    if (building.destroyed) return;
-
-    const root = gltf.scene;
-
-    // Measure raw bounding box and compute uniform scale
-    const box = new THREE.Box3().setFromObject(root);
-    const rawH = box.max.y - box.min.y;
-    const s = rawH > 0 ? targetHeight / rawH : 1;
-    root.scale.setScalar(s);
-
-    // Enable shadows on all meshes
-    root.traverse((o) => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-    });
-
-    // Re-measure after scaling to get the actual world-space footprint
-    const boxScaled = new THREE.Box3().setFromObject(root);
-
-    // Update the building's collision dimensions to match the GLB model
-    building.w = boxScaled.max.x - boxScaled.min.x;
-    building.d = boxScaled.max.z - boxScaled.min.z;
-    building.h = boxScaled.max.y - boxScaled.min.y;
-
-    // Shift so the bottom of the model sits at y=0 (some exports have offset origins)
-    const yOffset = Math.abs(boxScaled.min.y) > 0.5 ? -boxScaled.min.y : 0;
-
-    // Center the model on the building's x/z so the AABB hitbox aligns
-    const centerX = (boxScaled.min.x + boxScaled.max.x) / 2;
-    const centerZ = (boxScaled.min.z + boxScaled.max.z) / 2;
-    root.position.set(building.x - centerX, yOffset, building.z - centerZ);
-    root.matrixAutoUpdate = false;
-    root.updateMatrix();
-
-    // Remove the old procedural customMesh if one exists
-    if (building.customMesh && building.customMesh.parent) {
-      building.customMesh.parent.remove(building.customMesh);
-    }
-
-    // Wire up the new GLB mesh
-    building.customMesh = root;
-    scene.add(root);
-    console.log('[BuildingGLB] Placed:', url, 'at', building.x, building.z, 'w', building.w.toFixed(1), 'd', building.d.toFixed(1), 'h', building.h.toFixed(1));
+    _applyBuildingGLB(gltf, targetHeight, building, scene, url);
   }).catch((err) => {
-    console.error('[BuildingGLB] Failed to load', url, err);
+    // Swallow individual landmark fetch failures so one bad CDN/edge
+    // hiccup doesn't reject the whole Promise.all and lock startGame
+    // (which used to leave _startingGame=true forever and brick the
+    // start button on any future click). The Building keeps its
+    // procedural box body as a visual fallback.
+    console.warn('[BuildingGLB] Failed to load, keeping procedural mesh:', url, err);
   });
+}
+
+function _applyBuildingGLB(gltf, targetHeight, building, scene, url) {
+  // If the building was already destroyed before the model loaded, bail.
+  if (building.destroyed) return;
+
+  const root = gltf.scene;
+
+  // Measure raw bounding box and compute uniform scale
+  const box = new THREE.Box3().setFromObject(root);
+  const rawH = box.max.y - box.min.y;
+  const s = rawH > 0 ? targetHeight / rawH : 1;
+  root.scale.setScalar(s);
+
+  // Enable shadows on all meshes
+  root.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+
+  // Re-measure after scaling to get the actual world-space footprint
+  const boxScaled = new THREE.Box3().setFromObject(root);
+
+  // Update the building's collision dimensions to match the GLB model
+  building.w = boxScaled.max.x - boxScaled.min.x;
+  building.d = boxScaled.max.z - boxScaled.min.z;
+  building.h = boxScaled.max.y - boxScaled.min.y;
+
+  // Shift so the bottom of the model sits at y=0 (some exports have offset origins)
+  const yOffset = Math.abs(boxScaled.min.y) > 0.5 ? -boxScaled.min.y : 0;
+
+  // Center the model on the building's x/z so the AABB hitbox aligns
+  const centerX = (boxScaled.min.x + boxScaled.max.x) / 2;
+  const centerZ = (boxScaled.min.z + boxScaled.max.z) / 2;
+  root.position.set(building.x - centerX, yOffset, building.z - centerZ);
+  root.matrixAutoUpdate = false;
+  root.updateMatrix();
+
+  // Remove the old procedural customMesh if one exists
+  if (building.customMesh && building.customMesh.parent) {
+    building.customMesh.parent.remove(building.customMesh);
+  }
+
+  // Wire up the new GLB mesh
+  building.customMesh = root;
+  scene.add(root);
+  console.log('[BuildingGLB] Placed:', url, 'at', building.x, building.z, 'w', building.w.toFixed(1), 'd', building.d.toFixed(1), 'h', building.h.toFixed(1));
 }
 
 export function buildCity(scene, world, opts = {}) {
