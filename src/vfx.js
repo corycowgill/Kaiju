@@ -485,6 +485,199 @@ function _spawnAtomicDomeShader(opts) {
   });
 }
 
+// ----- Shader-based smoke (replaces makeSmokePuff/makeSmokeColumn, effects.js:332/250) -----
+//
+// Billowy smoke shader: soft fresnel edge so the puff fades into the sky
+// at its rim instead of having a hard sphere silhouette, plus animated
+// two-octave noise that adds internal cloud structure. Uses normal
+// blending (not additive) because smoke should occlude what's behind it,
+// not add light. The same shader feeds both the standalone smoke puff
+// and the periodic emitter inside makeSmokeColumn.
+const _SMOKE_FS = `
+  uniform sampler2D noiseTex;
+  uniform vec3 smokeColor;
+  uniform float time;
+  uniform float fade;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+  void main() {
+    // Two-octave scrolled noise for cloud-like surface variation.
+    vec2 nuv = vUv * 2.0 + vec2(time * 0.05, time * -0.04);
+    float n  = texture2D(noiseTex, nuv).r;
+    float n2 = texture2D(noiseTex, nuv * 2.5 + vec2(0.31, 0.71)).r;
+    float density = mix(n, n2, 0.5);
+    // Fresnel-based core: smoke is densest in the middle, fades at rim.
+    float fres = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+    float core = 1.0 - pow(fres, 1.5);
+    vec3 col = smokeColor * (0.7 + density * 0.4);
+    float a = core * (0.6 + density * 0.3) * fade;
+    gl_FragColor = vec4(col, a);
+  }
+`;
+
+function _makeSmokeMaterial(colorHex) {
+  const uniforms = {
+    noiseTex:   { value: NOISE_TEX },
+    smokeColor: { value: new THREE.Color(colorHex) },
+    time:       { value: Math.random() * 100 }, // de-sync sibling puffs
+    fade:       { value: 1.0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: _FIREBALL_VS,
+    fragmentShader: _SMOKE_FS,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  return { mat, uniforms };
+}
+
+const _G_SMOKE_PUFF_S = new THREE.SphereGeometry(1, 12, 10);
+
+function _spawnSmokePuffShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const scale = args[0] !== undefined ? args[0] : 1.0;
+
+  const gear = _makeSmokeMaterial(0x444444);
+  const m = new THREE.Mesh(_G_SMOKE_PUFF_S, gear.mat);
+  m.scale.setScalar(scale);
+  m.position.copy(pos);
+  world.scene.add(m);
+
+  return new VFXEffect(m, 2.5, (dt, t) => {
+    gear.uniforms.time.value = (gear.uniforms.time.value + dt) % 1000;
+    m.position.y += dt * 1.6;
+    m.scale.setScalar(scale * (1 + t * 3));
+    gear.uniforms.fade.value = 0.6 * (1 - t);
+    if (t >= 1) {
+      world.scene.remove(m);
+      gear.mat.dispose();
+    }
+  });
+}
+
+// Smoke column emitter: periodically spawns shader smoke puffs so
+// destroyed buildings keep visibly burning for 8s. Each emitted puff is
+// itself a VFXEffect pushed onto world.effects[] so the existing tick
+// loop drives its lifetime.
+function _spawnSmokeColumnShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const height = args[0] !== undefined ? args[0] : 30;
+  const baseY = pos.y;
+  const proxy = new THREE.Object3D();
+  proxy.position.copy(pos);
+  world.scene.add(proxy);
+  const totalLife = 8.0;
+  let nextEmit = 0;
+
+  return new VFXEffect(proxy, totalLife, (dt, t) => {
+    nextEmit -= dt;
+    if (nextEmit <= 0 && t < 1) {
+      nextEmit = 0.6 + Math.random() * 0.4;
+      const intensity = (1 - t);
+      // Color shifts darker at the start (fresh burn) to lighter as the
+      // column ages (ash + dispersal); same as legacy.
+      const colorHex = t < 0.4 ? 0x333333 : 0x666666;
+      const gear = _makeSmokeMaterial(colorHex);
+      const m = new THREE.Mesh(_G_SMOKE_PUFF_S, gear.mat);
+      const sz = 0.85 + Math.random() * 0.55;
+      m.scale.setScalar(sz * 1.4); // 1.4 to match legacy G_SMOKE_PUFF radius
+      m.position.set(
+        pos.x + (Math.random() - 0.5) * 4,
+        baseY + 1 + (1 - intensity) * height * 0.4,
+        pos.z + (Math.random() - 0.5) * 4,
+      );
+      world.scene.add(m);
+      const vy = 1.6 + Math.random() * 1.2;
+      const vx = (Math.random() - 0.5) * 1.5;
+      const vz = (Math.random() - 0.5) * 1.5;
+      const baseScale = sz * 1.4;
+      world.effects.push(new VFXEffect(m, 4.5, (dt2, t2) => {
+        gear.uniforms.time.value = (gear.uniforms.time.value + dt2) % 1000;
+        m.position.x += vx * dt2;
+        m.position.y += vy * dt2;
+        m.position.z += vz * dt2;
+        m.scale.setScalar(baseScale * (1 + t2 * 3));
+        gear.uniforms.fade.value = 0.55 * intensity * (1 - t2);
+        if (t2 >= 1) {
+          world.scene.remove(m);
+          gear.mat.dispose();
+        }
+      }));
+    }
+    if (t >= 1) world.scene.remove(proxy);
+  });
+}
+
+// ----- Shader-based sparks (replaces makeSparks from effects.js:186) -----
+//
+// Eight small spheres ejected with random velocity + gravity, but with
+// the flat MeshBasicMaterial swapped for a hot-point shader that bright
+// the center and dims the rim, giving each spark the visual punch of an
+// ember instead of a yellow ball. Additive blending so multiple sparks
+// stack into a glow at their cluster origin.
+const _SPARK_FS = `
+  uniform vec3 sparkColor;
+  uniform float fade;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    float fres = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+    float intensity = pow(1.0 - fres, 2.0);
+    vec3 col = sparkColor * intensity;
+    gl_FragColor = vec4(col, intensity * fade);
+  }
+`;
+const _G_SPARK_S = new THREE.SphereGeometry(0.12, 6, 5);
+
+function _spawnSparksShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const count = args[0] !== undefined ? args[0] : 8;
+
+  const group = new THREE.Group();
+  group.position.copy(pos);
+  world.scene.add(group);
+
+  const uniforms = {
+    sparkColor: { value: new THREE.Color(0xffcc66) },
+    fade:       { value: 1.0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: _FIREBALL_VS,
+    fragmentShader: _SPARK_FS,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+
+  const sparks = [];
+  for (let i = 0; i < count; i++) {
+    const s = new THREE.Mesh(_G_SPARK_S, mat);
+    s.userData.vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 10,
+      Math.random() * 6 + 2,
+      (Math.random() - 0.5) * 10,
+    );
+    group.add(s);
+    sparks.push(s);
+  }
+
+  return new VFXEffect(group, 0.6, (dt, t) => {
+    uniforms.fade.value = 1 - t;
+    for (const sp of sparks) {
+      sp.position.addScaledVector(sp.userData.vel, dt);
+      sp.userData.vel.y -= 18 * dt;
+    }
+    if (t >= 1) {
+      world.scene.remove(group);
+      mat.dispose();
+    }
+  });
+}
+
 // ----- Shader-based atomic devastation (replaces makeAtomicDevastation, effects.js:827) -----
 //
 // Gojira's ultimate. Six layered meshes (flash, green fireball, stem,
@@ -956,11 +1149,11 @@ export function registerLegacyEffects(legacy) {
   // beam, chainLightning), use the underscore-prefixed raw reference so
   // the legacy fallback registration doesn't recurse through the shim.
   registerBuilder('explosion',          wrapPosArgs(legacy._makeExplosionLegacy || legacy.makeExplosion));
-  registerBuilder('sparks',             wrapPosArgs(legacy.makeSparks));
+  registerBuilder('sparks',             wrapPosArgs(legacy._makeSparksLegacy || legacy.makeSparks));
   registerBuilder('shockwave',          wrapPosArgs(legacy._makeShockwaveLegacy || legacy.makeShockwave));
   registerBuilder('muzzleFlash',        wrapPosArgs(legacy.makeMuzzleFlash));
-  registerBuilder('smokePuff',          wrapPosArgs(legacy.makeSmokePuff));
-  registerBuilder('smokeColumn',        wrapPosArgs(legacy.makeSmokeColumn));
+  registerBuilder('smokePuff',          wrapPosArgs(legacy._makeSmokePuffLegacy || legacy.makeSmokePuff));
+  registerBuilder('smokeColumn',        wrapPosArgs(legacy._makeSmokeColumnLegacy || legacy.makeSmokeColumn));
   registerBuilder('hitPulse',           wrapPosArgs(legacy._makeHitPulseLegacy || legacy.makeHitPulse));
   registerBuilder('atomicDome',         wrapPosArgs(legacy._makeAtomicDomeLegacy || legacy.makeAtomicDome));
   registerBuilder('atomicDevastation',  wrapPosArgs(legacy._makeAtomicDevastationLegacy || legacy.makeAtomicDevastation));
@@ -1023,6 +1216,9 @@ function _registerUpgradedBuilders() {
   registerBuilder('shockwave',         _spawnShockwaveShader);
   registerBuilder('soundRings',        _spawnSoundRingsShader);
   registerBuilder('hitPulse',          _spawnHitPulseShader);
+  registerBuilder('smokePuff',         _spawnSmokePuffShader);
+  registerBuilder('smokeColumn',       _spawnSmokeColumnShader);
+  registerBuilder('sparks',            _spawnSparksShader);
 }
 
 // Convenience: register legacy fallbacks first, then upgrade overrides.

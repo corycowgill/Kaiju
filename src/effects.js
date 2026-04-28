@@ -183,7 +183,15 @@ export function _makeExplosionLegacy(world, pos, scale = 1.0) {
   });
 }
 
+// Public makeSparks shim. Routes through vfx.spawn for the shader-based
+// hot-point sparks in src/vfx.js, with the legacy fallback preserved.
 export function makeSparks(world, pos, count = 8) {
+  if (LEGACY_VFX) return _makeSparksLegacy(world, pos, count);
+  const e = vfx.spawn('sparks', { world, pos, args: [count] });
+  return e || _makeSparksLegacy(world, pos, count);
+}
+
+export function _makeSparksLegacy(world, pos, count = 8) {
   const group = new THREE.Group();
   group.position.copy(pos);
   world.scene.add(group);
@@ -245,9 +253,17 @@ export function _makeShockwaveLegacy(world, pos, color = 0xffcc44, maxRadius = 6
 const G_SMOKE_PUFF = new THREE.SphereGeometry(1.4, 8, 8);
 const _smokeMatProto = new THREE.MeshBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.55 });
 
+// Public makeSmokeColumn shim. Routes through vfx.spawn for the shader-based
+// emitter in src/vfx.js, with the legacy fallback preserved.
+export function makeSmokeColumn(world, pos, height = 30) {
+  if (LEGACY_VFX) return _makeSmokeColumnLegacy(world, pos, height);
+  const e = vfx.spawn('smokeColumn', { world, pos, args: [height] });
+  return e || _makeSmokeColumnLegacy(world, pos, height);
+}
+
 // Lingering smoke column from a destroyed building. Periodically emits drifting puffs
 // for ~8 seconds, keeping the destruction visible from a distance.
-export function makeSmokeColumn(world, pos, height = 30) {
+export function _makeSmokeColumnLegacy(world, pos, height = 30) {
   const baseY = pos.y;
   const proxy = new THREE.Object3D();
   proxy.position.copy(pos);
@@ -329,7 +345,15 @@ export function makeMuzzleFlash(world, pos, scale = 0.5) {
   });
 }
 
+// Public makeSmokePuff shim. Routes through vfx.spawn for the shader-based
+// billowy puff in src/vfx.js, with the legacy fallback preserved.
 export function makeSmokePuff(world, pos, scale = 1.0) {
+  if (LEGACY_VFX) return _makeSmokePuffLegacy(world, pos, scale);
+  const e = vfx.spawn('smokePuff', { world, pos, args: [scale] });
+  return e || _makeSmokePuffLegacy(world, pos, scale);
+}
+
+export function _makeSmokePuffLegacy(world, pos, scale = 1.0) {
   const m = new THREE.Mesh(
     G_SMOKE_S,
     new THREE.MeshBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.6 })
