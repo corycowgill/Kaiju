@@ -4,6 +4,37 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // Procedural Tokyo: districts of buildings on a city grid, with streets, lamps, and props.
 // Each building exposes hp, max_hp, height and methods damage()/destroy().
 
+// --------------- PBR ground textures (ambientCG CC0) ---------------
+const _texLoader = new THREE.TextureLoader();
+const TEX_BASE = './assets/textures/';
+
+function _loadTileTex(file, repeatX, repeatY) {
+  const t = _texLoader.load(TEX_BASE + file);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repeatX, repeatY);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function _loadDataTex(file, repeatX, repeatY) {
+  const t = _texLoader.load(TEX_BASE + file);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repeatX, repeatY);
+  return t;
+}
+
+// Ground plane (large area, coarse tiling)
+const GROUND_TILE = 80; // world units per texture repeat
+const GROUND_REPEATS = 1600 / GROUND_TILE;
+const _groundColor = _loadTileTex('concrete_color.jpg', GROUND_REPEATS, GROUND_REPEATS);
+const _groundNorm  = _loadDataTex('concrete_normal.jpg', GROUND_REPEATS, GROUND_REPEATS);
+const _groundRough = _loadDataTex('concrete_roughness.jpg', GROUND_REPEATS, GROUND_REPEATS);
+
+// Asphalt streets (smaller tile for detail)
+const STREET_TILE = 12; // world units per texture repeat
+
+// Sidewalk paving stones
+const SIDEWALK_TILE = 6; // world units per texture repeat
+
 const BUILDING_PALETTE = [
   0xb0b8c4, 0x9aa3ad, 0x7d8694, 0xc8cbd1, 0x6f7a87,
   0xa8b0a8, 0xc0b8a8, 0x8090a0, 0xddc8a0, 0x556677,
@@ -1987,40 +2018,68 @@ export function buildCity(scene, world, opts = {}) {
   const BLOCK = lite ? 48 : 40; // block size including streets
   const STREET = 8;
 
-  // Ground: now a sidewalk-grey concrete colour so the dark asphalt streets
-  // sit on top of it and the area between blocks reads as pavement instead
-  // of just "the void". Beyond CITY_RADIUS we keep it the same colour --
-  // works as a continuous urban floor even at the periphery.
+  // Ground plane: PBR concrete texture tiled across the whole city floor.
   const groundGeom = new THREE.PlaneGeometry(1600, 1600, 1, 1);
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x6e6864, roughness: 0.95 });
+  const groundMat = new THREE.MeshStandardMaterial({
+    map: _groundColor, normalMap: _groundNorm, roughnessMap: _groundRough,
+    roughness: 1.0, color: 0x8a8580,
+  });
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   ground.matrixAutoUpdate = false; ground.updateMatrix();
   scene.add(ground);
 
-  // Street grid (asphalt) + glowing center lines + flanking sidewalks.
-  const streetMat = new THREE.MeshStandardMaterial({ color: 0x14141a, roughness: 0.92 });
+  // Street grid (asphalt PBR) + glowing center lines + flanking sidewalks.
+  // Each street strip gets its own texture repeat count based on its length.
+  const streetLen = CITY_RADIUS * 2;
+  const streetRepeatL = streetLen / STREET_TILE;
+  const streetRepeatW = STREET / STREET_TILE;
+
+  function makeStreetMat(repX, repY) {
+    return new THREE.MeshStandardMaterial({
+      map: _loadTileTex('asphalt_color.jpg', repX, repY),
+      normalMap: _loadDataTex('asphalt_normal.jpg', repX, repY),
+      roughnessMap: _loadDataTex('asphalt_roughness.jpg', repX, repY),
+      roughness: 1.0, color: 0x666666,
+    });
+  }
+  const streetMatX = makeStreetMat(streetRepeatL, streetRepeatW);
+  const streetMatZ = makeStreetMat(streetRepeatW, streetRepeatL);
+
+  function makeSidewalkMat(repX, repY) {
+    return new THREE.MeshStandardMaterial({
+      map: _loadTileTex('sidewalk_color.jpg', repX, repY),
+      normalMap: _loadDataTex('sidewalk_normal.jpg', repX, repY),
+      roughnessMap: _loadDataTex('sidewalk_roughness.jpg', repX, repY),
+      roughness: 1.0, color: 0xaaaaaa,
+    });
+  }
+  const SIDEWALK_W = 3.0;
+  const swRepeatL = streetLen / SIDEWALK_TILE;
+  const swRepeatW = SIDEWALK_W / SIDEWALK_TILE;
+  const sidewalkMatX = makeSidewalkMat(swRepeatL, swRepeatW);
+  const sidewalkMatZ = makeSidewalkMat(swRepeatW, swRepeatL);
+
   const lineMat   = new THREE.MeshStandardMaterial({ color: 0xffe066, emissive: 0xffd14a, emissiveIntensity: 0.45, roughness: 0.6 });
   const curbMat   = new THREE.MeshStandardMaterial({ color: 0x222226, roughness: 1.0 });
-  const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x9a948c, roughness: 0.95 });
-  const SIDEWALK_W = 3.0; // width of each sidewalk strip flanking a street
+
   for (let i = -CITY_RADIUS; i <= CITY_RADIUS; i += BLOCK) {
-    const sx = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, STREET), streetMat);
+    const sx = new THREE.Mesh(new THREE.PlaneGeometry(streetLen, STREET), streetMatX);
     sx.rotation.x = -Math.PI / 2; sx.position.set(0, 0.05, i);
     sx.receiveShadow = true; sx.matrixAutoUpdate = false; sx.updateMatrix(); scene.add(sx);
-    const sz = new THREE.Mesh(new THREE.PlaneGeometry(STREET, CITY_RADIUS * 2), streetMat);
+    const sz = new THREE.Mesh(new THREE.PlaneGeometry(STREET, streetLen), streetMatZ);
     sz.rotation.x = -Math.PI / 2; sz.position.set(i, 0.05, 0);
     sz.receiveShadow = true; sz.matrixAutoUpdate = false; sz.updateMatrix(); scene.add(sz);
 
-    // Sidewalks flanking each street -- light grey strips just past the curb.
+    // Sidewalks flanking each street -- paving stone texture.
     for (const off of [STREET / 2 + SIDEWALK_W / 2, -(STREET / 2 + SIDEWALK_W / 2)]) {
-      const swx = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, SIDEWALK_W), sidewalkMat);
+      const swx = new THREE.Mesh(new THREE.PlaneGeometry(streetLen, SIDEWALK_W), sidewalkMatX);
       swx.rotation.x = -Math.PI / 2;
       swx.position.set(0, 0.06, i + off);
       swx.receiveShadow = true; swx.matrixAutoUpdate = false; swx.updateMatrix();
       scene.add(swx);
-      const swz = new THREE.Mesh(new THREE.PlaneGeometry(SIDEWALK_W, CITY_RADIUS * 2), sidewalkMat);
+      const swz = new THREE.Mesh(new THREE.PlaneGeometry(SIDEWALK_W, streetLen), sidewalkMatZ);
       swz.rotation.x = -Math.PI / 2;
       swz.position.set(i + off, 0.06, 0);
       swz.receiveShadow = true; swz.matrixAutoUpdate = false; swz.updateMatrix();
@@ -2028,20 +2087,50 @@ export function buildCity(scene, world, opts = {}) {
     }
 
     // Center yellow line per street
-    const lx = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, 0.35), lineMat);
+    const lx = new THREE.Mesh(new THREE.PlaneGeometry(streetLen, 0.35), lineMat);
     lx.rotation.x = -Math.PI / 2; lx.position.set(0, 0.07, i);
     scene.add(lx);
-    const lz = new THREE.Mesh(new THREE.PlaneGeometry(0.35, CITY_RADIUS * 2), lineMat);
+    const lz = new THREE.Mesh(new THREE.PlaneGeometry(0.35, streetLen), lineMat);
     lz.rotation.x = -Math.PI / 2; lz.position.set(i, 0.07, 0);
     scene.add(lz);
 
     // Curbs along street edges
-    const curbX1 = new THREE.Mesh(new THREE.PlaneGeometry(CITY_RADIUS * 2, 0.4), curbMat);
+    const curbX1 = new THREE.Mesh(new THREE.PlaneGeometry(streetLen, 0.4), curbMat);
     curbX1.rotation.x = -Math.PI / 2; curbX1.position.set(0, 0.06, i + STREET / 2 - 0.2); scene.add(curbX1);
     const curbX2 = curbX1.clone(); curbX2.position.z = i - STREET / 2 + 0.2; scene.add(curbX2);
-    const curbZ1 = new THREE.Mesh(new THREE.PlaneGeometry(0.4, CITY_RADIUS * 2), curbMat);
+    const curbZ1 = new THREE.Mesh(new THREE.PlaneGeometry(0.4, streetLen), curbMat);
     curbZ1.rotation.x = -Math.PI / 2; curbZ1.position.set(i + STREET / 2 - 0.2, 0.06, 0); scene.add(curbZ1);
     const curbZ2 = curbZ1.clone(); curbZ2.position.x = i - STREET / 2 + 0.2; scene.add(curbZ2);
+  }
+
+  // Crosswalk decals at intersections
+  const crossMat = new THREE.MeshStandardMaterial({
+    color: 0xeeeeee, roughness: 0.5, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -1,
+  });
+  for (let bx = -CITY_RADIUS; bx <= CITY_RADIUS; bx += BLOCK) {
+    for (let bz = -CITY_RADIUS; bz <= CITY_RADIUS; bz += BLOCK) {
+      // Skip every other intersection for variety
+      if ((Math.abs(bx / BLOCK) + Math.abs(bz / BLOCK)) % 2 !== 0) continue;
+      const stripeW = 0.6, stripeGap = 0.9, stripeCount = 5;
+      const crossLen = STREET - 1;
+      // Two crosswalks per intersection (one each axis)
+      for (let s = 0; s < stripeCount; s++) {
+        const offset = (s - (stripeCount - 1) / 2) * stripeGap;
+        // East-west crosswalk (on the z-axis street)
+        const cxw = new THREE.Mesh(new THREE.PlaneGeometry(stripeW, crossLen), crossMat);
+        cxw.rotation.x = -Math.PI / 2;
+        cxw.position.set(bx + offset, 0.08, bz);
+        cxw.matrixAutoUpdate = false; cxw.updateMatrix();
+        scene.add(cxw);
+        // North-south crosswalk (on the x-axis street)
+        const cxn = new THREE.Mesh(new THREE.PlaneGeometry(crossLen, stripeW), crossMat);
+        cxn.rotation.x = -Math.PI / 2;
+        cxn.position.set(bx, 0.08, bz + offset);
+        cxn.matrixAutoUpdate = false; cxn.updateMatrix();
+        scene.add(cxn);
+      }
+    }
   }
 
   // Reserved zones where landmarks / parks / districts live. Procedural
