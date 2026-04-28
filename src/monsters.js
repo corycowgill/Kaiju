@@ -3,7 +3,7 @@ import * as THREE from 'three';
 // Monster archetypes. Each builds its own mesh hierarchy and exposes power configs.
 export const MONSTERS = {
   godzilla: {
-    name: 'Gojira',
+    name: 'Gorrak',
     emoji: '🦖',
     variant: 'gojira',
     bg: 'linear-gradient(135deg,#1a3d1a,#0a1f0a)',
@@ -17,7 +17,7 @@ export const MONSTERS = {
     charge: { color: 0xffee44, name: 'TAIL SWEEP', damage: 240, cost: 40 },
   },
   ghidorah: {
-    name: 'Ghidorah',
+    name: 'Tridon',
     emoji: '🐲',
     variant: 'ghidorah',
     bg: 'linear-gradient(135deg,#5a4a1a,#2a1a00)',
@@ -26,12 +26,12 @@ export const MONSTERS = {
     color: 0xd4a533,
     bellyColor: 0xffcc55,
     spineColor: 0xff7733,
-    beam: { color: 0xffee66, glow: 0xffff99, name: 'GRAVITY BEAM', damage: 200, cost: 35 },
+    beam: { color: 0xffee66, glow: 0xffff99, name: 'VOLT BEAM', damage: 200, cost: 35 },
     roar: { color: 0x66ccff, name: 'STORM CRY', radius: 80, damage: 160, cost: 25 },
     charge: { color: 0xff66ff, name: 'WING SLAM', damage: 220, cost: 35 },
   },
   mecha: {
-    name: 'MechaKai',
+    name: 'Mechra',
     emoji: '🤖',
     variant: 'mecha',
     bg: 'linear-gradient(135deg,#3a3a4a,#1a1a2a)',
