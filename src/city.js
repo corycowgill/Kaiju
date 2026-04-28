@@ -1742,43 +1742,60 @@ export class Building {
       setTimeout(() => { if (w2.scene) w2.spawnExplosion(this.group.position.clone().setY(this.h * 0.2), 1.2); }, 200);
     }
 
-    // Lots of chunks for satisfying spray
-    const chunks = 14 + Math.floor(Math.random() * 6) + Math.min(8, Math.floor(this.h / 12));
+    // Lots of debris chunks for satisfying spray
+    const useGLBDebris = _debrisTemplates.length > 0;
+    const chunks = 10 + Math.floor(Math.random() * 4) + Math.min(6, Math.floor(this.h / 15));
     for (let i = 0; i < chunks; i++) {
-      const cw = this.w * rand(0.18, 0.55);
-      const ch = this.h * rand(0.08, 0.32);
-      const cd = this.d * rand(0.18, 0.55);
-      const m = new THREE.Mesh(
-        new THREE.BoxGeometry(cw, ch, cd),
-        new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 0.95 })
-      );
+      const targetSize = Math.max(this.w, this.d) * rand(0.25, 0.65);
+      let m;
+      if (useGLBDebris) {
+        m = _cloneDebris(targetSize);
+      }
+      if (!m) {
+        // Fallback to procedural box if GLBs not loaded
+        const cw = this.w * rand(0.18, 0.55);
+        const ch = this.h * rand(0.08, 0.32);
+        const cd = this.d * rand(0.18, 0.55);
+        m = new THREE.Mesh(
+          new THREE.BoxGeometry(cw, ch, cd),
+          new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 0.95 })
+        );
+      }
       m.position.copy(this.group.position);
       m.position.y = this.h * rand(0.2, 0.7);
       m.position.x += rand(-this.w / 3, this.w / 3);
       m.position.z += rand(-this.d / 3, this.d / 3);
-      m.castShadow = true;
+      m.rotation.set(rand(0, Math.PI), rand(0, Math.PI), rand(0, Math.PI));
       m.userData.vel = new THREE.Vector3(rand(-12, 12), rand(10, 22), rand(-12, 12));
       m.userData.angVel = new THREE.Vector3(rand(-5, 5), rand(-5, 5), rand(-5, 5));
-      m.userData.life = 6.5; // longer-lived debris
+      m.userData.life = 6.5;
       world.scene.add(m);
       world.debris.push(m);
     }
 
-    // Ground rubble (low boxes that stay)
-    for (let i = 0; i < 4; i++) {
-      const rw = this.w * rand(0.3, 0.7);
-      const rd = this.d * rand(0.3, 0.7);
-      const rh = rand(1.2, 2.6);
-      const rub = new THREE.Mesh(
-        new THREE.BoxGeometry(rw, rh, rd),
-        new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 1.0 })
-      );
+    // Ground rubble (stays permanently)
+    const rubbleCount = 3 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < rubbleCount; i++) {
+      const rubSize = Math.max(this.w, this.d) * rand(0.35, 0.75);
+      let rub;
+      if (useGLBDebris) {
+        rub = _cloneDebris(rubSize);
+      }
+      if (!rub) {
+        const rw = this.w * rand(0.3, 0.7);
+        const rd = this.d * rand(0.3, 0.7);
+        const rh = rand(1.2, 2.6);
+        rub = new THREE.Mesh(
+          new THREE.BoxGeometry(rw, rh, rd),
+          new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 1.0 })
+        );
+      }
       rub.position.set(
         this.group.position.x + rand(-this.w / 4, this.w / 4),
-        rh / 2,
+        rubSize * 0.15,
         this.group.position.z + rand(-this.d / 4, this.d / 4),
       );
-      rub.rotation.y = Math.random() * Math.PI;
+      rub.rotation.set(rand(-0.2, 0.2), rand(0, Math.PI), rand(-0.2, 0.2));
       rub.castShadow = true; rub.receiveShadow = true;
       world.scene.add(rub);
     }
@@ -1859,6 +1876,49 @@ export function loadBuildingTemplates(onProgress) {
       if (onProgress) onProgress(loaded, total, 'error');
     })
   ));
+}
+
+// --------------- Debris GLB system ---------------
+const DEBRIS_GLB_BASE = './assets/debris/';
+const DEBRIS_GLBS = [
+  DEBRIS_GLB_BASE + 'debris_slab_1.glb',
+  DEBRIS_GLB_BASE + 'debris_twisted_1.glb',
+  DEBRIS_GLB_BASE + 'debris_concrete_1.glb',
+  DEBRIS_GLB_BASE + 'debris_concrete_2.glb',
+  DEBRIS_GLB_BASE + 'debris_concrete_3.glb',
+  DEBRIS_GLB_BASE + 'debris_chunk_1.glb',
+];
+const _debrisTemplates = [];  // array of { scene, box } after loading
+
+export function loadDebrisTemplates() {
+  return Promise.all(DEBRIS_GLBS.map((url) =>
+    _glbLoader.loadAsync(url).then((gltf) => {
+      const s = gltf.scene;
+      s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      _debrisTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s) });
+    }).catch((err) => {
+      console.warn('[DebrisGLB] Failed to load', url, err.message);
+    })
+  ));
+}
+
+function _pickDebrisTemplate() {
+  if (_debrisTemplates.length === 0) return null;
+  return _debrisTemplates[Math.floor(Math.random() * _debrisTemplates.length)];
+}
+
+function _cloneDebris(targetSize) {
+  const tpl = _pickDebrisTemplate();
+  if (!tpl) return null;
+  const root = tpl.scene.clone(true);
+  const rawSize = Math.max(
+    tpl.box.max.x - tpl.box.min.x,
+    tpl.box.max.y - tpl.box.min.y,
+    tpl.box.max.z - tpl.box.min.z,
+  );
+  const s = rawSize > 0 ? targetSize / rawSize : 1;
+  root.scale.setScalar(s);
+  return root;
 }
 
 /** Clone a loaded template, scale to targetHeight, wire onto Building. */

@@ -10,7 +10,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, flushPendingGLBBuildings } from './city.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, flushPendingGLBBuildings } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
@@ -1056,7 +1056,7 @@ async function _startGameInner(key) {
       loadingPct.textContent = pct + '%';
     }
 
-    // Load kaiju model + all building GLB templates in parallel
+    // Load kaiju model + building GLBs + debris GLBs in parallel
     const [glb] = await Promise.all([
       loadKaijuModel(key, (loaded, total, label) => {
         progress.kaijuLoaded = loaded;
@@ -1070,6 +1070,7 @@ async function _startGameInner(key) {
         loadingStatus.textContent = 'BUILDING: ' + label.toUpperCase();
         updateLoadingUI();
       }),
+      loadDebrisTemplates(),
     ]);
 
     // Clone + place every queued building now that templates are loaded
@@ -2684,6 +2685,7 @@ function updateWorld(dt) {
     d.userData.life -= dt;
     if (d.userData.life <= 0) {
       scene.remove(d);
+      d.traverse?.(o => { if (o.geometry) o.geometry.dispose(); });
       world.debris.splice(i, 1);
     }
   }
@@ -2693,6 +2695,7 @@ function updateWorld(dt) {
     for (let i = 0; i < drop; i++) {
       const d = world.debris[i];
       if (d && d.parent) d.parent.remove(d);
+      d?.traverse?.(o => { if (o.geometry) o.geometry.dispose(); });
     }
     world.debris.splice(0, drop);
   }
