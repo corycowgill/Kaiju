@@ -229,9 +229,9 @@ if (Q_HIGH) {
   sun.shadow.mapSize.set(1024, 1024);
   // Tight frustum: kaiju + ~80u radius around it. We retarget per frame
   // (see updateCamera) so distant buildings never enter the shadow camera.
-  sun.shadow.camera.left = -200; sun.shadow.camera.right = 200;
-  sun.shadow.camera.top = 200;   sun.shadow.camera.bottom = -200;
-  sun.shadow.camera.near = 1;   sun.shadow.camera.far = 500;
+  sun.shadow.camera.left = -150; sun.shadow.camera.right = 150;
+  sun.shadow.camera.top = 150;   sun.shadow.camera.bottom = -150;
+  sun.shadow.camera.near = 1;   sun.shadow.camera.far = 380;
   sun.shadow.bias = -0.0005;
 }
 scene.add(sun);
@@ -1781,11 +1781,11 @@ function fireBeam() {
     state.kaiju.glb.playOnce(anim, 0.15);
   }
   state.kaiju.head.getWorldPosition(_beamOrigin);
-  _beamOrigin.y += 2;
+  _beamOrigin.y += 1.5;
   // direction = camera forward, biased horizontally toward enemies
   camera.getWorldDirection(_beamDir);
   _beamDir.y *= 0.4; _beamDir.normalize();
-  _beamOrigin.addScaledVector(_beamDir, 10);
+  _beamOrigin.addScaledVector(_beamDir, 7.5);
 
   const length = 260;
   world.spawnBeam(_beamOrigin, _beamDir, length, cfg.color, cfg.glow);
@@ -1897,7 +1897,7 @@ function fireRoar() {
   roarHead.getWorldPosition(roarHeadPos);
   const roarDir = new THREE.Vector3(Math.sin(state.yaw), 0.05, Math.cos(state.yaw));
   world.effects.push(makeSoundWaveRings(world, roarHeadPos, cfg.color, 3, cfg.radius * 0.95, 1.4));
-  world.effects.push(makeBreathCone(world, roarHeadPos, roarDir, 80, cfg.color, 0.8));
+  world.effects.push(makeBreathCone(world, roarHeadPos, roarDir, 60, cfg.color, 0.8));
 
   // Per-variant signature VFX layered on top of the shared shockwave.
   if (variant === 'gojira') {
@@ -1957,9 +1957,9 @@ function fireCharge() {
   if (variant === 'gojira') {
     if (state.kaiju.glb) {
       // GLB model: apply tail sweep damage directly (animation handles visuals)
-      const sweepCenter = state.kaiju.root.position.clone().addScaledVector(forward, -20);
-      damageInRadius(sweepCenter, 45, cfg.damage, false);
-      world.spawnShockwave(sweepCenter, cfg.color, 50);
+      const sweepCenter = state.kaiju.root.position.clone().addScaledVector(forward, -15);
+      damageInRadius(sweepCenter, 34, cfg.damage, false);
+      world.spawnShockwave(sweepCenter, cfg.color, 38);
       world.shake(0.8, 0.4);
       world.effects.push(makeTailSweep(world, state.kaiju.root.position, state.yaw, cfg.color));
     } else {
@@ -1973,19 +1973,19 @@ function fireCharge() {
   }
 
   // Other variants DASH forward.
-  const cone = startPos.clone().addScaledVector(forward, 30);
-  damageInRadius(cone, 50, cfg.damage, false);
-  state.kaiju.root.position.addScaledVector(forward, 55);
+  const cone = startPos.clone().addScaledVector(forward, 22);
+  damageInRadius(cone, 38, cfg.damage, false);
+  state.kaiju.root.position.addScaledVector(forward, 42);
   resolveBuildingCollisions(state.kaiju.root.position, 0.5);
   const endPos = state.kaiju.root.position.clone();
-  world.spawnShockwave(endPos, cfg.color, 55);
-  world.shake(0.9, 0.5);
-  damageInRadius(endPos, 45, cfg.damage * 0.5, false);
+  world.spawnShockwave(endPos, cfg.color, 42);
+  world.shake(0.8, 0.45);
+  damageInRadius(endPos, 34, cfg.damage * 0.5, false);
   audio.charge();
 
   // Universal motion read: 10 wind streaks fanning forward from the dash
   // start so the player sees the impact direction even from behind.
-  const streakOrigin = startPos.clone(); streakOrigin.y += 20;
+  const streakOrigin = startPos.clone(); streakOrigin.y += 15;
   world.effects.push(makeWindStreaks(world, streakOrigin, forward, 0xffffff, 10));
 
   // Per-variant signature trail
@@ -2041,7 +2041,7 @@ function fireUltimate() {
   head.getWorldPosition(origin);
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir); dir.y *= 0.4; dir.normalize();
-  origin.addScaledVector(dir, 12.0);
+  origin.addScaledVector(dir, 9.0);
 
   world.shake(2.5, 1.4);
   const center = state.kaiju.root.position.clone();
@@ -2137,9 +2137,9 @@ function fireMelee() {
   if (state.cooldowns.melee > 0) return;
   state.cooldowns.melee = 0.6;
   const forward = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
-  const center = state.kaiju.root.position.clone().addScaledVector(forward, 25);
+  const center = state.kaiju.root.position.clone().addScaledVector(forward, 19);
   const dmg = state.monsterCfg.stats.melee;
-  damageInRadius(center, 30, dmg, false);
+  damageInRadius(center, 22, dmg, false);
   state.rage = Math.min(state.maxRage, state.rage + 4);
   // Animate arm swing (GLB uses punch combo, procedural uses armR swing)
   if (state.kaiju.glb) {
@@ -2155,7 +2155,7 @@ function fireMelee() {
 // Resolve kaiju-vs-buildings as a circle-vs-AABB push, while wearing the
 // building down. Walking into a building no longer phases through it; you
 // have to crush it down (or use beam/charge/melee) to pass.
-const KAIJU_BODY_RADIUS = 14.4;
+const KAIJU_BODY_RADIUS = 10.8;
 function resolveBuildingCollisions(pos, dt) {
   if (!state.monsterCfg) return;
   const radius = KAIJU_BODY_RADIUS * (state.monsterCfg.stats.scale || 1);
@@ -2224,7 +2224,7 @@ function updatePlayer(dt) {
   // Speed multipliers bumped: walk ~16 (was 11), sprint ~28 (was 18). Combined
   // with the per-monster `stats.speed` scalar this is roughly +50% across the
   // board so the kaiju actually feels like a kaiju.
-  const speed = state.monsterCfg.stats.speed * (sprint ? 56 : 32) * state.upgrades.speedMult;
+  const speed = state.monsterCfg.stats.speed * (sprint ? 42 : 24) * state.upgrades.speedMult;
 
   let mx = 0, mz = 0;
   if (keys.KeyW) mz += 1;
@@ -2313,7 +2313,7 @@ function updatePlayer(dt) {
     if (state._stompJumpT > 0) {
       const dur = state._stompJumpD || 0.55;
       const t = 1 - state._stompJumpT / dur;
-      const JUMP_PEAK_H = 50;
+      const JUMP_PEAK_H = 38;
       k.root.position.y = JUMP_PEAK_H * 4 * t * (1 - t);
     } else {
       if (!state._stompImpacted && state._stompJumpD) {
@@ -2343,8 +2343,8 @@ function updatePlayer(dt) {
       if (!state._lastPhase) state._lastPhase = phase;
       if ((state._lastPhase < Math.PI && phase >= Math.PI) || (state._lastPhase > phase)) {
         const footPos = k.root.position.clone();
-        damageInRadius(footPos, 20, 60, false, true);
-        world.shake(0.15, 0.18);
+        damageInRadius(footPos, 15, 60, false, true);
+        world.shake(0.12, 0.15);
         audio.footstep();
       }
       state._lastPhase = phase;
@@ -2396,7 +2396,7 @@ function updatePlayer(dt) {
     const dur = state._stompJumpD || 0.55;
     const t = 1 - state._stompJumpT / dur; // 0..1
     // Parabolic arc: peaks at t=0.5, lands at t=1
-    const JUMP_PEAK_H = 50;
+    const JUMP_PEAK_H = 38;
     k.root.position.y = JUMP_PEAK_H * 4 * t * (1 - t);
     // Heavy forward pitch during the slam-down half (looks like a body slam)
     if (t > 0.55) {
@@ -2413,17 +2413,17 @@ function updatePlayer(dt) {
       state._stompImpacted = true;
       state._stompJumpD = 0;
       const impactPos = k.root.position.clone();
-      world.spawnShockwave(impactPos, 0xffcc44, 100);
-      world.spawnShockwave(impactPos, 0xffaa66, 60);
-      world.effects.push(makeDustBurst(world, impactPos, 50, 18));
-      world.shake(1.5, 0.7);
-      damageInRadius(impactPos, 65, 220, true);
+      world.spawnShockwave(impactPos, 0xffcc44, 75);
+      world.spawnShockwave(impactPos, 0xffaa66, 45);
+      world.effects.push(makeDustBurst(world, impactPos, 38, 16));
+      world.shake(1.3, 0.6);
+      damageInRadius(impactPos, 50, 220, true);
       audio.stomp();
     }
-    const bobAmt = moving ? (sprint ? 2.8 : 2.0) : 0.0;
+    const bobAmt = moving ? (sprint ? 2.1 : 1.5) : 0.0;
     k.root.position.y = moving
       ? sw2 * bobAmt
-      : Math.sin(tIdle * 1.5) * 0.6; // breathing
+      : Math.sin(tIdle * 1.5) * 0.45; // breathing
   }
 
   // ----- Legs -----
@@ -2609,26 +2609,26 @@ function updateCamera() {
   // Sun offset stays constant relative to the kaiju so shadows follow it
   // through the city without ever overflowing the 90u shadow camera.
   if (sun && Q_HIGH) {
-    sun.position.set(k.root.position.x - 180, 180, k.root.position.z + 80);
+    sun.position.set(k.root.position.x - 135, 135, k.root.position.z + 60);
   }
   k.head.getWorldPosition(_camHead);
-  const desiredDist = 90;
+  const desiredDist = 68;
   _camOffset.set(
     -Math.sin(state.yaw),
-    (50 - state.pitch * 45) / desiredDist,
+    (38 - state.pitch * 34) / desiredDist,
     -Math.cos(state.yaw)
   ).normalize();
 
   let dist = desiredDist;
   _camRay.set(_camHead, _camOffset);
-  _camRay.far = desiredDist + 4;
+  _camRay.far = desiredDist + 3;
   _camRay.near = 0.1;
 
   // One raycast against the global building InstancedMesh -- Three.js does
   // the per-instance bounds tests internally, no candidate filtering needed.
   if (world.bodiesIM) {
     const hit = _camRay.intersectObject(world.bodiesIM, false)[0];
-    if (hit && hit.distance < dist) dist = Math.max(20, hit.distance - 3);
+    if (hit && hit.distance < dist) dist = Math.max(15, hit.distance - 2);
   }
 
   _camTarget.copy(_camHead).addScaledVector(_camOffset, dist);
@@ -2643,7 +2643,7 @@ function updateCamera() {
   }
   camera.position.lerp(target, 0.18);
   _camLook.copy(_camHead);
-  _camLook.y += state.pitch * 48;
+  _camLook.y += state.pitch * 36;
   camera.lookAt(_camLook);
 }
 
