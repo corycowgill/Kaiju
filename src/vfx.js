@@ -485,6 +485,210 @@ function _spawnAtomicDomeShader(opts) {
   });
 }
 
+// ----- Shader-based atomic devastation (replaces makeAtomicDevastation, effects.js:827) -----
+//
+// Gojira's ultimate. Six layered meshes (flash, green fireball, stem,
+// stem core, cap, cap core) plus 8 rising wisps and 16 ballistic debris
+// chunks span a 3.5s timeline that the player watches end-to-end. The
+// legacy version used flat MeshBasicMaterial on every layer so the cloud
+// looked like stacked translucent geometry. This version reuses the
+// energy-field dome shader on every glowing surface, varying only the
+// color uniform per layer, so the stem and cap read as a contained
+// nuclear column with a boiling cap rim instead of opaque green shapes.
+// All animation curves (rise heights, scale lerps, opacity gates, boil
+// rotations) are preserved verbatim from the legacy maker.
+function _makeEnergyMaterial(colorHex) {
+  const uniforms = {
+    noiseTex:  { value: NOISE_TEX },
+    baseColor: { value: new THREE.Color(colorHex) },
+    time:      { value: 0 },
+    t01:       { value: 0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: _DOME_VS,
+    fragmentShader: _DOME_FS,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  return { mat, uniforms };
+}
+
+// Geometries shared across atomic devastation spawns.
+const _G_AD_FLASH    = new THREE.SphereGeometry(1, 24, 16);
+const _G_AD_FIREBALL = new THREE.SphereGeometry(1, 20, 14);
+const _G_AD_STEM     = new THREE.CylinderGeometry(10, 22, 1, 18, 1, true);
+const _G_AD_STEMCORE = new THREE.CylinderGeometry(5, 12, 1, 14, 1, true);
+const _G_AD_CAP      = new THREE.SphereGeometry(1, 20, 14);
+const _G_AD_CAPCORE  = new THREE.SphereGeometry(1, 16, 12);
+
+function _spawnAtomicDevastationShader(opts) {
+  const { world, pos, args = [] } = opts;
+  const color = args[0] !== undefined ? args[0] : 0x66ff66;
+
+  // 1. Blinding white flash at ground zero.
+  const flashGear = _makeEnergyMaterial(0xffffff);
+  const flash = new THREE.Mesh(_G_AD_FLASH, flashGear.mat);
+  flash.position.copy(pos); flash.position.y = 8;
+  flash.scale.setScalar(10);
+  world.scene.add(flash);
+
+  // 2. Toxic-green fireball core.
+  const fireGear = _makeEnergyMaterial(color);
+  const fireball = new THREE.Mesh(_G_AD_FIREBALL, fireGear.mat);
+  fireball.position.copy(pos); fireball.position.y = 10;
+  world.scene.add(fireball);
+
+  // 3. Mushroom stem - tapered cylinder rising from ground to cap height.
+  const stemGear = _makeEnergyMaterial(color);
+  const stem = new THREE.Mesh(_G_AD_STEM, stemGear.mat);
+  stem.position.copy(pos); stem.position.y = 0.5;
+  world.scene.add(stem);
+  // Brighter inner stem core for depth.
+  const stemCoreGear = _makeEnergyMaterial(0xeeffcc);
+  const stemCore = new THREE.Mesh(_G_AD_STEMCORE, stemCoreGear.mat);
+  stemCore.position.copy(pos); stemCore.position.y = 0.5;
+  world.scene.add(stemCore);
+
+  // 4. Mushroom cap - squashed sphere balloons outward at the top.
+  const capGear = _makeEnergyMaterial(color);
+  const cap = new THREE.Mesh(_G_AD_CAP, capGear.mat);
+  cap.position.copy(pos); cap.position.y = 60;
+  world.scene.add(cap);
+  // Inner "boiling" core.
+  const capCoreGear = _makeEnergyMaterial(0xddffaa);
+  const capCore = new THREE.Mesh(_G_AD_CAPCORE, capCoreGear.mat);
+  capCore.position.copy(cap.position);
+  world.scene.add(capCore);
+
+  // 5. Radial debris - 16 ballistic chunks. Kept as opaque box meshes
+  // because they're meant to read as solid earth being thrown skyward;
+  // the dome shader would make them ghostly. Same physics as legacy.
+  const debris = [];
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2 + Math.random() * 0.4;
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(2 + Math.random() * 2.5, 2 + Math.random() * 2.5, 2 + Math.random() * 2.5),
+      new THREE.MeshBasicMaterial({ color: 0x3a4a2a, transparent: true, opacity: 0.85, depthWrite: false }),
+    );
+    m.position.copy(pos);
+    m.position.y = 6 + Math.random() * 4;
+    const speed = 50 + Math.random() * 40;
+    m.userData.vel = new THREE.Vector3(
+      Math.cos(a) * speed,
+      28 + Math.random() * 30,
+      Math.sin(a) * speed,
+    );
+    m.userData.spin = new THREE.Vector3(
+      (Math.random() - 0.5) * 5,
+      (Math.random() - 0.5) * 5,
+      (Math.random() - 0.5) * 5,
+    );
+    world.scene.add(m);
+    debris.push(m);
+  }
+
+  // 6. Rising wisps along the stem - 8 staggered green puffs.
+  const wisps = [];
+  for (let i = 0; i < 8; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 8 + Math.random() * 12;
+    const gear = _makeEnergyMaterial(color);
+    const m = new THREE.Mesh(_G_FIREBALL, gear.mat);
+    m.position.set(pos.x + Math.cos(a) * r, 8 + i * 9, pos.z + Math.sin(a) * r);
+    m.userData.startY = m.position.y;
+    m.userData.delay = i * 0.08;
+    m.userData.gear = gear;
+    m.scale.setScalar(3 + Math.random() * 2);
+    world.scene.add(m);
+    wisps.push(m);
+  }
+
+  const totalLife = 3.5;
+  return new VFXEffect(flash, totalLife, (dt, t) => {
+    // Tick all energy-field uniforms together so the cloud breathes in sync.
+    const tickEnergy = (gear, opacity, localT) => {
+      gear.uniforms.time.value = (gear.uniforms.time.value + dt) % 1000;
+      // Encode (1 - opacity_factor) into t01 so the shader's (1.0 - t01)
+      // alpha multiplier behaves like the legacy opacity pulls.
+      gear.uniforms.t01.value = 1.0 - Math.max(0, Math.min(1, opacity));
+    };
+
+    // Flash: peaks instantly, fades in 1/6 of the lifetime.
+    flash.scale.setScalar(10 + t * 50);
+    tickEnergy(flashGear, Math.max(0, 1 - t * 6), t);
+
+    // Fireball: balloons fast for first 25% then collapses upward.
+    const fbT = Math.min(1, t * 4);
+    fireball.scale.setScalar(8 + fbT * 26);
+    fireball.position.y = 10 + Math.min(1, t * 2.5) * 35;
+    tickEnergy(fireGear, (1 - Math.pow(t, 0.6)) * 0.9, t);
+
+    // Stem: rises to ~95u then holds + thins out.
+    const stemH = THREE.MathUtils.lerp(4, 95, Math.min(1, t * 1.4));
+    stem.scale.set(1 + t * 0.4, stemH, 1 + t * 0.4);
+    stem.position.y = stemH / 2;
+    stemCore.scale.set(1, stemH * 0.95, 1);
+    stemCore.position.y = stemH / 2;
+    const stemFade = (1 - Math.max(0, t - 0.55) / 0.45);
+    tickEnergy(stemGear,     Math.min(0.7, t * 3) * stemFade, t);
+    tickEnergy(stemCoreGear, Math.min(0.85, t * 3) * stemFade * 0.9, t);
+
+    // Cap: rises up the stem and balloons outward.
+    const capRise = THREE.MathUtils.lerp(35, 115, Math.min(1, t * 1.15));
+    cap.position.y = capRise;
+    capCore.position.y = capRise;
+    const capR = THREE.MathUtils.lerp(10, 60, Math.min(1, Math.pow(t, 0.55)));
+    cap.scale.set(capR, capR * 0.65, capR);
+    capCore.scale.set(capR * 0.55, capR * 0.5, capR * 0.55);
+    const capFade = (1 - Math.max(0, t - 0.6) / 0.4);
+    tickEnergy(capGear,     Math.min(0.7, t * 2.5) * capFade, t);
+    tickEnergy(capCoreGear, Math.min(0.95, t * 2.5) * capFade, t);
+    // Slow boil rotation - the noise scroll already adds animation, but
+    // the rotation gives the cap a sense of mass and weight.
+    cap.rotation.y     += dt * 0.35;
+    capCore.rotation.y -= dt * 0.55;
+    capCore.rotation.x = Math.sin(t * 4) * 0.15;
+
+    // Debris ballistics + tumble; fade as they land.
+    for (const d of debris) {
+      d.position.addScaledVector(d.userData.vel, dt);
+      d.userData.vel.y -= 38 * dt;
+      d.rotation.x += d.userData.spin.x * dt;
+      d.rotation.y += d.userData.spin.y * dt;
+      d.rotation.z += d.userData.spin.z * dt;
+      if (d.position.y < 0.5) { d.position.y = 0.5; d.userData.vel.set(0, 0, 0); }
+      d.material.opacity = Math.max(0, 0.85 - t * 0.9);
+    }
+
+    // Wisps: rise up the stem with their delay; fade in then out.
+    for (const w of wisps) {
+      const local = Math.max(0, t - w.userData.delay / totalLife);
+      w.position.y = w.userData.startY + local * 75;
+      const fade = Math.min(1, local * 4) * (1 - local) * 0.55;
+      tickEnergy(w.userData.gear, fade, local);
+      w.scale.setScalar(3 + local * 8);
+    }
+
+    if (t >= 1) {
+      world.scene.remove(flash); world.scene.remove(fireball);
+      world.scene.remove(stem);  world.scene.remove(stemCore);
+      world.scene.remove(cap);   world.scene.remove(capCore);
+      for (const d of debris) world.scene.remove(d);
+      for (const w of wisps)  world.scene.remove(w);
+      flashGear.mat.dispose();
+      fireGear.mat.dispose();
+      stemGear.mat.dispose();
+      stemCoreGear.mat.dispose();
+      capGear.mat.dispose();
+      capCoreGear.mat.dispose();
+      for (const w of wisps) w.userData.gear.mat.dispose();
+    }
+  });
+}
+
 // ----- Shader-based shockwave (replaces makeShockwave from effects.js:212) -----
 //
 // One ring + shader replaces the legacy 2-ring stack (white inner +
@@ -759,7 +963,7 @@ export function registerLegacyEffects(legacy) {
   registerBuilder('smokeColumn',        wrapPosArgs(legacy.makeSmokeColumn));
   registerBuilder('hitPulse',           wrapPosArgs(legacy._makeHitPulseLegacy || legacy.makeHitPulse));
   registerBuilder('atomicDome',         wrapPosArgs(legacy._makeAtomicDomeLegacy || legacy.makeAtomicDome));
-  registerBuilder('atomicDevastation',  wrapPosArgs(legacy.makeAtomicDevastation));
+  registerBuilder('atomicDevastation',  wrapPosArgs(legacy._makeAtomicDevastationLegacy || legacy.makeAtomicDevastation));
   registerBuilder('soundRings',         wrapPosArgs(legacy._makeSoundWaveRingsLegacy || legacy.makeSoundWaveRings));
   registerBuilder('wingSlash',          wrapPosArgs(legacy.makeWingSlash));
   registerBuilder('tailSweep',          wrapPosArgs(legacy.makeTailSweep));
@@ -811,13 +1015,14 @@ export function spawn(name, opts) {
 // helper that runs both phases in the correct order).
 function _registerUpgradedBuilders() {
   if (LEGACY_VFX) return;
-  registerBuilder('beam',           _spawnBeamShader);
-  registerBuilder('chainLightning', _spawnChainLightningShader);
-  registerBuilder('explosion',      _spawnExplosionShader);
-  registerBuilder('atomicDome',     _spawnAtomicDomeShader);
-  registerBuilder('shockwave',      _spawnShockwaveShader);
-  registerBuilder('soundRings',     _spawnSoundRingsShader);
-  registerBuilder('hitPulse',       _spawnHitPulseShader);
+  registerBuilder('beam',              _spawnBeamShader);
+  registerBuilder('chainLightning',    _spawnChainLightningShader);
+  registerBuilder('explosion',         _spawnExplosionShader);
+  registerBuilder('atomicDome',        _spawnAtomicDomeShader);
+  registerBuilder('atomicDevastation', _spawnAtomicDevastationShader);
+  registerBuilder('shockwave',         _spawnShockwaveShader);
+  registerBuilder('soundRings',        _spawnSoundRingsShader);
+  registerBuilder('hitPulse',          _spawnHitPulseShader);
 }
 
 // Convenience: register legacy fallbacks first, then upgrade overrides.

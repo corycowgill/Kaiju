@@ -819,12 +819,21 @@ export function makeMissileLaunchFlash(world, pos) {
   });
 }
 
+// Public makeAtomicDevastation shim. Routes through vfx.spawn for the
+// shader-based mushroom cloud in src/vfx.js, with the legacy fallback
+// preserved.
+export function makeAtomicDevastation(world, pos, color = 0x66ff66) {
+  if (LEGACY_VFX) return _makeAtomicDevastationLegacy(world, pos, color);
+  const e = vfx.spawn('atomicDevastation', { world, pos, args: [color] });
+  return e || _makeAtomicDevastationLegacy(world, pos, color);
+}
+
 // ============== Atomic devastation (gojira ultimate) ==============
 // Layered nuclear blast: blinding flash, mushroom-cloud stem + cap that
 // rises and balloons, debris flung outward, and the cap "boils" via slow
 // rotation of an offset core. Lives 3.5s so the player sees the cloud
 // ascend before it dissipates.
-export function makeAtomicDevastation(world, pos, color = 0x66ff66) {
+export function _makeAtomicDevastationLegacy(world, pos, color = 0x66ff66) {
   // 1. Blinding white flash at ground zero
   const flash = new THREE.Mesh(
     new THREE.SphereGeometry(1, 24, 16),
