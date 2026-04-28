@@ -1804,74 +1804,100 @@ export class Building {
   }
 }
 
-// --------------- GLB landmark loader ---------------
-// Loads a GLB file, measures its bounding box, and scales it to the target
-// height.  Returns a THREE.Group ready to place in the scene.  The load is
-// async; we swap it onto the Building.customMesh when it arrives.
+// --------------- GLB building system ---------------
 const _glbLoader = new GLTFLoader();
+const _glbTemplates = new Map();
 
-function loadBuildingGLB(url, targetHeight, building, scene) {
-  console.log('[BuildingGLB] Starting load:', url);
-  return _glbLoader.loadAsync(url).then((gltf) => {
-    console.log('[BuildingGLB] Loaded OK:', url);
-    _applyBuildingGLB(gltf, targetHeight, building, scene, url);
-  }).catch((err) => {
-    // Swallow individual landmark fetch failures so one bad CDN/edge
-    // hiccup doesn't reject the whole Promise.all and lock startGame
-    // (which used to leave _startingGame=true forever and brick the
-    // start button on any future click). The Building keeps its
-    // procedural box body as a visual fallback.
-    console.warn('[BuildingGLB] Failed to load, keeping procedural mesh:', url, err);
-  });
+const BLDG_GLB_BASE = './assets/buildings/';
+const BLDG_POOL_TALL = [
+  BLDG_GLB_BASE + 'skyscraper_large_1.glb',
+  BLDG_GLB_BASE + 'skyscraper_large_2.glb',
+  BLDG_GLB_BASE + 'narrow_tall_1.glb',
+  BLDG_GLB_BASE + 'narrow_tall_2.glb',
+];
+const BLDG_POOL_MEDIUM = [
+  BLDG_GLB_BASE + 'skyscraper_medium_1.glb',
+  BLDG_GLB_BASE + 'skyscraper_medium_2.glb',
+  BLDG_GLB_BASE + 'condo_1.glb',
+  BLDG_GLB_BASE + 'condo_2.glb',
+];
+const BLDG_POOL_SHORT = [
+  BLDG_GLB_BASE + 'shopping_1.glb',
+  BLDG_GLB_BASE + 'shopping_2.glb',
+  BLDG_GLB_BASE + 'shopping_3.glb',
+];
+
+const ALL_BUILDING_GLBS = [
+  ...BLDG_POOL_TALL, ...BLDG_POOL_MEDIUM, ...BLDG_POOL_SHORT,
+  BLDG_GLB_BASE + 'tokyo_tower.glb',
+  BLDG_GLB_BASE + 'tokyo_skytree.glb',
+  BLDG_GLB_BASE + 'cocoon_tower.glb',
+  BLDG_GLB_BASE + 'twin_towers.glb',
+  BLDG_GLB_BASE + 'nuclear_plant.glb',
+  BLDG_GLB_BASE + 'pagoda.glb',
+  BLDG_GLB_BASE + 'roppongi_hills.glb',
+  BLDG_GLB_BASE + 'tokyo_dome.glb',
+  BLDG_GLB_BASE + 'buddhist_temple.glb',
+  BLDG_GLB_BASE + 'shinto_shrine.glb',
+];
+
+/** Load all unique building GLB templates once. */
+export function loadBuildingTemplates() {
+  const unique = [...new Set(ALL_BUILDING_GLBS)];
+  return Promise.all(unique.map((url) =>
+    _glbLoader.loadAsync(url).then((gltf) => {
+      const s = gltf.scene;
+      s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      _glbTemplates.set(url, { scene: s, box: new THREE.Box3().setFromObject(s) });
+    }).catch((err) => {
+      console.warn('[BuildingGLB] Failed to load template', url, err.message);
+    })
+  ));
 }
 
-function _applyBuildingGLB(gltf, targetHeight, building, scene, url) {
-  // If the building was already destroyed before the model loaded, bail.
-  if (building.destroyed) return;
+/** Clone a loaded template, scale to targetHeight, wire onto Building. */
+function placeBuildingGLB(url, targetHeight, building, scene) {
+  const tpl = _glbTemplates.get(url);
+  if (!tpl || building.destroyed) return;
 
-  const root = gltf.scene;
-
-  // Measure raw bounding box and compute uniform scale
-  const box = new THREE.Box3().setFromObject(root);
-  const rawH = box.max.y - box.min.y;
+  const root = tpl.scene.clone(true);
+  const rawH = tpl.box.max.y - tpl.box.min.y;
   const s = rawH > 0 ? targetHeight / rawH : 1;
   root.scale.setScalar(s);
 
-  // Enable shadows on all meshes
-  root.traverse((o) => {
-    if (o.isMesh) {
-      o.castShadow = true;
-      o.receiveShadow = true;
-    }
-  });
-
-  // Re-measure after scaling to get the actual world-space footprint
   const boxScaled = new THREE.Box3().setFromObject(root);
-
-  // Update the building's collision dimensions to match the GLB model
   building.w = boxScaled.max.x - boxScaled.min.x;
   building.d = boxScaled.max.z - boxScaled.min.z;
   building.h = boxScaled.max.y - boxScaled.min.y;
 
-  // Shift so the bottom of the model sits at y=0 (some exports have offset origins)
   const yOffset = Math.abs(boxScaled.min.y) > 0.5 ? -boxScaled.min.y : 0;
-
-  // Center the model on the building's x/z so the AABB hitbox aligns
   const centerX = (boxScaled.min.x + boxScaled.max.x) / 2;
   const centerZ = (boxScaled.min.z + boxScaled.max.z) / 2;
   root.position.set(building.x - centerX, yOffset, building.z - centerZ);
   root.matrixAutoUpdate = false;
   root.updateMatrix();
 
-  // Remove the old procedural customMesh if one exists
   if (building.customMesh && building.customMesh.parent) {
     building.customMesh.parent.remove(building.customMesh);
   }
-
-  // Wire up the new GLB mesh
   building.customMesh = root;
   scene.add(root);
-  console.log('[BuildingGLB] Placed:', url, 'at', building.x, building.z, 'w', building.w.toFixed(1), 'd', building.d.toFixed(1), 'h', building.h.toFixed(1));
+}
+
+const _pendingGLBBuildings = [];
+
+function pickBuildingGLB(h) {
+  if (h >= 40) return BLDG_POOL_TALL[Math.floor(Math.random() * BLDG_POOL_TALL.length)];
+  if (h >= 18) return BLDG_POOL_MEDIUM[Math.floor(Math.random() * BLDG_POOL_MEDIUM.length)];
+  return BLDG_POOL_SHORT[Math.floor(Math.random() * BLDG_POOL_SHORT.length)];
+}
+
+/** Called after templates load to clone + place every queued building. */
+export function flushPendingGLBBuildings(scene) {
+  for (const entry of _pendingGLBBuildings) {
+    placeBuildingGLB(entry.url, entry.h, entry.building, scene);
+  }
+  _pendingGLBBuildings.length = 0;
 }
 
 export function buildCity(scene, world, opts = {}) {
@@ -1948,23 +1974,18 @@ export function buildCity(scene, world, opts = {}) {
   const RIVER_WIDTH = 26;
   const RESERVED = [
     { kind: 'c', x: 160, z: -160, r: 28 },     // Tokyo Tower
-    { kind: 'c', x: -180, z: 140, r: 50 },     // Imperial Palace compound
+    { kind: 'c', x: -180, z: 140, r: 50 },     // Imperial Palace pagoda
     { kind: 'c', x: 200, z: 200, r: 28 },      // Park 1
     { kind: 'c', x: -200, z: -200, r: 28 },    // Park 2
     { kind: 'c', x: 220, z: 60, r: 22 },       // Park 3
-    { kind: 'c', x: 240, z: -200, r: 64 },     // Factory district
     { kind: 'c', x: -240, z: -200, r: 60 },    // Nuclear plant
-    // Real-Tokyo landmark towers
+    // Landmark towers
     { kind: 'c', x:  -90, z: -40,  r: 26 },    // Twin Towers (TMG)
     { kind: 'c', x:  220, z: -40,  r: 22 },    // Tokyo Skytree
     { kind: 'c', x:  120, z:  160, r: 18 },    // Cocoon Tower
-    { kind: 'c', x: -100, z: -180, r: 26 },    // Asahi HQ
-    { kind: 'c', x:  -60, z:  220, r: 22 },    // NTT DOCOMO
-    { kind: 'c', x:   60, z:  220, r: 22 },    // Kabukiza
-    { kind: 'c', x:  -60, z: -100, r: 18 },    // Mori JP Tower
-    { kind: 'c', x: -120, z:   60, r: 22 },    // Shibuya Scramble Square
-    { kind: 'c', x:  120, z: -100, r: 28 },    // Construction site
-    // Pagoda shrines
+    { kind: 'c', x:  -60, z: -100, r: 18 },    // Roppongi Hills Mori Tower
+    { kind: 'c', x:   80, z:   60, r: 30 },    // Tokyo Dome Stadium
+    // Temples/shrines
     { kind: 'c', x: -260, z:  100, r: 18 },    // Western pagoda
     { kind: 'c', x:  180, z:  260, r: 18 },    // Northeast pagoda
     // Small street-level landmarks (koban / yatai cluster)
@@ -2010,73 +2031,43 @@ export function buildCity(scene, world, opts = {}) {
         const h = rand(8, 60) * (0.4 + tallness);
         const offX = n === 2 ? (i === 0 ? -BLOCK/4 : BLOCK/4) : rand(-2, 2);
         const offZ = rand(-2, 2);
-        const b = new Building(bx + offX, bz + offZ, w, d, h);
-        // Buildings never move until destroyed -- skip per-frame matrix
-        // multiplication and only refresh when collapse mutates them.
+        const b = new Building(bx + offX, bz + offZ, w, d, h, { skipWindows: true });
+        b._skipBodyIM = true;
         b.group.matrixAutoUpdate = false;
         b.group.updateMatrix();
         scene.add(b.group);
         buildings.push(b);
         grid.add(b);
+        _pendingGLBBuildings.push({ url: pickBuildingGLB(h), h, building: b });
       }
     }
   }
 
-  // Add some landmark buildings (regular skyscrapers)
-  const landmarks = [
-    { x: 80, z: 60, w: 18, d: 18, h: 110, color: 0xddccaa },
-  ];
-  for (const lm of landmarks) {
-    const b = new Building(lm.x, lm.z, lm.w, lm.d, lm.h, { color: lm.color });
+  // ---------- GLB Landmark helper ----------
+  function addGLBLandmark(x, z, w, d, h, hp, url) {
+    const b = new Building(x, z, w, d, h, { skipWindows: true });
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
+    b._skipBodyIM = true;
+    b.maxHp = hp; b.hp = hp;
     scene.add(b.group);
     buildings.push(b);
     grid.add(b);
+    _pendingGLBBuildings.push({ url, h, building: b });
+    return b;
   }
 
-  // GLB landmark load promises -- resolved during the loading screen.
-  const _glbPromises = [];
+  // ---------- Iconic Tokyo landmarks (all GLB) ----------
+  addGLBLandmark( 160, -160, 14, 14,  90, 220, BLDG_GLB_BASE + 'tokyo_tower.glb');
+  addGLBLandmark(-90,  -40,  22, 22,  75, 300, BLDG_GLB_BASE + 'twin_towers.glb');
+  addGLBLandmark( 220, -40,  18, 18, 130, 320, BLDG_GLB_BASE + 'tokyo_skytree.glb');
+  addGLBLandmark( 120,  160, 14, 14,  80, 220, BLDG_GLB_BASE + 'cocoon_tower.glb');
+  addGLBLandmark(-60,  -100, 14, 14,  80, 280, BLDG_GLB_BASE + 'roppongi_hills.glb');
+  addGLBLandmark(  80,   60, 30, 30,  20, 300, BLDG_GLB_BASE + 'tokyo_dome.glb');
 
-  // Tokyo Metropolitan Government Building (Twin Towers): GLB model from Meshy AI.
-  {
-    const tt = new Building(-90, -40, 22, 22, 75, { color: 0x99aabb, skipWindows: true });
-    tt.group.matrixAutoUpdate = false; tt.group.updateMatrix();
-    tt._skipBodyIM = true;
-    tt.maxHp = Math.max(tt.maxHp, 300);
-    tt.hp = tt.maxHp;
-    scene.add(tt.group);
-    buildings.push(tt);
-    grid.add(tt);
-    _glbPromises.push(loadBuildingGLB('./assets/buildings/twin_towers.glb', 75, tt, scene));
-  }
-
-  // ---------- Iconic Tokyo landmarks ----------
-  // Tokyo Tower: GLB model from Meshy AI, replaces procedural lattice.
-  {
-    const tx = 160, tz = -160, th = 90;
-    const tower = new Building(tx, tz, 14, 14, th, { color: 0xd72b35, skipWindows: true });
-    tower.group.matrixAutoUpdate = false; tower.group.updateMatrix();
-    tower._skipBodyIM = true;
-    tower.maxHp = Math.max(tower.maxHp, 220);
-    tower.hp = tower.maxHp;
-    scene.add(tower.group);
-    buildings.push(tower);
-    grid.add(tower);
-    _glbPromises.push(loadBuildingGLB('./assets/buildings/tokyo_tower.glb', th, tower, scene));
-  }
-
-  // Imperial Palace pagoda: GLB model from Meshy AI
-  {
-    const px = -180, pz = 140;
-    const palace = new Building(px, pz, 28, 28, 30, { color: 0xeae3d2, skipWindows: true });
-    palace.group.matrixAutoUpdate = false; palace.group.updateMatrix();
-    palace._skipBodyIM = true;
-    palace.maxHp = 280; palace.hp = palace.maxHp;
-    scene.add(palace.group);
-    buildings.push(palace);
-    grid.add(palace);
-    _glbPromises.push(loadBuildingGLB('./assets/buildings/pagoda.glb', 30, palace, scene));
-  }
+  // Imperial Palace area + scattered temples/shrines
+  addGLBLandmark(-180,  140, 28, 28,  30, 280, BLDG_GLB_BASE + 'pagoda.glb');
+  addGLBLandmark(-260,  100, 16, 16,  22, 140, BLDG_GLB_BASE + 'buddhist_temple.glb');
+  addGLBLandmark( 180,  260, 16, 16,  18, 120, BLDG_GLB_BASE + 'shinto_shrine.glb');
 
   // Parks: indestructible decoration, no collision.
   for (const p of [
@@ -2087,89 +2078,14 @@ export function buildCity(scene, world, opts = {}) {
     scene.add(makePark(p.x, p.z, p.size));
   }
 
-  // ---------- Pagoda shrines scattered around the city ----------
-  const pagodaSpots = [
-    { x: -260, z: 100, h: 22, hp: 140 },  // western temple district
-    { x:  180, z: 260, h: 18, hp: 120 },   // northeast shrine
-  ];
-  for (const ps of pagodaSpots) {
-    const pg = new Building(ps.x, ps.z, 16, 16, ps.h, { color: 0xc8a882, skipWindows: true });
-    pg.group.matrixAutoUpdate = false; pg.group.updateMatrix();
-    pg._skipBodyIM = true;
-    pg.maxHp = ps.hp; pg.hp = pg.maxHp;
-    scene.add(pg.group);
-    buildings.push(pg);
-    grid.add(pg);
-    _glbPromises.push(loadBuildingGLB('./assets/buildings/pagoda.glb', ps.h, pg, scene));
-  }
-
-  // ---------- Industrial / power districts ----------
-  // Both register as Buildings so they collide / take damage / collapse with
-  // the standard VFX. The actual visuals come from custom mesh groups
-  // (skipBodyIM = true).
-  {
-    const fac = new Building(240, -200, 110, 90, 16, { color: 0x6a6a68, skipWindows: true });
-    fac.group.matrixAutoUpdate = false; fac.group.updateMatrix();
-    fac._skipBodyIM = true;
-    fac.customMesh = makeFactoryDistrict();
-    fac.customMesh.position.set(240, 0, -200);
-    fac.customMesh.matrixAutoUpdate = false; fac.customMesh.updateMatrix();
-    fac.maxHp = 700; fac.hp = fac.maxHp; // beefy industrial complex
-    scene.add(fac.group);
-    scene.add(fac.customMesh);
-    buildings.push(fac);
-    grid.add(fac);
-  }
-  // Nuclear plant: GLB model from Meshy AI
-  {
-    const np = new Building(-240, -200, 130, 110, 45, { color: 0xa6a6a4, skipWindows: true });
-    np.group.matrixAutoUpdate = false; np.group.updateMatrix();
-    np._skipBodyIM = true;
-    np.maxHp = 900; np.hp = np.maxHp;
-    scene.add(np.group);
-    buildings.push(np);
-    grid.add(np);
-    _glbPromises.push(loadBuildingGLB('./assets/buildings/nuclear_plant.glb', 45, np, scene));
-  }
+  // ---------- Industrial ----------
+  addGLBLandmark(-240, -200, 60, 60, 45, 900, BLDG_GLB_BASE + 'nuclear_plant.glb');
 
   // ---------- River + bridges ----------
   scene.add(makeRiver(CITY_RADIUS, RIVER_Z, RIVER_WIDTH));
-  // Drop a bridge wherever a major street crosses the river (~every 2 blocks)
   for (let bx = -CITY_RADIUS + BLOCK; bx <= CITY_RADIUS - BLOCK; bx += BLOCK * 2) {
     scene.add(makeBridge(bx, RIVER_Z, RIVER_WIDTH));
   }
-
-  // ---------- Real Tokyo landmark towers (custom destructible meshes) ----------
-  function addLandmark(spec) {
-    const b = new Building(spec.x, spec.z, spec.w, spec.d, spec.h, { color: spec.color || 0xb0b8c4, skipWindows: true });
-    b.group.matrixAutoUpdate = false; b.group.updateMatrix();
-    b._skipBodyIM = true;
-    b.customMesh = spec.mesh;
-    b.customMesh.position.set(spec.x, 0, spec.z);
-    if (spec.rotY) b.customMesh.rotation.y = spec.rotY;
-    b.customMesh.matrixAutoUpdate = false; b.customMesh.updateMatrix();
-    if (spec.hp) { b.maxHp = spec.hp; b.hp = spec.hp; }
-    scene.add(b.group);
-    scene.add(b.customMesh);
-    buildings.push(b);
-    grid.add(b);
-    return b;
-  }
-  // Tokyo Skytree: GLB model from Meshy AI
-  {
-    const sk = addLandmark({ x: 220, z: -40, w: 18, d: 18, h: 130, hp: 320, mesh: new THREE.Group() });
-    _glbPromises.push(loadBuildingGLB('./assets/buildings/tokyo_skytree.glb', 130, sk, scene));
-  }
-  // Mode Gakuen Cocoon Tower: GLB model from Meshy AI
-  {
-    const co = addLandmark({ x: 120, z: 160, w: 14, d: 14, h: 80, hp: 220, mesh: new THREE.Group() });
-    _glbPromises.push(loadBuildingGLB('./assets/buildings/cocoon_tower.glb', 80, co, scene));
-  }
-  addLandmark({ x: -100, z: -180, w: 18, d: 26, h:  46, hp: 180, mesh: makeAsahiMesh() });                // Asahi HQ + Flame
-  addLandmark({ x:  -60, z:  220, w: 16, d: 16, h:  78, hp: 220, mesh: makeNTTDocomoMesh(78) });          // NTT DOCOMO clock tower
-  addLandmark({ x:   60, z:  220, w: 26, d: 16, h:  18, hp: 140, mesh: makeKabukizaMesh() });             // Kabukiza Theatre
-  addLandmark({ x:  -60, z: -100, w: 14, d: 14, h: 110, hp: 280, mesh: makeMoriJPMesh(110) });            // Azabudai Hills Mori JP Tower
-  addLandmark({ x: -120, z:   60, w: 22, d: 22, h:  70, hp: 220, mesh: makeShibuyaScrambleMesh(70) });    // Shibuya Scramble Square
 
   // Build the global body + window InstancedMeshes now that all buildings exist.
   const bodiesIM = buildGlobalBodies(scene, buildings);
@@ -2588,26 +2504,6 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
-  // ---- Construction site landmark (with tower crane) ----
-  // Wrapped in a Building so the kaiju can take it down. Custom mesh
-  // group (skipBodyIM = true) so the standard box body isn't drawn over
-  // the half-built skyscraper + crane visuals. Footprint matches the
-  // 56x56 dirt pad inside makeConstructionSite(); height covers the
-  // skyscraper shell (~24u) and most of the tower crane.
-  {
-    const cs = new Building(120, -100, 52, 52, 38, { color: 0x8a8478, skipWindows: true });
-    cs.group.matrixAutoUpdate = false; cs.group.updateMatrix();
-    cs._skipBodyIM = true;
-    cs.customMesh = makeConstructionSite();
-    cs.customMesh.position.set(120, 0, -100);
-    cs.customMesh.matrixAutoUpdate = false; cs.customMesh.updateMatrix();
-    cs.maxHp = 500; cs.hp = cs.maxHp;
-    scene.add(cs.group);
-    scene.add(cs.customMesh);
-    buildings.push(cs);
-    grid.add(cs);
-  }
-
   // ---- Telephone poles + sagging power lines ----
   // Poles run along every other E-W street, alternating sides. Each
   // pole is a wooden cylinder + horizontal cross-arm + 3 ceramic
@@ -2923,7 +2819,7 @@ export function buildCity(scene, world, opts = {}) {
 
   const animators = [flock];
   if (windowPulse) animators.push(windowPulse);
-  return { buildings, grid, bodiesIM, cityAnimators: animators, buildingGLBs: Promise.all(_glbPromises), cityRadius: CITY_RADIUS };
+  return { buildings, grid, bodiesIM, cityAnimators: animators, cityRadius: CITY_RADIUS };
 }
 
 // Tokyo "koban" -- small two-story police box. Sky-blue trim, white wall,

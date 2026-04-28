@@ -10,7 +10,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM } from './city.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, flushPendingGLBBuildings } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
@@ -476,12 +476,12 @@ const world = {
 // Build city
 window.__dbg && window.__dbg('DBG · buildCity starting…');
 {
-  const { buildings, grid, bodiesIM, cityAnimators, buildingGLBs } = buildCity(scene, world, { lite: isMobile });
+  const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = buildCity(scene, world, { lite: isMobile });
   world.buildings = buildings;
   world.buildingGrid = grid;
   world.bodiesIM = bodiesIM;
   world.cityAnimators = cityAnimators || [];
-  world.buildingGLBs = buildingGLBs; // awaited during loading screen
+  world.cityRadius = cityRadius;
 }
 window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
 
@@ -1044,7 +1044,7 @@ async function _startGameInner(key) {
     loadingPct.textContent = '0%';
     loadingStatus.textContent = 'INITIALIZING';
 
-    // Load kaiju model + landmark building GLBs in parallel
+    // Load kaiju model + all building GLB templates in parallel
     const [glb] = await Promise.all([
       loadKaijuModel(key, (loaded, total, label) => {
         const pct = Math.round((loaded / total) * 100);
@@ -1052,8 +1052,12 @@ async function _startGameInner(key) {
         loadingPct.textContent = pct + '%';
         loadingStatus.textContent = label.toUpperCase();
       }),
-      world.buildingGLBs,
+      loadBuildingTemplates(),
     ]);
+
+    // Clone + place every queued building now that templates are loaded
+    loadingStatus.textContent = 'BUILDING TOKYO';
+    flushPendingGLBBuildings(scene);
 
     // Brief pause at 100% so it feels complete
     loadingBar.style.width = '100%';
