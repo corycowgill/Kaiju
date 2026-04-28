@@ -2580,11 +2580,23 @@ export function buildCity(scene, world, opts = {}) {
   }
 
   // ---- Construction site landmark (with tower crane) ----
+  // Wrapped in a Building so the kaiju can take it down. Custom mesh
+  // group (skipBodyIM = true) so the standard box body isn't drawn over
+  // the half-built skyscraper + crane visuals. Footprint matches the
+  // 56x56 dirt pad inside makeConstructionSite(); height covers the
+  // skyscraper shell (~24u) and most of the tower crane.
   {
-    const cs = makeConstructionSite();
-    cs.position.set(120, 0, -100);
-    cs.matrixAutoUpdate = false; cs.updateMatrix();
-    scene.add(cs);
+    const cs = new Building(120, -100, 52, 52, 38, { color: 0x8a8478, skipWindows: true });
+    cs.group.matrixAutoUpdate = false; cs.group.updateMatrix();
+    cs._skipBodyIM = true;
+    cs.customMesh = makeConstructionSite();
+    cs.customMesh.position.set(120, 0, -100);
+    cs.customMesh.matrixAutoUpdate = false; cs.customMesh.updateMatrix();
+    cs.maxHp = 500; cs.hp = cs.maxHp;
+    scene.add(cs.group);
+    scene.add(cs.customMesh);
+    buildings.push(cs);
+    grid.add(cs);
   }
 
   // ---- Telephone poles + sagging power lines ----
