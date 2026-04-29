@@ -10,8 +10,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, flushPendingGLBBuildings } from './city.js';
-import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech } from './enemies.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, flushPendingGLBBuildings } from './city.js';
+import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
   Effect, makeExplosion, makeSparks, makeShockwave,
@@ -23,6 +23,7 @@ import {
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
+import { initAssetCache, getCacheStats } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE } from './quality.js';
 import vfx from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
@@ -1046,17 +1047,22 @@ async function _startGameInner(key) {
     loadingPct.textContent = '0%';
     loadingStatus.textContent = 'INITIALIZING';
 
-    // Track combined progress from kaiju + building loading
-    const progress = { kaijuLoaded: 0, kaijuTotal: 1, bldgLoaded: 0, bldgTotal: 1 };
+    // Initialize asset cache (IndexedDB) before any loads
+    const cacheWarm = await initAssetCache();
+    loadingStatus.textContent = cacheWarm ? 'LOADING FROM CACHE' : 'DOWNLOADING ASSETS';
+
+    // Track combined progress from kaiju + building + enemy + tree loading
+    const progress = { kaijuLoaded: 0, kaijuTotal: 1, bldgLoaded: 0, bldgTotal: 1,
+                       enemyLoaded: 0, enemyTotal: 1, treeLoaded: 0, treeTotal: 1 };
     function updateLoadingUI() {
-      const totalItems = progress.kaijuTotal + progress.bldgTotal;
-      const loadedItems = progress.kaijuLoaded + progress.bldgLoaded;
+      const totalItems = progress.kaijuTotal + progress.bldgTotal + progress.enemyTotal + progress.treeTotal;
+      const loadedItems = progress.kaijuLoaded + progress.bldgLoaded + progress.enemyLoaded + progress.treeLoaded;
       const pct = Math.round((loadedItems / totalItems) * 100);
       loadingBar.style.width = pct + '%';
       loadingPct.textContent = pct + '%';
     }
 
-    // Load kaiju model + building GLBs + debris GLBs in parallel
+    // Load all GLB assets in parallel
     const [glb] = await Promise.all([
       loadKaijuModel(key, (loaded, total, label) => {
         progress.kaijuLoaded = loaded;
@@ -1071,6 +1077,18 @@ async function _startGameInner(key) {
         updateLoadingUI();
       }),
       loadDebrisTemplates(),
+      loadEnemyTemplates((loaded, total, label) => {
+        progress.enemyLoaded = loaded;
+        progress.enemyTotal = total;
+        loadingStatus.textContent = 'ENEMY: ' + label.toUpperCase();
+        updateLoadingUI();
+      }),
+      loadTreeTemplates((loaded, total, label) => {
+        progress.treeLoaded = loaded;
+        progress.treeTotal = total;
+        loadingStatus.textContent = 'TREE: ' + label.toUpperCase();
+        updateLoadingUI();
+      }),
     ]);
 
     // Clone + place every queued building now that templates are loaded
@@ -1080,8 +1098,11 @@ async function _startGameInner(key) {
     // Brief pause at 100% so it feels complete
     loadingBar.style.width = '100%';
     loadingPct.textContent = '100%';
-    loadingStatus.textContent = 'KAIJU READY';
-    await new Promise(r => setTimeout(r, 400));
+    const cs = getCacheStats();
+    loadingStatus.textContent = cs.hits > 0
+      ? `KAIJU READY \u2022 ${cs.hits} cached / ${cs.misses} downloaded`
+      : 'KAIJU READY';
+    await new Promise(r => setTimeout(r, cs.hits > 0 ? 600 : 400));
     loadingScreen.classList.remove('visible');
 
     k = { root: glb.root, head: glb.head, tail: glb.tail, mixer: glb.mixer, glb };

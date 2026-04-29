@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { cachedFetch, cachedBlobURL } from './assetCache.js';
 
 // Procedural Tokyo: districts of buildings on a city grid, with streets, lamps, and props.
 // Each building exposes hp, max_hp, height and methods damage()/destroy().
@@ -92,18 +93,60 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // ----------------------- Landmark mesh helpers -----------------------
 
-// Single tree: trunk cylinder + sphere foliage. Positioned at (x, 0, z) inside its parent.
+// --------------- GLB tree templates ---------------
+const TREE_GLBS = [
+  './assets/trees/normal_tree.glb',
+  './assets/trees/cherry_tree.glb',
+];
+const _treeTemplates = [];  // array of { scene, box } after loading
+
+/** Load tree GLB templates. Call once at startup. */
+export function loadTreeTemplates(onProgress) {
+  return Promise.all(TREE_GLBS.map((url, idx) =>
+    _cachedGLB(url).then((gltf) => {
+      const s = gltf.scene;
+      s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      _treeTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s) });
+      if (onProgress) onProgress(idx + 1, TREE_GLBS.length, url.split('/').pop().replace('.glb', ''));
+    }).catch((err) => {
+      console.warn('[TreeGLB] Failed to load', url, err.message);
+      if (onProgress) onProgress(idx + 1, TREE_GLBS.length, 'error');
+    })
+  ));
+}
+
+// Single tree: uses GLB clone if templates loaded, else procedural fallback.
 function makeTree(x = 0, z = 0, scale = 1) {
   const tree = new THREE.Group();
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.95 });
-  const leafMat = new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 });
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * scale, 0.5 * scale, 4 * scale, 6), trunkMat);
-  trunk.position.y = 2 * scale;
-  tree.add(trunk);
-  const leaves = new THREE.Mesh(new THREE.SphereGeometry(2 * scale, 8, 6), leafMat);
-  leaves.position.y = 5 * scale;
-  leaves.scale.set(1.2, 1.0, 1.2);
-  tree.add(leaves);
+
+  if (_treeTemplates.length > 0) {
+    // Pick a random tree template (normal or cherry)
+    const tpl = _treeTemplates[Math.floor(Math.random() * _treeTemplates.length)];
+    const clone = tpl.scene.clone(true);
+    // Scale to ~6 units tall at scale=1 (typical park tree height)
+    const size = tpl.box.getSize(new THREE.Vector3());
+    const targetH = 6.0 * scale;
+    const s = targetH / Math.max(size.x, size.y, size.z);
+    clone.scale.setScalar(s);
+    // Sit on the ground
+    const cloneBox = new THREE.Box3().setFromObject(clone);
+    clone.position.y = -cloneBox.min.y;
+    // Random Y rotation for variety
+    clone.rotation.y = Math.random() * Math.PI * 2;
+    tree.add(clone);
+  } else {
+    // Procedural fallback
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.95 });
+    const leafMat = new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 });
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * scale, 0.5 * scale, 4 * scale, 6), trunkMat);
+    trunk.position.y = 2 * scale;
+    tree.add(trunk);
+    const leaves = new THREE.Mesh(new THREE.SphereGeometry(2 * scale, 8, 6), leafMat);
+    leaves.position.y = 5 * scale;
+    leaves.scale.set(1.2, 1.0, 1.2);
+    tree.add(leaves);
+  }
+
   tree.position.set(x, 0, z);
   tree.matrixAutoUpdate = false; tree.updateMatrix();
   return tree;
@@ -1889,13 +1932,20 @@ const ALL_BUILDING_GLBS = [
   BLDG_GLB_BASE + 'shinto_shrine.glb',
 ];
 
+/** Fetch a GLB via the asset cache, then parse with GLTFLoader. */
+function _cachedGLB(url) {
+  return cachedFetch(url).then((buf) =>
+    new Promise((resolve, reject) => _glbLoader.parse(buf, '', resolve, reject))
+  );
+}
+
 /** Load all unique building GLB templates once. */
 export function loadBuildingTemplates(onProgress) {
   const unique = [...new Set(ALL_BUILDING_GLBS)];
   let loaded = 0;
   const total = unique.length;
   return Promise.all(unique.map((url) =>
-    _glbLoader.loadAsync(url).then((gltf) => {
+    _cachedGLB(url).then((gltf) => {
       const s = gltf.scene;
       s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       _glbTemplates.set(url, { scene: s, box: new THREE.Box3().setFromObject(s) });
@@ -1923,7 +1973,7 @@ const _debrisTemplates = [];  // array of { scene, box } after loading
 
 export function loadDebrisTemplates() {
   return Promise.all(DEBRIS_GLBS.map((url) =>
-    _glbLoader.loadAsync(url).then((gltf) => {
+    _cachedGLB(url).then((gltf) => {
       const s = gltf.scene;
       s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       _debrisTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s) });

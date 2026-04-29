@@ -1,5 +1,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { cachedFetch } from './assetCache.js';
+
+/** Fetch a GLB via the asset cache, then parse it with GLTFLoader. */
+function _cachedGLB(loader, url) {
+  return cachedFetch(url).then((buf) =>
+    new Promise((resolve, reject) => loader.parse(buf, '', resolve, reject))
+  );
+}
 
 // ---- Godzilla (lizard kaiju) ----
 const GODZILLA_BASE = './assets/kaiju_model/Meshy_AI_I_want_to_create_a_Ka_biped/Meshy_AI_I_want_to_create_a_Ka_biped_';
@@ -129,7 +137,7 @@ export async function loadKaijuModel(monsterKey, onProgress) {
 
   // Load the base model (use the Running file — full skinned mesh)
   if (onProgress) onProgress(0, totalSteps, 'Loading base model');
-  const baseGltf = await loader.loadAsync(base + 'Animation_Running_withSkin.glb');
+  const baseGltf = await _cachedGLB(loader, base + 'Animation_Running_withSkin.glb');
   const root = baseGltf.scene;
   root.name = 'kaiju';
   report('Base model loaded');
@@ -163,7 +171,7 @@ export async function loadKaijuModel(monsterKey, onProgress) {
       continue;
     }
     try {
-      const gltf = await loader.loadAsync(base + file);
+      const gltf = await _cachedGLB(loader, base + file);
       if (gltf.animations.length > 0) {
         const clip = gltf.animations[0];
         for (const name of names) {

@@ -1,6 +1,8 @@
 // Synthesized sound effects via the Web Audio API (no asset downloads).
 // All sounds are short and procedurally generated.
 
+import { cachedFetch } from './assetCache.js';
+
 class Audio {
   constructor() {
     this.ctx = null;
@@ -141,9 +143,7 @@ class Audio {
     if (!this.ctx || this.musicBuffer) return !!this.musicBuffer;
     for (const url of paths) {
       try {
-        const res = await fetch(url, { cache: 'force-cache' });
-        if (!res.ok) continue;
-        const arr = await res.arrayBuffer();
+        const arr = await cachedFetch(url);
         this.musicBuffer = await new Promise((resolve, reject) => {
           this.ctx.decodeAudioData(arr, resolve, reject);
         });
