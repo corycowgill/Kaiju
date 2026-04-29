@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { cachedFetch, cachedBlobURL } from './assetCache.js';
 
+// Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
+// and loadPedestrianTemplates() run at module-load time via top-level await in game.js.
+const _glbLoader = new GLTFLoader();
+
 // Procedural Tokyo: districts of buildings on a city grid, with streets, lamps, and props.
 // Each building exposes hp, max_hp, height and methods damage()/destroy().
 
@@ -1924,7 +1928,6 @@ export class Building {
 }
 
 // --------------- GLB building system ---------------
-const _glbLoader = new GLTFLoader();
 const _glbTemplates = new Map();
 
 const BLDG_GLB_BASE = './assets/buildings/';
