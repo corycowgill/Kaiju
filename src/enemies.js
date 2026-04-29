@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { cachedFetch } from './assetCache.js';
 
 // Module-level scratch vectors reused by every AI tick to avoid GC churn.
@@ -7,6 +8,10 @@ const _aiVA = new THREE.Vector3();
 const _aiVB = new THREE.Vector3();
 const _aiVC = new THREE.Vector3();
 const _aiVD = new THREE.Vector3();
+// Skip skinned-mesh mixer ticks for enemies far from the kaiju. Off-screen
+// or distant tanks/mechs/soldiers don't need bone-accurate animation; the
+// AI logic still ticks every frame so positions/firing stay consistent.
+const MIXER_CULL_DIST_SQ = 200 * 200;
 
 // --------------- GLB enemy templates ---------------
 const _glbLoader = new GLTFLoader();
@@ -141,10 +146,12 @@ function _cloneTemplate(tpl) {
   return tpl.scene.clone(true);
 }
 
-/** Clone a biped template and set up an AnimationMixer with all its clips. */
+/** Clone a biped template and set up an AnimationMixer with all its clips.
+ *  Uses SkeletonUtils.clone so each instance shares geometry while still
+ *  getting its own bones/skeleton wired up correctly. */
 function _cloneBiped(tpl) {
   if (!tpl) return null;
-  const clone = tpl.scene.clone(true);
+  const clone = skinnedClone(tpl.scene);
   const mixer = new THREE.AnimationMixer(clone);
   const actions = {};
   for (const [name, clip] of Object.entries(tpl.animations)) {
@@ -210,7 +217,11 @@ export class Tank {
 
   update(dt, world, kaijuPos) {
     if (this.dead) return;
-    if (this.mixer) this.mixer.update(dt);
+    if (this.mixer) {
+      const dx = kaijuPos.x - this.root.position.x;
+      const dz = kaijuPos.z - this.root.position.z;
+      if (dx * dx + dz * dz < MIXER_CULL_DIST_SQ) this.mixer.update(dt);
+    }
     const myPos = this.root.position;
     _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
     const dist = _aiVA.length();
@@ -414,7 +425,11 @@ export class Mech {
 
   update(dt, world, kaijuPos) {
     if (this.dead) return;
-    if (this.mixer) this.mixer.update(dt);
+    if (this.mixer) {
+      const dx = kaijuPos.x - this.root.position.x;
+      const dz = kaijuPos.z - this.root.position.z;
+      if (dx * dx + dz * dz < MIXER_CULL_DIST_SQ) this.mixer.update(dt);
+    }
     const myPos = this.root.position;
     _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
     const dist = _aiVA.length();
@@ -733,7 +748,11 @@ export class Soldier {
 
   update(dt, world, kaijuPos) {
     if (this.dead) return;
-    if (this.mixer) this.mixer.update(dt);
+    if (this.mixer) {
+      const dx = kaijuPos.x - this.root.position.x;
+      const dz = kaijuPos.z - this.root.position.z;
+      if (dx * dx + dz * dz < MIXER_CULL_DIST_SQ) this.mixer.update(dt);
+    }
     const myPos = this.root.position;
     _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
     const dist = _aiVA.length();
@@ -813,15 +832,22 @@ export class BossMech {
       const targetH = 16.0; // massive boss
       const s = targetH / size.y;
       biped.root.scale.setScalar(s);
-      // Tint red/dark to distinguish from normal mechs
+      // Tint red/dark to distinguish from normal mechs. Memoize per source
+      // material so meshes sharing a base material share the tinted clone
+      // (was: 1 cloned material per mesh = ~20 unique materials per boss).
+      const tintCache = new Map();
       biped.root.traverse((o) => {
-        if (o.isMesh && o.material) {
-          const m = o.material.clone();
-          m.color.set(0x882222);
-          m.emissive = new THREE.Color(0xff2222);
-          m.emissiveIntensity = 0.3;
-          o.material = m;
+        if (!o.isMesh || !o.material) return;
+        const src = o.material;
+        let tinted = tintCache.get(src);
+        if (!tinted) {
+          tinted = src.clone();
+          tinted.color.set(0x882222);
+          tinted.emissive = new THREE.Color(0xff2222);
+          tinted.emissiveIntensity = 0.3;
+          tintCache.set(src, tinted);
         }
+        o.material = tinted;
       });
       box.setFromObject(biped.root);
       biped.root.position.y = -box.min.y;
@@ -863,7 +889,11 @@ export class BossMech {
 
   update(dt, world, kaijuPos) {
     if (this.dead) return;
-    if (this.mixer) this.mixer.update(dt);
+    if (this.mixer) {
+      const dx = kaijuPos.x - this.root.position.x;
+      const dz = kaijuPos.z - this.root.position.z;
+      if (dx * dx + dz * dz < MIXER_CULL_DIST_SQ) this.mixer.update(dt);
+    }
     const myPos = this.root.position;
     _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
     const dist = _aiVA.length();

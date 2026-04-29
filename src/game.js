@@ -447,6 +447,13 @@ const _tmpV3 = new THREE.Vector3();
 const _tmpSun = new THREE.Vector3();
 const _beamOrigin = new THREE.Vector3();
 const _beamDir = new THREE.Vector3();
+// Per-frame movement scratch (updatePlayer + fireMelee). These are populated
+// at the top of the function and consumed before it returns; no consumer
+// retains a reference, so reusing the same vector each frame is safe.
+const _fwd = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _move = new THREE.Vector3();
+const _impact = new THREE.Vector3();
 const _beamRay = new THREE.Raycaster();
 
 const world = {
@@ -1181,6 +1188,16 @@ async function _startGameInner(key) {
   // Phase 4: kaiju is the only object that casts shadows. Traverse its mesh
   // tree once and flip the flags so the shadow pass picks up every limb.
   k.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  // Cache named limb refs so per-frame animation skips getObjectByName tree
+  // walks. GLB rigs may not expose these names; nulls are fine, the call
+  // sites already null-check.
+  k.bones = {
+    legL: k.root.getObjectByName('legL') || null,
+    legR: k.root.getObjectByName('legR') || null,
+    tail: k.tail || k.root.getObjectByName('tail') || null,
+    armL: k.root.getObjectByName('armL') || null,
+    armR: k.root.getObjectByName('armR') || null,
+  };
   // Sun targets the kaiju so the tight 180u shadow camera frustum follows it.
   sun.target = k.root;
   scene.add(sun.target);
@@ -1221,10 +1238,44 @@ async function _startGameInner(key) {
 }
 
 // ------------------------- HUD -------------------------
+// Cached HUD element refs. getElementById() inside the HUD update path
+// (10 Hz, plus the per-frame fast pass) cost real time on weak devices,
+// so resolve once and reuse. pw/cd are repopulated each time the powers
+// bar is rebuilt (per monster pick).
+const hudRefs = {
+  damageFlash: null,
+  lowHp: null,
+  hpInner: null,
+  ragInner: null,
+  score: null,
+  waveText: null,
+  combo: null,
+  comboMult: null,
+  comboBar: null,
+  bossHp: null,
+  pw: {},
+  cd: {},
+};
+function _initStaticHUDRefs() {
+  hudRefs.damageFlash = document.getElementById('damage-flash');
+  hudRefs.lowHp = document.getElementById('lowhp-warning');
+  const hp = document.getElementById('hpBar'); if (hp) hudRefs.hpInner = hp.firstChild;
+  const rag = document.getElementById('ragBar'); if (rag) hudRefs.ragInner = rag.firstChild;
+  hudRefs.score = document.getElementById('score');
+  hudRefs.waveText = document.getElementById('waveText');
+  hudRefs.combo = document.getElementById('combo');
+  hudRefs.comboMult = document.getElementById('combo-mult');
+  hudRefs.comboBar = document.getElementById('combo-bar');
+  hudRefs.bossHp = document.getElementById('boss-hp');
+}
+_initStaticHUDRefs();
+
 function buildPowersBar() {
   const cfg = state.monsterCfg;
   const bar = document.getElementById('powers');
   bar.innerHTML = '';
+  hudRefs.pw = {};
+  hudRefs.cd = {};
   const items = [
     { key: '1', id: 'beam', name: cfg.beam.name, cost: cfg.beam.cost },
     { key: '2', id: 'roar', name: cfg.roar.name, cost: cfg.roar.cost },
@@ -1243,6 +1294,8 @@ function buildPowersBar() {
       <div class="cooldown" id="cd-${it.id}" style="display:none"></div>`;
     bar.appendChild(w);
     const pwEl = w.querySelector('.power');
+    hudRefs.pw[it.id] = pwEl;
+    hudRefs.cd[it.id] = w.querySelector('.cooldown');
     const fire = (e) => {
       e.preventDefault();
       if (it.id === 'beam') fireBeam();
@@ -1261,14 +1314,13 @@ function buildPowersBar() {
 // damage flash / low-HP overlay (cheap single-element styles) refresh
 // every frame for visual smoothness.
 let _hudLast = 0;
+let _hudLastScore = -1;
 function updateHUDFast() {
-  const flashEl = document.getElementById('damage-flash');
-  if (flashEl) flashEl.style.opacity = String(state.damageFlash * 0.85);
-  const lowEl = document.getElementById('lowhp-warning');
-  if (lowEl) {
+  if (hudRefs.damageFlash) hudRefs.damageFlash.style.opacity = String(state.damageFlash * 0.85);
+  if (hudRefs.lowHp) {
     const hpPct = state.hp / state.maxHp;
-    if (hpPct < 0.3 && !state.gameOver) lowEl.classList.add('active');
-    else lowEl.classList.remove('active');
+    if (hpPct < 0.3 && !state.gameOver) hudRefs.lowHp.classList.add('active');
+    else hudRefs.lowHp.classList.remove('active');
   }
 }
 function updateHUD() {
@@ -1276,16 +1328,19 @@ function updateHUD() {
   const now = performance.now();
   if (now - _hudLast < 100) return; // 10 Hz
   _hudLast = now;
-  document.getElementById('hpBar').firstChild.style.width = Math.max(0, state.hp / state.maxHp * 100) + '%';
-  document.getElementById('ragBar').firstChild.style.width = (state.rage / state.maxRage * 100) + '%';
-  document.getElementById('score').textContent = state.score.toLocaleString();
-  document.getElementById('waveText').textContent = `${state.wave} / ${state.buildingsDestroyed} buildings`;
+  if (hudRefs.hpInner) hudRefs.hpInner.style.width = Math.max(0, state.hp / state.maxHp * 100) + '%';
+  if (hudRefs.ragInner) hudRefs.ragInner.style.width = (state.rage / state.maxRage * 100) + '%';
+  if (hudRefs.score && state.score !== _hudLastScore) {
+    hudRefs.score.textContent = state.score.toLocaleString();
+    _hudLastScore = state.score;
+  }
+  if (hudRefs.waveText) hudRefs.waveText.textContent = `${state.wave} / ${state.buildingsDestroyed} buildings`;
 
   const cfg = state.monsterCfg;
   if (!cfg) return;
   const updateP = (id, cost) => {
-    const el = document.getElementById('pw-' + id);
-    const cd = document.getElementById('cd-' + id);
+    const el = hudRefs.pw[id];
+    const cd = hudRefs.cd[id];
     if (!el) return;
     const t = state.cooldowns[id];
     if (t > 0) {
@@ -1307,20 +1362,19 @@ function updateHUD() {
   updateP('ult', 100);
 
   // Combo HUD
-  const comboEl = document.getElementById('combo');
-  if (comboEl) {
+  if (hudRefs.combo) {
     if (state.combo > 0) {
-      comboEl.style.opacity = '1';
-      document.getElementById('combo-mult').textContent = 'x' + comboMult().toFixed(1);
-      document.getElementById('combo-bar').style.width = Math.max(0, state.comboTimer / state.comboMaxTimer * 100) + '%';
+      hudRefs.combo.style.opacity = '1';
+      if (hudRefs.comboMult) hudRefs.comboMult.textContent = 'x' + comboMult().toFixed(1);
+      if (hudRefs.comboBar) hudRefs.comboBar.style.width = Math.max(0, state.comboTimer / state.comboMaxTimer * 100) + '%';
     } else {
-      comboEl.style.opacity = '0';
+      hudRefs.combo.style.opacity = '0';
     }
   }
 
   // Boss bar
-  if (state.boss && !state.boss.dead) {
-    document.getElementById('boss-hp').style.width = Math.max(0, state.boss.hp / state.boss.maxHp * 100) + '%';
+  if (state.boss && !state.boss.dead && hudRefs.bossHp) {
+    hudRefs.bossHp.style.width = Math.max(0, state.boss.hp / state.boss.maxHp * 100) + '%';
   }
 }
 
@@ -2225,8 +2279,10 @@ function fireUltimate() {
 function fireMelee() {
   if (state.cooldowns.melee > 0) return;
   state.cooldowns.melee = 0.6;
-  const forward = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
-  const center = state.kaiju.root.position.clone().addScaledVector(forward, 14);
+  const forward = _fwd.set(Math.sin(state.yaw), 0, Math.cos(state.yaw));
+  // _impact is safe here -- damageInRadius internally writes to _tmpV1/_tmpV2
+  // but never touches _impact, so the center vector survives the loop.
+  const center = _impact.copy(state.kaiju.root.position).addScaledVector(forward, 14);
   const dmg = state.monsterCfg.stats.melee;
   damageInRadius(center, 17, dmg, false);
   state.rage = Math.min(state.maxRage, state.rage + 4);
@@ -2234,7 +2290,7 @@ function fireMelee() {
   if (state.kaiju.glb) {
     state.kaiju.glb.playOnce('punch', 0.1, 1.4);
   } else {
-    const armR = state.kaiju.root.getObjectByName('armR');
+    const armR = state.kaiju.bones?.armR;
     if (armR) armR.userData.swing = 0.4;
   }
   audio.hit();
@@ -2331,12 +2387,13 @@ function updatePlayer(dt) {
     mz += padInput.moveZ;
   }
 
-  const forward = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
+  const sy = Math.sin(state.yaw), cy = Math.cos(state.yaw);
+  const forward = _fwd.set(sy, 0, cy);
   // Camera-right vector. forward x up in a right-handed system gives
   // (-cos(yaw), 0, sin(yaw)) -- the previous (cos, 0, -sin) was the
   // negation, so D strafed left and A strafed right.
-  const right = new THREE.Vector3(-Math.cos(state.yaw), 0, Math.sin(state.yaw));
-  const move = new THREE.Vector3();
+  const right = _right.set(-cy, 0, sy);
+  const move = _move.set(0, 0, 0);
   move.addScaledVector(forward, mz);
   move.addScaledVector(right, mx);
   if (move.lengthSq() > 0) move.normalize();
@@ -2408,7 +2465,7 @@ function updatePlayer(dt) {
       if (!state._stompImpacted && state._stompJumpD) {
         state._stompImpacted = true;
         state._stompJumpD = 0;
-        const impactPos = k.root.position.clone();
+        const impactPos = _impact.copy(k.root.position);
         world.spawnShockwave(impactPos, 0xffcc44, 55);
         world.spawnShockwave(impactPos, 0xffaa66, 30);
         world.effects.push(makeDustBurst(world, impactPos, 22, 14));
@@ -2431,8 +2488,7 @@ function updatePlayer(dt) {
       const phase = state.walkPhase % (Math.PI * 2);
       if (!state._lastPhase) state._lastPhase = phase;
       if ((state._lastPhase < Math.PI && phase >= Math.PI) || (state._lastPhase > phase)) {
-        const footPos = k.root.position.clone();
-        damageInRadius(footPos, 11, 60, false, true);
+        damageInRadius(k.root.position, 11, 60, false, true);
         world.shake(0.10, 0.12);
         audio.footstep();
       }
@@ -2501,7 +2557,7 @@ function updatePlayer(dt) {
       // visuals/damage line up with the slam frame.
       state._stompImpacted = true;
       state._stompJumpD = 0;
-      const impactPos = k.root.position.clone();
+      const impactPos = _impact.copy(k.root.position);
       world.spawnShockwave(impactPos, 0xffcc44, 56);
       world.spawnShockwave(impactPos, 0xffaa66, 34);
       world.effects.push(makeDustBurst(world, impactPos, 28, 14));
@@ -2516,8 +2572,8 @@ function updatePlayer(dt) {
   }
 
   // ----- Legs -----
-  const legL = k.root.getObjectByName('legL');
-  const legR = k.root.getObjectByName('legR');
+  const legL = k.bones?.legL;
+  const legR = k.bones?.legR;
   if (legL && legR) {
     if (moving) {
       legL.rotation.x =  sw * 0.85;
@@ -2534,7 +2590,7 @@ function updatePlayer(dt) {
   }
 
   // ----- Tail (with yaw lag + walk sway + lift on charge/sprint) -----
-  const tail = k.root.getObjectByName('tail');
+  const tail = k.bones?.tail;
   if (tail) {
     state._tailYaw = state._tailYaw == null ? state.yaw : state._tailYaw;
     state._tailYaw = THREE.MathUtils.damp(state._tailYaw, state.yaw, 4, dt);
@@ -2628,8 +2684,8 @@ function updatePlayer(dt) {
   }
 
   // ----- Arms (opposite swing, melee retains its own animation) -----
-  const armL = k.root.getObjectByName('armL');
-  const armR = k.root.getObjectByName('armR');
+  const armL = k.bones?.armL;
+  const armR = k.bones?.armR;
   if (armL) armL.rotation.x = THREE.MathUtils.damp(
     armL.rotation.x || 0,
     moving ? -sw * 0.55 : Math.sin(tIdle * 0.8) * 0.05,
@@ -2664,8 +2720,7 @@ function updatePlayer(dt) {
     if ((state._lastPhase < Math.PI && phase >= Math.PI) || (state._lastPhase > phase)) {
       // crossed step -- foot impact hits a small radius hard enough to
       // demolish vehicles / soldiers walked over and chip nearby buildings
-      const footPos = k.root.position.clone();
-      damageInRadius(footPos, 7, 60, false, true);
+      damageInRadius(k.root.position, 7, 60, false, true);
       world.shake(0.08, 0.12);
       audio.footstep();
     }
@@ -2741,6 +2796,21 @@ const MAX_EFFECTS = isMobile ? 90 : 180;
 const MAX_DEBRIS  = isMobile ? 60 : 140;
 const MAX_POPUPS  = 28;
 
+// Debris cleanup: only dispose geometries / materials that the mesh owns.
+// GLB-cloned debris shares geom + material with the template (Three.js
+// Mesh.copy is shallow), so disposing them would thrash GPU buffers and
+// risk freeing resources still in use by living siblings.
+function _disposeDebris(d) {
+  d?.traverse?.((o) => {
+    if (!o.userData?._ownedMat) return;
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) m.dispose?.();
+    }
+  });
+}
+
 function updateWorld(dt) {
   // Effects
   for (let i = world.effects.length - 1; i >= 0; i--) {
@@ -2774,7 +2844,7 @@ function updateWorld(dt) {
     d.userData.life -= dt;
     if (d.userData.life <= 0) {
       scene.remove(d);
-      d.traverse?.(o => { if (o.geometry) o.geometry.dispose(); });
+      _disposeDebris(d);
       world.debris.splice(i, 1);
     }
   }
@@ -2784,7 +2854,7 @@ function updateWorld(dt) {
     for (let i = 0; i < drop; i++) {
       const d = world.debris[i];
       if (d && d.parent) d.parent.remove(d);
-      d?.traverse?.(o => { if (o.geometry) o.geometry.dispose(); });
+      _disposeDebris(d);
     }
     world.debris.splice(0, drop);
   }

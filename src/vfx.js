@@ -511,22 +511,34 @@ const _SMOKE_FS = `
   }
 `;
 
+// One prototype ShaderMaterial per smoke color. Each emit clones from the
+// prototype instead of constructing a fresh ShaderMaterial -- skips the
+// constructor overhead and lets the WebGL program cache reuse the compiled
+// shader, while each clone still gets its own uniforms so `time` and `fade`
+// can vary per puff. Disposing a clone leaves the prototype intact.
+const _smokeMatProtos = new Map();
 function _makeSmokeMaterial(colorHex) {
-  const uniforms = {
-    noiseTex:   { value: NOISE_TEX },
-    smokeColor: { value: new THREE.Color(colorHex) },
-    time:       { value: Math.random() * 100 }, // de-sync sibling puffs
-    fade:       { value: 1.0 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
-    vertexShader: _FIREBALL_VS,
-    fragmentShader: _SMOKE_FS,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  return { mat, uniforms };
+  let proto = _smokeMatProtos.get(colorHex);
+  if (!proto) {
+    proto = new THREE.ShaderMaterial({
+      uniforms: {
+        noiseTex:   { value: NOISE_TEX },
+        smokeColor: { value: new THREE.Color(colorHex) },
+        time:       { value: 0 },
+        fade:       { value: 1.0 },
+      },
+      vertexShader: _FIREBALL_VS,
+      fragmentShader: _SMOKE_FS,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    _smokeMatProtos.set(colorHex, proto);
+  }
+  const mat = proto.clone();
+  mat.uniforms.time.value = Math.random() * 100; // de-sync sibling puffs
+  mat.uniforms.fade.value = 1.0;
+  return { mat, uniforms: mat.uniforms };
 }
 
 const _G_SMOKE_PUFF_S = new THREE.SphereGeometry(1, 12, 10);

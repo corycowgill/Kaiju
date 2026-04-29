@@ -1858,7 +1858,9 @@ export class Building {
         m = _cloneDebris(targetSize);
       }
       if (!m) {
-        // Fallback to procedural box if GLBs not loaded
+        // Fallback to procedural box if GLBs not loaded. The geom + material
+        // are unique to this mesh (not shared with a template), so flag them
+        // for disposal when the debris expires (see updateWorld in game.js).
         const cw = this.w * rand(0.18, 0.55);
         const ch = this.h * rand(0.08, 0.32);
         const cd = this.d * rand(0.18, 0.55);
@@ -1866,6 +1868,7 @@ export class Building {
           new THREE.BoxGeometry(cw, ch, cd),
           new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 0.95 })
         );
+        m.userData._ownedMat = true;
       }
       m.position.copy(this.group.position);
       m.position.y = this.h * rand(0.2, 0.7);
