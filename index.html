@@ -1009,6 +1009,22 @@
   <button class="start-btn" onclick="location.reload()">UNLEASH AGAIN</button>
 </div>
 
+<!-- Mobile data warning -->
+<div id="mobile-data-warn" class="overlay hidden" style="z-index:9999; display:flex; align-items:center; justify-content:center;">
+  <div style="background:rgba(0,0,0,0.95); border:2px solid #ff5566; border-radius:16px; padding:32px 28px; max-width:340px; text-align:center; color:#eee; font-family:inherit;">
+    <div style="font-size:28px; margin-bottom:8px;">&#9888;</div>
+    <div style="font-size:18px; font-weight:bold; letter-spacing:3px; color:#ff5566; margin-bottom:12px;">DATA WARNING</div>
+    <div style="font-size:14px; line-height:1.5; margin-bottom:8px;">
+      This game requires downloading <b id="data-warn-size" style="color:#ffcc44;">~900 MB</b> of 3D assets on first play.
+    </div>
+    <div style="font-size:12px; color:#aaa; margin-bottom:20px;">
+      Assets are cached locally after the first download. <br>We recommend using Wi-Fi.
+    </div>
+    <button id="data-warn-ok" class="start-btn" style="margin:0 8px; font-size:14px; padding:10px 28px;">PROCEED</button>
+    <button id="data-warn-cancel" style="margin:0 8px; font-size:13px; padding:8px 20px; background:transparent; border:1px solid #666; color:#999; border-radius:8px; cursor:pointer; font-family:inherit; letter-spacing:2px;">CANCEL</button>
+  </div>
+</div>
+
 <!-- Loading screen -->
 <div id="loading-screen">
   <div id="loading-title">SUMMONING</div>

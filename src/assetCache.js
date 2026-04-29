@@ -132,10 +132,16 @@ export async function cachedFetch(url) {
   if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${url}`);
   const buf = await res.arrayBuffer();
 
-  // Store in background (don't block the return)
-  _idbPut(STORE_NAME, key, buf).catch((e) =>
-    console.warn('[AssetCache] Failed to store:', key, e.message)
-  );
+  // Store in background (don't block the return).
+  // On iOS Safari, IDB quota is ~1GB — large assets may exceed it.
+  _idbPut(STORE_NAME, key, buf).catch((e) => {
+    console.warn('[AssetCache] Failed to store:', key, e.message);
+    // If quota exceeded, disable caching to avoid repeated IDB errors
+    if (e.name === 'QuotaExceededError') {
+      console.warn('[AssetCache] Storage quota exceeded, disabling cache writes');
+      _enabled = false;
+    }
+  });
 
   return buf;
 }

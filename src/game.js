@@ -474,11 +474,21 @@ const world = {
   showMessage,
 };
 
-// Pre-load tree + pedestrian GLB templates so buildCity/spawnCivilians can use them
-window.__dbg && window.__dbg('DBG · loading tree + pedestrian templates…');
-await initAssetCache();
-await Promise.all([loadTreeTemplates(), loadPedestrianTemplates()]);
-window.__dbg && window.__dbg('DBG · tree + pedestrian templates loaded', '#9f9');
+// Pre-load tree + pedestrian GLB templates so buildCity can use them.
+// On mobile: skip GLB preloading (saves ~36MB memory, uses procedural fallbacks).
+// On desktop: await templates before buildCity for GLB trees + pedestrians.
+if (!isMobile) {
+  try {
+    window.__dbg && window.__dbg('DBG · loading tree + pedestrian templates…');
+    await initAssetCache();
+    await Promise.all([loadTreeTemplates(), loadPedestrianTemplates()]);
+    window.__dbg && window.__dbg('DBG · tree + pedestrian templates loaded', '#9f9');
+  } catch (e) {
+    console.warn('[PreLoad] Tree/pedestrian template loading failed, using procedural fallbacks:', e.message);
+  }
+} else {
+  window.__dbg && window.__dbg('DBG · mobile: skipping tree/ped GLB preload');
+}
 
 // Build city
 window.__dbg && window.__dbg('DBG · buildCity starting…');
@@ -1000,19 +1010,47 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) audi
 window.addEventListener('touchstart', () => audio.resume(), { passive: true, once: false });
 window.addEventListener('mousedown', () => audio.resume());
 
+// ------------------------- Mobile data warning -------------------------
+let _mobileDataAccepted = false;
+function _showMobileDataWarning() {
+  return new Promise((resolve) => {
+    const warn = document.getElementById('mobile-data-warn');
+    if (!warn) { resolve(true); return; }
+    // Check if cache is already warm (assets previously downloaded)
+    const cs = getCacheStats();
+    if (cs.enabled && cs.hits > 0) { resolve(true); return; }
+    warn.classList.remove('hidden');
+    warn.style.display = 'flex';
+    const okBtn = document.getElementById('data-warn-ok');
+    const cancelBtn = document.getElementById('data-warn-cancel');
+    function cleanup() {
+      warn.classList.add('hidden');
+      warn.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+    }
+    function onOk() { cleanup(); _mobileDataAccepted = true; resolve(true); }
+    function onCancel() { cleanup(); resolve(false); }
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+  });
+}
+
 // ------------------------- Start game -------------------------
 let _startingGame = false; // guard against double-start during async load
 async function startGame(key) {
   if (_startingGame) return;
+
+  // On mobile, warn about data usage before downloading (first play only)
+  if (isMobile && !_mobileDataAccepted) {
+    const proceed = await _showMobileDataWarning();
+    if (!proceed) return;
+  }
+
   _startingGame = true;
   try {
     await _startGameInner(key);
   } catch (e) {
-    // Any failure during loading (kaiju model fetch, landmark GLB fetch,
-    // anything async) used to leave _startingGame=true forever, which
-    // permanently bricked the start button. The finally below restores
-    // it; the catch surfaces the error to the player so they can retry
-    // instead of staring at a stuck loading screen.
     console.error('[startGame] failed', e);
     document.getElementById('loading-screen')?.classList.remove('visible');
     toast('LOADING FAILED · TAP START TO RETRY', 'bad');

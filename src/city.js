@@ -98,15 +98,43 @@ const TREE_GLBS = [
   './assets/trees/normal_tree.glb',
   './assets/trees/cherry_tree.glb',
 ];
-const _treeTemplates = [];  // array of { scene, box } after loading
+const _treeTemplates = [];  // array of { scene, box, meshes[] } after loading
+
+/** Deep-clone a GLTF scene by rebuilding the mesh hierarchy (more robust than scene.clone). */
+function _cloneTreeScene(tpl) {
+  const group = new THREE.Group();
+  tpl.scene.traverse((o) => {
+    if (o.isMesh) {
+      const m = new THREE.Mesh(o.geometry, o.material);
+      // Copy the mesh's world transform relative to scene root
+      o.updateWorldMatrix(true, false);
+      m.applyMatrix4(o.matrixWorld);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      group.add(m);
+    }
+  });
+  return group;
+}
 
 /** Load tree GLB templates. Call once at startup. */
 export function loadTreeTemplates(onProgress) {
   return Promise.all(TREE_GLBS.map((url, idx) =>
     _cachedGLB(url).then((gltf) => {
       const s = gltf.scene;
+      // Count meshes to verify valid model
+      let meshCount = 0;
+      s.traverse((o) => { if (o.isMesh) meshCount++; });
+      console.log(`[TreeGLB] Loaded ${url} — ${meshCount} meshes`);
+      if (meshCount === 0) {
+        console.warn('[TreeGLB] No meshes found in', url);
+        return;
+      }
       s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      _treeTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s) });
+      const box = new THREE.Box3().setFromObject(s);
+      const size = box.getSize(new THREE.Vector3());
+      console.log(`[TreeGLB] Bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
+      _treeTemplates.push({ scene: s, box });
       if (onProgress) onProgress(idx + 1, TREE_GLBS.length, url.split('/').pop().replace('.glb', ''));
     }).catch((err) => {
       console.warn('[TreeGLB] Failed to load', url, err.message);
@@ -118,18 +146,18 @@ export function loadTreeTemplates(onProgress) {
 // Single tree: uses GLB clone if templates loaded, else procedural fallback.
 function makeTree(x = 0, z = 0, scale = 1) {
   if (_treeTemplates.length > 0) {
-    // Pick a random tree template (normal or cherry)
     const tpl = _treeTemplates[Math.floor(Math.random() * _treeTemplates.length)];
-    const clone = tpl.scene.clone(true);
-    // Scale to ~6 units tall at scale=1 (typical park tree height)
+    // Robust clone: rebuild meshes from geometry/material refs
+    const clone = _cloneTreeScene(tpl);
+    // Scale to ~6 units tall at scale=1
     const size = tpl.box.getSize(new THREE.Vector3());
     const targetH = 6.0 * scale;
     const s = targetH / Math.max(size.x, size.y, size.z);
     clone.scale.setScalar(s);
-    // Sit on the ground
+    // Update world matrices so bounding box is accurate
+    clone.updateMatrixWorld(true);
     const cloneBox = new THREE.Box3().setFromObject(clone);
     clone.position.y = -cloneBox.min.y;
-    // Random Y rotation for variety
     clone.rotation.y = Math.random() * Math.PI * 2;
     clone.position.x = x;
     clone.position.z = z;
