@@ -10,7 +10,11 @@ const _aiVD = new THREE.Vector3();
 
 // --------------- GLB enemy templates ---------------
 const _glbLoader = new GLTFLoader();
-const _templates = { tank: null, tankAnims: [], helicopter: null, artillery: null };
+const _templates = {
+  tank: null, tankAnims: [], helicopter: null, artillery: null,
+  soldier: null, soldierAnims: {},
+  mech: null, mechAnims: {},
+};
 
 function _cachedGLB(url) {
   return cachedFetch(url).then((buf) =>
@@ -18,22 +22,85 @@ function _cachedGLB(url) {
   );
 }
 
+// Animated biped model config: base file is Running.glb (contains skinned mesh),
+// additional files provide extra animation clips.
+const SOLDIER_BASE = './assets/enemies/soldier/';
+const SOLDIER_ANIMS = {
+  run:          'Running.glb',
+  walk:         'Walking.glb',
+  rifleCharge:  'Rifle_Charge.glb',
+  runAndShoot:  'Run_and_Shoot.glb',
+};
+
+const MECH_BASE = './assets/enemies/mech/';
+const MECH_ANIMS = {
+  run:       'Running.glb',
+  idle:      'Alert.glb',
+  walk:      'Walking.glb',
+  quickWalk: 'Quick_Walk.glb',
+  runFast:   'run_fast_3_inplace.glb',
+  attack:    'Skill_01.glb',
+};
+
+/**
+ * Load a biped GLB set: base model (Running) + additional animation files.
+ * Returns { scene, animations: { name: AnimationClip } }
+ */
+async function _loadBipedSet(basePath, animFiles, label, onProgress, startIdx, total) {
+  const animNames = Object.keys(animFiles);
+  let scene = null;
+  const animations = {};
+  let idx = startIdx;
+
+  // Load base model first (Running.glb — contains the skinned mesh)
+  try {
+    const gltf = await _cachedGLB(basePath + animFiles.run);
+    scene = gltf.scene;
+    scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    if (gltf.animations.length > 0) animations.run = gltf.animations[0];
+  } catch (e) {
+    console.warn(`[EnemyGLB] Failed to load ${label} base:`, e.message);
+  }
+  idx++;
+  if (onProgress) onProgress(idx, total, label + ' base');
+
+  // Load remaining animation files
+  for (const name of animNames) {
+    if (name === 'run') continue; // already loaded
+    try {
+      const gltf = await _cachedGLB(basePath + animFiles[name]);
+      if (gltf.animations.length > 0) animations[name] = gltf.animations[0];
+    } catch (e) {
+      console.warn(`[EnemyGLB] Failed to load ${label} ${name}:`, e.message);
+    }
+    idx++;
+    if (onProgress) onProgress(idx, total, label + ' ' + name);
+  }
+
+  return { scene, animations, nextIdx: idx };
+}
+
 /**
  * Load all enemy GLB templates. Call once at startup before spawning enemies.
  * @param {Function} [onProgress] - (loaded, total, label) callback
  */
 export async function loadEnemyTemplates(onProgress) {
-  const files = [
+  // Static models (tank, heli, artillery)
+  const staticFiles = [
     { key: 'tank',       url: './assets/enemies/tank.glb' },
     { key: 'tank_a1',    url: './assets/enemies/tank_anim_1.glb' },
     { key: 'tank_a2',    url: './assets/enemies/tank_anim_2.glb' },
     { key: 'tank_a3',    url: './assets/enemies/tank_anim_3.glb' },
     { key: 'helicopter', url: './assets/enemies/helicopter.glb' },
-    { key: 'artillery',  url: './assets/enemies/tank.glb' },  // reuse tank model for artillery
+    { key: 'artillery',  url: './assets/enemies/tank.glb' },
   ];
+  const soldierAnimCount = Object.keys(SOLDIER_ANIMS).length;
+  const mechAnimCount = Object.keys(MECH_ANIMS).length;
+  const total = staticFiles.length + soldierAnimCount + mechAnimCount;
   let loaded = 0;
-  const total = files.length;
-  for (const { key, url } of files) {
+
+  // Load static models
+  for (const { key, url } of staticFiles) {
     try {
       const gltf = await _cachedGLB(url);
       const s = gltf.scene;
@@ -53,11 +120,37 @@ export async function loadEnemyTemplates(onProgress) {
     loaded++;
     if (onProgress) onProgress(loaded, total, key);
   }
+
+  // Load soldier biped
+  const soldierResult = await _loadBipedSet(SOLDIER_BASE, SOLDIER_ANIMS, 'soldier', onProgress, loaded, total);
+  if (soldierResult.scene) {
+    _templates.soldier = { scene: soldierResult.scene, animations: soldierResult.animations };
+  }
+  loaded = soldierResult.nextIdx;
+
+  // Load mech biped
+  const mechResult = await _loadBipedSet(MECH_BASE, MECH_ANIMS, 'mech', onProgress, loaded, total);
+  if (mechResult.scene) {
+    _templates.mech = { scene: mechResult.scene, animations: mechResult.animations };
+  }
+  loaded = mechResult.nextIdx;
 }
 
 function _cloneTemplate(tpl) {
   if (!tpl) return null;
   return tpl.scene.clone(true);
+}
+
+/** Clone a biped template and set up an AnimationMixer with all its clips. */
+function _cloneBiped(tpl) {
+  if (!tpl) return null;
+  const clone = tpl.scene.clone(true);
+  const mixer = new THREE.AnimationMixer(clone);
+  const actions = {};
+  for (const [name, clip] of Object.entries(tpl.animations)) {
+    actions[name] = mixer.clipAction(clip);
+  }
+  return { root: clone, mixer, actions };
 }
 
 // Military units. Each has hp, type, mesh, ai().
@@ -266,138 +359,66 @@ export class Mech {
     this.hp = 220;
     this.maxHp = 220;
     this.dead = false;
-    // Heavy armour - footstep trample only chips them. Forces the player
-    // to actually aim a beam / roar / charge instead of jogging through.
     this.armored = true;
     this.cooldown = 2.0 + Math.random();
     this.speed = 5.0;
-    this.legPhase = 0;
+    this._currentAnim = '';
 
     const root = new THREE.Group();
     root.position.set(x, 0, z);
 
-    // Brighter steel-blue armour + strong red accent so the mech is
-    // unmissable against the dusk-Tokyo backdrop.
-    const armorMat  = new THREE.MeshStandardMaterial({ color: 0x6b7e94, roughness: 0.45, metalness: 0.55 });
-    const armorDark = new THREE.MeshStandardMaterial({ color: 0x3a4856, roughness: 0.65, metalness: 0.4 });
-    const accentMat = new THREE.MeshStandardMaterial({ color: 0xff4422, emissive: 0xff2200, emissiveIntensity: 1.4 });
-    const eyeMat    = new THREE.MeshStandardMaterial({ color: 0xff3344, emissive: 0xff2233, emissiveIntensity: 2.4 });
-    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffd11a, emissive: 0xffaa11, emissiveIntensity: 0.6 });
-
-    // Torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(3.0, 3.5, 2.4), armorMat);
-    torso.position.y = 6.0;
-    torso.castShadow = true;
-    root.add(torso);
-    this.torso = torso;
-    // Chest beacon (glowing core)
-    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.4, 14), accentMat);
-    core.rotation.x = Math.PI / 2;
-    core.position.set(0, 6.0, 1.25);
-    root.add(core);
-    // Yellow hazard stripes wrapping the torso
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.05, 0.32, 2.45), stripeMat);
-    stripe.position.set(0, 4.6, 0);
-    root.add(stripe);
-
-    // Head/sensor block above the torso (more menacing than a sphere)
-    const head = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.0, 1.2), armorMat);
-    head.position.set(0, 8.0, 0);
-    root.add(head);
-    // Glowing eye visor
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.28, 0.08), eyeMat);
-    visor.position.set(0, 8.05, 0.62);
-    root.add(visor);
-
-    // Pauldron / shoulder spikes for menace
-    for (const sx of [-1, 1]) {
-      const pauld = new THREE.Mesh(new THREE.SphereGeometry(0.85, 10, 8), armorDark);
-      pauld.position.set(sx * 1.85, 7.4, 0);
-      pauld.scale.set(1, 0.9, 1);
-      root.add(pauld);
-      // Single small spike on the pauldron
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.7, 5), armorDark);
-      spike.position.set(sx * 1.85, 8.05, 0);
-      spike.rotation.z = sx * 0.25;
-      root.add(spike);
+    const biped = _cloneBiped(_templates.mech);
+    if (biped) {
+      const box = new THREE.Box3().setFromObject(biped.root);
+      const size = box.getSize(new THREE.Vector3());
+      const targetH = 9.0; // tall mech
+      const s = targetH / size.y;
+      biped.root.scale.setScalar(s);
+      box.setFromObject(biped.root);
+      biped.root.position.y = -box.min.y;
+      biped.root.rotation.y = Math.PI; // align front with +Z
+      root.add(biped.root);
+      this.mixer = biped.mixer;
+      this._actions = biped.actions;
+      // Start with walk
+      if (biped.actions.walk) { biped.actions.walk.play(); this._currentAnim = 'walk'; }
+      else if (biped.actions.run) { biped.actions.run.play(); this._currentAnim = 'run'; }
+    } else {
+      // Minimal fallback
+      const armor = new THREE.MeshStandardMaterial({ color: 0x6b7e94, roughness: 0.45, metalness: 0.55 });
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(3.0, 3.5, 2.4), armor);
+      torso.position.y = 6.0; torso.castShadow = true; root.add(torso);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.0, 1.2), armor);
+      head.position.set(0, 8.0, 0); root.add(head);
+      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.9, 4.0, 1.2), armor);
+      legL.position.set(-1.0, 2.0, 0); root.add(legL);
+      const legR = legL.clone(); legR.position.x = 1.0; root.add(legR);
+      this.legL = legL; this.legR = legR;
+      this.legPhase = 0;
     }
 
-    // Cannon arms (now with shoulder elbow + barrel detail)
-    function makeArm(sx) {
-      const arm = new THREE.Group();
-      // Upper arm cylinder
-      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 1.6, 10), armorMat);
-      upper.position.y = -0.8;
-      arm.add(upper);
-      // Elbow joint sphere
-      const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), armorDark);
-      elbow.position.y = -1.6;
-      arm.add(elbow);
-      // Forearm cannon
-      const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.55, 2.4, 10), armorMat);
-      fore.position.y = -2.8;
-      arm.add(fore);
-      // Cannon barrel sticking out the front
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 1.6, 10), armorDark);
-      barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, -3.0, 1.1);
-      arm.add(barrel);
-      // Muzzle brake
-      const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.4, 10), armorDark);
-      muzzle.rotation.x = Math.PI / 2;
-      muzzle.position.set(0, -3.0, 2.0);
-      arm.add(muzzle);
-      // Mini emissive port on the muzzle
-      const port = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), accentMat);
-      port.position.set(0, -3.0, 2.18);
-      arm.add(port);
-      arm.position.set(sx * 2.0, 7.4, 0);
-      return arm;
-    }
-    const armL = makeArm(-1); root.add(armL); this.armL = armL;
-    const armR = makeArm( 1); root.add(armR); this.armR = armR;
-
-    // Legs (now with knee joint + foot)
-    function makeLeg(sx) {
-      const leg = new THREE.Group();
-      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.0, 1.2), armorMat);
-      thigh.position.y = -1.0;
-      leg.add(thigh);
-      // Knee armour pad
-      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), armorDark);
-      knee.position.y = -2.0;
-      knee.scale.set(1.1, 0.7, 1.0);
-      leg.add(knee);
-      const shin = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.8, 1.1), armorMat);
-      shin.position.y = -2.95;
-      leg.add(shin);
-      // Foot pad
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.8), armorDark);
-      foot.position.y = -3.95;
-      foot.position.z = 0.2;
-      leg.add(foot);
-      // Toe spike
-      const toe = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 4), armorDark);
-      toe.rotation.x = Math.PI / 2;
-      toe.position.set(0, -3.95, 1.2);
-      leg.add(toe);
-      leg.position.set(sx * 1.0, 4.2, 0);
-      return leg;
-    }
-    const legL = makeLeg(-1); root.add(legL); this.legL = legL;
-    const legR = makeLeg( 1); root.add(legR); this.legR = legR;
-    // Make sure castShadow flag propagates
-    root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    // Muzzle point for shooting
+    this._muzzle = new THREE.Object3D();
+    this._muzzle.position.set(0, 5.0, 2.0);
+    root.add(this._muzzle);
 
     this.root = root;
   }
 
+  _playAnim(name) {
+    if (!this._actions || this._currentAnim === name || !this._actions[name]) return;
+    if (this._actions[this._currentAnim]) this._actions[this._currentAnim].fadeOut(0.2);
+    this._actions[name].reset().fadeIn(0.2).play();
+    this._currentAnim = name;
+  }
+
   update(dt, world, kaijuPos) {
     if (this.dead) return;
+    if (this.mixer) this.mixer.update(dt);
     const myPos = this.root.position;
     _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
     const dist = _aiVA.length();
-    if (dist < 5) { this.die(world); return; } // crushed under kaiju foot
+    if (dist < 5) { this.die(world); return; }
     if (dist > 0.001) {
       _aiVA.divideScalar(dist);
       let dx = 0, dz = 0;
@@ -406,9 +427,16 @@ export class Mech {
       if (dx || dz) {
         myPos.x += dx * this.speed * dt;
         myPos.z += dz * this.speed * dt;
-        this.legPhase += dt * 6;
-        this.legL.position.y = 4.2 + Math.sin(this.legPhase) * 0.4;
-        this.legR.position.y = 4.2 + Math.sin(this.legPhase + Math.PI) * 0.4;
+        // Animate walk vs run based on distance
+        if (this._actions) {
+          this._playAnim(dist > 70 ? 'run' : 'walk');
+        } else if (this.legL) {
+          this.legPhase = (this.legPhase || 0) + dt * 6;
+          this.legL.position.y = 2.0 + Math.sin(this.legPhase) * 0.4;
+          this.legR.position.y = 2.0 + Math.sin(this.legPhase + Math.PI) * 0.4;
+        }
+      } else {
+        if (this._actions) this._playAnim('idle');
       }
       this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
     }
@@ -416,13 +444,15 @@ export class Mech {
     this.cooldown -= dt;
     if (this.cooldown <= 0 && dist < 110) {
       this.cooldown = 1.8 + Math.random() * 0.6;
-      const arms = [this.armL, this.armR];
-      for (let i = 0; i < arms.length; i++) {
-        arms[i].getWorldPosition(_aiVB);
-        _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
-        world.spawnShell(_aiVB, _aiVC, 'mech');
-        world.spawnMuzzleFlash(_aiVB, 0.4);
-      }
+      if (this._actions) this._playAnim('attack');
+      this._muzzle.getWorldPosition(_aiVB);
+      _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
+      world.spawnShell(_aiVB, _aiVC, 'mech');
+      world.spawnMuzzleFlash(_aiVB, 0.4);
+      // Fire from both sides
+      _aiVB.x += 2; // offset for second shot
+      world.spawnShell(_aiVB, _aiVC, 'mech');
+      world.spawnMuzzleFlash(_aiVB, 0.4);
     }
   }
 
@@ -654,94 +684,56 @@ export class Soldier {
     this.dead = false;
     this.cooldown = 0.5 + Math.random();
     this.speed = 9.0;
-    this.walkPhase = Math.random() * Math.PI * 2;
+    this._currentAnim = '';
 
     const root = new THREE.Group();
     root.position.set(x, 0, z);
 
-    const bodyMat   = new THREE.MeshStandardMaterial({ color: 0x6a7a40, roughness: 0.95 }); // brighter olive
-    const skinMat   = new THREE.MeshStandardMaterial({ color: 0xeac199 });
-    const dark      = new THREE.MeshStandardMaterial({ color: 0x222222 });
-    const vestMat   = new THREE.MeshStandardMaterial({ color: 0xffd11a, emissive: 0xffaa11, emissiveIntensity: 0.55 });
-    const beltMat   = new THREE.MeshStandardMaterial({ color: 0x3a3320, roughness: 0.9 });
-    const muzzleMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.4, metalness: 0.6 });
-
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.0, 0.5), bodyMat);
-    torso.position.y = 1.4;
-    root.add(torso);
-    // Hi-vis tactical vest -- big visibility win
-    const vest = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.65, 0.55), vestMat);
-    vest.position.y = 1.45;
-    root.add(vest);
-    // Belt
-    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.18, 0.55), beltMat);
-    belt.position.y = 1.05;
-    root.add(belt);
-    // Backpack
-    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.3), beltMat);
-    pack.position.set(0, 1.5, -0.36);
-    root.add(pack);
-    // Pack reflective stripe
-    const reflect = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.1, 0.05), vestMat);
-    reflect.position.set(0, 1.45, -0.52);
-    root.add(reflect);
-
-    // Head + helmet (slightly larger helmet, with chinstrap line)
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 10), skinMat);
-    head.position.y = 2.1;
-    root.add(head);
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 10, 0, Math.PI*2, 0, Math.PI/2), bodyMat);
-    helmet.position.y = 2.16;
-    root.add(helmet);
-    // Helmet front strip (NV mount stub)
-    const nvm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.06), beltMat);
-    nvm.position.set(0, 2.34, 0.32);
-    root.add(nvm);
-
-    // Arms (simple cylinders)
-    for (const sx of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.85, 6), bodyMat);
-      arm.position.set(sx * 0.45, 1.4, 0);
-      arm.rotation.z = sx * -0.05;
-      root.add(arm);
+    const biped = _cloneBiped(_templates.soldier);
+    if (biped) {
+      const box = new THREE.Box3().setFromObject(biped.root);
+      const size = box.getSize(new THREE.Vector3());
+      const targetH = 2.0; // human-sized soldier
+      const s = targetH / size.y;
+      biped.root.scale.setScalar(s);
+      box.setFromObject(biped.root);
+      biped.root.position.y = -box.min.y;
+      biped.root.rotation.y = Math.PI; // align front with +Z
+      root.add(biped.root);
+      this.mixer = biped.mixer;
+      this._actions = biped.actions;
+      // Start running
+      if (biped.actions.run) { biped.actions.run.play(); this._currentAnim = 'run'; }
+    } else {
+      // Minimal fallback
+      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x6a7a40, roughness: 0.95 });
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.0, 0.5), bodyMat);
+      torso.position.y = 1.4; root.add(torso);
+      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.0, 0.3), bodyMat);
+      legL.position.set(-0.18, 0.5, 0); root.add(legL);
+      const legR = legL.clone(); legR.position.x = 0.18; root.add(legR);
+      this.legL = legL; this.legR = legR;
+      this.walkPhase = Math.random() * Math.PI * 2;
     }
 
-    // Legs
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.0, 0.3), bodyMat);
-    legL.position.set(-0.18, 0.5, 0); root.add(legL);
-    const legR = legL.clone(); legR.position.x = 0.18; root.add(legR);
-    this.legL = legL; this.legR = legR;
-    // Boots
-    for (const sx of [-0.18, 0.18]) {
-      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.4), dark);
-      boot.position.set(sx, 0.04, 0.05);
-      root.add(boot);
-    }
-
-    // Rifle: barrel + body + stock + sight (much more recognisable)
-    const rifle = new THREE.Group();
-    const rifleBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.55), dark);
-    rifleBody.position.z = 0.05;
-    rifle.add(rifleBody);
-    const rifleBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.5, 6), muzzleMat);
-    rifleBarrel.rotation.x = Math.PI / 2;
-    rifleBarrel.position.z = 0.55;
-    rifle.add(rifleBarrel);
-    const rifleStock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.3), beltMat);
-    rifleStock.position.z = -0.25;
-    rifle.add(rifleStock);
-    const rifleSight = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.18), dark);
-    rifleSight.position.set(0, 0.12, 0.02);
-    rifle.add(rifleSight);
-    rifle.position.set(0.3, 1.4, 0.2);
-    root.add(rifle);
-    this.rifle = rifle;
+    // Muzzle point for shooting
+    this._muzzle = new THREE.Object3D();
+    this._muzzle.position.set(0.3, 1.4, 0.8);
+    root.add(this._muzzle);
 
     this.root = root;
   }
 
+  _playAnim(name) {
+    if (!this._actions || this._currentAnim === name || !this._actions[name]) return;
+    if (this._actions[this._currentAnim]) this._actions[this._currentAnim].fadeOut(0.15);
+    this._actions[name].reset().fadeIn(0.15).play();
+    this._currentAnim = name;
+  }
+
   update(dt, world, kaijuPos) {
     if (this.dead) return;
+    if (this.mixer) this.mixer.update(dt);
     const myPos = this.root.position;
     _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
     const dist = _aiVA.length();
@@ -750,18 +742,27 @@ export class Soldier {
     if (dist > 30) {
       myPos.x += _aiVA.x * this.speed * dt;
       myPos.z += _aiVA.z * this.speed * dt;
-      this.walkPhase += dt * 10;
-      this.legL.rotation.x = Math.sin(this.walkPhase) * 0.6;
-      this.legR.rotation.x = -Math.sin(this.walkPhase) * 0.6;
+      if (this._actions) {
+        this._playAnim('run');
+      } else if (this.legL) {
+        this.walkPhase += dt * 10;
+        this.legL.rotation.x = Math.sin(this.walkPhase) * 0.6;
+        this.legR.rotation.x = -Math.sin(this.walkPhase) * 0.6;
+      }
     } else {
-      this.legL.rotation.x = 0; this.legR.rotation.x = 0;
+      // In range — run-and-shoot or stand and fire
+      if (this._actions) {
+        this._playAnim(this._actions.runAndShoot ? 'runAndShoot' : 'rifleCharge');
+      } else if (this.legL) {
+        this.legL.rotation.x = 0; this.legR.rotation.x = 0;
+      }
     }
     this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
 
     this.cooldown -= dt;
     if (this.cooldown <= 0 && dist < 60) {
       this.cooldown = 0.7 + Math.random() * 0.4;
-      this.rifle.getWorldPosition(_aiVB);
+      this._muzzle.getWorldPosition(_aiVB);
       _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
       world.spawnShell(_aiVB, _aiVC, 'rifle');
       world.spawnMuzzleFlash(_aiVB, 0.2);
@@ -795,71 +796,74 @@ export class BossMech {
     this.hp = 1500;
     this.maxHp = 1500;
     this.dead = false;
-    // Boss is heavily armoured - trample stomps barely scratch the
-    // paint. Player has to use proper attacks to kill it.
     this.armored = true;
     this.cooldown = 3.0;
     this.specialCooldown = 8.0;
     this.speed = 4.5;
-    this.legPhase = 0;
-    this.scale = 1.6;
+    this._currentAnim = '';
 
     const root = new THREE.Group();
     root.position.set(x, 0, z);
 
-    const armor = new THREE.MeshStandardMaterial({ color: 0x556677, roughness: 0.4, metalness: 0.6 });
-    const accent = new THREE.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff2222, emissiveIntensity: 0.6 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x222222 });
-
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(6.0, 6.0, 4.0), armor);
-    torso.position.y = 11.0;
-    torso.castShadow = true;
-    root.add(torso);
-    this.torso = torso;
-
-    const head = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.0, 2.4), armor);
-    head.position.y = 15.5;
-    root.add(head);
-    const eye = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.4, 0.3), accent);
-    eye.position.set(0, 15.6, 1.3);
-    root.add(eye);
-    this.eye = eye;
-
-    // Cannons (shoulder-mounted)
-    function makeCannon(side) {
-      const g = new THREE.Group();
-      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.8, 4.0, 10), armor);
-      c.rotation.x = Math.PI / 2;
-      c.position.z = 1.2;
-      g.add(c);
-      g.position.set(side * 4.0, 12.5, 0);
-      return g;
+    // Use the same mech GLB but scaled up massively for the boss
+    const biped = _cloneBiped(_templates.mech);
+    if (biped) {
+      const box = new THREE.Box3().setFromObject(biped.root);
+      const size = box.getSize(new THREE.Vector3());
+      const targetH = 16.0; // massive boss
+      const s = targetH / size.y;
+      biped.root.scale.setScalar(s);
+      // Tint red/dark to distinguish from normal mechs
+      biped.root.traverse((o) => {
+        if (o.isMesh && o.material) {
+          const m = o.material.clone();
+          m.color.set(0x882222);
+          m.emissive = new THREE.Color(0xff2222);
+          m.emissiveIntensity = 0.3;
+          o.material = m;
+        }
+      });
+      box.setFromObject(biped.root);
+      biped.root.position.y = -box.min.y;
+      biped.root.rotation.y = Math.PI;
+      root.add(biped.root);
+      this.mixer = biped.mixer;
+      this._actions = biped.actions;
+      if (biped.actions.walk) { biped.actions.walk.play(); this._currentAnim = 'walk'; }
+      else if (biped.actions.run) { biped.actions.run.play(); this._currentAnim = 'run'; }
+    } else {
+      // Minimal fallback
+      const armor = new THREE.MeshStandardMaterial({ color: 0x556677, roughness: 0.4, metalness: 0.6 });
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(6.0, 6.0, 4.0), armor);
+      torso.position.y = 11.0; torso.castShadow = true; root.add(torso);
+      const legL = new THREE.Mesh(new THREE.BoxGeometry(1.8, 7.0, 2.2), armor);
+      legL.position.set(-1.6, 4.0, 0); root.add(legL);
+      const legR = legL.clone(); legR.position.x = 1.6; root.add(legR);
+      this.legL = legL; this.legR = legR;
+      this.legPhase = 0;
     }
-    this.cannonL = makeCannon(-1); root.add(this.cannonL);
-    this.cannonR = makeCannon(1); root.add(this.cannonR);
 
-    // Arms
-    const armL = new THREE.Mesh(new THREE.BoxGeometry(1.4, 5.0, 1.4), armor);
-    armL.position.set(-4.2, 9.5, 0); armL.castShadow = true; root.add(armL);
-    const armR = armL.clone(); armR.position.x = 4.2; root.add(armR);
-    this.armL = armL; this.armR = armR;
-
-    // Legs
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(1.8, 7.0, 2.2), armor);
-    legL.position.set(-1.6, 4.0, 0); legL.castShadow = true; root.add(legL);
-    const legR = legL.clone(); legR.position.x = 1.6; root.add(legR);
-    this.legL = legL; this.legR = legR;
-
-    // Glowing core
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.8, 12, 12), accent);
-    core.position.set(0, 11.5, 2.0);
-    root.add(core);
+    // Muzzle points for dual-cannon fire
+    this._muzzleL = new THREE.Object3D();
+    this._muzzleL.position.set(-4.0, 12.5, 2.0);
+    root.add(this._muzzleL);
+    this._muzzleR = new THREE.Object3D();
+    this._muzzleR.position.set(4.0, 12.5, 2.0);
+    root.add(this._muzzleR);
 
     this.root = root;
   }
 
+  _playAnim(name) {
+    if (!this._actions || this._currentAnim === name || !this._actions[name]) return;
+    if (this._actions[this._currentAnim]) this._actions[this._currentAnim].fadeOut(0.25);
+    this._actions[name].reset().fadeIn(0.25).play();
+    this._currentAnim = name;
+  }
+
   update(dt, world, kaijuPos) {
     if (this.dead) return;
+    if (this.mixer) this.mixer.update(dt);
     const myPos = this.root.position;
     _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
     const dist = _aiVA.length();
@@ -868,22 +872,25 @@ export class BossMech {
     if (dist > 30) {
       myPos.x += _aiVA.x * this.speed * dt;
       myPos.z += _aiVA.z * this.speed * dt;
-      this.legPhase += dt * 4;
-      this.legL.position.y = 4.0 + Math.sin(this.legPhase) * 0.5;
-      this.legR.position.y = 4.0 + Math.sin(this.legPhase + Math.PI) * 0.5;
+      if (this._actions) {
+        this._playAnim(dist > 60 ? 'run' : 'walk');
+      } else if (this.legL) {
+        this.legPhase = (this.legPhase || 0) + dt * 4;
+        this.legL.position.y = 4.0 + Math.sin(this.legPhase) * 0.5;
+        this.legR.position.y = 4.0 + Math.sin(this.legPhase + Math.PI) * 0.5;
+      }
     } else {
-      this.legL.position.y = 4.0; this.legR.position.y = 4.0;
+      if (this._actions) this._playAnim('idle');
+      else if (this.legL) { this.legL.position.y = 4.0; this.legR.position.y = 4.0; }
     }
     this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
-
-    this.eye.material.emissiveIntensity = 0.5 + Math.sin(world.time * 4) * 0.3;
 
     this.cooldown -= dt;
     if (this.cooldown <= 0 && dist < 160) {
       this.cooldown = 1.2;
-      const cannons = [this.cannonL, this.cannonR];
-      for (let i = 0; i < cannons.length; i++) {
-        cannons[i].getWorldPosition(_aiVB);
+      if (this._actions) this._playAnim('attack');
+      for (const muzzle of [this._muzzleL, this._muzzleR]) {
+        muzzle.getWorldPosition(_aiVB);
         _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
         world.spawnShell(_aiVB, _aiVC, 'boss');
         world.spawnMuzzleFlash(_aiVB, 0.6);

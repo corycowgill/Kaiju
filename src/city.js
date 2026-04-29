@@ -3456,8 +3456,57 @@ export function spawnCars(scene, count, cityRadius = 380, blockSize = 36) {
 // 3u. Each squashed civilian fires world.onCivilianStomped() (small score
 // + rage bonus). Pure ambient flavour -- not registered with the spatial
 // grid, no collision against buildings (they're tiny enough to clip OK).
-const CIVILIAN_TORSO_COLORS = [0xff5577, 0x55aaff, 0x88dd66, 0xffcc44, 0xaa66dd, 0xeebb99, 0xff9933, 0x66ccaa];
-const CIVILIAN_LEG_COLORS   = [0x223344, 0x441122, 0x113322, 0x223300, 0x332244];
+
+// --------------- Pedestrian GLB templates ---------------
+const PED_BASE = './assets/enemies/pedestrian/';
+const PED_ANIMS = {
+  walk: 'Walking.glb',
+  run:  'Running.glb',
+  sprint: 'Run_02.glb',
+};
+let _pedTemplate = null; // { scene, animations: { name: clip } }
+
+/** Load pedestrian GLB templates. Call once at startup. */
+export async function loadPedestrianTemplates(onProgress) {
+  const animNames = Object.keys(PED_ANIMS);
+  let scene = null;
+  const animations = {};
+  // Load base model (Walking.glb has the skinned mesh)
+  try {
+    const gltf = await _cachedGLB(PED_BASE + PED_ANIMS.walk);
+    scene = gltf.scene;
+    scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    if (gltf.animations.length > 0) animations.walk = gltf.animations[0];
+  } catch (e) {
+    console.warn('[PedGLB] Failed to load base:', e.message);
+  }
+  if (onProgress) onProgress(1, animNames.length, 'pedestrian walk');
+
+  // Load remaining animations
+  for (const name of animNames) {
+    if (name === 'walk') continue;
+    try {
+      const gltf = await _cachedGLB(PED_BASE + PED_ANIMS[name]);
+      if (gltf.animations.length > 0) animations[name] = gltf.animations[0];
+    } catch (e) {
+      console.warn(`[PedGLB] Failed to load ${name}:`, e.message);
+    }
+    if (onProgress) onProgress(Object.keys(animations).length + 1, animNames.length, 'pedestrian ' + name);
+  }
+
+  if (scene) _pedTemplate = { scene, animations };
+}
+
+function _clonePedestrian() {
+  if (!_pedTemplate) return null;
+  const clone = _pedTemplate.scene.clone(true);
+  const mixer = new THREE.AnimationMixer(clone);
+  const actions = {};
+  for (const [name, clip] of Object.entries(_pedTemplate.animations)) {
+    actions[name] = mixer.clipAction(clip);
+  }
+  return { root: clone, mixer, actions };
+}
 
 export class Civilian {
   constructor(x, z) {
@@ -3465,46 +3514,51 @@ export class Civilian {
     this.speed = 4 + Math.random() * 2;
     this.heading = Math.random() * Math.PI * 2;
     this.headingChangeT = 1 + Math.random() * 2;
-    this.walkPhase = Math.random() * Math.PI * 2;
+    this._currentAnim = '';
 
     const root = new THREE.Group();
     root.position.set(x, 0, z);
 
-    const torsoColor = CIVILIAN_TORSO_COLORS[Math.floor(Math.random() * CIVILIAN_TORSO_COLORS.length)];
-    const legColor   = CIVILIAN_LEG_COLORS[Math.floor(Math.random() * CIVILIAN_LEG_COLORS.length)];
-    const skinMat  = new THREE.MeshStandardMaterial({ color: 0xeac199, roughness: 0.85 });
-    const torsoMat = new THREE.MeshStandardMaterial({ color: torsoColor, roughness: 0.85 });
-    const legMat   = new THREE.MeshStandardMaterial({ color: legColor, roughness: 0.95 });
-    const hairMat  = new THREE.MeshStandardMaterial({ color: 0x222222 });
-
-    // Legs (animated via swing in update)
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.2), legMat);
-    legL.position.set(-0.12, 0.35, 0); root.add(legL);
-    const legR = legL.clone(); legR.position.x = 0.12; root.add(legR);
-    this.legL = legL; this.legR = legR;
-    // Torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), torsoMat);
-    torso.position.y = 1.05;
-    root.add(torso);
-    // Arms
-    for (const sx of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.6, 6), torsoMat);
-      arm.position.set(sx * 0.32, 1.05, 0);
-      root.add(arm);
+    const ped = _clonePedestrian();
+    if (ped) {
+      const box = new THREE.Box3().setFromObject(ped.root);
+      const size = box.getSize(new THREE.Vector3());
+      const targetH = 1.8; // human height
+      const s = targetH / size.y;
+      ped.root.scale.setScalar(s);
+      box.setFromObject(ped.root);
+      ped.root.position.y = -box.min.y;
+      ped.root.rotation.y = Math.PI; // align front
+      root.add(ped.root);
+      this.mixer = ped.mixer;
+      this._actions = ped.actions;
+      if (ped.actions.walk) { ped.actions.walk.play(); this._currentAnim = 'walk'; }
+    } else {
+      // Minimal procedural fallback
+      const torsoMat = new THREE.MeshStandardMaterial({ color: 0x55aaff, roughness: 0.85 });
+      const legMat = new THREE.MeshStandardMaterial({ color: 0x223344, roughness: 0.95 });
+      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.2), legMat);
+      legL.position.set(-0.12, 0.35, 0); root.add(legL);
+      const legR = legL.clone(); legR.position.x = 0.12; root.add(legR);
+      this.legL = legL; this.legR = legR;
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), torsoMat);
+      torso.position.y = 1.05; root.add(torso);
+      this.walkPhase = Math.random() * Math.PI * 2;
     }
-    // Head + hair
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), skinMat);
-    head.position.y = 1.55;
-    root.add(head);
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.19, 10, 10, 0, Math.PI * 2, 0, Math.PI / 2), hairMat);
-    hair.position.y = 1.6;
-    root.add(hair);
 
     this.root = root;
   }
 
+  _playAnim(name) {
+    if (!this._actions || this._currentAnim === name || !this._actions[name]) return;
+    if (this._actions[this._currentAnim]) this._actions[this._currentAnim].fadeOut(0.2);
+    this._actions[name].reset().fadeIn(0.2).play();
+    this._currentAnim = name;
+  }
+
   update(dt, world, kaijuPos, cityRadius) {
     if (this.dead) return;
+    if (this.mixer) this.mixer.update(dt);
     const myPos = this.root.position;
     const dx = kaijuPos.x - myPos.x;
     const dz = kaijuPos.z - myPos.z;
@@ -3530,7 +3584,6 @@ export class Civilian {
 
     myPos.x += Math.sin(this.heading) * speed * dt;
     myPos.z += Math.cos(this.heading) * speed * dt;
-    // Wrap to keep them in the city
     const lim = cityRadius;
     if (myPos.x > lim)  myPos.x = -lim;
     if (myPos.x < -lim) myPos.x =  lim;
@@ -3538,11 +3591,16 @@ export class Civilian {
     if (myPos.z < -lim) myPos.z =  lim;
 
     this.root.rotation.y = this.heading;
-    // Walk cycle (legs swing). Faster when panicking.
-    this.walkPhase += dt * (panicking ? 18 : 8);
-    const sw = Math.sin(this.walkPhase) * 0.5;
-    this.legL.rotation.x =  sw;
-    this.legR.rotation.x = -sw;
+
+    // Animate: walk normally, run/sprint when panicking
+    if (this._actions) {
+      this._playAnim(panicking ? (this._actions.sprint ? 'sprint' : 'run') : 'walk');
+    } else if (this.legL) {
+      this.walkPhase += dt * (panicking ? 18 : 8);
+      const sw = Math.sin(this.walkPhase) * 0.5;
+      this.legL.rotation.x =  sw;
+      this.legR.rotation.x = -sw;
+    }
   }
 
   die(world) {

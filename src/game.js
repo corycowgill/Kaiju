@@ -10,7 +10,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, flushPendingGLBBuildings } from './city.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, flushPendingGLBBuildings } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
@@ -474,11 +474,11 @@ const world = {
   showMessage,
 };
 
-// Pre-load tree GLB templates so buildCity can use them
-window.__dbg && window.__dbg('DBG · loading tree templates…');
+// Pre-load tree + pedestrian GLB templates so buildCity/spawnCivilians can use them
+window.__dbg && window.__dbg('DBG · loading tree + pedestrian templates…');
 await initAssetCache();
-await loadTreeTemplates();
-window.__dbg && window.__dbg('DBG · tree templates loaded', '#9f9');
+await Promise.all([loadTreeTemplates(), loadPedestrianTemplates()]);
+window.__dbg && window.__dbg('DBG · tree + pedestrian templates loaded', '#9f9');
 
 // Build city
 window.__dbg && window.__dbg('DBG · buildCity starting…');
