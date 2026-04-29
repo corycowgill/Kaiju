@@ -81,6 +81,7 @@ function _idbClear(store) {
  * Returns true if cache was warm (existing version matched).
  */
 export async function initAssetCache() {
+  if (_db) return true; // already initialized
   try {
     _db = await _openDB();
     const storedVersion = await _idbGet(META_STORE, 'version');

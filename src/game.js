@@ -474,6 +474,12 @@ const world = {
   showMessage,
 };
 
+// Pre-load tree GLB templates so buildCity can use them
+window.__dbg && window.__dbg('DBG · loading tree templates…');
+await initAssetCache();
+await loadTreeTemplates();
+window.__dbg && window.__dbg('DBG · tree templates loaded', '#9f9');
+
 // Build city
 window.__dbg && window.__dbg('DBG · buildCity starting…');
 {
@@ -1051,12 +1057,12 @@ async function _startGameInner(key) {
     const cacheWarm = await initAssetCache();
     loadingStatus.textContent = cacheWarm ? 'LOADING FROM CACHE' : 'DOWNLOADING ASSETS';
 
-    // Track combined progress from kaiju + building + enemy + tree loading
+    // Track combined progress from kaiju + building + enemy loading
     const progress = { kaijuLoaded: 0, kaijuTotal: 1, bldgLoaded: 0, bldgTotal: 1,
-                       enemyLoaded: 0, enemyTotal: 1, treeLoaded: 0, treeTotal: 1 };
+                       enemyLoaded: 0, enemyTotal: 1 };
     function updateLoadingUI() {
-      const totalItems = progress.kaijuTotal + progress.bldgTotal + progress.enemyTotal + progress.treeTotal;
-      const loadedItems = progress.kaijuLoaded + progress.bldgLoaded + progress.enemyLoaded + progress.treeLoaded;
+      const totalItems = progress.kaijuTotal + progress.bldgTotal + progress.enemyTotal;
+      const loadedItems = progress.kaijuLoaded + progress.bldgLoaded + progress.enemyLoaded;
       const pct = Math.round((loadedItems / totalItems) * 100);
       loadingBar.style.width = pct + '%';
       loadingPct.textContent = pct + '%';
@@ -1081,12 +1087,6 @@ async function _startGameInner(key) {
         progress.enemyLoaded = loaded;
         progress.enemyTotal = total;
         loadingStatus.textContent = 'ENEMY: ' + label.toUpperCase();
-        updateLoadingUI();
-      }),
-      loadTreeTemplates((loaded, total, label) => {
-        progress.treeLoaded = loaded;
-        progress.treeTotal = total;
-        loadingStatus.textContent = 'TREE: ' + label.toUpperCase();
         updateLoadingUI();
       }),
     ]);

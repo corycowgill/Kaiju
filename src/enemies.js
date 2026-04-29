@@ -87,6 +87,8 @@ export class Tank {
       // Center on the ground
       box.setFromObject(tpl);
       tpl.position.y = -box.min.y;
+      // Rotate inner model so its visual front aligns with +Z
+      tpl.rotation.y = Math.PI;
       root.add(tpl);
       this._glbModel = tpl;
 
@@ -123,17 +125,16 @@ export class Tank {
     if (dist < 0.0001) return;
     _aiVA.divideScalar(dist);
 
-    // Drive: maintain ~60u distance, face movement direction
+    // Drive: maintain ~60u distance
     let moveX = 0, moveZ = 0;
     if (dist > 80)      { moveX = _aiVA.x;  moveZ = _aiVA.z;  }
     else if (dist < 50) { moveX = -_aiVA.x; moveZ = -_aiVA.z; }
     if (moveX || moveZ) {
       myPos.x += moveX * this.speed * dt;
       myPos.z += moveZ * this.speed * dt;
-      this.root.rotation.y = Math.atan2(moveX, moveZ);
     }
 
-    // Always face toward kaiju (turret aim = whole body for GLB)
+    // Always face toward kaiju
     this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
 
     // Shoot
@@ -184,6 +185,8 @@ export class Helicopter {
       tpl.scale.setScalar(s);
       box.setFromObject(tpl);
       tpl.position.y = -box.min.y;
+      // Align visual front with +Z
+      tpl.rotation.y = Math.PI;
       root.add(tpl);
       this._glbModel = tpl;
     } else {
@@ -585,6 +588,8 @@ export class Artillery {
       });
       box.setFromObject(tpl);
       tpl.position.y = -box.min.y;
+      // Align visual front with +Z
+      tpl.rotation.y = Math.PI;
       root.add(tpl);
     } else {
       const baseMat = new THREE.MeshStandardMaterial({ color: 0x383830, roughness: 0.85 });
