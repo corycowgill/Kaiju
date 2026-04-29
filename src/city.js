@@ -2291,20 +2291,41 @@ export function buildCity(scene, world, opts = {}) {
           offX = rand(-2, 2);
           offZ = rand(-2, 2);
         }
-        const b = new Building(bx + offX, bz + offZ, w, d, h, { skipWindows: true });
-        b._skipBodyIM = true;
-        b.group.matrixAutoUpdate = false;
-        b.group.updateMatrix();
-        scene.add(b.group);
-        buildings.push(b);
-        grid.add(b);
-        _pendingGLBBuildings.push({ url: pickBuildingGLB(h), h, building: b, maxW, maxD });
+        if (lite) {
+          // Mobile: use normal procedural buildings (visible via InstancedMesh body)
+          const b = new Building(bx + offX, bz + offZ, w, d, h);
+          b.group.matrixAutoUpdate = false;
+          b.group.updateMatrix();
+          scene.add(b.group);
+          buildings.push(b);
+          grid.add(b);
+        } else {
+          // Desktop: invisible placeholder → replaced by GLB after templates load
+          const b = new Building(bx + offX, bz + offZ, w, d, h, { skipWindows: true });
+          b._skipBodyIM = true;
+          b.group.matrixAutoUpdate = false;
+          b.group.updateMatrix();
+          scene.add(b.group);
+          buildings.push(b);
+          grid.add(b);
+          _pendingGLBBuildings.push({ url: pickBuildingGLB(h), h, building: b, maxW, maxD });
+        }
       }
     }
   }
 
   // ---------- GLB Landmark helper ----------
   function addGLBLandmark(x, z, w, d, h, hp, url) {
+    if (lite) {
+      // Mobile: procedural building as landmark (no GLB download)
+      const b = new Building(x, z, w, d, h);
+      b.group.matrixAutoUpdate = false; b.group.updateMatrix();
+      b.maxHp = hp; b.hp = hp;
+      scene.add(b.group);
+      buildings.push(b);
+      grid.add(b);
+      return b;
+    }
     const b = new Building(x, z, w, d, h, { skipWindows: true });
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     b._skipBodyIM = true;
@@ -2312,7 +2333,6 @@ export function buildCity(scene, world, opts = {}) {
     scene.add(b.group);
     buildings.push(b);
     grid.add(b);
-    // Landmarks use w, d as max footprint to prevent overflow into neighbors
     _pendingGLBBuildings.push({ url, h, building: b, maxW: w * 2, maxD: d * 2 });
     return b;
   }
