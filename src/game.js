@@ -66,11 +66,22 @@ window.addEventListener('orientationchange', updateOrientationClass);
 // ------------------------- Setup -------------------------
 const game = document.getElementById('game');
 // Phase 8: pixel ratio + shadow toggle keyed off the QUALITY tier.
-const renderer = new THREE.WebGLRenderer({ antialias: Q_HIGH, powerPreference: 'high-performance' });
-const QUALITY_PR = Q_HIGH ? 1.5 : (Q_MED ? 1.25 : 1.0);
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({
+    antialias: !isMobile && Q_HIGH,
+    powerPreference: isMobile ? 'default' : 'high-performance',
+    preserveDrawingBuffer: false,
+  });
+} catch (e) {
+  document.body.innerHTML = '<div style="color:#fff;text-align:center;padding:20%;font-family:sans-serif;">' +
+    '<h2>WebGL Not Available</h2><p>This game requires WebGL support.</p></div>';
+  throw e;
+}
+const QUALITY_PR = Q_HIGH ? 1.5 : (Q_MED ? 1.25 : (isMobile ? 0.75 : 1.0));
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY_PR));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = Q_HIGH;
+renderer.shadowMap.enabled = !isMobile && Q_HIGH;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
@@ -99,7 +110,8 @@ const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerH
 // composer chain matches the colour pipeline regardless of pass order.
 let composer = null;
 let bloomPass = null;
-{
+// Skip post-processing on mobile to save GPU memory (framebuffer allocations)
+if (!isMobile) {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(
@@ -215,7 +227,7 @@ let bloomPass = null;
   }
 
   composer.addPass(new OutputPass());
-}
+} // end if (!isMobile) post-processing
 
 // Lighting: dramatic dusk
 // Phase 4 lighting: low-angle synthwave-dusk sun + reduced ambient (IBL
@@ -1019,6 +1031,9 @@ function _showMobileDataWarning() {
     // Check if cache is already warm (assets previously downloaded)
     const cs = getCacheStats();
     if (cs.enabled && cs.hits > 0) { resolve(true); return; }
+    // Show correct size: mobile only downloads the kaiju (~150MB)
+    const sizeEl = document.getElementById('data-warn-size');
+    if (sizeEl) sizeEl.textContent = isMobile ? '~150 MB' : '~900 MB';
     warn.classList.remove('hidden');
     warn.style.display = 'flex';
     const okBtn = document.getElementById('data-warn-ok');
@@ -1095,7 +1110,7 @@ async function _startGameInner(key) {
     const cacheWarm = await initAssetCache();
     loadingStatus.textContent = cacheWarm ? 'LOADING FROM CACHE' : 'DOWNLOADING ASSETS';
 
-    // Track combined progress from kaiju + building + enemy loading
+    // Track combined progress
     const progress = { kaijuLoaded: 0, kaijuTotal: 1, bldgLoaded: 0, bldgTotal: 1,
                        enemyLoaded: 0, enemyTotal: 1 };
     function updateLoadingUI() {
@@ -1106,32 +1121,47 @@ async function _startGameInner(key) {
       loadingPct.textContent = pct + '%';
     }
 
-    // Load all GLB assets in parallel
-    const [glb] = await Promise.all([
-      loadKaijuModel(key, (loaded, total, label) => {
+    // On mobile: only load the kaiju model to stay under iOS memory limits (~1.5GB).
+    // Buildings, enemies, debris, trees all use procedural fallbacks.
+    // On desktop: load everything in parallel.
+    let glb;
+    if (isMobile) {
+      glb = await loadKaijuModel(key, (loaded, total, label) => {
         progress.kaijuLoaded = loaded;
         progress.kaijuTotal = total;
+        progress.bldgTotal = 0; progress.enemyTotal = 0;
         loadingStatus.textContent = label.toUpperCase();
         updateLoadingUI();
-      }),
-      loadBuildingTemplates((loaded, total, label) => {
-        progress.bldgLoaded = loaded;
-        progress.bldgTotal = total;
-        loadingStatus.textContent = 'BUILDING: ' + label.toUpperCase();
-        updateLoadingUI();
-      }),
-      loadDebrisTemplates(),
-      loadEnemyTemplates((loaded, total, label) => {
-        progress.enemyLoaded = loaded;
-        progress.enemyTotal = total;
-        loadingStatus.textContent = 'ENEMY: ' + label.toUpperCase();
-        updateLoadingUI();
-      }),
-    ]);
+      });
+    } else {
+      [glb] = await Promise.all([
+        loadKaijuModel(key, (loaded, total, label) => {
+          progress.kaijuLoaded = loaded;
+          progress.kaijuTotal = total;
+          loadingStatus.textContent = label.toUpperCase();
+          updateLoadingUI();
+        }),
+        loadBuildingTemplates((loaded, total, label) => {
+          progress.bldgLoaded = loaded;
+          progress.bldgTotal = total;
+          loadingStatus.textContent = 'BUILDING: ' + label.toUpperCase();
+          updateLoadingUI();
+        }),
+        loadDebrisTemplates(),
+        loadEnemyTemplates((loaded, total, label) => {
+          progress.enemyLoaded = loaded;
+          progress.enemyTotal = total;
+          loadingStatus.textContent = 'ENEMY: ' + label.toUpperCase();
+          updateLoadingUI();
+        }),
+      ]);
+    }
 
     // Clone + place every queued building now that templates are loaded
-    loadingStatus.textContent = 'BUILDING TOKYO';
-    flushPendingGLBBuildings(scene);
+    if (!isMobile) {
+      loadingStatus.textContent = 'BUILDING TOKYO';
+      flushPendingGLBBuildings(scene);
+    }
 
     // Brief pause at 100% so it feels complete
     loadingBar.style.width = '100%';
