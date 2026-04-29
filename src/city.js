@@ -117,8 +117,6 @@ export function loadTreeTemplates(onProgress) {
 
 // Single tree: uses GLB clone if templates loaded, else procedural fallback.
 function makeTree(x = 0, z = 0, scale = 1) {
-  const tree = new THREE.Group();
-
   if (_treeTemplates.length > 0) {
     // Pick a random tree template (normal or cherry)
     const tpl = _treeTemplates[Math.floor(Math.random() * _treeTemplates.length)];
@@ -133,20 +131,22 @@ function makeTree(x = 0, z = 0, scale = 1) {
     clone.position.y = -cloneBox.min.y;
     // Random Y rotation for variety
     clone.rotation.y = Math.random() * Math.PI * 2;
-    tree.add(clone);
-  } else {
-    // Procedural fallback
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.95 });
-    const leafMat = new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 });
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * scale, 0.5 * scale, 4 * scale, 6), trunkMat);
-    trunk.position.y = 2 * scale;
-    tree.add(trunk);
-    const leaves = new THREE.Mesh(new THREE.SphereGeometry(2 * scale, 8, 6), leafMat);
-    leaves.position.y = 5 * scale;
-    leaves.scale.set(1.2, 1.0, 1.2);
-    tree.add(leaves);
+    clone.position.x = x;
+    clone.position.z = z;
+    return clone;
   }
 
+  // Procedural fallback
+  const tree = new THREE.Group();
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.95 });
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 });
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * scale, 0.5 * scale, 4 * scale, 6), trunkMat);
+  trunk.position.y = 2 * scale;
+  tree.add(trunk);
+  const leaves = new THREE.Mesh(new THREE.SphereGeometry(2 * scale, 8, 6), leafMat);
+  leaves.position.y = 5 * scale;
+  leaves.scale.set(1.2, 1.0, 1.2);
+  tree.add(leaves);
   tree.position.set(x, 0, z);
   tree.matrixAutoUpdate = false; tree.updateMatrix();
   return tree;
