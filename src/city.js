@@ -125,25 +125,29 @@ function _cloneTreeScene(tpl) {
 /** Load tree GLB templates. Call once at startup. */
 export function loadTreeTemplates(onProgress) {
   return Promise.all(TREE_GLBS.map((url, idx) =>
-    _cachedGLB(url).then((gltf) => {
-      const s = gltf.scene;
-      // Count meshes to verify valid model
-      let meshCount = 0;
-      s.traverse((o) => { if (o.isMesh) meshCount++; });
-      console.log(`[TreeGLB] Loaded ${url} — ${meshCount} meshes`);
-      if (meshCount === 0) {
-        console.warn('[TreeGLB] No meshes found in', url);
-        return;
-      }
-      s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      const box = new THREE.Box3().setFromObject(s);
-      const size = box.getSize(new THREE.Vector3());
-      console.log(`[TreeGLB] Bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
-      _treeTemplates.push({ scene: s, box });
-      if (onProgress) onProgress(idx + 1, TREE_GLBS.length, url.split('/').pop().replace('.glb', ''));
-    }).catch((err) => {
-      console.warn('[TreeGLB] Failed to load', url, err.message);
-      if (onProgress) onProgress(idx + 1, TREE_GLBS.length, 'error');
+    new Promise((resolve) => {
+      _glbLoader.load(url, (gltf) => {
+        const s = gltf.scene;
+        let meshCount = 0;
+        s.traverse((o) => { if (o.isMesh) meshCount++; });
+        console.log(`[TreeGLB] Loaded ${url} — ${meshCount} meshes`);
+        if (meshCount === 0) {
+          console.warn('[TreeGLB] No meshes found in', url);
+          resolve();
+          return;
+        }
+        s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        const box = new THREE.Box3().setFromObject(s);
+        const size = box.getSize(new THREE.Vector3());
+        console.log(`[TreeGLB] Bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
+        _treeTemplates.push({ scene: s, box });
+        if (onProgress) onProgress(idx + 1, TREE_GLBS.length, url.split('/').pop().replace('.glb', ''));
+        resolve();
+      }, undefined, (err) => {
+        console.warn('[TreeGLB] Failed to load', url, err.message || err);
+        if (onProgress) onProgress(idx + 1, TREE_GLBS.length, 'error');
+        resolve();
+      });
     })
   ));
 }
@@ -2633,18 +2637,8 @@ export function buildCity(scene, world, opts = {}) {
   }
 
   // ---- Street trees scattered on sidewalks ----
-  // Trunk shared, leaves split into 3 colour buckets (oak green / sakura
-  // pink / autumn orange) for visual variety. Each tree is randomly
-  // assigned a bucket on placement.
+  // Uses GLB tree templates if loaded, else procedural fallback via makeTree.
   {
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.95 });
-    const trunkGeom = new THREE.CylinderGeometry(0.32, 0.42, 3.4, 6);
-    const leafGeom  = new THREE.SphereGeometry(1.7, 8, 6);
-    const LEAF_BUCKETS = [
-      { name: 'green',  mat: new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 }), weight: 0.62 },
-      { name: 'sakura', mat: new THREE.MeshStandardMaterial({ color: 0xff9bbf, roughness: 0.75, emissive: 0xff5588, emissiveIntensity: 0.15 }), weight: 0.22 },
-      { name: 'autumn', mat: new THREE.MeshStandardMaterial({ color: 0xd96a22, roughness: 0.85 }), weight: 0.16 },
-    ];
     const treePositions = [];
     const STREET_OFFSET = STREET / 2 + 2.4;
     for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += BLOCK) {
@@ -2658,51 +2652,8 @@ export function buildCity(scene, world, opts = {}) {
         }
       }
     }
-    if (treePositions.length) {
-      // Bucket every tree
-      const buckets = LEAF_BUCKETS.map(() => []);
-      for (const t of treePositions) {
-        const r = Math.random();
-        let acc = 0; let bIdx = 0;
-        for (let i = 0; i < LEAF_BUCKETS.length; i++) {
-          acc += LEAF_BUCKETS[i].weight;
-          if (r < acc) { bIdx = i; break; }
-        }
-        buckets[bIdx].push(t);
-      }
-      // Trunks share one IM (all trees regardless of leaf colour)
-      const trunkIM = new THREE.InstancedMesh(trunkGeom, trunkMat, treePositions.length);
-      trunkIM.frustumCulled = false;
-      const dummy = new THREE.Object3D();
-      let trunkIdx = 0;
-      for (const list of buckets) {
-        for (const t of list) {
-          dummy.position.set(t.x, 1.7 * t.scale, t.z);
-          dummy.scale.set(t.scale, t.scale, t.scale);
-          dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
-          dummy.updateMatrix();
-          trunkIM.setMatrixAt(trunkIdx++, dummy.matrix);
-        }
-      }
-      trunkIM.instanceMatrix.needsUpdate = true;
-      scene.add(trunkIM);
-      // Three leaf IMs, one per colour bucket
-      for (let i = 0; i < LEAF_BUCKETS.length; i++) {
-        const list = buckets[i];
-        if (!list.length) continue;
-        const leafIM = new THREE.InstancedMesh(leafGeom, LEAF_BUCKETS[i].mat, list.length);
-        leafIM.frustumCulled = false;
-        for (let k = 0; k < list.length; k++) {
-          const t = list[k];
-          dummy.position.set(t.x, 4.2 * t.scale, t.z);
-          dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
-          dummy.scale.set(1.2 * t.scale, 1.0 * t.scale, 1.2 * t.scale);
-          dummy.updateMatrix();
-          leafIM.setMatrixAt(k, dummy.matrix);
-        }
-        leafIM.instanceMatrix.needsUpdate = true;
-        scene.add(leafIM);
-      }
+    for (const t of treePositions) {
+      scene.add(makeTree(t.x, t.z, t.scale));
     }
   }
 
@@ -3633,7 +3584,7 @@ export class Civilian {
     if (ped) {
       const box = new THREE.Box3().setFromObject(ped.root);
       const size = box.getSize(new THREE.Vector3());
-      const targetH = 1.8; // human height
+      const targetH = 0.9; // human height (halved)
       const s = targetH / size.y;
       ped.root.scale.setScalar(s);
       box.setFromObject(ped.root);
