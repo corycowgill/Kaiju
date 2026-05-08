@@ -10,7 +10,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, flushPendingGLBBuildings } from './city.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, flushPendingGLBBuildings } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
@@ -500,7 +500,7 @@ if (!isMobile) {
   try {
     window.__dbg && window.__dbg('DBG · loading tree + pedestrian templates…');
     await initAssetCache();
-    await Promise.all([loadTreeTemplates(), loadPedestrianTemplates()]);
+    await Promise.all([loadTreeTemplates(), loadPedestrianTemplates(), loadCarTemplates()]);
     window.__dbg && window.__dbg('DBG · tree + pedestrian templates loaded', '#9f9');
   } catch (e) {
     console.warn('[PreLoad] Tree/pedestrian template loading failed, using procedural fallbacks:', e.message);

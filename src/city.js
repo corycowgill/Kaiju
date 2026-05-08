@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { cachedFetch, cachedBlobURL } from './assetCache.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
@@ -3386,38 +3387,93 @@ function makeSubwayEntrance() {
 // -------------------- Cars --------------------
 const CAR_COLORS = [0xff3344, 0x33aaff, 0xffcc33, 0xffffff, 0x222222, 0x44aa66, 0xaa44ff];
 
+// --------------- GLB car templates ---------------
+const CAR_GLBS = [
+  './assets/cars/car_1.glb',
+  './assets/cars/car_2.glb',
+];
+const _carTemplates = []; // array of { scene, box } after loading
+
+/** Load car GLB templates. Call once at startup. */
+export function loadCarTemplates(onProgress) {
+  return Promise.all(CAR_GLBS.map((url, idx) =>
+    _cachedGLB(url).then((gltf) => {
+      const s = gltf.scene;
+      let meshCount = 0;
+      s.traverse((o) => { if (o.isMesh) { meshCount++; o.castShadow = true; o.receiveShadow = true; } });
+      if (meshCount === 0) {
+        console.warn('[CarGLB] No meshes found in', url);
+        return;
+      }
+      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s) });
+      if (onProgress) onProgress(idx + 1, CAR_GLBS.length, url.split('/').pop().replace('.glb', ''));
+    }).catch((err) => {
+      console.warn('[CarGLB] Failed to load', url, err.message);
+      if (onProgress) onProgress(idx + 1, CAR_GLBS.length, 'error');
+    })
+  ));
+}
+
+function _cloneCarScene(tpl) {
+  const group = new THREE.Group();
+  tpl.scene.traverse((o) => {
+    if (o.isMesh) {
+      const m = new THREE.Mesh(o.geometry, o.material);
+      o.updateWorldMatrix(true, false);
+      m.applyMatrix4(o.matrixWorld);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      group.add(m);
+    }
+  });
+  return group;
+}
+
 export class Car {
   constructor(x, z, axis /* 'x' or 'z' */, dir /* +1/-1 */) {
     this.dead = false;
     this.axis = axis; this.dir = dir;
     this.speed = 12 + Math.random() * 8;
-    const color = CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)];
     const root = new THREE.Group();
     root.position.set(x, 0.6, z);
 
-    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.3 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x111111 });
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, roughness: 0.1, metalness: 0.6 });
-    const lightMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffee99, emissiveIntensity: 1.2 });
+    if (_carTemplates.length > 0) {
+      // GLB car: pick a random template
+      const tpl = _carTemplates[Math.floor(Math.random() * _carTemplates.length)];
+      const clone = _cloneCarScene(tpl);
+      const size = tpl.box.getSize(new THREE.Vector3());
+      const targetLen = 3.6; // ~3.6 units long to match procedural size
+      const s = targetLen / Math.max(size.x, size.y, size.z);
+      clone.scale.setScalar(s);
+      clone.updateMatrixWorld(true);
+      const cloneBox = new THREE.Box3().setFromObject(clone);
+      clone.position.y = -cloneBox.min.y - 0.6; // sit on road surface
+      root.add(clone);
+    } else {
+      // Procedural fallback
+      const color = CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)];
+      const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.3 });
+      const dark = new THREE.MeshStandardMaterial({ color: 0x111111 });
+      const glassMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, roughness: 0.1, metalness: 0.6 });
+      const lightMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffee99, emissiveIntensity: 1.2 });
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 3.4), bodyMat);
-    body.castShadow = true;
-    root.add(body);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.6), glassMat);
-    cabin.position.set(0, 0.65, -0.1);
-    root.add(cabin);
-    // Wheels
-    for (const sx of [-0.7, 0.7]) {
-      for (const sz of [-1.1, 1.1]) {
-        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.25, 8), dark);
-        w.rotation.z = Math.PI / 2; w.position.set(sx, -0.35, sz);
-        root.add(w);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 3.4), bodyMat);
+      body.castShadow = true;
+      root.add(body);
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.6), glassMat);
+      cabin.position.set(0, 0.65, -0.1);
+      root.add(cabin);
+      for (const sx of [-0.7, 0.7]) {
+        for (const sz of [-1.1, 1.1]) {
+          const w = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.25, 8), dark);
+          w.rotation.z = Math.PI / 2; w.position.set(sx, -0.35, sz);
+          root.add(w);
+        }
       }
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.1), lightMat);
+      hl.position.set(-0.45, 0.0, 1.7); root.add(hl);
+      const hr = hl.clone(); hr.position.x = 0.45; root.add(hr);
     }
-    // Headlights
-    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.1), lightMat);
-    hl.position.set(-0.45, 0.0, 1.7); root.add(hl);
-    const hr = hl.clone(); hr.position.x = 0.45; root.add(hr);
 
     if (axis === 'x') root.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
     else if (dir < 0) root.rotation.y = Math.PI;
@@ -3553,7 +3609,7 @@ export async function loadPedestrianTemplates(onProgress) {
 
 function _clonePedestrian() {
   if (!_pedTemplate) return null;
-  const clone = _pedTemplate.scene.clone(true);
+  const clone = skinnedClone(_pedTemplate.scene);
   const mixer = new THREE.AnimationMixer(clone);
   const actions = {};
   for (const [name, clip] of Object.entries(_pedTemplate.animations)) {

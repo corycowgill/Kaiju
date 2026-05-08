@@ -19,6 +19,7 @@ const _templates = {
   tank: null, tankAnims: [], helicopter: null, artillery: null,
   soldier: null, soldierAnims: {},
   mech: null, mechAnims: {},
+  jet: null,
 };
 
 function _cachedGLB(url) {
@@ -90,7 +91,7 @@ async function _loadBipedSet(basePath, animFiles, label, onProgress, startIdx, t
  * @param {Function} [onProgress] - (loaded, total, label) callback
  */
 export async function loadEnemyTemplates(onProgress) {
-  // Static models (tank, heli, artillery)
+  // Static models (tank, heli, artillery, jet)
   const staticFiles = [
     { key: 'tank',       url: './assets/enemies/tank.glb' },
     { key: 'tank_a1',    url: './assets/enemies/tank_anim_1.glb' },
@@ -98,6 +99,7 @@ export async function loadEnemyTemplates(onProgress) {
     { key: 'tank_a3',    url: './assets/enemies/tank_anim_3.glb' },
     { key: 'helicopter', url: './assets/enemies/helicopter.glb' },
     { key: 'artillery',  url: './assets/enemies/tank.glb' },
+    { key: 'jet',        url: './assets/enemies/jet.glb' },
   ];
   const soldierAnimCount = Object.keys(SOLDIER_ANIMS).length;
   const mechAnimCount = Object.keys(MECH_ANIMS).length;
@@ -118,6 +120,8 @@ export async function loadEnemyTemplates(onProgress) {
         _templates.helicopter = { scene: s, animations: gltf.animations };
       } else if (key === 'artillery') {
         _templates.artillery = { scene: s, animations: gltf.animations };
+      } else if (key === 'jet') {
+        _templates.jet = { scene: s, animations: gltf.animations };
       }
     } catch (e) {
       console.warn(`[EnemyGLB] Failed to load ${key}:`, e.message);
@@ -504,37 +508,52 @@ export class Jet {
     const root = new THREE.Group();
     root.position.set(x, this.altitude, z);
 
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x6a7080, roughness: 0.3, metalness: 0.6 });
-    const accentMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const glb = _cloneTemplate(_templates.jet);
+    if (glb) {
+      const box = new THREE.Box3().setFromObject(glb);
+      const size = box.getSize(new THREE.Vector3());
+      const targetLen = 7.0; // ~7 units long
+      const s = targetLen / Math.max(size.x, size.y, size.z);
+      glb.scale.setScalar(s);
+      glb.updateMatrixWorld(true);
+      const scaled = new THREE.Box3().setFromObject(glb);
+      glb.position.y = -(scaled.min.y + scaled.max.y) / 2; // center vertically
+      glb.rotation.y = Math.PI; // face +Z forward
+      root.add(glb);
+    } else {
+      // Procedural fallback
+      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x6a7080, roughness: 0.3, metalness: 0.6 });
+      const accentMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+      const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.3, 6.0, 8), bodyMat);
+      fuselage.rotation.x = Math.PI / 2;
+      root.add(fuselage);
+
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 8), bodyMat);
+      nose.rotation.x = Math.PI / 2;
+      nose.position.z = 3.5;
+      root.add(nose);
+
+      const wings = new THREE.Mesh(new THREE.BoxGeometry(7.0, 0.18, 1.6), bodyMat);
+      wings.position.z = 0.0;
+      root.add(wings);
+
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.9), bodyMat);
+      tail.position.set(0, 0.0, -2.6);
+      root.add(tail);
+
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.9), bodyMat);
+      fin.position.set(0, 0.5, -2.6);
+      root.add(fin);
+
+      const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), accentMat);
+      cockpit.position.set(0, 0.4, 1.2);
+      cockpit.scale.set(1, 0.6, 1.4);
+      root.add(cockpit);
+    }
+
+    // Afterburner glow (always procedural - visible on GLB too)
     const glowMat = new THREE.MeshBasicMaterial({ color: 0xffaa44 });
-
-    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.3, 6.0, 8), bodyMat);
-    fuselage.rotation.x = Math.PI / 2;
-    root.add(fuselage);
-
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 8), bodyMat);
-    nose.rotation.x = Math.PI / 2;
-    nose.position.z = 3.5;
-    root.add(nose);
-
-    const wings = new THREE.Mesh(new THREE.BoxGeometry(7.0, 0.18, 1.6), bodyMat);
-    wings.position.z = 0.0;
-    root.add(wings);
-
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.9), bodyMat);
-    tail.position.set(0, 0.0, -2.6);
-    root.add(tail);
-
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.9), bodyMat);
-    fin.position.set(0, 0.5, -2.6);
-    root.add(fin);
-
-    const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), accentMat);
-    cockpit.position.set(0, 0.4, 1.2);
-    cockpit.scale.set(1, 0.6, 1.4);
-    root.add(cockpit);
-
-    // Afterburner glow
     const burner = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.4, 6), glowMat);
     burner.rotation.x = -Math.PI / 2;
     burner.position.z = -3.4;

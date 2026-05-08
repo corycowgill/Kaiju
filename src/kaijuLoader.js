@@ -9,28 +9,32 @@ function _cachedGLB(loader, url) {
   );
 }
 
-// ---- Godzilla (lizard kaiju) ----
-const GODZILLA_BASE = './assets/kaiju_model/Meshy_AI_I_want_to_create_a_Ka_biped/Meshy_AI_I_want_to_create_a_Ka_biped_';
+// ---- Godzilla (reptile kaiju) ----
+const GODZILLA_BASE = './assets/kaiju_model/Meshy_AI_A_giant_bipedal_monst_biped/Meshy_AI_A_giant_bipedal_monst_biped_';
 const GODZILLA_ANIMS = {
   idle:       'Animation_Alert_withSkin.glb',
+  idle2:      'Animation_Idle_10_withSkin.glb',
   walk:       'Animation_Walking_withSkin.glb',
   run:        'Animation_Running_withSkin.glb',
   sprint:     'Animation_Run_02_withSkin.glb',
+  sprintFast: 'Animation_RunFast_withSkin.glb',
   turnLeft:   'Animation_Run_Turn_Left_withSkin.glb',
   turnRight:  'Animation_Run_Turn_Right_withSkin.glb',
-  walkTurnL:  'Animation_Walk_Turn_Left_withSkin.glb',
-  walkTurnR:  'Animation_Walk_Turn_Right_withSkin.glb',
-  skill1:     'Animation_Skill_01_withSkin.glb',
-  skill2:     'Animation_Skill_02_withSkin.glb',
-  stomp:      'Animation_Angry_Ground_Stomp_withSkin.glb',
-  stomp2:     'Animation_Angry_Ground_Stomp_2_withSkin.glb',
+  walkTurnL:  'Animation_Run_Turn_Left_withSkin.glb',   // reuse run turn (no walk-turn in this model)
+  walkTurnR:  'Animation_Run_Turn_Right_withSkin.glb',   // reuse run turn (no walk-turn in this model)
+  turnSharp:  'Animation_Run_Sharp_Turn_Right_withSkin.glb',
+  backRight:  'Animation_BackRight_Run_withSkin.glb',
+  skill1:     'Animation_Charged_Slash_withSkin.glb',
+  skill2:     'Animation_Charged_Spell_Cast_withSkin.glb',
+  stomp:      'Animation_Angry_Ground_Stomp_2_withSkin.glb',
   jump:       'Animation_Basic_Jump_withSkin.glb',
-  death:      'Animation_Shot_and_Blown_Back_withSkin.glb',
-  dance:      'Animation_You_Groove_withSkin.glb',
-  punch:      'Animation_Punch_Combo_1_withSkin.glb',
-  tantrum:    'Animation_Angry_To_Tantrum_Sit_withSkin.glb',
-  flex:       'Animation_Show_Both_Arm_Muscles_withSkin.glb',
-  agree:      'Animation_Agree_Gesture_withSkin.glb',
+  death:      'Animation_Shot_and_Slow_Fall_Backward_withSkin.glb',
+  dead:       'Animation_Dead_withSkin.glb',
+  punch:      'Animation_Punch_Combo_withSkin.glb',
+  dance:      'Animation_Idle_10_withSkin.glb',           // no dance anim, use idle2 for victory
+  cast1:      'Animation_mage_soell_cast_1_withSkin.glb',
+  cast2:      'Animation_mage_soell_cast_2_withSkin.glb',
+  cast3:      'Animation_mage_soell_cast_withSkin.glb',
 };
 
 // ---- Ghidorah (three-headed dragon kaiju) ----
@@ -86,8 +90,8 @@ const MECHA_ANIMS = {
 // One-shot animations (play once then return to previous)
 const ONE_SHOT = new Set([
   'skill1', 'skill2', 'skill3', 'stomp', 'stomp2', 'jump',
-  'death', 'punch', 'tantrum', 'flex', 'agree', 'cheer',
-  'cast1', 'cast2', 'cast3', 'shrug',
+  'death', 'dead', 'punch', 'tantrum', 'flex', 'agree', 'cheer',
+  'cast1', 'cast2', 'cast3', 'shrug', 'turnSharp', 'backRight',
 ]);
 
 // Model configs by monster key
