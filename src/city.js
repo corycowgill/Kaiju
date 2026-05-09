@@ -34,6 +34,10 @@ const GROUND_REPEATS = 1600 / GROUND_TILE;
 const _groundColor = _loadTileTex('concrete_color.jpg', GROUND_REPEATS, GROUND_REPEATS);
 const _groundNorm  = _loadDataTex('concrete_normal.jpg', GROUND_REPEATS, GROUND_REPEATS);
 const _groundRough = _loadDataTex('concrete_roughness.jpg', GROUND_REPEATS, GROUND_REPEATS);
+const _groundAO    = _loadDataTex('concrete_ao.jpg', GROUND_REPEATS, GROUND_REPEATS);
+
+// Building lot ground patches (dark concrete)
+const LOT_TILE = 12; // world units per texture repeat
 
 // Asphalt streets (smaller tile for detail)
 const STREET_TILE = 12; // world units per texture repeat
@@ -864,69 +868,127 @@ function makeNuclearPlant() {
   return group;
 }
 
-// River: a flat blue-emissive plane spanning E-W across the city, with a
-// darker shoreline strip on either side.
+// River: animated water plane spanning E-W across the city, with PBR
+// shoreline strips and a subtle animated surface.
 function makeRiver(cityRadius, riverZ, riverWidth) {
   const group = new THREE.Group();
+
+  // Water surface — reflective, semi-transparent, animated
   const waterMat = new THREE.MeshStandardMaterial({
-    color: 0x224d6b, roughness: 0.2, metalness: 0.55,
-    emissive: 0x102a3c, emissiveIntensity: 0.35,
+    color: 0x1a5276,
+    roughness: 0.08,
+    metalness: 0.7,
+    emissive: 0x0a2e42,
+    emissiveIntensity: 0.25,
+    transparent: true,
+    opacity: 0.85,
   });
   const water = new THREE.Mesh(new THREE.PlaneGeometry(cityRadius * 2 + 80, riverWidth), waterMat);
-  water.rotation.x = -Math.PI / 2; water.position.set(0, 0.18, riverZ);
+  water.rotation.x = -Math.PI / 2;
+  water.position.set(0, 0.20, riverZ);
   water.receiveShadow = true;
   group.add(water);
-  // Shoreline strips
-  const shoreMat = new THREE.MeshStandardMaterial({ color: 0x6a5840, roughness: 0.95 });
+
+  // Riverbed (darker, visible through transparent water)
+  const riverbedMat = new THREE.MeshStandardMaterial({
+    color: 0x1a3040, roughness: 0.95, metalness: 0.0,
+  });
+  const riverbed = new THREE.Mesh(new THREE.PlaneGeometry(cityRadius * 2 + 80, riverWidth - 2), riverbedMat);
+  riverbed.rotation.x = -Math.PI / 2;
+  riverbed.position.set(0, -0.05, riverZ);
+  group.add(riverbed);
+
+  // Stone embankment walls (raised edges along the river)
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.9 });
   for (const sz of [-1, 1]) {
-    const shore = new THREE.Mesh(new THREE.PlaneGeometry(cityRadius * 2 + 80, 2.5), shoreMat);
-    shore.rotation.x = -Math.PI / 2;
-    shore.position.set(0, 0.16, riverZ + sz * (riverWidth / 2 + 1.2));
-    group.add(shore);
+    // Vertical wall face
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(cityRadius * 2 + 80, 0.6, 0.8), wallMat);
+    wall.position.set(0, 0.1, riverZ + sz * (riverWidth / 2 + 0.4));
+    group.add(wall);
+    // Top cap (walkable ledge)
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(cityRadius * 2 + 80, 0.15, 1.4), wallMat);
+    cap.position.set(0, 0.42, riverZ + sz * (riverWidth / 2 + 0.4));
+    group.add(cap);
   }
+
+  // Animate water surface: gentle wave motion via position oscillation
+  group._waterMesh = water;
+  group._waterTime = 0;
+
   group.matrixAutoUpdate = false; group.updateMatrix();
   return group;
 }
 
-// Bridge crossing the river at a given x. Built as a flat deck + railings + pylons.
+// Bridge crossing the river at a given x. Matches road width with sidewalks,
+// concrete deck, steel railings, and support pylons.
 function makeBridge(x, riverZ, riverWidth) {
   const g = new THREE.Group();
-  const deckMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.85 });
-  const railMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7, metalness: 0.4 });
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8, metalness: 0.05 });
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5, metalness: 0.6 });
   const pylonMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.85 });
+  const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.9 });
 
-  const deckLen = riverWidth + 6;
-  const deckW = 9;
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(deckW, 0.6, deckLen), deckMat);
-  deck.position.set(x, 1.0, riverZ);
+  const deckLen = riverWidth + 8;
+  const deckW = 8 + 3 * 2; // road width + sidewalks on both sides
+  // Main deck
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(deckW, 0.5, deckLen), deckMat);
+  deck.position.set(x, 0.55, riverZ);
+  deck.castShadow = true; deck.receiveShadow = true;
   g.add(deck);
-  // Yellow centre stripe
-  const stripe = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.4, deckLen - 1),
-    new THREE.MeshStandardMaterial({ color: 0xffd14a, emissive: 0xffd14a, emissiveIntensity: 0.4 })
+  // Road surface on top of deck (asphalt strip)
+  const roadSurface = new THREE.Mesh(
+    new THREE.PlaneGeometry(8, deckLen - 0.5),
+    new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.85 })
   );
-  stripe.rotation.x = -Math.PI / 2;
-  stripe.position.set(x, 1.34, riverZ);
-  g.add(stripe);
-  // Railings on both sides
+  roadSurface.rotation.x = -Math.PI / 2;
+  roadSurface.position.set(x, 0.82, riverZ);
+  g.add(roadSurface);
+  // Sidewalk strips on both sides of the bridge
   for (const sx of [-1, 1]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.2, deckLen), railMat);
-    rail.position.set(x + sx * (deckW / 2 - 0.2), 1.85, riverZ);
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.15, deckLen), sidewalkMat);
+    sw.position.set(x + sx * (8 / 2 + 1.4), 0.88, riverZ);
+    sw.receiveShadow = true;
+    g.add(sw);
+  }
+  // Dashed yellow centre line on the bridge
+  const bridgeLineMat = new THREE.MeshStandardMaterial({ color: 0xffd14a, emissive: 0xffd14a, emissiveIntensity: 0.4 });
+  for (let d = -deckLen / 2 + 1; d < deckLen / 2; d += 10) {
+    const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 5), bridgeLineMat);
+    dash.rotation.x = -Math.PI / 2;
+    dash.position.set(x, 0.83, riverZ + d + 2.5);
+    g.add(dash);
+  }
+  // Railings on both sides (steel look)
+  for (const sx of [-1, 1]) {
+    // Top rail
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, deckLen), railMat);
+    rail.position.set(x + sx * (deckW / 2 - 0.15), 1.7, riverZ);
     g.add(rail);
-    // Rail posts every 4u
-    const posts = Math.floor(deckLen / 4);
+    // Mid rail
+    const midRail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, deckLen), railMat);
+    midRail.position.set(x + sx * (deckW / 2 - 0.15), 1.3, riverZ);
+    g.add(midRail);
+    // Rail posts every 3u
+    const posts = Math.floor(deckLen / 3);
     for (let p = 0; p <= posts; p++) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.6, 0.25), railMat);
-      post.position.set(x + sx * (deckW / 2 - 0.2), 1.5, riverZ - deckLen / 2 + p * 4);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.12), railMat);
+      post.position.set(x + sx * (deckW / 2 - 0.15), 1.3, riverZ - deckLen / 2 + p * 3);
       g.add(post);
     }
   }
-  // Pylons under the deck (water-side supports)
-  for (const sz of [-1, 1]) {
-    const pylon = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 1.0, 8), pylonMat);
-    pylon.position.set(x, 0.5, riverZ + sz * (deckLen / 2 - 1.5));
+  // Support pylons under the deck (concrete pillars)
+  for (const sz of [-0.3, 0.3]) {
+    const pylon = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.0, 1.2), pylonMat);
+    pylon.position.set(x, 0.0, riverZ + sz * deckLen);
+    pylon.castShadow = true;
     g.add(pylon);
   }
+  // Center support pylon
+  const centerPylon = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.0, 1.2, 8), pylonMat);
+  centerPylon.position.set(x, -0.1, riverZ);
+  centerPylon.castShadow = true;
+  g.add(centerPylon);
+
   g.matrixAutoUpdate = false; g.updateMatrix();
   return g;
 }
@@ -1942,6 +2004,7 @@ const BLDG_GLB_BASE = './assets/buildings/';
 const BLDG_POOL_TALL = [
   BLDG_GLB_BASE + 'skyscraper_large_1.glb',
   BLDG_GLB_BASE + 'skyscraper_large_2.glb',
+  BLDG_GLB_BASE + 'skyscraper_large_3.glb',
   BLDG_GLB_BASE + 'narrow_tall_1.glb',
   BLDG_GLB_BASE + 'narrow_tall_2.glb',
 ];
@@ -1969,6 +2032,8 @@ const ALL_BUILDING_GLBS = [
   BLDG_GLB_BASE + 'tokyo_dome.glb',
   BLDG_GLB_BASE + 'buddhist_temple.glb',
   BLDG_GLB_BASE + 'shinto_shrine.glb',
+  BLDG_GLB_BASE + 'bridge_1.glb',
+  BLDG_GLB_BASE + 'bridge_2.glb',
 ];
 
 /** Fetch a GLB via the asset cache, then parse with GLTFLoader. */
@@ -2042,14 +2107,19 @@ function _cloneDebris(targetSize) {
 }
 
 /** Clone a loaded template, scale to targetHeight, wire onto Building. */
-function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD) {
+function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY) {
   const tpl = _glbTemplates.get(url);
   if (!tpl || building.destroyed) return;
 
   const root = tpl.scene.clone(true);
-  const rawW = tpl.box.max.x - tpl.box.min.x;
-  const rawD = tpl.box.max.z - tpl.box.min.z;
-  const rawH = tpl.box.max.y - tpl.box.min.y;
+
+  // Apply Y rotation before measuring if specified
+  if (rotY) root.rotation.y = rotY;
+
+  const rawBox = new THREE.Box3().setFromObject(root);
+  const rawW = rawBox.max.x - rawBox.min.x;
+  const rawD = rawBox.max.z - rawBox.min.z;
+  const rawH = rawBox.max.y - rawBox.min.y;
 
   // Scale to target height first
   let s = rawH > 0 ? targetHeight / rawH : 1;
@@ -2093,7 +2163,7 @@ function pickBuildingGLB(h) {
 /** Called after templates load to clone + place every queued building. */
 export function flushPendingGLBBuildings(scene) {
   for (const entry of _pendingGLBBuildings) {
-    placeBuildingGLB(entry.url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0);
+    placeBuildingGLB(entry.url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0);
   }
   _pendingGLBBuildings.length = 0;
 }
@@ -2109,9 +2179,12 @@ export function buildCity(scene, world, opts = {}) {
 
   // Ground plane: PBR concrete texture tiled across the whole city floor.
   const groundGeom = new THREE.PlaneGeometry(1600, 1600, 1, 1);
+  groundGeom.setAttribute('uv2', groundGeom.getAttribute('uv'));
   const groundMat = new THREE.MeshStandardMaterial({
     map: _groundColor, normalMap: _groundNorm, roughnessMap: _groundRough,
-    roughness: 1.0, color: 0x8a8580,
+    normalScale: new THREE.Vector2(1.2, 1.2),
+    aoMap: _groundAO, aoMapIntensity: 0.6,
+    roughness: 0.95, color: 0x8a8580,
   });
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
@@ -2129,8 +2202,13 @@ export function buildCity(scene, world, opts = {}) {
     return new THREE.MeshStandardMaterial({
       map: _loadTileTex('asphalt_color.jpg', repX, repY),
       normalMap: _loadDataTex('asphalt_normal.jpg', repX, repY),
+      normalScale: new THREE.Vector2(1.4, 1.4),
       roughnessMap: _loadDataTex('asphalt_roughness.jpg', repX, repY),
-      roughness: 1.0, color: 0x666666,
+      aoMap: _loadDataTex('asphalt_ao.jpg', repX, repY),
+      aoMapIntensity: 0.7,
+      roughness: 0.82,
+      metalness: 0.08,
+      color: 0x999999,
     });
   }
   const streetMatX = makeStreetMat(streetRepeatL, streetRepeatW);
@@ -2140,8 +2218,12 @@ export function buildCity(scene, world, opts = {}) {
     return new THREE.MeshStandardMaterial({
       map: _loadTileTex('sidewalk_color.jpg', repX, repY),
       normalMap: _loadDataTex('sidewalk_normal.jpg', repX, repY),
+      normalScale: new THREE.Vector2(1.4, 1.4),
       roughnessMap: _loadDataTex('sidewalk_roughness.jpg', repX, repY),
-      roughness: 1.0, color: 0xaaaaaa,
+      aoMap: _loadDataTex('sidewalk_ao.jpg', repX, repY),
+      aoMapIntensity: 0.8,
+      roughness: 0.9,
+      color: 0xbbbbbb,
     });
   }
   const SIDEWALK_W = 3.0;
@@ -2153,71 +2235,127 @@ export function buildCity(scene, world, opts = {}) {
   const lineMat   = new THREE.MeshStandardMaterial({ color: 0xffe066, emissive: 0xffd14a, emissiveIntensity: 0.45, roughness: 0.6 });
   const curbMat   = new THREE.MeshStandardMaterial({ color: 0x222226, roughness: 1.0 });
 
-  for (let i = -CITY_RADIUS; i <= CITY_RADIUS; i += BLOCK) {
-    const sx = new THREE.Mesh(new THREE.PlaneGeometry(streetLen, STREET), streetMatX);
-    sx.rotation.x = -Math.PI / 2; sx.position.set(0, 0.05, i);
-    sx.receiveShadow = true; sx.matrixAutoUpdate = false; sx.updateMatrix(); scene.add(sx);
-    const sz = new THREE.Mesh(new THREE.PlaneGeometry(STREET, streetLen), streetMatZ);
-    sz.rotation.x = -Math.PI / 2; sz.position.set(i, 0.05, 0);
-    sz.receiveShadow = true; sz.matrixAutoUpdate = false; sz.updateMatrix(); scene.add(sz);
+  // River zone — defined early so roads/lines can skip the river area
+  const RIVER_Z = lite ? 60 : 80;
+  const RIVER_WIDTH = 26;
+  const RIVER_MIN = RIVER_Z - RIVER_WIDTH / 2 - 2;
+  const RIVER_MAX = RIVER_Z + RIVER_WIDTH / 2 + 2;
+  /** Returns true if a z-position falls inside the river zone */
+  function inRiver(z) { return z > RIVER_MIN && z < RIVER_MAX; }
+  /** Returns true if a range [zMin, zMax] overlaps the river zone */
+  function overlapsRiver(zMin, zMax) { return zMax > RIVER_MIN && zMin < RIVER_MAX; }
 
-    // Sidewalks flanking each street -- paving stone texture.
-    for (const off of [STREET / 2 + SIDEWALK_W / 2, -(STREET / 2 + SIDEWALK_W / 2)]) {
-      const swx = new THREE.Mesh(new THREE.PlaneGeometry(streetLen, SIDEWALK_W), sidewalkMatX);
-      swx.rotation.x = -Math.PI / 2;
-      swx.position.set(0, 0.06, i + off);
-      swx.receiveShadow = true; swx.matrixAutoUpdate = false; swx.updateMatrix();
-      scene.add(swx);
-      const swz = new THREE.Mesh(new THREE.PlaneGeometry(SIDEWALK_W, streetLen), sidewalkMatZ);
-      swz.rotation.x = -Math.PI / 2;
-      swz.position.set(i + off, 0.06, 0);
-      swz.receiveShadow = true; swz.matrixAutoUpdate = false; swz.updateMatrix();
-      scene.add(swz);
-    }
-
-    // Center yellow line per street
-    const lx = new THREE.Mesh(new THREE.PlaneGeometry(streetLen, 0.35), lineMat);
-    lx.rotation.x = -Math.PI / 2; lx.position.set(0, 0.07, i);
-    scene.add(lx);
-    const lz = new THREE.Mesh(new THREE.PlaneGeometry(0.35, streetLen), lineMat);
-    lz.rotation.x = -Math.PI / 2; lz.position.set(i, 0.07, 0);
-    scene.add(lz);
-
-    // Curbs along street edges
-    const curbX1 = new THREE.Mesh(new THREE.PlaneGeometry(streetLen, 0.4), curbMat);
-    curbX1.rotation.x = -Math.PI / 2; curbX1.position.set(0, 0.06, i + STREET / 2 - 0.2); scene.add(curbX1);
-    const curbX2 = curbX1.clone(); curbX2.position.z = i - STREET / 2 + 0.2; scene.add(curbX2);
-    const curbZ1 = new THREE.Mesh(new THREE.PlaneGeometry(0.4, streetLen), curbMat);
-    curbZ1.rotation.x = -Math.PI / 2; curbZ1.position.set(i + STREET / 2 - 0.2, 0.06, 0); scene.add(curbZ1);
-    const curbZ2 = curbZ1.clone(); curbZ2.position.x = i - STREET / 2 + 0.2; scene.add(curbZ2);
+  // Helper: add a flat plane as a road/sidewalk/line mesh, skipping if in river zone
+  function addStrip(geom, mat, x, y, z, opts = {}) {
+    if (opts.uv2) geom.setAttribute('uv2', geom.getAttribute('uv'));
+    const m = new THREE.Mesh(geom, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, y, z);
+    if (opts.shadow) m.receiveShadow = true;
+    m.matrixAutoUpdate = false; m.updateMatrix();
+    scene.add(m);
+    return m;
   }
 
-  // Crosswalk decals at intersections
+  // For N-S running strips (along z-axis), split into two segments around the river
+  function addSplitZStrip(w, mat, x, y, opts = {}) {
+    const segSouth = RIVER_MIN - (-CITY_RADIUS);
+    const segNorth = CITY_RADIUS - RIVER_MAX;
+    const southCenter = (-CITY_RADIUS + RIVER_MIN) / 2;
+    const northCenter = (RIVER_MAX + CITY_RADIUS) / 2;
+    // South segment
+    const g1 = new THREE.PlaneGeometry(w, segSouth);
+    addStrip(g1, mat, x, y, southCenter, opts);
+    // North segment
+    const g2 = new THREE.PlaneGeometry(w, segNorth);
+    addStrip(g2, mat, x, y, northCenter, opts);
+  }
+
+  const edgeLineMat = new THREE.MeshStandardMaterial({
+    color: 0xdddddd, roughness: 0.5,
+    polygonOffset: true, polygonOffsetFactor: -1,
+  });
+  const EDGE_W = 0.15;
+  const EDGE_OFF = STREET / 2 - 1.0;
+
+  for (let i = -CITY_RADIUS; i <= CITY_RADIUS; i += BLOCK) {
+    const isEWInRiver = inRiver(i);
+
+    // E-W streets: skip entirely if this grid line is inside the river
+    if (!isEWInRiver) {
+      const sxGeom = new THREE.PlaneGeometry(streetLen, STREET);
+      addStrip(sxGeom, streetMatX, 0, 0.05, i, { uv2: true, shadow: true });
+      // E-W sidewalks
+      for (const off of [STREET / 2 + SIDEWALK_W / 2, -(STREET / 2 + SIDEWALK_W / 2)]) {
+        const swxGeom = new THREE.PlaneGeometry(streetLen, SIDEWALK_W);
+        addStrip(swxGeom, sidewalkMatX, 0, 0.06, i + off, { uv2: true, shadow: true });
+      }
+      // E-W curbs
+      addStrip(new THREE.PlaneGeometry(streetLen, 0.4), curbMat, 0, 0.06, i + STREET / 2 - 0.2);
+      addStrip(new THREE.PlaneGeometry(streetLen, 0.4), curbMat, 0, 0.06, i - STREET / 2 + 0.2);
+      // E-W edge lines
+      for (const side of [1, -1]) {
+        addStrip(new THREE.PlaneGeometry(streetLen, EDGE_W), edgeLineMat, 0, 0.07, i + side * EDGE_OFF);
+      }
+    }
+
+    // N-S streets: split around the river
+    addSplitZStrip(STREET, streetMatZ, i, 0.05, { uv2: true, shadow: true });
+    // N-S sidewalks
+    for (const off of [STREET / 2 + SIDEWALK_W / 2, -(STREET / 2 + SIDEWALK_W / 2)]) {
+      addSplitZStrip(SIDEWALK_W, sidewalkMatZ, i + off, 0.06, { uv2: true, shadow: true });
+    }
+    // N-S curbs
+    addSplitZStrip(0.4, curbMat, i + STREET / 2 - 0.2, 0.06);
+    addSplitZStrip(0.4, curbMat, i - STREET / 2 + 0.2, 0.06);
+    // N-S edge lines
+    for (const side of [1, -1]) {
+      addSplitZStrip(EDGE_W, edgeLineMat, i + side * EDGE_OFF, 0.07);
+    }
+
+    // Dashed center yellow lines (skip dashes that land in the river)
+    const DASH_LEN = 5, DASH_GAP = 5, DASH_W = 0.25;
+    const dashGeom = new THREE.PlaneGeometry(DASH_LEN, DASH_W);
+    const dashGeomZ = new THREE.PlaneGeometry(DASH_W, DASH_LEN);
+    for (let d = -CITY_RADIUS; d < CITY_RADIUS; d += DASH_LEN + DASH_GAP) {
+      // E-W dashes (along x, at z=i) — skip if this street is in river
+      if (!isEWInRiver) {
+        addStrip(dashGeom, lineMat, d + DASH_LEN / 2, 0.07, i);
+      }
+      // N-S dashes (along z, at x=i) — skip if this dash overlaps river
+      const dashZ = d + DASH_LEN / 2;
+      if (!inRiver(dashZ)) {
+        addStrip(dashGeomZ, lineMat, i, 0.07, dashZ);
+      }
+    }
+  }
+
+  // Crosswalk decals at every intersection — wide Japanese piano-key style
+  // Skip intersections that fall inside the river zone
   const crossMat = new THREE.MeshStandardMaterial({
+    color: 0xf0f0f0, roughness: 0.45, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -1,
+  });
+  const stopLineMat = new THREE.MeshStandardMaterial({
     color: 0xeeeeee, roughness: 0.5, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -1,
   });
   for (let bx = -CITY_RADIUS; bx <= CITY_RADIUS; bx += BLOCK) {
     for (let bz = -CITY_RADIUS; bz <= CITY_RADIUS; bz += BLOCK) {
-      // Skip every other intersection for variety
-      if ((Math.abs(bx / BLOCK) + Math.abs(bz / BLOCK)) % 2 !== 0) continue;
-      const stripeW = 0.6, stripeGap = 0.9, stripeCount = 5;
-      const crossLen = STREET - 1;
-      // Two crosswalks per intersection (one each axis)
+      if (inRiver(bz)) continue; // skip crosswalks in river
+      const stripeW = 0.55, stripeGap = 0.55, stripeCount = 8;
+      const crossLen = STREET - 0.8;
       for (let s = 0; s < stripeCount; s++) {
-        const offset = (s - (stripeCount - 1) / 2) * stripeGap;
-        // East-west crosswalk (on the z-axis street)
-        const cxw = new THREE.Mesh(new THREE.PlaneGeometry(stripeW, crossLen), crossMat);
-        cxw.rotation.x = -Math.PI / 2;
-        cxw.position.set(bx + offset, 0.08, bz);
-        cxw.matrixAutoUpdate = false; cxw.updateMatrix();
-        scene.add(cxw);
-        // North-south crosswalk (on the x-axis street)
-        const cxn = new THREE.Mesh(new THREE.PlaneGeometry(crossLen, stripeW), crossMat);
-        cxn.rotation.x = -Math.PI / 2;
-        cxn.position.set(bx, 0.08, bz + offset);
-        cxn.matrixAutoUpdate = false; cxn.updateMatrix();
-        scene.add(cxn);
+        const offset = (s - (stripeCount - 1) / 2) * (stripeW + stripeGap);
+        addStrip(new THREE.PlaneGeometry(stripeW, crossLen), crossMat, bx + offset, 0.08, bz);
+        addStrip(new THREE.PlaneGeometry(crossLen, stripeW), crossMat, bx, 0.08, bz + offset);
+      }
+      const stopW = STREET - 1.5, stopH = 0.3;
+      const stopOff = (stripeCount / 2) * (stripeW + stripeGap) + 0.6;
+      for (const dir of [-1, 1]) {
+        if (inRiver(bz + dir * stopOff)) continue;
+        addStrip(new THREE.PlaneGeometry(stopW, stopH), stopLineMat, bx, 0.08, bz + dir * stopOff);
+        addStrip(new THREE.PlaneGeometry(stopH, stopW), stopLineMat, bx + dir * stopOff, 0.08, bz);
       }
     }
   }
@@ -2226,8 +2364,6 @@ export function buildCity(scene, world, opts = {}) {
   // buildings skip any block whose centre lands inside one.
   // Each entry is either a circle { kind:'c', x, z, r } (default) or a
   // rect { kind:'r', x1, z1, x2, z2 }.
-  const RIVER_Z = lite ? 60 : 80;
-  const RIVER_WIDTH = 26;
   const RESERVED = [
     { kind: 'c', x: 160, z: -160, r: 28 },     // Tokyo Tower
     { kind: 'c', x: -180, z: 140, r: 50 },     // Imperial Palace pagoda
@@ -2263,6 +2399,33 @@ export function buildCity(scene, world, opts = {}) {
       }
     }
     return false;
+  }
+
+  // Building lot ground patches — dark concrete pad under each city block
+  {
+    const lotSize = BLOCK - STREET; // buildable area within each block
+    const lotRepeat = lotSize / LOT_TILE;
+    const lotMat = new THREE.MeshStandardMaterial({
+      map: _loadTileTex('lot_color.jpg', lotRepeat, lotRepeat),
+      normalMap: _loadDataTex('lot_normal.jpg', lotRepeat, lotRepeat),
+      normalScale: new THREE.Vector2(1.3, 1.3),
+      roughnessMap: _loadDataTex('lot_roughness.jpg', lotRepeat, lotRepeat),
+      roughness: 0.95,
+      color: 0x777777,
+    });
+    for (let bx = -CITY_RADIUS + BLOCK / 2; bx <= CITY_RADIUS - BLOCK / 2; bx += BLOCK) {
+      for (let bz = -CITY_RADIUS + BLOCK / 2; bz <= CITY_RADIUS - BLOCK / 2; bz += BLOCK) {
+        if (Math.abs(bx) < BLOCK && Math.abs(bz) < BLOCK) continue; // spawn plaza
+        if (isReserved(bx, bz)) continue;
+        const lotGeom = new THREE.PlaneGeometry(lotSize, lotSize);
+        const lot = new THREE.Mesh(lotGeom, lotMat);
+        lot.rotation.x = -Math.PI / 2;
+        lot.position.set(bx, 0.13, bz);
+        lot.receiveShadow = true;
+        lot.matrixAutoUpdate = false; lot.updateMatrix();
+        scene.add(lot);
+      }
+    }
   }
 
   // Buildings on each block (skipping center for spawn)
@@ -2326,7 +2489,7 @@ export function buildCity(scene, world, opts = {}) {
   }
 
   // ---------- GLB Landmark helper ----------
-  function addGLBLandmark(x, z, w, d, h, hp, url) {
+  function addGLBLandmark(x, z, w, d, h, hp, url, rotY) {
     if (lite) {
       // Mobile: procedural building as landmark (no GLB download)
       const b = new Building(x, z, w, d, h);
@@ -2344,7 +2507,7 @@ export function buildCity(scene, world, opts = {}) {
     scene.add(b.group);
     buildings.push(b);
     grid.add(b);
-    _pendingGLBBuildings.push({ url, h, building: b, maxW: w * 2, maxD: d * 2 });
+    _pendingGLBBuildings.push({ url, h, building: b, maxW: w * 2, maxD: d * 2, rotY: rotY || 0 });
     return b;
   }
 
@@ -2375,8 +2538,20 @@ export function buildCity(scene, world, opts = {}) {
 
   // ---------- River + bridges ----------
   scene.add(makeRiver(CITY_RADIUS, RIVER_Z, RIVER_WIDTH));
-  for (let bx = -CITY_RADIUS + BLOCK; bx <= CITY_RADIUS - BLOCK; bx += BLOCK * 2) {
-    scene.add(makeBridge(bx, RIVER_Z, RIVER_WIDTH));
+  // A destructible GLB bridge at every N-S road crossing over the river
+  {
+    const bridgeGLBs = [
+      BLDG_GLB_BASE + 'bridge_1.glb',
+      BLDG_GLB_BASE + 'bridge_2.glb',
+    ];
+    let bridgeIdx = 0;
+    const deckLen = RIVER_WIDTH + 8;
+    const deckW = 8 + 3 * 2; // road width + sidewalks
+    for (let bx = -CITY_RADIUS; bx <= CITY_RADIUS; bx += BLOCK) {
+      const url = bridgeGLBs[bridgeIdx % bridgeGLBs.length];
+      bridgeIdx++;
+      addGLBLandmark(bx, RIVER_Z, deckW, deckLen, 8, 120, url, Math.PI / 2);
+    }
   }
 
   // Build the global body + window InstancedMeshes now that all buildings exist.
@@ -3651,7 +3826,7 @@ export class Civilian {
     if (myPos.z > lim)  myPos.z = -lim;
     if (myPos.z < -lim) myPos.z =  lim;
 
-    this.root.rotation.y = this.heading;
+    this.root.rotation.y = this.heading + Math.PI;
 
     // Animate: walk normally, run/sprint when panicking
     if (this._actions) {

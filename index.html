@@ -843,6 +843,18 @@
     50% { opacity: 1; }
   }
   #loading-status { animation: loading-pulse 1.8s ease-in-out infinite; }
+  #loading-fact {
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 13px;
+    color: rgba(255, 230, 200, 0.55);
+    margin-top: 28px;
+    max-width: min(460px, 80vw);
+    line-height: 1.5;
+    font-style: italic;
+    min-height: 40px;
+    transition: opacity 0.5s ease;
+  }
+  #loading-fact.fade { opacity: 0; }
 </style>
 </head>
 <body>
@@ -1032,7 +1044,62 @@
   <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
   <div id="loading-percent">0%</div>
   <div id="loading-status">LOADING KAIJU ASSETS</div>
+  <div id="loading-fact"></div>
 </div>
+<script>
+(function () {
+  const FACTS = [
+    '"Kaiju" (怪獣) literally means "strange beast" in Japanese.',
+    'The first Godzilla film (1954) was a metaphor for nuclear devastation.',
+    'Godzilla\'s Japanese name, "Gojira," combines gorilla (ゴリラ) and whale (クジラ).',
+    'King Ghidorah first appeared in 1964 as an alien dragon from Venus.',
+    'Mothra is the only kaiju to have her own standalone film trilogy.',
+    'In Japanese myth, giant catfish (Namazu) cause earthquakes when they thrash.',
+    'The term "tokusatsu" means "special effects" — the genre that birthed kaiju films.',
+    'Mechagodzilla was originally built by aliens to destroy the real Godzilla.',
+    'Godzilla has appeared in over 35 films since 1954.',
+    'Fun fact: Godzilla is an official citizen of Shinjuku, Tokyo.',
+    'The longest kaiju film is "Godzilla: Final Wars" at 125 minutes.',
+    'Kaiju films inspired the "Jaeger" mechs in Pacific Rim (2013).',
+    'Rodan, a giant pteranodon, debuted in 1956 and can fly at Mach 1.5.',
+    '"Kaijin" (怪人) means "mysterious person" — the humanoid villain equivalent.',
+    'Godzilla\'s atomic breath was inspired by the Lucky Dragon No. 5 nuclear incident.',
+    'King Caesar is based on the Okinawan guardian lion-dog, the Shisa.',
+    'Hedorah, the Smog Monster, was created as an environmental warning in 1971.',
+    'In some films, Godzilla is 50m tall. In Shin Godzilla (2016), he\'s 118.5m.',
+    'Ultraman, a kaiju-fighting hero, is technically a "kyodai hero" (giant hero).',
+    'The suit actors who played Godzilla were called "suit-mation" performers.',
+    'Tip: Buildings in the city center are taller — more destruction, more points!',
+    'Tip: Your atomic breath charges faster when you stomp buildings.',
+    'Tip: Watch out for the military jets — they pack a punch!',
+    'Tip: The river makes good cover from tank fire.',
+    '"That\'s a lot of fish." — Matthew Broderick, Godzilla (1998)',
+    '"Let them fight." — Dr. Ishiro Serizawa, Godzilla (2014)',
+    '"The arrogance of man is thinking nature is in our control." — Godzilla (2014)',
+    'Anguirus, Godzilla\'s first opponent (1955), became his closest ally.',
+    'Biollante is a kaiju hybrid of Godzilla cells, a rose, and a human soul.',
+    'Japan\'s Self-Defense Force has a fictional "Anti-Kaiju" division in many films.',
+    'Minilla, Godzilla\'s son, can only blow smoke rings instead of atomic breath.',
+    'Destoroyah was born from the Oxygen Destroyer that killed the original Godzilla.',
+    'Jet Jaguar, a robot ally, can change his own size through sheer willpower.',
+    'The 1954 Godzilla suit weighed about 100kg (220 lbs).',
+    'Space Godzilla was created from Godzilla cells that drifted into a black hole.',
+    'Kumonga is a giant spider kaiju that first appeared in Son of Godzilla (1967).',
+  ];
+  var idx = Math.floor(Math.random() * FACTS.length);
+  var el = document.getElementById('loading-fact');
+  if (!el) return;
+  el.textContent = FACTS[idx];
+  setInterval(function () {
+    el.classList.add('fade');
+    setTimeout(function () {
+      idx = (idx + Math.floor(Math.random() * (FACTS.length - 1)) + 1) % FACTS.length;
+      el.textContent = FACTS[idx];
+      el.classList.remove('fade');
+    }, 500);
+  }, 5000);
+})();
+</script>
 
 <script type="importmap">
 {

@@ -13,7 +13,7 @@
  */
 
 // ---- Bump this when assets change to force a re-download ----
-const ASSET_VERSION = '1.3.0';
+const ASSET_VERSION = '1.6.0';
 
 const DB_NAME = 'KaijuAssetCache';
 const DB_VERSION = 1;
