@@ -149,11 +149,12 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   // Scale to match the game (~15 units tall)
   root.scale.setScalar(18);
 
-  // Enable shadows
+  // Enable shadows + disable frustum culling so animated parts never vanish
   root.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = true;
       o.receiveShadow = true;
+      o.frustumCulled = false;
     }
   });
 

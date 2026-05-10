@@ -62,7 +62,7 @@ async function _loadBipedSet(basePath, animFiles, label, onProgress, startIdx, t
   try {
     const gltf = await _cachedGLB(basePath + animFiles.run);
     scene = gltf.scene;
-    scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
     if (gltf.animations.length > 0) animations.run = gltf.animations[0];
   } catch (e) {
     console.warn(`[EnemyGLB] Failed to load ${label} base:`, e.message);
@@ -111,7 +111,7 @@ export async function loadEnemyTemplates(onProgress) {
     try {
       const gltf = await _cachedGLB(url);
       const s = gltf.scene;
-      s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
       if (key === 'tank') {
         _templates.tank = { scene: s, animations: gltf.animations };
       } else if (key.startsWith('tank_a')) {
