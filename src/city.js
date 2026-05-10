@@ -2034,6 +2034,8 @@ const ALL_BUILDING_GLBS = [
   BLDG_GLB_BASE + 'shinto_shrine.glb',
   BLDG_GLB_BASE + 'bridge_1.glb',
   BLDG_GLB_BASE + 'bridge_2.glb',
+  BLDG_GLB_BASE + 'electronics_district_1.glb',
+  BLDG_GLB_BASE + 'electronics_district_2.glb',
 ];
 
 /** Fetch a GLB via the asset cache, then parse with GLTFLoader. */
@@ -2383,6 +2385,10 @@ export function buildCity(scene, world, opts = {}) {
     // Small street-level landmarks (koban / yatai cluster)
     { kind: 'c', x:   40, z:   50, r: 8 },     // Police koban
     { kind: 'c', x: -150, z:  -10, r: 10 },    // Ramen yatai cluster
+    // Electronics district blocks (Akihabara-style)
+    { kind: 'c', x:  -40, z:  200, r: 28 },
+    { kind: 'c', x: -160, z: -260, r: 28 },
+    { kind: 'c', x:  260, z:  160, r: 28 },
     // River: a horizontal strip across the whole map at z = RIVER_Z
     { kind: 'r',
       x1: -CITY_RADIUS - 50, z1: RIVER_Z - RIVER_WIDTH / 2 - 4,
@@ -2532,6 +2538,11 @@ export function buildCity(scene, world, opts = {}) {
   ]) {
     scene.add(makePark(p.x, p.z, p.size));
   }
+
+  // ---------- Electronics District (Akihabara-style blocks) ----------
+  addGLBLandmark( -40,  200, 40, 40, 25, 350, BLDG_GLB_BASE + 'electronics_district_1.glb');
+  addGLBLandmark(-160, -260, 40, 40, 25, 350, BLDG_GLB_BASE + 'electronics_district_2.glb');
+  addGLBLandmark( 260,  160, 40, 40, 25, 350, BLDG_GLB_BASE + 'electronics_district_1.glb');
 
   // ---------- Industrial ----------
   addGLBLandmark(-240, -200, 60, 60, 45, 900, BLDG_GLB_BASE + 'nuclear_plant.glb');
