@@ -147,9 +147,7 @@ export async function loadEnemyTemplates(onProgress) {
 
 function _cloneTemplate(tpl) {
   if (!tpl) return null;
-  const root = tpl.scene.clone(true);
-  root.traverse((o) => { if (o.isMesh) o.frustumCulled = false; });
-  return root;
+  return tpl.scene.clone(true);
 }
 
 /** Clone a biped template and set up an AnimationMixer with all its clips.
@@ -158,7 +156,6 @@ function _cloneTemplate(tpl) {
 function _cloneBiped(tpl) {
   if (!tpl) return null;
   const clone = skinnedClone(tpl.scene);
-  clone.traverse((o) => { if (o.isMesh) o.frustumCulled = false; });
   const mixer = new THREE.AnimationMixer(clone);
   const actions = {};
   for (const [name, clip] of Object.entries(tpl.animations)) {
