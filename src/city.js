@@ -3035,70 +3035,33 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
-  // ---- Parked cars along sidewalks ----
-  // Static instanced meshes that don't move. Body + cabin + 4 wheels in
-  // 4 IMs. We pick a fixed colour palette so the parked rows have variety
-  // without needing per-instance colour.
+  // ---- Parked cars along sidewalks (GLB clones) ----
   {
-    const PARKED_COLORS = [0xc23030, 0x2266aa, 0x33aa55, 0xeeeeee, 0x222222, 0xeeaa33, 0x995577];
-    const buckets = PARKED_COLORS.map(() => []);
     const STREET_OFFSET_P = STREET / 2 + 4.8;
+    const positions = [];
     for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += BLOCK) {
       for (let along = -CITY_RADIUS + 14; along < CITY_RADIUS; along += 6) {
         if (isReserved(along, i + STREET_OFFSET_P) || Math.abs(along) < BLOCK / 2) continue;
-        if (Math.random() < 0.18) {
-          const cIdx = Math.floor(Math.random() * PARKED_COLORS.length);
-          buckets[cIdx].push({ x: along, z: i + STREET_OFFSET_P, axis: 'x', dir: 1 });
-        }
-        if (Math.random() < 0.18) {
-          const cIdx = Math.floor(Math.random() * PARKED_COLORS.length);
-          buckets[cIdx].push({ x: along, z: i - STREET_OFFSET_P, axis: 'x', dir: -1 });
-        }
+        if (Math.random() < 0.18) positions.push({ x: along, z: i + STREET_OFFSET_P, dir: 1 });
+        if (Math.random() < 0.18) positions.push({ x: along, z: i - STREET_OFFSET_P, dir: -1 });
       }
     }
-    const bodyGeom = new THREE.BoxGeometry(1.6, 0.8, 3.4);
-    const cabinGeom = new THREE.BoxGeometry(1.4, 0.7, 1.6);
-    const wheelGeom = new THREE.CylinderGeometry(0.3, 0.3, 0.25, 8);
-    const cabinMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, roughness: 0.1, metalness: 0.6 });
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < PARKED_COLORS.length; i++) {
-      const list = buckets[i];
-      if (!list.length) continue;
-      const bodyMat = new THREE.MeshStandardMaterial({ color: PARKED_COLORS[i], roughness: 0.5, metalness: 0.3 });
-      const bodyIM = new THREE.InstancedMesh(bodyGeom, bodyMat, list.length);
-      bodyIM.frustumCulled = false;
-      const cabinIM = new THREE.InstancedMesh(cabinGeom, cabinMat, list.length);
-      cabinIM.frustumCulled = false;
-      const wheelIM = new THREE.InstancedMesh(wheelGeom, wheelMat, list.length * 4);
-      wheelIM.frustumCulled = false;
-      for (let k = 0; k < list.length; k++) {
-        const p = list[k];
+    if (_carTemplates.length > 0) {
+      for (const p of positions) {
+        const tpl = _carTemplates[Math.floor(Math.random() * _carTemplates.length)];
+        const clone = _cloneCarScene(tpl);
+        const size = tpl.box.getSize(new THREE.Vector3());
+        const targetLen = 3.6;
+        const s = targetLen / Math.max(size.x, size.y, size.z);
+        clone.scale.setScalar(s);
+        clone.updateMatrixWorld(true);
+        const cloneBox = new THREE.Box3().setFromObject(clone);
         const yaw = p.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-        // Body
-        dummy.position.set(p.x, 0.6, p.z); dummy.rotation.set(0, yaw, 0); dummy.scale.set(1,1,1); dummy.updateMatrix();
-        bodyIM.setMatrixAt(k, dummy.matrix);
-        // Cabin (slightly back of centre)
-        dummy.position.set(p.x - Math.cos(yaw) * -0.1, 1.25, p.z - Math.sin(yaw) * -0.1);
-        dummy.updateMatrix();
-        cabinIM.setMatrixAt(k, dummy.matrix);
-        // Wheels (4 corners)
-        for (let w = 0; w < 4; w++) {
-          const fx = (w & 1) ? 1 : -1;
-          const fz = (w & 2) ? 1 : -1;
-          const lx = fx * 0.7, lz = fz * 1.1;
-          const wx = p.x + Math.cos(yaw) * lx + Math.sin(yaw) * lz;
-          const wz = p.z + Math.sin(yaw) * -lx + Math.cos(yaw) * lz;
-          dummy.position.set(wx, 0.25, wz);
-          dummy.rotation.set(0, yaw, Math.PI / 2);
-          dummy.updateMatrix();
-          wheelIM.setMatrixAt(k * 4 + w, dummy.matrix);
-        }
+        clone.position.set(p.x, -cloneBox.min.y, p.z);
+        clone.rotation.y = yaw;
+        clone.matrixAutoUpdate = false; clone.updateMatrix();
+        scene.add(clone);
       }
-      bodyIM.instanceMatrix.needsUpdate = true;
-      cabinIM.instanceMatrix.needsUpdate = true;
-      wheelIM.instanceMatrix.needsUpdate = true;
-      scene.add(bodyIM); scene.add(cabinIM); scene.add(wheelIM);
     }
   }
 
