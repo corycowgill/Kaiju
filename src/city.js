@@ -177,7 +177,10 @@ const PROP_GLBS_PLANNED = [
   'vending_machine', 'street_lamp', 'traffic_signal', 'street_sign',
   'roof_water_tank', 'roof_ac_cluster', 'roof_antenna',
 ];
-const PROP_GLBS_READY = new Set(['vending_machine', 'street_lamp', 'traffic_signal', 'street_sign']);
+const PROP_GLBS_READY = new Set([
+  'vending_machine', 'street_lamp', 'traffic_signal', 'street_sign', 'bench',
+  'torii_gate', 'koban',
+]);
 const PROP_GLBS = PROP_GLBS_PLANNED.filter((n) => PROP_GLBS_READY.has(n));
 const _propTemplates = new Map(); // name -> { scene, size }
 
@@ -3493,6 +3496,8 @@ export function buildCity(scene, world, opts = {}) {
     const kx = 27, kz = 27; // NE corner of the spawn plaza, facing the street
     if (!isReserved(kx, kz, 'koban')) {
       koban.position.set(kx, 0, kz);
+      // v2 GLB door faces +Z: turn it toward the plaza centre
+      if (_propTemplates.has('koban')) koban.rotation.y = -3 * Math.PI / 4;
       koban.matrixAutoUpdate = false; koban.updateMatrix();
       scene.add(koban);
     }

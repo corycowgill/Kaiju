@@ -365,6 +365,54 @@
   button.start-btn:hover { transform: scale(1.05); }
   button.start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  /* Cinematics (src/intro.js): studio intro, card previews, trailer modal */
+  #intro-video {
+    position: fixed; inset: 0; z-index: 100000; background: #000; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity 0.4s;
+  }
+  #intro-video.iv-out { opacity: 0; pointer-events: none; }
+  #intro-video video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+  #intro-video .iv-skip {
+    position: absolute; right: 24px; bottom: 20px;
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif; font-size: 16px; letter-spacing: 4px;
+    color: rgba(255, 230, 200, 0.75); pointer-events: none;
+  }
+  #intro-video .iv-sound {
+    position: absolute; left: 24px; bottom: 16px; padding: 6px 12px;
+    font: 13px 'Bebas Neue', 'Noto Sans JP', sans-serif; letter-spacing: 3px;
+    color: #ffe6c8; background: rgba(20, 2, 6, 0.7); border: 1px solid #883344; border-radius: 3px; cursor: pointer;
+  }
+  .monster-card .preview { position: relative; overflow: hidden; }
+  .monster-card .preview video.card-video {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    opacity: 0; transition: opacity 0.25s; pointer-events: none;
+  }
+  .monster-card .preview video.card-video.on { opacity: 1; }
+  button.trailer-btn {
+    margin-top: 10px; padding: 6px 18px; cursor: pointer;
+    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif; font-size: 15px; letter-spacing: 4px;
+    color: #ffcc66; background: rgba(20, 2, 6, 0.7); border: 1px solid #883344; border-radius: 2px;
+  }
+  button.trailer-btn:hover { border-color: #ffcc66; color: #fff0d0; }
+  body.mobile button.trailer-btn { margin-top: 4px; padding: 3px 12px; font-size: 11px; letter-spacing: 3px; }
+  #trailer-modal {
+    position: fixed; inset: 0; z-index: 10000; background: rgba(0, 0, 0, 0.88);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #trailer-modal.hidden { display: none; }
+  #trailer-modal .tm-box { position: relative; width: min(92vw, calc(80vh * 16 / 9)); }
+  #trailer-modal video { width: 100%; aspect-ratio: 16 / 9; background: #000; border: 1px solid #883344; display: block; }
+  #trailer-modal .tm-close {
+    position: absolute; top: -34px; right: 0; background: none; border: none; color: #ffe6c8; font-size: 22px; cursor: pointer;
+  }
+  #trailer-modal .tm-tabs { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+  #trailer-modal .tm-tabs button {
+    padding: 4px 14px; cursor: pointer; font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif; font-size: 14px; letter-spacing: 3px;
+    color: #aa9988; background: transparent; border: 1px solid #553344; border-radius: 2px;
+  }
+  #trailer-modal .tm-tabs button.on { color: #ffcc66; border-color: #ffcc66; }
+
   /* Keep .overlay's position: fixed + inset: 0 (a 'relative' override here
      collapsed the overlay to its content height, so the bottom third of
      the screen showed the live scene). ::before anchors to the fixed box. */
@@ -955,6 +1003,7 @@
   <div class="starring">STARRING · 出演</div>
   <div class="monsters" id="monsterCards"></div>
   <button class="start-btn" id="startBtn" disabled>UNLEASH HAVOC</button>
+  <button class="trailer-btn" id="trailerBtn" type="button">▶ WATCH TRAILER</button>
   <p class="menu-hint" style="margin-top:14px; color:#888; font-size:12px;">WASD MOVE · MOUSE LOOK · LMB ATTACK · 1-3 POWERS · SPACE STOMP<br>← → / D-PAD to navigate · ENTER / A to confirm · START to launch</p>
   <div id="quality-picker" style="margin-top:8px; font-size:11px; color:#aa9988; letter-spacing:3px; display:flex; gap:8px; justify-content:center; align-items:center;">
     <span style="opacity:0.7;">QUALITY · 画質</span>
@@ -1150,17 +1199,18 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.7.8",
-    "./src/audio.js": "./src/audio.js?v=1.7.8",
-    "./src/city.js": "./src/city.js?v=1.7.8",
-    "./src/effects.js": "./src/effects.js?v=1.7.8",
-    "./src/enemies.js": "./src/enemies.js?v=1.7.8",
-    "./src/game.js": "./src/game.js?v=1.7.8",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.7.8",
-    "./src/monsters.js": "./src/monsters.js?v=1.7.8",
-    "./src/pickups.js": "./src/pickups.js?v=1.7.8",
-    "./src/quality.js": "./src/quality.js?v=1.7.8",
-    "./src/vfx.js": "./src/vfx.js?v=1.7.8"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.7.9",
+    "./src/audio.js": "./src/audio.js?v=1.7.9",
+    "./src/city.js": "./src/city.js?v=1.7.9",
+    "./src/effects.js": "./src/effects.js?v=1.7.9",
+    "./src/enemies.js": "./src/enemies.js?v=1.7.9",
+    "./src/game.js": "./src/game.js?v=1.7.9",
+    "./src/intro.js": "./src/intro.js?v=1.7.9",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.7.9",
+    "./src/monsters.js": "./src/monsters.js?v=1.7.9",
+    "./src/pickups.js": "./src/pickups.js?v=1.7.9",
+    "./src/quality.js": "./src/quality.js?v=1.7.9",
+    "./src/vfx.js": "./src/vfx.js?v=1.7.9"
   }
 }
 </script>
@@ -1174,6 +1224,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.7.8"></script>
+<script type="module" src="./src/game.js?v=1.7.9"></script>
+<script type="module" async src="./src/intro.js?v=1.7.9"></script>
 </body>
 </html>
