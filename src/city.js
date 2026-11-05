@@ -179,7 +179,7 @@ const PROP_GLBS_PLANNED = [
 ];
 const PROP_GLBS_READY = new Set([
   'vending_machine', 'street_lamp', 'traffic_signal', 'street_sign', 'bench',
-  'torii_gate', 'koban',
+  'torii_gate', 'koban', 'yatai_stall',
 ]);
 const PROP_GLBS = PROP_GLBS_PLANNED.filter((n) => PROP_GLBS_READY.has(n));
 const _propTemplates = new Map(); // name -> { scene, size }
