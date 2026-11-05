@@ -41,7 +41,6 @@ export const QUALITY_PROFILE = {
     flipbookRes: 512,
     softParticles: false,
     maxEmitters: 8,
-    godRaySamples: 0,
     anisotropy: 4,
   },
   med: {
@@ -49,7 +48,6 @@ export const QUALITY_PROFILE = {
     flipbookRes: 1024,
     softParticles: false,
     maxEmitters: 16,
-    godRaySamples: 30,
     anisotropy: 8,
   },
   high: {
@@ -59,7 +57,6 @@ export const QUALITY_PROFILE = {
     flipbookRes: 1024,
     softParticles: true,
     maxEmitters: 32,
-    godRaySamples: 60,
     anisotropy: 16,
   },
 }[QUALITY];

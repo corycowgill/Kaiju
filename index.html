@@ -445,6 +445,20 @@
     border-bottom: 30px solid rgba(255, 46, 46, 0.92);
     filter: drop-shadow(0 0 10px rgba(255, 0, 0, 0.85));
   }
+  /* Boss wind-up: orange, larger, pulsing (animation on the pseudo
+     elements so the JS-driven transform on the box isn't overridden). */
+  .dmg-ind.warn { transition: opacity 0.08s linear; }
+  .dmg-ind.warn::before {
+    border-left-width: 56px; border-right-width: 56px;
+    border-bottom: 38px solid rgba(255, 150, 30, 0.95);
+    filter: drop-shadow(0 0 14px rgba(255, 120, 0, 0.95));
+    animation: dmgWarnPulse 0.22s ease-in-out infinite alternate;
+  }
+  .dmg-ind.warn::after {
+    top: 42px; width: 90px; background: rgba(255, 170, 60, 0.85);
+    animation: dmgWarnPulse 0.22s ease-in-out infinite alternate;
+  }
+  @keyframes dmgWarnPulse { from { opacity: 0.45; } to { opacity: 1; } }
   .dmg-ind::after {
     content: ''; position: absolute; top: 34px; left: 50%;
     transform: translateX(-50%);
@@ -1136,17 +1150,17 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.7.4",
-    "./src/audio.js": "./src/audio.js?v=1.7.4",
-    "./src/city.js": "./src/city.js?v=1.7.4",
-    "./src/effects.js": "./src/effects.js?v=1.7.4",
-    "./src/enemies.js": "./src/enemies.js?v=1.7.4",
-    "./src/game.js": "./src/game.js?v=1.7.4",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.7.4",
-    "./src/monsters.js": "./src/monsters.js?v=1.7.4",
-    "./src/pickups.js": "./src/pickups.js?v=1.7.4",
-    "./src/quality.js": "./src/quality.js?v=1.7.4",
-    "./src/vfx.js": "./src/vfx.js?v=1.7.4"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.7.8",
+    "./src/audio.js": "./src/audio.js?v=1.7.8",
+    "./src/city.js": "./src/city.js?v=1.7.8",
+    "./src/effects.js": "./src/effects.js?v=1.7.8",
+    "./src/enemies.js": "./src/enemies.js?v=1.7.8",
+    "./src/game.js": "./src/game.js?v=1.7.8",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.7.8",
+    "./src/monsters.js": "./src/monsters.js?v=1.7.8",
+    "./src/pickups.js": "./src/pickups.js?v=1.7.8",
+    "./src/quality.js": "./src/quality.js?v=1.7.8",
+    "./src/vfx.js": "./src/vfx.js?v=1.7.8"
   }
 }
 </script>
@@ -1160,6 +1174,6 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.7.4"></script>
+<script type="module" src="./src/game.js?v=1.7.8"></script>
 </body>
 </html>

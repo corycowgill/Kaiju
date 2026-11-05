@@ -22,6 +22,40 @@ const _templates = {
   jet: null,
 };
 
+// Enemy meshes used to set frustumCulled = false (skinned parts vanished
+// when animated outside their bind-pose bounds), so every enemy was drawn
+// in the main and shadow passes even off-screen. Instead each template
+// SkinnedMesh gets a bounding sphere that encloses every pose of every clip
+// (sampled once at load, some clips carry root motion) plus 30% margin;
+// SkeletonUtils.clone copies it to every instance, so culling stays on.
+const _bv = new THREE.Vector3();
+function _padSkinnedBounds(root, clips = []) {
+  const meshes = [];
+  root.traverse((o) => { if (o.isSkinnedMesh) meshes.push(o); });
+  if (!meshes.length) return;
+  const rest = [];
+  root.traverse((o) => { if (o.isBone) rest.push([o, o.position.clone(), o.quaternion.clone(), o.scale.clone()]); });
+  const sample = () => {
+    root.updateMatrixWorld(true);
+    for (const m of meshes) {
+      const pos = m.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i += 5) { m.getVertexPosition(i, _bv); m.boundingSphere.expandByPoint(_bv); }
+    }
+  };
+  for (const m of meshes) m.computeBoundingSphere();
+  const mixer = new THREE.AnimationMixer(root);
+  for (const clip of clips) {
+    const a = mixer.clipAction(clip);
+    a.play();
+    for (let k = 0; k <= 12; k++) { mixer.setTime((clip.duration * k) / 12); sample(); }
+    a.stop();
+  }
+  mixer.uncacheRoot(root);
+  for (const [b, p, q, sc] of rest) { b.position.copy(p); b.quaternion.copy(q); b.scale.copy(sc); }
+  root.updateMatrixWorld(true);
+  for (const m of meshes) m.boundingSphere.radius *= 1.3;
+}
+
 function _cachedGLB(url) {
   return cachedFetch(url).then((buf) =>
     new Promise((resolve, reject) => _glbLoader.parse(buf, '', resolve, reject))
@@ -59,7 +93,8 @@ async function _loadBipedSet(file, animFiles, label, onProgress, startIdx, total
   try {
     const gltf = await _cachedGLB(file);
     scene = gltf.scene;
-    scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
+    scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    _padSkinnedBounds(scene, gltf.animations);
     const clips = new Map(gltf.animations.map((c) => [c.name, c]));
     for (const [name, animFile] of Object.entries(animFiles)) {
       const clip = clips.get(animFile.replace(/\.glb$/, ''));
@@ -109,7 +144,8 @@ export async function loadEnemyTemplates(onProgress) {
         v2 = false;
       }
       const s = gltf.scene;
-      s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
+      s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      _padSkinnedBounds(s, gltf.animations);
       if (key === 'tank') {
         _templates.tank = { scene: s, animations: gltf.animations, v2 };
       } else if (key.startsWith('tank_a')) {
@@ -988,6 +1024,7 @@ export class BossMech {
       this.cooldown = 2.8 + Math.random() * 0.8; // was a 1.2 s volley cadence
       this._volleyT = VOLLEY_WINDUP;
       this._chargePulseT = 0;
+      world.onBossWindup?.('volley', this, VOLLEY_WINDUP);
     }
 
     // Special: telegraphed ground pound at close range.
@@ -1005,6 +1042,7 @@ export class BossMech {
       this.specialCooldown = 9 + Math.random() * 3;
       this._slamT = SLAM_WINDUP;
       world.spawnBossTelegraph?.(myPos.clone(), SLAM_RADIUS, SLAM_WINDUP);
+      world.onBossWindup?.('slam', this, SLAM_WINDUP);
       if (this._actions) this._playAnim('attack');
     }
   }

@@ -11,8 +11,11 @@ mid one-shots -16 to -19, frequent sounds -20 to -23, loops -22 to -24) with a l
 Loops are crossfaded end-to-start with an equal-power crossfade; if a browser's MP3 decoder keeps the LAME priming/padding, `audio.js` sets loopStart/loopEnd to skip it. Each clip ships as OGG Vorbis (q3) and MP3 (LAME V5).
 `src/audio.js` loads OGG where the browser supports it, otherwise MP3.
 
+Boss telegraphs (`boss_windup_*`, `boss_slam_warn_*`) have no pitch jitter and end on their loudest point, so the
+hit lands at the end of the clip: 0.9 s for the cannon wind-up, 1.5 s for the slam warning.
+
 Files named `name_N` are variations; the game picks one at random and adds slight pitch jitter.
-Total size: 2.45 MB (84 clips x 2 formats).
+Total size: 2.53 MB (88 clips x 2 formats).
 
 | File | Duration | Model | Prompt |
 |---|---|---|---|
@@ -100,3 +103,7 @@ Total size: 2.45 MB (84 clips x 2 formats).
 | `loop_heli` | 4.20s | sfx | Military helicopter hovering, steady thumping rotor blades and turbine whine, constant, outdoor. Length: 7 seconds |
 | `loop_tank` | 4.40s | sfx | Tank engine rumbling while driving, steady diesel growl and clanking metal treads, constant. Length: 7 seconds |
 | `loop_city` | 7.90s | sfx | Distant city in chaos, wailing police sirens, faint crowd screaming and car alarms, burning ambience. Length: 10 seconds |
+| `boss_windup_1` | 0.90s | sfx | Giant robot weapon powering up, fast rising servo and turbine whine with electric buzz building tension. Length: 1 seconds (shaped: tail trimmed, stretched to 0.9 s, +8 dB rising ramp) |
+| `boss_windup_2` | 0.90s | sfx | Giant robot weapon powering up, fast rising servo and turbine whine with electric buzz building tension. Length: 1 seconds (shaped: stretched to 0.9 s, +8 dB rising ramp) |
+| `boss_slam_warn_1` | 1.50s | sfx | Earthquake rumble building up, deep low groan rising in intensity with heavy metal creaking, ominous. Length: 2 seconds (shaped: reversed into a swell, last 1.5 s, +6 dB rising ramp) |
+| `boss_slam_warn_2` | 1.50s | sfx | Giant machine rearing up, deep hydraulic groan and rising bass drone with alarm horn, cinematic warning. Length: 2 seconds (shaped: reversed, stretched to 1.5 s, +6 dB rising ramp) |

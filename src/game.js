@@ -262,17 +262,21 @@ scene.add(rimLight);
 const ambient = new THREE.AmbientLight(0x445566, Q_HIGH ? 0.15 : (Q_MED ? 0.30 : 0.45));
 scene.add(ambient);
 
-// Six (high) / 5 (med) / 4 (low) neon point lights scattered through the
-// city as set dressing. Short distance + decay so they only colour the
-// immediate street level.
+// Neon point lights scattered through the city as set dressing: 3 (high,
+// was 6) / 5 (med) / 4 (low). Every point light costs every lit fragment
+// even at intensity 0, and HIGH also carries the 5-light VFX pool, so HIGH
+// keeps the three strongest colours, spaced evenly around the ring, with a
+// slightly longer reach to cover the gaps. Short distance + decay so they
+// only colour the immediate street level.
 const NEON_PALETTE = [0xff3388, 0x33ddff, 0xffaa44, 0xff66ff, 0x66ff99, 0xffee44];
-const NEON_COUNT = Q_HIGH ? 6 : (Q_MED ? 5 : 4);
+const NEON_COUNT = Q_HIGH ? 3 : (Q_MED ? 5 : 4);
 const _neonLights = [];
+const _neonPhase = Math.random() * Math.PI * 2;
 for (let i = 0; i < NEON_COUNT; i++) {
   const c = NEON_PALETTE[i % NEON_PALETTE.length];
-  const a = (i / 6) * Math.PI * 2;
+  const a = _neonPhase + (i / NEON_COUNT) * Math.PI * 2; // evenly spread (was i/6 for every tier)
   const r = 110 + Math.random() * 80;
-  const pl = new THREE.PointLight(c, 4.5, 38, 2);
+  const pl = new THREE.PointLight(c, 4.5, Q_HIGH ? 46 : 38, 2);
   pl.position.set(Math.cos(a) * r, 6, Math.sin(a) * r);
   scene.add(pl);
   _neonLights.push(pl);
@@ -1525,6 +1529,15 @@ async function _startGameInner(key) {
   }
   k.root.position.set(0, 0, 0);
   k.root.rotation.set(0, 0, 0); // clear a previous run's death topple (cached GLB)
+  // Yaw-invariant body bounds for the camera: a vertical cylinder of radius
+  // camR (max horizontal half-extent, wings included) and height camH.
+  {
+    k.root.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(k.root);
+    const sz = bb.getSize(new THREE.Vector3());
+    k._camR = Math.max(sz.x, sz.z) * 0.5;
+    k._camH = sz.y;
+  }
   // Phase 4: kaiju is the only object that casts shadows. Traverse its mesh
   // tree once and flip the flags so the shadow pass picks up every limb.
   k.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -2295,6 +2308,34 @@ function _assistTarget(origin, dir, maxAngle, maxDist, groundOnly, maxAngleGroun
   }
   return best;
 }
+// Kaiju vs large walkers (BossMech, Mech): cylinder-cylinder push-out of
+// the kaiju so it can't stand inside them. Enemy radius comes from its
+// bounds once (lazily cached; 0.35x the max horizontal extent so arms and
+// cannons don't hold the kaiju off), kaiju radius matches the building
+// collision. Small units are crushed instead (crushUnderfoot).
+const _SOLID_TYPES = new Set(['boss', 'mech']);
+const _solidBox = new THREE.Box3();
+const _solidSize = new THREE.Vector3();
+function resolveBigEnemyCollisions(pos) {
+  const kr = KAIJU_BODY_RADIUS * (state.monsterCfg.stats.scale || 1);
+  for (const e of world.enemies) {
+    if (e.dead || !_SOLID_TYPES.has(e.type)) continue;
+    if (e._bodyR === undefined) {
+      _solidBox.setFromObject(e.root).getSize(_solidSize);
+      e._bodyR = Math.max(2, Math.max(_solidSize.x, _solidSize.z) * 0.35);
+    }
+    const ep = e.root.position;
+    let dx = pos.x - ep.x, dz = pos.z - ep.z;
+    const minD = kr + e._bodyR;
+    const d2 = dx * dx + dz * dz;
+    if (d2 >= minD * minD) continue;
+    let d = Math.sqrt(d2);
+    if (d < 1e-3) { dx = Math.sin(state.yaw); dz = Math.cos(state.yaw); d = 1; dx = -dx; dz = -dz; }
+    pos.x = ep.x + (dx / d) * minD;
+    pos.z = ep.z + (dz / d) * minD;
+  }
+}
+
 // Ground units the kaiju walks into are crushed outright (tanks only died
 // inside 4.5 u of the kaiju's centre, which its 8 u body rarely reached).
 const _CRUSH_TYPES = new Set(['tank', 'artillery', 'soldier']);
@@ -2917,6 +2958,7 @@ function updatePlayer(dt) {
   k.root.position.x += state.vel.x * dt;
   k.root.position.z += state.vel.z * dt;
   resolveBuildingCollisions(k.root.position, dt);
+  resolveBigEnemyCollisions(k.root.position);
   crushUnderfoot();
   // Clamp to play area. The visible distant scenery (silhouette skyline +
   // mountains) starts beyond ~480u so the boundary always reads as
@@ -3290,7 +3332,43 @@ function addDamageIndicator(srcX, srcZ) {
   }
   ind.x = srcX; ind.z = srcZ; ind.t = DMG_IND_LIFE;
 }
+// Boss wind-up cue: one dedicated pulsing orange chevron that tracks the
+// boss's LIVE position for the wind-up duration (it is often beside or
+// behind the chase cam when it starts charging).
+let _warnInd = null; // { el, src, t }
+function addWarnIndicator(src, dur) {
+  const root = document.getElementById('dmg-indicators');
+  if (!root || !src) return;
+  if (!_warnInd) {
+    const el = document.createElement('div');
+    el.className = 'dmg-ind warn';
+    root.appendChild(el);
+    _warnInd = { el, src: null, t: 0 };
+  }
+  _warnInd.src = src; _warnInd.t = dur;
+}
+function updateWarnIndicator(dt) {
+  const w = _warnInd;
+  if (!w || w.t <= 0 || !state.kaiju) return;
+  w.t -= dt;
+  if (w.t <= 0 || state.gameOver || !w.src.root || w.src.dead) {
+    w.t = 0; w.el.style.opacity = '0'; return;
+  }
+  const kp = state.kaiju.root.position, sp = w.src.root.position;
+  camera.getWorldDirection(_tmpV1);
+  const fx = _tmpV1.x, fz = _tmpV1.z;
+  const dx = sp.x - kp.x, dz = sp.z - kp.z;
+  const ang = Math.atan2(dx * -fz + dz * fx, dx * fx + dz * fz);
+  w.el.style.transform = `translate(-50%, -50%) rotate(${ang}rad)`;
+  w.el.style.opacity = '1';
+}
+world.onBossWindup = (kind, boss, dur) => {
+  addWarnIndicator(boss, dur);
+  if (kind === 'volley') { if (typeof audio.bossWindup === 'function') audio.bossWindup(); }
+  else if (typeof audio.bossSlamWarn === 'function') audio.bossSlamWarn();
+};
 function updateDamageIndicators(dt) {
+  updateWarnIndicator(dt);
   if (!_dmgInd.length || !state.kaiju) return;
   const kp = state.kaiju.root.position;
   // Camera forward projected on the ground plane.
@@ -3366,6 +3444,20 @@ function updateCamera() {
 
   _camTarget.copy(_camHead).addScaledVector(_camOffset, dist);
   const target = _camTarget;
+  // Don't let the occlusion pull-in park the camera inside the kaiju's own
+  // body (Tridon's wings filled the screen in melee against the boss).
+  // If the target lands within the body cylinder, lift it over the
+  // shoulders instead, easing so the move isn't a snap.
+  if (k._camR) {
+    const rp = k.root.position;
+    const hx = target.x - rp.x, hz = target.z - rp.z;
+    const r = k._camR + 3;
+    const top = rp.y + k._camH + 4;
+    if (hx * hx + hz * hz < r * r && target.y < top) {
+      const inside = 1 - Math.sqrt(hx * hx + hz * hz) / r; // 0 at edge, 1 at axis
+      target.y = Math.max(target.y, target.y + (top - target.y) * Math.min(1, 0.6 + inside));
+    }
+  }
   // Camera shake
   if (world._shakeTime > 0) {
     target.x += (Math.random() - 0.5) * world._shakeMag * 2;
@@ -3635,8 +3727,11 @@ function updateWorld(dt) {
   }
 
   // ----- Air strikes -----
-  // After wave 3, occasionally call in air strikes near the kaiju
-  if (state.wave >= 3 && state.inWave && Math.random() < dt * 0.07) {
+  // After wave 3, occasionally call in air strikes near the kaiju.
+  // Never while a boss is alive: the duel's damage is telegraphed, and a
+  // random strike finishing the player mid-fight felt unfair.
+  const bossAlive = state.boss && !state.boss.dead;
+  if (state.wave >= 3 && state.inWave && !bossAlive && Math.random() < dt * 0.07) {
     spawnAirStrike();
   }
   for (let i = state.airstrikes.length - 1; i >= 0; i--) {
@@ -3866,8 +3961,17 @@ function tick(now) {
     window.__cinePass.uniforms.godStr.value = off ? 0.0 : (Q_HIGH ? 0.55 : 0.30);
   }
   vfx.tick(dt);
-  if (composer) composer.render();
-  else renderer.render(scene, camera);
+  // Behind the title/monster menu, loading screen and pause overlay the
+  // city only needs ~15 fps (it cost ~6 ms GPU per frame at full rate).
+  // Input, gamepad and menu logic above still run every frame.
+  const idleScreen = !state.kaiju || state.paused;
+  if (!idleScreen || now - _lastIdleRender >= IDLE_RENDER_MS) {
+    _lastIdleRender = now;
+    if (composer) composer.render();
+    else renderer.render(scene, camera);
+  }
   requestAnimationFrame(tick);
 }
+const IDLE_RENDER_MS = 66;
+let _lastIdleRender = -Infinity;
 requestAnimationFrame(tick);

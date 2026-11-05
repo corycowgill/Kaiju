@@ -151,12 +151,14 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 // --------------- GLB tree templates ---------------
 // v2 low-poly trees (h = height in world units at scale 1); the old Meshy
 // trees (~18k tris each) load only if none of these do.
+// Set ready: true only once the file is on disk and has passed preview, so
+// missing assets never 404 at load.
 const TREE_GLBS = [
-  { url: './assets/trees/tree_zelkova.glb',    h: 7.0 },
-  { url: './assets/trees/tree_sakura.glb',     h: 5.6 },
-  { url: './assets/trees/tree_black_pine.glb', h: 4.8 },
-  { url: './assets/trees/tree_ginkgo.glb',     h: 8.0 },
-];
+  { url: './assets/trees/tree_zelkova.glb',    h: 7.0, ready: false },
+  { url: './assets/trees/tree_sakura.glb',     h: 5.6, ready: false },
+  { url: './assets/trees/tree_black_pine.glb', h: 4.8, ready: false },
+  { url: './assets/trees/tree_ginkgo.glb',     h: 8.0, ready: false },
+].filter((t) => t.ready);
 const TREE_GLBS_FALLBACK = [
   { url: './assets/trees/normal_tree.glb' },
   { url: './assets/trees/cherry_tree.glb' },
@@ -168,11 +170,15 @@ const _treeTemplates = [];  // array of { scene, box, h } after loading
 // faces +Z. Each one replaces (or adds to) a procedural builder below; when a
 // file fails to load, the procedural version is used instead.
 const PROP_GLB_BASE = './assets/props/';
-const PROP_GLBS = [
+// Add a name to PROP_GLBS_READY only once its file is on disk and has passed
+// preview; unlisted props keep their procedural builders and never 404.
+const PROP_GLBS_PLANNED = [
   'koban', 'yatai_stall', 'subway_entrance', 'torii_gate', 'bench',
   'vending_machine', 'street_lamp', 'traffic_signal', 'street_sign',
-  'roof_water_tank', 'roof_ac_cluster', 'roof_billboard', 'roof_antenna',
+  'roof_water_tank', 'roof_ac_cluster', 'roof_antenna',
 ];
+const PROP_GLBS_READY = new Set([]);
+const PROP_GLBS = PROP_GLBS_PLANNED.filter((n) => PROP_GLBS_READY.has(n));
 const _propTemplates = new Map(); // name -> { scene, size }
 
 function loadPropTemplates() {
@@ -283,7 +289,7 @@ function _instanceStaticClones(scene) {
       const e = m.matrixWorld.elements;
       const key = `${m.geometry.uuid}|${m.material.uuid}|${Math.floor(e[12] / BATCH_TILE)},${Math.floor(e[14] / BATCH_TILE)}`;
       let b = buckets.get(key);
-      if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, cast: m.castShadow, recv: m.receiveShadow, matrices: [] });
+      if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, recv: m.receiveShadow, matrices: [] });
       b.matrices.push(m.matrixWorld.clone());
     });
     c.parent.remove(c);
@@ -291,7 +297,10 @@ function _instanceStaticClones(scene) {
   for (const b of buckets.values()) {
     const im = new THREE.InstancedMesh(b.geometry, b.material, b.matrices.length);
     b.matrices.forEach((mat, i) => im.setMatrixAt(i, mat));
-    im.castShadow = b.cast;
+    // Small static props (trees, parked cars, street props) don't cast: the
+    // tiles inside the shadow frustum were redrawing ~millions of triangles
+    // in the shadow pass. They still receive the kaiju/building shadows.
+    im.castShadow = false;
     im.receiveShadow = b.recv;
     im.computeBoundingSphere();
     im.matrixAutoUpdate = false;
@@ -345,21 +354,34 @@ function makeTree(x = 0, z = 0, scale = 1) {
     return clone;
   }
 
-  // Procedural fallback
+  // Procedural fallback (mobile, or no tree GLBs). Geometry and materials
+  // are shared by every fallback tree, scaled per tree via the group, and
+  // tagged for _instanceStaticClones like the GLB trees.
+  if (!_fallbackTree) {
+    _fallbackTree = {
+      trunkGeom: new THREE.CylinderGeometry(0.35, 0.5, 4, 6),
+      leafGeom: new THREE.SphereGeometry(2, 8, 6),
+      trunkMat: new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.95 }),
+      leafMat: new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 }),
+    };
+    // Shared by every tree and every rebuilt city: never dispose.
+    _fallbackTree.trunkGeom.userData.template = true;
+    _fallbackTree.leafGeom.userData.template = true;
+  }
   const tree = new THREE.Group();
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.95 });
-  const leafMat = new THREE.MeshStandardMaterial({ color: 0x346a2a, roughness: 0.85 });
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * scale, 0.5 * scale, 4 * scale, 6), trunkMat);
-  trunk.position.y = 2 * scale;
+  const trunk = new THREE.Mesh(_fallbackTree.trunkGeom, _fallbackTree.trunkMat);
+  trunk.position.y = 2;
   tree.add(trunk);
-  const leaves = new THREE.Mesh(new THREE.SphereGeometry(2 * scale, 8, 6), leafMat);
-  leaves.position.y = 5 * scale;
+  const leaves = new THREE.Mesh(_fallbackTree.leafGeom, _fallbackTree.leafMat);
+  leaves.position.y = 5;
   leaves.scale.set(1.2, 1.0, 1.2);
   tree.add(leaves);
   tree.position.set(x, 0, z);
-  tree.matrixAutoUpdate = false; tree.updateMatrix();
+  tree.scale.setScalar(scale);
+  tree.userData.instance = true;
   return tree;
 }
+let _fallbackTree = null;
 
 // City park: grass square with a path, scattered trees, optional pond.
 function makePark(x, z, size = 32) {
@@ -1792,7 +1814,14 @@ export class Building {
     }
 
     // Rooftop details (probabilities tuned down to keep mesh count manageable)
-    if (h > 14 && Math.random() < 0.4) {
+    const wantTank = h > 14 && Math.random() < 0.4;
+    if (wantTank && _propTemplates.has('roof_water_tank')) {
+      // v2 GLB water tank on its stand
+      const tank = _cloneProp('roof_water_tank', Math.min(4.0, Math.min(w, d) * 0.45));
+      tank.position.set(rand(-w*0.25, w*0.25), h, rand(-d*0.25, d*0.25));
+      tank.rotation.y = Math.random() * Math.PI * 2;
+      this.group.add(tank);
+    } else if (wantTank) {
       const tank = new THREE.Mesh(
         new THREE.CylinderGeometry(Math.min(w, d) * 0.18, Math.min(w, d) * 0.2, 1.6, 10),
         new THREE.MeshStandardMaterial({ color: 0x9a9080, roughness: 0.85 })
@@ -1811,6 +1840,14 @@ export class Building {
     if (h > 18 && Math.random() < 0.5) {
       const ventCount = 1;
       for (let i = 0; i < ventCount; i++) {
+        const ac = _cloneProp('roof_ac_cluster', 1.4);
+        if (ac) {
+          // v2 GLB AC-unit cluster
+          ac.position.set(rand(-w * 0.3, w * 0.3), h, rand(-d * 0.3, d * 0.3));
+          ac.rotation.y = Math.floor(Math.random() * 4) * Math.PI / 2;
+          this.group.add(ac);
+          continue;
+        }
         const vw = rand(1.0, 2.4), vd = rand(1.0, 2.4);
         const v = new THREE.Mesh(
           new THREE.BoxGeometry(vw, 1.0, vd),
@@ -1824,11 +1861,13 @@ export class Building {
     // Antenna with blinking light (rare; only tall buildings)
     if (Math.random() < 0.3 && h > 30) {
       const antH = h * (0.25 + Math.random() * 0.25);
-      const ant = new THREE.Mesh(
+      const antGLB = _cloneProp('roof_antenna', antH);
+      const ant = antGLB || new THREE.Mesh(
         new THREE.CylinderGeometry(0.06, 0.12, antH, 4),
         new THREE.MeshStandardMaterial({ color: 0x222222 })
       );
-      ant.position.set(rand(-1.5, 1.5), h + antH / 2, rand(-1.5, 1.5));
+      // GLB mast sits on its base (origin at the bottom); the cylinder is centred
+      ant.position.set(rand(-1.5, 1.5), antGLB ? h : h + antH / 2, rand(-1.5, 1.5));
       this.group.add(ant);
       const blink = new THREE.Mesh(
         new THREE.SphereGeometry(0.22, 8, 8),
@@ -1836,6 +1875,7 @@ export class Building {
       );
       blink.position.copy(ant.position);
       blink.position.y = h + antH;
+      if (antGLB) blink.scale.setScalar(0.6);
       this.group.add(blink);
     }
     // Rooftop billboard / neon panel (sparser)
@@ -3818,12 +3858,13 @@ const CAR_COLORS = [0xff3344, 0x33aaff, 0xffcc33, 0xffffff, 0x222222, 0x44aa66, 
 // v2 Japanese vehicles: front faces +Z, bottom-centre origin, real-world metres
 // (len). Clones are scaled by CAR_UNITS_PER_M so a bus stays ~3x a kei van.
 // parked:false keeps long vehicles out of the 6u-spaced kerbside parking rows.
+// weight = relative share of moving traffic (bus ≈ 6%).
 const CAR_GLBS = [
-  { url: './assets/vehicles/kei_van.glb',     len: 3.4 },
-  { url: './assets/vehicles/taxi_black.glb',  len: 4.7 },
-  { url: './assets/vehicles/police_car.glb',  len: 4.8 },
-  { url: './assets/vehicles/small_truck.glb', len: 4.7 },
-  { url: './assets/vehicles/city_bus.glb',    len: 11.0, parked: false },
+  { url: './assets/vehicles/kei_van.glb',     len: 3.4,  weight: 34 },
+  { url: './assets/vehicles/taxi_black.glb',  len: 4.7,  weight: 30 },
+  { url: './assets/vehicles/police_car.glb',  len: 4.8,  weight: 10 },
+  { url: './assets/vehicles/small_truck.glb', len: 4.7,  weight: 20 },
+  { url: './assets/vehicles/city_bus.glb',    len: 11.0, weight: 6, parked: false },
 ];
 // Old Meshy cars, loaded only if none of the v2 vehicles load
 const CAR_GLBS_FALLBACK = [
@@ -3848,7 +3889,7 @@ function _loadCarList(list, onProgress) {
         console.warn('[CarGLB] No meshes found in', def.url);
         return;
       }
-      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false });
+      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1 });
       if (onProgress) onProgress(idx + 1, list.length, def.url.split('/').pop().replace('.glb', ''));
     }).catch((err) => {
       console.warn('[CarGLB] Failed to load', def.url, err.message);
@@ -3870,7 +3911,7 @@ function _cloneCarScene(tpl) {
       const m = new THREE.Mesh(o.geometry, o.material);
       o.updateWorldMatrix(true, false);
       m.applyMatrix4(o.matrixWorld);
-      m.castShadow = true;
+      m.castShadow = false; // moving cars: too small to matter in the shadow pass
       m.receiveShadow = true;
       group.add(m);
     }
@@ -3887,8 +3928,10 @@ export class Car {
     root.position.set(x, 0.6, z);
 
     if (_carTemplates.length > 0) {
-      // GLB car: pick a random template
-      const tpl = _carTemplates[Math.floor(Math.random() * _carTemplates.length)];
+      // GLB car: pick a template by traffic weight
+      let pick = Math.random() * _carTemplates.reduce((s, t) => s + t.weight, 0);
+      let tpl = _carTemplates[_carTemplates.length - 1];
+      for (const t of _carTemplates) { pick -= t.weight; if (pick < 0) { tpl = t; break; } }
       const clone = _cloneCarScene(tpl);
       const size = tpl.box.getSize(new THREE.Vector3());
       const targetLen = _carTargetLen(tpl); // old cars: ~3.6u to match procedural size
@@ -4035,7 +4078,7 @@ export async function loadPedestrianTemplates(onProgress) {
   try {
     const gltf = await _cachedGLB(PED_FILE);
     scene = gltf.scene;
-    scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } }); // ~2u tall: no shadow pass
     const clips = new Map(gltf.animations.map((c) => [c.name, c]));
     for (const name of animNames) {
       const clip = clips.get(PED_ANIMS[name].replace(/\.glb$/, ''));
@@ -4111,11 +4154,21 @@ export class Civilian {
 
   update(dt, world, kaijuPos, cityRadius) {
     if (this.dead) return;
-    if (this.mixer) this.mixer.update(dt);
     const myPos = this.root.position;
     const dx = kaijuPos.x - myPos.x;
     const dz = kaijuPos.z - myPos.z;
     const distSq = dx * dx + dz * dz;
+    // Skinned-mixer ticks are the civilians' main per-frame cost. Beyond
+    // ~120u a pedestrian is a few pixels tall, so tick its mixer at 1/4
+    // rate with the accumulated dt (same pose timing, a quarter of the work).
+    if (this.mixer) {
+      this._mixDt = (this._mixDt || 0) + dt;
+      this._mixSkip = (this._mixSkip || 0) + 1;
+      if (distSq < 120 * 120 || this._mixSkip >= 4) {
+        this.mixer.update(this._mixDt);
+        this._mixDt = 0; this._mixSkip = 0;
+      }
+    }
 
     // Squashed
     if (distSq < 9) { this.die(world); return; }

@@ -49,6 +49,8 @@ const SFX = {
   kill_tank:       [2, 0.8,  2, 0.08, 0.06],
   kill_heli:       [2, 0.8,  2, 0.08, 0.05],
   kill_jet:        [2, 0.8,  2, 0.08, 0.06],
+  boss_windup:     [2, 0.9,  2, 0.30, 0],     // no rate jitter: length is timed to the cannon shot
+  boss_slam_warn:  [2, 1.0,  1, 0.80, 0],     // likewise timed to the ground-pound impact
   loop_heli:       [1, 1.0,  1, 0,    0],
   loop_tank:       [1, 1.0,  1, 0,    0],
   loop_city:       [1, 1.0,  1, 0,    0],
@@ -375,6 +377,20 @@ class Audio {
   bossSpawn() {
     if (this._play('boss_spawn')) { this.alarm(); return; }
     this.tone(60, 0.25, 'sawtooth', 0.6); this.tone(110, 0.4, 'sawtooth', 0.5, 30); this.alarm();
+  }
+
+  // Boss telegraphs. Each sample ends on its loudest point, so call these
+  // 0.9 s before the cannons fire / 1.5 s before the ground pound lands.
+  bossWindup() {
+    if (this._play('boss_windup')) return;
+    this.tone(220, 0.9, 'sawtooth', 0.3, 1100);
+    this.tone(110, 0.9, 'square', 0.15, 330);
+  }
+
+  bossSlamWarn() {
+    if (this._play('boss_slam_warn')) return;
+    this.tone(40, 1.5, 'sawtooth', 0.45, 30);
+    this.noise(1.5, 300, 0.25);
   }
 
   // Building destroyed: concrete collapse, sometimes with a glass shatter on top
