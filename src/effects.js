@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import vfx, { acquirePooledLight } from './vfx.js';
 import { LEGACY_VFX } from './quality.js';
+import { disposeInstance, markShared } from './assetCache.js';
 
 // Shared geometries / materials so high-rate effect spawns (sparks, smoke,
 // hit pulses, muzzle flashes) don't churn through GC.
@@ -47,6 +48,8 @@ export class Effect {
         this._cleaned = true;
         try { this.update(0, 1, this); } catch (e) {}
       }
+      // Free the per-spawn geometry (module-level G_* stay; see markShared).
+      disposeInstance(this.mesh);
       this.dead = true;
       return;
     }
@@ -243,6 +246,8 @@ export function _makeShockwaveLegacy(world, pos, color = 0xffcc44, maxRadius = 6
 // Each puff still needs its own opacity fade, so we clone the material lazily
 // per puff but reuse the geometry.
 const G_SMOKE_PUFF = new THREE.SphereGeometry(1.4, 8, 8);
+// Shared across spawns: disposeInstance() must not free these.
+markShared(G_SPARK, G_FIRE, G_CORE, G_HITPULSE, G_MUZZLE, G_SMOKE_S, G_SHRAPNEL, G_RING, G_SMOKE_PUFF);
 const _smokeMatProto = new THREE.MeshBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.55 });
 
 // Public makeSmokeColumn shim. Routes through vfx.spawn for the shader-based
@@ -1085,7 +1090,7 @@ export function _makeAtomicDevastationLegacy(world, pos, color = 0x66ff66) {
       world.scene.remove(flash); world.scene.remove(fireball);
       world.scene.remove(stem); world.scene.remove(stemCore);
       world.scene.remove(cap); world.scene.remove(capCore);
-      for (const d of debris) world.scene.remove(d);
+      for (const d of debris) { world.scene.remove(d); d.geometry.dispose(); }
       for (const w of wisps) world.scene.remove(w);
     }
   });

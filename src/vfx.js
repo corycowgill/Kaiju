@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import { QUALITY_PROFILE, LEGACY_VFX } from './quality.js';
+import { disposeInstance, markShared } from './assetCache.js';
 
 let initialized = false;
 
@@ -130,6 +131,8 @@ class VFXEffect {
       if (!this._cleaned) {
         this._cleaned = true;
         try { this.update(0, 1, this); } catch (e) {}
+        // Free the per-spawn geometry (module-level _G_* stay; see markShared).
+        disposeInstance(this.mesh);
       }
       this.dead = true;
       return;
@@ -1695,7 +1698,7 @@ function _spawnAtomicDevastationShader(opts) {
       world.scene.remove(flash); world.scene.remove(fireball);
       world.scene.remove(stem);  world.scene.remove(stemCore);
       world.scene.remove(cap);   world.scene.remove(capCore);
-      for (const d of debris) world.scene.remove(d);
+      for (const d of debris) { world.scene.remove(d); d.geometry.dispose(); }
       for (const w of wisps)  world.scene.remove(w);
       flashGear.mat.dispose();
       fireGear.mat.dispose();
@@ -1892,6 +1895,8 @@ function _spawnHitPulseShader(opts) {
 // opts: { world, pos, color }. Falls back to a hit pulse if the energy
 // sheet isn't loaded.
 const _G_IMPACT = new THREE.PlaneGeometry(1, 1);
+// Every module-level _G_* is shared across spawns: disposeInstance() must not free them.
+markShared(_G_FLIP, _G_SCORCH, _G_FIREBALL, _G_FIRE_LO, _G_RING_E, _G_SHRAPNEL, _G_DOME, _G_SMOKE_PUFF_S, _G_SPARK_S, _G_DUST_PUFF, _G_MISSILE, _G_AD_FLASH, _G_AD_FIREBALL, _G_AD_STEM, _G_AD_STEMCORE, _G_AD_CAP, _G_AD_CAPCORE, _G_SHOCK, _G_SOUND_SPHERE, _G_IMPACT);
 _G_IMPACT.rotateX(-Math.PI / 2);
 function _smoothstepJS(a, b, x) {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -2011,7 +2016,23 @@ function _spawnChainLightningShader(opts) {
     points.push(p);
   }
   const curve = new THREE.CatmullRomCurve3(points);
-  if (_flipTex.arc_strip_1x8) return _spawnArcRibbon(world, curve, len, color, life, segs);
+  if (_flipTex.arc_strip_1x8) {
+    // Re-strike: a fresh jitter of the same a->b path, so the bolt jumps
+    // to a new shape a few times over its life instead of only fading.
+    const restrike = () => {
+      const pts = [];
+      for (let i = 0; i <= segs; i++) {
+        const p = new THREE.Vector3().copy(a).addScaledVector(dir, i / segs);
+        if (i > 0 && i < segs) {
+          p.addScaledVector(right, (Math.random() - 0.5) * len * 0.08);
+          p.addScaledVector(updir, (Math.random() - 0.5) * len * 0.08);
+        }
+        pts.push(p);
+      }
+      return new THREE.CatmullRomCurve3(pts);
+    };
+    return _spawnArcRibbon(world, curve, len, color, life, segs, restrike);
+  }
   // Single fat tube; the shader produces both the white core and colored halo
   // in one draw via radial UV sampling. Radius set between the legacy core
   // (0.30) and halo (0.95) so the visual silhouette is similar.
@@ -2075,7 +2096,7 @@ const _ARC_FS = `
     // Sheet loaded with flipY=false: v=0 is the top row.
     float I = texture2D(map, vec2(vUv.x, (row + vUv.y) / 8.0)).r;
     if (I < 0.004) discard;
-    vec3 col = boltColor * I * 2.2 + vec3(smoothstep(0.6, 1.0, I)) * 1.8;
+    vec3 col = boltColor * I * 3.0 + vec3(smoothstep(0.55, 1.0, I)) * 2.4;
     gl_FragColor = vec4(col * fade, 1.0);
   }
 `;
@@ -2107,16 +2128,17 @@ function _arcRibbonGeometry(curve, n) {
   g.setIndex(idx);
   g.computeBoundingSphere();
   // Ribbon is expanded in the vertex shader; pad the cull sphere for it.
-  g.boundingSphere.radius += 6;
+  g.boundingSphere.radius += 10;
   return g;
 }
-function _spawnArcRibbon(world, curve, len, color, life, segs) {
-  const geom = _arcRibbonGeometry(curve, Math.max(8, segs * 4));
+function _spawnArcRibbon(world, curve, len, color, life, segs, restrike) {
+  const nPts = Math.max(8, segs * 4);
+  let geom = _arcRibbonGeometry(curve, nPts);
   const group = new THREE.Group();
   const layers = [];
   // Widths scale with arc length so long beam-length bolts stay readable
   // from the chase cam (core / halo).
-  for (const [w, dim] of [[Math.min(7, 3.2 + len * 0.03), 1.0], [Math.min(13, 6 + len * 0.05), 0.45]]) {
+  for (const [w, dim] of [[Math.min(9, 4.0 + len * 0.04), 1.0], [Math.min(16, 8 + len * 0.06), 0.5]]) {
     const uniforms = {
       map: { value: _flipTex.arc_strip_1x8 },
       boltColor: { value: new THREE.Color(color) },
@@ -2129,19 +2151,30 @@ function _spawnArcRibbon(world, curve, len, color, life, segs) {
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
     });
-    group.add(new THREE.Mesh(geom, mat));
-    layers.push({ mat, uniforms, dim, next: 0 });
+    const mesh = new THREE.Mesh(geom, mat);
+    group.add(mesh);
+    layers.push({ mat, uniforms, dim, next: 0, mesh });
   }
   world.scene.add(group);
+  // Lives >= ~1 s get re-struck (new bolt path) every 0.18-0.3 s.
+  let nextStrike = restrike && life >= 0.8 ? 0.18 + Math.random() * 0.12 : Infinity;
   return new VFXEffect(group, life, (dt, t) => {
+    nextStrike -= dt;
+    if (nextStrike <= 0 && t < 0.85) {
+      nextStrike = 0.18 + Math.random() * 0.12;
+      const g2 = _arcRibbonGeometry(restrike(), nPts);
+      for (const L of layers) L.mesh.geometry = g2;
+      geom.dispose();
+      geom = g2;
+    }
     for (const L of layers) {
       L.next -= dt;
       if (L.next <= 0) {
         L.next = 0.035 + Math.random() * 0.03;
         L.uniforms.row.value = Math.floor(Math.random() * 8);
       }
-      // Flicker: random dips on top of the linear fade.
-      L.uniforms.fade.value = L.dim * (1 - t) * (0.65 + Math.random() * 0.35);
+      // Flicker on top of an ease-out fade (stays bright most of its life).
+      L.uniforms.fade.value = L.dim * (1 - t * t) * (0.7 + Math.random() * 0.3);
     }
     if (t >= 1) {
       world.scene.remove(group);

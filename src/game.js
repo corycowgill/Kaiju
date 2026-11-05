@@ -23,7 +23,7 @@ import {
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
-import { initAssetCache, getCacheStats } from './assetCache.js';
+import { initAssetCache, getCacheStats, disposeInstance, markShared } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE } from './quality.js';
 import vfx, { listBuilders, resetPooledLights } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
@@ -442,13 +442,14 @@ if (Q_HIGH) {
 // Shared shell geometry + per-type materials so each shot doesn't
 // allocate a fresh BufferGeometry / MeshBasicMaterial pair.
 const SHARED_SHELL_GEOM = new THREE.SphereGeometry(0.35, 6, 6);
+markShared(SHARED_SHELL_GEOM);
 const SHELL_PROFILES = {
   tank:  { speed: 80,  damage: 9,  size: 0.35, mat: new THREE.MeshBasicMaterial({ color: 0xffaa44 }) },
   heli:  { speed: 90,  damage: 6,  size: 0.30, mat: new THREE.MeshBasicMaterial({ color: 0xffeeaa }) },
   mech:  { speed: 70,  damage: 20, size: 0.40, mat: new THREE.MeshBasicMaterial({ color: 0xff8844 }) },
   jet:   { speed: 110, damage: 7,  size: 0.32, mat: new THREE.MeshBasicMaterial({ color: 0xff5533 }) }, // was 11 @ 0.4 s strafe cadence
   rifle: { speed: 140, damage: 2,  size: 0.18, mat: new THREE.MeshBasicMaterial({ color: 0xffeecc }) },
-  boss:  { speed: 75,  damage: 32, size: 0.55, mat: new THREE.MeshBasicMaterial({ color: 0xff3322 }) },
+  boss:  { speed: 75,  damage: 14, size: 0.85, mat: new THREE.MeshBasicMaterial({ color: 0xff3322 }) }, // was 32 / 0.55: telegraphed now, bigger + readable
 };
 // Push shell colours into HDR (>1) so they cross the bloom threshold and
 // read as glowing tracers; at 1.0 they were near-invisible dots.
@@ -467,25 +468,66 @@ function incomingDamageMult() {
 const OOC_REGEN_DELAY = 5.0; // seconds without taking damage
 const OOC_REGEN_RATE  = 2.5; // HP per second once out of combat
 // Burst cap: damage over a ~3 s leaky window is limited to
-// DPS_CAP_FRAC(wave) x maxHp per second; anything above it is cut to 15%.
+// DPS_CAP_FRAC(wave) x maxHp per second; anything above it is cut to 5%
+// (was 15%, which let a boss volley stream through: ~12 HP/s sustained).
 // Stops stacked jets + helis + artillery (wave 2 "AIR DOMINANCE" took 42%
 // HP in 5 s) from deleting the player before they can react.
 const DPS_WINDOW = 3.0;
 function dpsCapFrac() {
   const w = state.wave || 1;
-  return w <= 3 ? 0.025 + 0.005 * (w - 1) : Math.min(0.10, 0.035 + 0.012 * (w - 3));
+  const base = w <= 3 ? 0.025 + 0.005 * (w - 1) : Math.min(0.10, 0.035 + 0.008 * (w - 3));
+  // Boss waves (every 4th) get 20% headroom off: the boss fight should be
+  // a 60-120 s duel, not an escort-fire race (wave 4 killed in 18-33 s).
+  return state.boss && !state.boss.dead ? base * 0.8 : base;
 }
 function hurtKaiju(amount) {
   let dmg = amount * incomingDamageMult();
   const limit = dpsCapFrac() * state.maxHp * DPS_WINDOW;
   const room = Math.max(0, limit - (state._dmgWindow || 0));
-  if (dmg > room) dmg = room + (dmg - room) * 0.15;
+  if (dmg > room) dmg = room + (dmg - room) * 0.05;
   state._dmgWindow = (state._dmgWindow || 0) + dmg;
   state.hp -= dmg;
   state._lastHurtT = world.time;
   if (state.hp <= 0 && !state.gameOver) gameOver(false);
   return dmg;
 }
+// Boss ground-pound warning: a red disc that grows to the blast radius over
+// `delay` seconds (pulsing faster near the end) plus a bright rim ring,
+// so the player can read where the slam lands and step out in time.
+const _G_TELE_DISC = new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2);
+const _G_TELE_RING = new THREE.RingGeometry(0.94, 1.0, 64).rotateX(-Math.PI / 2);
+markShared(_G_TELE_DISC, _G_TELE_RING);
+function _spawnBossTelegraph(pos, radius, delay) {
+  const g = new THREE.Group();
+  g.position.set(pos.x, 0.2, pos.z);
+  const discMat = new THREE.MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0.0,
+    depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -8 });
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xff5040, transparent: true, opacity: 0.9,
+    depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -8 });
+  const disc = new THREE.Mesh(_G_TELE_DISC, discMat);
+  const ring = new THREE.Mesh(_G_TELE_RING, ringMat);
+  ring.scale.setScalar(radius);
+  g.add(disc, ring);
+  scene.add(g);
+  let t = 0;
+  return {
+    mesh: g, dead: false,
+    tick(dt) {
+      t += dt;
+      const k = Math.min(1, t / delay);
+      disc.scale.setScalar(Math.max(0.01, radius * k));
+      const pulse = 0.5 + 0.5 * Math.sin(t * (8 + 14 * k));
+      discMat.opacity = 0.12 + 0.22 * k * pulse;
+      ringMat.opacity = 0.55 + 0.45 * pulse;
+      if (t >= delay) {
+        this.dead = true;
+        scene.remove(g);
+        discMat.dispose(); ringMat.dispose();
+      }
+    },
+  };
+}
+
 // True if p is inside an intact building's footprint below its roof.
 const _shellHitB = { b: null };
 function _shellHitsBuilding(p) {
@@ -588,6 +630,9 @@ const world = {
   spawnBeam: function (origin, dir, len, color, glow) {
     this.effects.push(makeBeam(this, origin, dir, len, color, glow));
   },
+  spawnBossTelegraph: function (pos, radius, delay) {
+    this.effects.push(_spawnBossTelegraph(pos, radius, delay));
+  },
   spawnShell: function (origin, dir, type) {
     const profile = SHELL_PROFILES[type] || SHELL_PROFILES.tank;
     const m = new THREE.Mesh(SHARED_SHELL_GEOM, profile.mat);
@@ -631,6 +676,9 @@ function buildWorldCity() {
 }
 buildWorldCity();
 window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
+// Compile VFX/prop shaders in the background while the title menu is up
+// (see _prewarmShaders). Deferred so the menu paints first.
+setTimeout(() => { if (!_prewarmBg) _prewarmBg = _prewarmBackground(); }, 300);
 
 // ------------------------- Game state -------------------------
 const state = {
@@ -1220,23 +1268,39 @@ function _disposeKaijuGLB(glb) {
   });
 }
 
-// Compile every shader program the run needs while the loading screen is up
-// (programs jumped 34 -> 169 during the first run, each one a hitch). The
-// city is already in the scene; the kaiju, one of each enemy, a car, a
-// civilian and one of every registered VFX effect are staged off-scene and
-// compiled against the scene's lights. compile() only builds programs (no
-// buffer/texture uploads), and the staged throwaways are simply dropped --
-// their materials are not disposed, which would release the programs again.
-async function _prewarmShaders(kaijuRoot) {
+// Shader prewarm. Programs used to compile lazily on first use during the
+// first fight (34 -> 169 programs, each a hitch). Objects are staged in an
+// off-scene Group and compiled against the scene's lights with
+// compileAsync, which uses KHR_parallel_shader_compile so the driver
+// compiles in parallel and the main thread only polls. compile() builds
+// programs only (no buffer/texture uploads). Staged throwaways are dropped
+// without disposing their materials, since disposing would release the
+// programs again. Two phases:
+//  - background, started while the title/menu is up: one of every VFX
+//    effect, a car and a civilian (their templates load at boot);
+//  - at game start: the kaiju and one of each enemy (their templates load
+//    with the run). Blocks at most PREWARM_BLOCK_MS; anything still
+//    compiling after that finishes in the background.
+const PREWARM_BLOCK_MS = 2000;
+let _prewarmBg = null;
+
+function _compileStaged(stage, label) {
   const t0 = performance.now();
+  const done = (renderer.compileAsync
+    ? renderer.compileAsync(stage, camera, scene)
+    : Promise.resolve(renderer.compile(stage, camera, scene)))
+    .catch((e) => console.warn('[prewarm] shader compile failed', e))
+    .then(() => {
+      stage.traverse((n) => { if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose(); });
+      console.log(`[prewarm:${label}] ${renderer.info.programs.length} programs ready in ${(performance.now() - t0).toFixed(0)} ms`);
+    });
+  return done;
+}
+
+function _prewarmBackground() {
   const stage = new THREE.Group();
-  if (kaijuRoot) stage.add(kaijuRoot); // re-parented to the scene right after
-  for (const C of [Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech]) {
-    try { stage.add(new C(0, 0).root); } catch (e) { /* template missing: nothing to warm */ }
-  }
-  const stagedCivs = [];
   try { spawnCars(stage, 1, 10, 40); } catch (e) { /* ignore */ }
-  try { stagedCivs.push(...spawnCivilians(stage, 1, 10)); } catch (e) { /* ignore */ }
+  try { spawnCivilians(stage, 1, 10); } catch (e) { /* ignore */ }
   const stubWorld = Object.create(world);
   stubWorld.scene = stage; stubWorld.effects = []; stubWorld.shells = []; stubWorld.debris = [];
   const P = new THREE.Vector3(0, 2, 0), D = new THREE.Vector3(0, 0, 1), B = new THREE.Vector3(0, 2, 10);
@@ -1248,15 +1312,24 @@ async function _prewarmShaders(kaijuRoot) {
     } catch (e) { /* builder needs a fuller world: it compiles on first use instead */ }
   }
   resetPooledLights();
-  try {
-    if (renderer.compileAsync) await renderer.compileAsync(stage, camera, scene);
-    else renderer.compile(stage, camera, scene);
-    if (renderer.compileAsync) await renderer.compileAsync(scene, camera);
-    else renderer.compile(scene, camera);
-  } catch (e) { console.warn('[prewarm] shader compile failed', e); }
+  return _compileStaged(stage, 'menu');
+}
+
+async function _prewarmShaders(kaijuRoot) {
+  const stage = new THREE.Group();
+  if (kaijuRoot) stage.add(kaijuRoot);
+  for (const C of [Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech]) {
+    try { stage.add(new C(0, 0).root); } catch (e) { /* template missing: nothing to warm */ }
+  }
+  const run = _compileStaged(stage, 'run');
+  // compile() has already built the programs synchronously; the kaiju can
+  // leave the stage now (and must not have its skeleton disposed later).
   if (kaijuRoot) stage.remove(kaijuRoot);
-  stage.traverse((n) => { if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose(); });
-  console.log(`[prewarm] ${renderer.info.programs.length} programs ready in ${(performance.now() - t0).toFixed(0)} ms`);
+  if (!_prewarmBg) _prewarmBg = _prewarmBackground();
+  await Promise.race([
+    Promise.all([_prewarmBg, run]),
+    new Promise((r) => setTimeout(r, PREWARM_BLOCK_MS)),
+  ]);
 }
 
 // "UNLEASH AGAIN": reset the run without reloading the page, so the parsed
@@ -1277,8 +1350,9 @@ function restartInPlace() {
     if (o === keepRoot) continue; // cached kaiju: detach only
     o.traverse((n) => {
       // Template-owned GLB geometry (userData.template, set in assetCache.js)
-      // is shared by every clone and reused by the next city; keep it.
-      if (n.geometry && !n.geometry.userData.template) n.geometry.dispose();
+      // is shared by every clone and reused by the next city, and markShared
+      // module geometry is reused by every later spawn; keep both.
+      if (n.geometry && !n.geometry.userData.template && !n.geometry.userData.shared) n.geometry.dispose();
       if (n.isInstancedMesh) n.dispose();
       // Each skinned clone (civilians, soldiers, mechs) owns a GPU bone texture.
       if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose();
@@ -1779,7 +1853,9 @@ function startWave(n) {
   }
 
   // Baseline scaling, then theme-modulated
-  const m = theme ? theme.mods : { tank: 1.0, heli: 1.0, mech: 1.0, jet: 1.0, arty: 1.0, soldier: 1.0 };
+  // Boss waves: the boss is the fight, so the escort is halved (wave 4 was
+  // 7-9 tanks + 2-3 helis + artillery on top of the boss).
+  const m = theme ? theme.mods : { tank: 0.5, heli: 0.5, mech: 1.0, jet: 0.5, arty: 0.5, soldier: 0.5 };
   const tankCount   = Math.round((2 + n * 2) * m.tank);
   const heliCount   = Math.min(12, Math.round(Math.floor(n * 1.2) * m.heli));
   const mechCount   = (n >= 3 && !isBossWave) ? Math.max(0, Math.round((n - 2) * m.mech)) : 0;
@@ -2196,14 +2272,18 @@ function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample =
 // maxAngle radians (horizontal) and maxDist, weighted toward nearer ones.
 // Military units are ~4-7 u next to a 32 u kaiju, so unassisted beams and
 // punches almost never connected ("military destroyed 0").
-function _assistTarget(origin, dir, maxAngle, maxDist, groundOnly) {
+// Angles are horizontal (yaw) only, so pitch never shrinks the cone.
+// maxAngleGround (optional) widens the cone for ground units.
+function _assistTarget(origin, dir, maxAngle, maxDist, groundOnly, maxAngleGround = maxAngle) {
   let best = null, bestScore = Infinity;
   const fl = Math.hypot(dir.x, dir.z) || 1;
   const fx = dir.x / fl, fz = dir.z / fl;
-  const cosMax = Math.cos(maxAngle);
+  const cosAir = Math.cos(maxAngle), cosGround = Math.cos(maxAngleGround);
   for (const e of world.enemies) {
     if (e.dead) continue;
-    if (groundOnly && (e.type === 'heli' || e.type === 'jet')) continue;
+    const air = e.type === 'heli' || e.type === 'jet';
+    if (groundOnly && air) continue;
+    const cosMax = air ? cosAir : cosGround;
     const p = e.root.position;
     const dx = p.x - origin.x, dz = p.z - origin.z;
     const d = Math.hypot(dx, dz);
@@ -2290,8 +2370,11 @@ function fireBeam() {
   _beamOrigin.addScaledVector(_beamDir, 5.5);
 
   const length = 260;
-  // Snap onto an enemy within ~14 deg of the aim (centre of its hull).
-  const tgt = _assistTarget(_beamOrigin, _beamDir, 0.25, length, false);
+  // Snap onto an enemy near the aim (horizontal angle only): ground units
+  // within ~20 deg (they sit far below the beam's pitch and are small),
+  // air units within ~14 deg. The snapped target is hit directly below,
+  // not via the tube test, so a snap can't visually connect yet miss.
+  const tgt = _assistTarget(_beamOrigin, _beamDir, 0.25, length, false, 0.35);
   if (tgt) {
     _tmpV1.copy(tgt.root.position); _tmpV1.y += 3;
     _beamDir.subVectors(_tmpV1, _beamOrigin).normalize();
@@ -2329,14 +2412,14 @@ function fireBeam() {
     let prev = helix(0);
     for (let i = 0; i < SEGS; i++) {
       const next = helix(i + 1);
-      world.effects.push(makeChainLightning(world, prev, next, cfg.color, 0.65, 12));
+      world.effects.push(makeChainLightning(world, prev, next, cfg.color, 1.3, 12));
       prev = next;
     }
     for (const side of [-1, 1]) {
       const wing = _beamOrigin.clone()
         .addScaledVector(right, side * 11).addScaledVector(up2, 4).addScaledVector(_beamDir, -2);
       const meet = _beamOrigin.clone().addScaledVector(_beamDir, 45 + Math.random() * 15);
-      world.effects.push(makeChainLightning(world, wing, meet, cfg.color, 0.55, 10));
+      world.effects.push(makeChainLightning(world, wing, meet, cfg.color, 1.2, 10));
     }
     // Branching forks coming off the main bolt
     for (let f = 0; f < 5; f++) {
@@ -2346,7 +2429,7 @@ function fireBeam() {
       toP.x += (Math.random() - 0.5) * 18;
       toP.y += (Math.random() - 0.5) * 10;
       toP.z += (Math.random() - 0.5) * 18;
-      world.effects.push(makeChainLightning(world, fromP, toP, cfg.color, 0.5, 8));
+      world.effects.push(makeChainLightning(world, fromP, toP, cfg.color, 1.0, 8));
     }
   } else if (variant === 'gojira') {
     // Atomic breath = pulsing green hit-pulses dotted along the beam path.
@@ -2402,9 +2485,14 @@ function fireBeam() {
     if (fx) world.effects.push(fx);
     else world.spawnHitPulse(_beamImpact.clone(), cfg.color);
   }
+  if (tgt && !tgt.dead) {
+    _tmpV1.copy(tgt.root.position); _tmpV1.y += 4;
+    tgt.damage(beamDmg * 0.7, world);
+    world.spawnExplosion(_tmpV1, 0.7);
+  }
   // Enemy hits along beam (sphere check; uses module-level scratch vectors)
   for (const e of world.enemies) {
-    if (e.dead) continue;
+    if (e.dead || e === tgt) continue;
     _tmpV1.copy(e.root.position); _tmpV1.y += 4;
     _tmpV2.copy(_tmpV1).sub(_beamOrigin);
     const along = _tmpV2.dot(_beamDir);
@@ -3324,6 +3412,7 @@ function updateWorld(dt) {
     for (let i = 0; i < drop; i++) {
       const e = world.effects[i];
       if (e && e.mesh && e.mesh.parent) e.mesh.parent.remove(e.mesh);
+      if (e && e.mesh) disposeInstance(e.mesh);
     }
     world.effects.splice(0, drop);
   }
@@ -3540,6 +3629,7 @@ function updateWorld(dt) {
       }
       scene.remove(s.mesh);
       if (s.ring) scene.remove(s.ring);
+      disposeInstance(s.mesh); if (s.ring) disposeInstance(s.ring);
       state.artyShells.splice(i, 1);
     }
   }
@@ -3565,6 +3655,7 @@ function updateWorld(dt) {
         hurtKaiju(40);
       }
       scene.remove(a.ring);
+      disposeInstance(a.ring);
       state.airstrikes.splice(i, 1);
     }
   }

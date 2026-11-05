@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeInstance } from './assetCache.js';
 
 // Pickups dropped from destroyed buildings / kills.
 // types: 'hp' (red cross), 'rage' (blue orb), 'score' (gold star)
@@ -20,8 +21,11 @@ export class Pickup {
     const root = new THREE.Group();
     root.position.set(x, y, z);
 
+    // Emissive kept below the bloom threshold's blow-out range: at 0.9 the
+    // blue rage orb (plus halo + beam stacking additively in bloom) read as
+    // a white-blue flare next to the kaiju when wave-end kills dropped several.
     const mat = new THREE.MeshStandardMaterial({
-      color: info.color, emissive: info.color, emissiveIntensity: 0.9, roughness: 0.4, metalness: 0.4,
+      color: info.color, emissive: info.color, emissiveIntensity: 0.4, roughness: 0.4, metalness: 0.2,
     });
 
     let body;
@@ -47,7 +51,7 @@ export class Pickup {
     // Glow halo (sprite-like billboard)
     const halo = new THREE.Mesh(
       new THREE.SphereGeometry(1.6, 12, 12),
-      new THREE.MeshBasicMaterial({ color: info.glow, transparent: true, opacity: 0.25 })
+      new THREE.MeshBasicMaterial({ color: info.glow, transparent: true, opacity: 0.14, depthWrite: false })
     );
     root.add(halo);
     this.halo = halo;
@@ -55,7 +59,7 @@ export class Pickup {
     // Beam of light connecting to ground
     const beam = new THREE.Mesh(
       new THREE.CylinderGeometry(0.2, 0.6, 6, 8, 1, true),
-      new THREE.MeshBasicMaterial({ color: info.glow, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color: info.glow, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })
     );
     beam.position.y = -3;
     root.add(beam);
@@ -97,6 +101,7 @@ export class Pickup {
   destroy() {
     this.dead = true;
     this.root.parent && this.root.parent.remove(this.root);
+    disposeInstance(this.root);
   }
 }
 

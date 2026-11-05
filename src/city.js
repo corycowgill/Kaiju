@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeSkeletons } from './assetCache.js';
+import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance } from './assetCache.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
 // and loadPedestrianTemplates() run at module-load time via top-level await in game.js.
@@ -149,11 +149,62 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 // ----------------------- Landmark mesh helpers -----------------------
 
 // --------------- GLB tree templates ---------------
+// v2 low-poly trees (h = height in world units at scale 1); the old Meshy
+// trees (~18k tris each) load only if none of these do.
 const TREE_GLBS = [
-  './assets/trees/normal_tree.glb',
-  './assets/trees/cherry_tree.glb',
+  { url: './assets/trees/tree_zelkova.glb',    h: 7.0 },
+  { url: './assets/trees/tree_sakura.glb',     h: 5.6 },
+  { url: './assets/trees/tree_black_pine.glb', h: 4.8 },
+  { url: './assets/trees/tree_ginkgo.glb',     h: 8.0 },
 ];
-const _treeTemplates = [];  // array of { scene, box, meshes[] } after loading
+const TREE_GLBS_FALLBACK = [
+  { url: './assets/trees/normal_tree.glb' },
+  { url: './assets/trees/cherry_tree.glb' },
+];
+const _treeTemplates = [];  // array of { scene, box, h } after loading
+
+// --------------- GLB street props (v2) ---------------
+// Static props built with the artist pipeline: bottom-centre origin, front
+// faces +Z. Each one replaces (or adds to) a procedural builder below; when a
+// file fails to load, the procedural version is used instead.
+const PROP_GLB_BASE = './assets/props/';
+const PROP_GLBS = [
+  'koban', 'yatai_stall', 'subway_entrance', 'torii_gate', 'bench',
+  'vending_machine', 'street_lamp', 'traffic_signal', 'street_sign',
+  'roof_water_tank', 'roof_ac_cluster', 'roof_billboard', 'roof_antenna',
+];
+const _propTemplates = new Map(); // name -> { scene, size }
+
+function loadPropTemplates() {
+  return Promise.all(PROP_GLBS.map((name) =>
+    _cachedGLB(PROP_GLB_BASE + name + '.glb').then((gltf) => {
+      const s = gltf.scene;
+      s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      s.updateMatrixWorld(true);
+      const size = new THREE.Box3().setFromObject(s).getSize(new THREE.Vector3());
+      _propTemplates.set(name, { scene: s, size });
+    }).catch((err) => {
+      console.warn('[PropGLB] Failed to load', name, err.message);
+    })
+  ));
+}
+
+/** Clone a prop scaled to `height` world units, sitting on y=0. Null if not loaded. */
+function _cloneProp(name, height) {
+  const tpl = _propTemplates.get(name);
+  if (!tpl) return null;
+  const clone = _cloneTreeScene(tpl);
+  clone.scale.setScalar(height / tpl.size.y);
+  return clone;
+}
+
+/** The GLB prop at the procedural builder's height, or the procedural group. */
+function _propOrProc(name, procFn) {
+  const proc = procFn();
+  if (!_propTemplates.has(name)) return proc;
+  const box = new THREE.Box3().setFromObject(proc);
+  return _cloneProp(name, box.max.y - box.min.y);
+}
 
 /** Deep-clone a GLTF scene by rebuilding the mesh hierarchy (more robust than scene.clone). */
 function _cloneTreeScene(tpl) {
@@ -172,10 +223,10 @@ function _cloneTreeScene(tpl) {
   return group;
 }
 
-/** Load tree GLB templates. Call once at startup. */
-export function loadTreeTemplates(onProgress) {
-  return Promise.all(TREE_GLBS.map((url, idx) =>
+function _loadTreeList(list, onProgress) {
+  return Promise.all(list.map((def, idx) =>
     new Promise((resolve) => {
+      const url = def.url;
       _glbLoader.load(url, (gltf) => {
         const s = gltf.scene;
         let meshCount = 0;
@@ -187,20 +238,27 @@ export function loadTreeTemplates(onProgress) {
           return;
         }
         s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-        normalizeGLTFMaterials(s);
+        stripBakedEmissive(s);
         const box = new THREE.Box3().setFromObject(s);
         const size = box.getSize(new THREE.Vector3());
         console.log(`[TreeGLB] Bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
-        _treeTemplates.push({ scene: s, box });
-        if (onProgress) onProgress(idx + 1, TREE_GLBS.length, url.split('/').pop().replace('.glb', ''));
+        _treeTemplates.push({ scene: s, box, h: def.h });
+        if (onProgress) onProgress(idx + 1, list.length, url.split('/').pop().replace('.glb', ''));
         resolve();
       }, undefined, (err) => {
         console.warn('[TreeGLB] Failed to load', url, err.message || err);
-        if (onProgress) onProgress(idx + 1, TREE_GLBS.length, 'error');
+        if (onProgress) onProgress(idx + 1, list.length, 'error');
         resolve();
       });
     })
   ));
+}
+
+/** Load tree GLB templates (and the v2 street props, which buildCity also
+ *  needs before it runs). Call once at startup. */
+export async function loadTreeTemplates(onProgress) {
+  await Promise.all([_loadTreeList(TREE_GLBS, onProgress), loadPropTemplates()]);
+  if (_treeTemplates.length === 0) await _loadTreeList(TREE_GLBS_FALLBACK, onProgress);
 }
 
 // --------------- Static batching (draw-call reduction) ---------------
@@ -271,10 +329,10 @@ function makeTree(x = 0, z = 0, scale = 1) {
     const tpl = _treeTemplates[Math.floor(Math.random() * _treeTemplates.length)];
     // Robust clone: rebuild meshes from geometry/material refs
     const clone = _cloneTreeScene(tpl);
-    // Scale to ~6 units tall at scale=1
+    // v2 trees: their own height (tpl.h) at scale=1; old trees: ~6 units by largest side
     const size = tpl.box.getSize(new THREE.Vector3());
-    const targetH = 6.0 * scale;
-    const s = targetH / Math.max(size.x, size.y, size.z);
+    const targetH = (tpl.h || 6.0) * scale;
+    const s = targetH / (tpl.h ? size.y : Math.max(size.x, size.y, size.z));
     clone.scale.setScalar(s);
     // Update world matrices so bounding box is accurate
     clone.updateMatrixWorld(true);
@@ -341,13 +399,17 @@ function makePark(x, z, size = 32) {
   // Park bench (stylized)
   const benchMat = new THREE.MeshStandardMaterial({ color: 0x664433, roughness: 0.9 });
   for (let i = 0; i < 3; i++) {
-    const bench = new THREE.Group();
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.18, 0.7), benchMat);
-    seat.position.y = 0.7;
-    bench.add(seat);
-    const back = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 0.12), benchMat);
-    back.position.set(0, 1.25, -0.3);
-    bench.add(back);
+    // v2 GLB bench (~2.4u wide like the procedural one) or boxes
+    let bench = _cloneProp('bench', 1.2);
+    if (!bench) {
+      bench = new THREE.Group();
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.18, 0.7), benchMat);
+      seat.position.y = 0.7;
+      bench.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 0.12), benchMat);
+      back.position.set(0, 1.25, -0.3);
+      bench.add(back);
+    }
     bench.position.set(rand(-half + 1, half - 1), 0, rand(-half + 1, half - 1));
     bench.rotation.y = Math.random() * Math.PI * 2;
     group.add(bench);
@@ -2027,9 +2089,10 @@ export class Building {
 
     // Lots of debris chunks for satisfying spray
     const useGLBDebris = _debrisTemplates.length > 0;
-    const chunks = 10 + Math.floor(Math.random() * 4) + Math.min(6, Math.floor(this.h / 15));
+    // More, smaller pieces with the v2 kit (facade panels, rebar, beams, glass)
+    const chunks = 10 + Math.floor(Math.random() * 4) + Math.min(6, Math.floor(this.h / 15)) + (useGLBDebris ? 6 : 0);
     for (let i = 0; i < chunks; i++) {
-      const targetSize = Math.max(this.w, this.d) * rand(0.25, 0.65);
+      const targetSize = Math.max(this.w, this.d) * (useGLBDebris ? rand(0.12, 0.35) : rand(0.25, 0.65));
       let m;
       if (useGLBDebris) {
         m = _cloneDebris(targetSize);
@@ -2176,7 +2239,16 @@ export function loadBuildingTemplates(onProgress) {
 
 // --------------- Debris GLB system ---------------
 const DEBRIS_GLB_BASE = './assets/debris/';
+// v2 textured debris kit (<=4.5k tris each); the old set loads only if none do
 const DEBRIS_GLBS = [
+  DEBRIS_GLB_BASE + 'debris_facade_windows.glb',
+  DEBRIS_GLB_BASE + 'debris_rebar_slab.glb',
+  DEBRIS_GLB_BASE + 'debris_ibeam.glb',
+  DEBRIS_GLB_BASE + 'debris_glass_shards.glb',
+  DEBRIS_GLB_BASE + 'debris_concrete_a.glb',
+  DEBRIS_GLB_BASE + 'debris_concrete_b.glb',
+];
+const DEBRIS_GLBS_FALLBACK = [
   DEBRIS_GLB_BASE + 'debris_slab_1.glb',
   DEBRIS_GLB_BASE + 'debris_twisted_1.glb',
   DEBRIS_GLB_BASE + 'debris_concrete_1.glb',
@@ -2186,8 +2258,13 @@ const DEBRIS_GLBS = [
 ];
 const _debrisTemplates = [];  // array of { scene, box } after loading
 
-export function loadDebrisTemplates() {
-  return Promise.all(DEBRIS_GLBS.map((url) =>
+export async function loadDebrisTemplates() {
+  await _loadDebrisList(DEBRIS_GLBS);
+  if (_debrisTemplates.length === 0) await _loadDebrisList(DEBRIS_GLBS_FALLBACK);
+}
+
+function _loadDebrisList(list) {
+  return Promise.all(list.map((url) =>
     _cachedGLB(url).then((gltf) => {
       const s = gltf.scene;
       s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -2743,7 +2820,17 @@ export function buildCity(scene, world, opts = {}) {
         positions.push([i + BLOCK / 2 - 1, j + BLOCK / 2 - 1]);
       }
     }
-    if (positions.length) {
+    if (positions.length && _propTemplates.has('street_lamp')) {
+      // v2 GLB lamps, folded into InstancedMeshes by _instanceStaticClones
+      for (const [x, z] of positions) {
+        const lamp = _cloneProp('street_lamp', 5.6);
+        lamp.position.set(x, 0, z);
+        lamp.rotation.y = Math.PI / 4;
+        lamp.matrixAutoUpdate = false; lamp.updateMatrix();
+        lamp.userData.instance = true;
+        scene.add(lamp);
+      }
+    } else if (positions.length) {
       const postGeom = new THREE.CylinderGeometry(0.15, 0.18, 5, 6);
       const postMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
       const bulbGeom = new THREE.SphereGeometry(0.3, 6, 6);
@@ -2785,7 +2872,18 @@ export function buildCity(scene, world, opts = {}) {
         intersections.push([i, j]);
       }
     }
-    if (intersections.length) {
+    if (intersections.length && _propTemplates.has('traffic_signal')) {
+      // v2 GLB signals on the SE corner (same spot as the procedural poles),
+      // folded into InstancedMeshes by _instanceStaticClones
+      for (const [ix, iz] of intersections) {
+        const sig = _cloneProp('traffic_signal', 6.4);
+        sig.position.set(ix + STREET / 2 + SIDEWALK_W * 0.6, 0, iz + STREET / 2 + SIDEWALK_W * 0.6);
+        sig.rotation.y = Math.random() < 0.5 ? 0 : -Math.PI / 2; // face one of the two approaches
+        sig.matrixAutoUpdate = false; sig.updateMatrix();
+        sig.userData.instance = true;
+        scene.add(sig);
+      }
+    } else if (intersections.length) {
       const poleMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.85, metalness: 0.4 });
       const headMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.5 });
       const redMat   = new THREE.MeshStandardMaterial({ color: 0x440000, emissive: 0xff2200, emissiveIntensity: 0.0 });
@@ -2871,7 +2969,17 @@ export function buildCity(scene, world, opts = {}) {
         corners.push([i, j]);
       }
     }
-    if (corners.length) {
+    if (corners.length && _propTemplates.has('street_sign')) {
+      // v2 GLB blue street-name signs on the NW corner
+      for (const [ix, iz] of corners) {
+        const sign = _cloneProp('street_sign', 4.6);
+        sign.position.set(ix - STREET / 2 - SIDEWALK_W * 0.6, 0, iz - STREET / 2 - SIDEWALK_W * 0.6);
+        sign.rotation.y = Math.PI / 4;
+        sign.matrixAutoUpdate = false; sign.updateMatrix();
+        sign.userData.instance = true;
+        scene.add(sign);
+      }
+    } else if (corners.length) {
       const N = corners.length;
       const poleMat  = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.85, metalness: 0.4 });
       const armMat   = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.85 });
@@ -3314,11 +3422,34 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
+  // ---- Vending machines (v2 GLB) ----
+  // Pairs of drink machines backed against the NE corner of intersections,
+  // facing the sidewalk. Only placed when the GLB loaded (no procedural one).
+  if (_propTemplates.has('vending_machine')) {
+    const vmStep = BLOCK * 2;
+    for (let i = -CITY_RADIUS + BLOCK; i <= CITY_RADIUS - BLOCK; i += vmStep) {
+      for (let j = -CITY_RADIUS + BLOCK * 2; j <= CITY_RADIUS - BLOCK; j += vmStep) {
+        if (Math.abs(i) < BLOCK && Math.abs(j) < BLOCK) continue;
+        if (isReserved(i, j)) continue;
+        // Building side of the sidewalk, a few units along the street from the corner
+        const z = j - STREET / 2 - SIDEWALK_W * 0.85;
+        for (let n = 0; n < 2; n++) {
+          const vm = _cloneProp('vending_machine', 2.2);
+          vm.position.set(i + STREET / 2 + 3 + n * 1.0, 0, z);
+          vm.rotation.y = 0; // front (+Z) faces the street at z=j; back is against the block
+          vm.matrixAutoUpdate = false; vm.updateMatrix();
+          vm.userData.instance = true;
+          scene.add(vm);
+        }
+      }
+    }
+  }
+
   // ---- Police koban (交番) ----
   // Small two-story police box. Iconic blue uniformed officer would stand
   // outside, but at this scale the box itself reads as one. Single Group.
   {
-    const koban = makePoliceKoban();
+    const koban = _propOrProc('koban', makePoliceKoban);
     const kx = 27, kz = 27; // NE corner of the spawn plaza, facing the street
     if (!isReserved(kx, kz, 'koban')) {
       koban.position.set(kx, 0, kz);
@@ -3331,7 +3462,18 @@ export function buildCity(scene, world, opts = {}) {
   // 2 carts side-by-side with red chochin lanterns + steam rising. Placed
   // at a corner of the spawn plaza.
   {
-    const yatai = makeRamenYatai();
+    // v2: two GLB carts along +x (same footprint as the procedural pair)
+    let yatai = makeRamenYatai();
+    if (_propTemplates.has('yatai_stall')) {
+      const pair = new THREE.Group();
+      for (const cx of [2.75, 8.25]) {
+        const cart = _cloneProp('yatai_stall', 3.4);
+        cart.position.x = cx;
+        cart.rotation.y = (Math.random() - 0.5) * 0.3;
+        pair.add(cart);
+      }
+      yatai = pair;
+    }
     // Carts extend +x from the anchor (2 x 5.5u), so the cluster spans
     // roughly x -33..-23 in the NW corner of the spawn plaza.
     const yx = -31, yz = 29;
@@ -3346,7 +3488,7 @@ export function buildCity(scene, world, opts = {}) {
   // Big red Japanese gate at the entrance to Park 1. Two pillars, kasagi
   // (top beam), nuki (lower cross-beam). Pure visual landmark.
   {
-    const torii = makeToriiGate();
+    const torii = _propOrProc('torii_gate', makeToriiGate);
     torii.position.set(200, 0, 175); // just south of Park 1 (200, 200)
     torii.rotation.y = 0;
     // Freeze after positioning. (The factory used to freeze the matrix
@@ -3373,7 +3515,7 @@ export function buildCity(scene, world, opts = {}) {
     ];
     for (const p of subwayPositions) {
       if (isReserved(p.x, p.z)) continue;
-      const sub = makeSubwayEntrance();
+      const sub = _propOrProc('subway_entrance', makeSubwayEntrance);
       sub.position.set(p.x, 0, p.z);
       sub.matrixAutoUpdate = false; sub.updateMatrix();
       scene.add(sub);
@@ -4025,7 +4167,7 @@ export class Civilian {
     if (this.dead) return;
     this.dead = true;
     if (this.root.parent) this.root.parent.remove(this.root);
-    disposeSkeletons(this.root);
+    disposeInstance(this.root);
     world.onCivilianStomped?.();
   }
 }

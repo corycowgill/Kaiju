@@ -205,6 +205,27 @@ export function disposeSkeletons(root) {
 }
 
 /**
+ * Free the GPU resources a removed, one-off object owns: its bone textures
+ * plus every geometry that is neither loader-template geometry
+ * (userData.template) nor a module-level shared geometry (userData.shared,
+ * see markShared). Materials are left alone on purpose: disposing them
+ * releases shader programs that the next spawn would recompile (hitch).
+ */
+export function disposeInstance(root) {
+  if (!root) return;
+  root.traverse((o) => {
+    if (o.isSkinnedMesh && o.skeleton) o.skeleton.dispose();
+    const g = o.geometry;
+    if (g && !g.userData.template && !g.userData.shared) g.dispose();
+  });
+}
+
+/** Tag module-level geometries that many spawns reuse so disposeInstance skips them. */
+export function markShared(...geoms) {
+  for (const g of geoms) g.userData.shared = true;
+}
+
+/**
  * Normalize a relative URL to a consistent cache key.
  * Strips leading ./ and query strings.
  */

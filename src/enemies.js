@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
-import { cachedFetch, normalizeGLTFMaterials, disposeSkeletons } from './assetCache.js';
+import { cachedFetch, normalizeGLTFMaterials, disposeInstance } from './assetCache.js';
 
 // Module-level scratch vectors reused by every AI tick to avoid GC churn.
 const _aiVA = new THREE.Vector3();
@@ -81,7 +81,7 @@ async function _loadBipedSet(file, animFiles, label, onProgress, startIdx, total
 export async function loadEnemyTemplates(onProgress) {
   // Static models (tank, heli, artillery, jet)
   const staticFiles = [
-    { key: 'tank',       url: './assets/enemies/tank.glb' },
+    { key: 'tank',       url: './assets/military/tank_type10.glb', fallback: './assets/enemies/tank.glb' },
     { key: 'tank_a1',    url: './assets/enemies/tank_anim_1.glb' },
     { key: 'tank_a2',    url: './assets/enemies/tank_anim_2.glb' },
     { key: 'tank_a3',    url: './assets/enemies/tank_anim_3.glb' },
@@ -111,7 +111,7 @@ export async function loadEnemyTemplates(onProgress) {
       const s = gltf.scene;
       s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
       if (key === 'tank') {
-        _templates.tank = { scene: s, animations: gltf.animations };
+        _templates.tank = { scene: s, animations: gltf.animations, v2 };
       } else if (key.startsWith('tank_a')) {
         _templates.tankAnims.push(gltf.animations);
       } else if (key === 'helicopter') {
@@ -179,18 +179,22 @@ export class Tank {
 
     // Use GLB model if loaded, else fall back to simple placeholder
     const tpl = _cloneTemplate(_templates.tank);
+    let muzzleY = 1.5, muzzleZ = 3.0;
     if (tpl) {
-      // Scale the GLB to roughly match the old procedural tank (~5 units long)
+      const v2 = _templates.tank.v2;
+      // Old GLB: ~5 units like the old procedural tank. v2 (9.4m Type-10 style):
+      // ~9.5u so it reads at kaiju scale.
       const box = new THREE.Box3().setFromObject(tpl);
       const size = box.getSize(new THREE.Vector3());
-      const targetLen = 5.0;
+      const targetLen = v2 ? 9.5 : 5.0;
       const s = targetLen / Math.max(size.x, size.y, size.z);
       tpl.scale.setScalar(s);
       // Center on the ground
       box.setFromObject(tpl);
       tpl.position.y = -box.min.y;
-      // Rotate inner model so its visual front aligns with +Z
-      tpl.rotation.y = Math.PI;
+      // Old model faces -Z; the v2 model already faces +Z
+      if (!v2) tpl.rotation.y = Math.PI;
+      if (v2) { muzzleY = size.y * s * 0.55; muzzleZ = size.z * s * 0.55; }
       root.add(tpl);
       this._glbModel = tpl;
 
@@ -211,7 +215,7 @@ export class Tank {
 
     // Muzzle point for shooting (front of the tank, barrel height)
     this._muzzle = new THREE.Object3D();
-    this._muzzle.position.set(0, 1.5, 3.0);
+    this._muzzle.position.set(0, muzzleY, muzzleZ);
     root.add(this._muzzle);
 
     this.root = root;
@@ -265,7 +269,7 @@ export class Tank {
     world.spawnExplosion(this.root.position.clone().setY(2), 1.0);
     world.shake(0.3, 0.3);
     this.root.parent && this.root.parent.remove(this.root);
-    disposeSkeletons(this.root);
+    disposeInstance(this.root);
     world.onTankKilled?.();
   }
 }
@@ -367,7 +371,7 @@ export class Helicopter {
     world.spawnExplosion(this.root.position.clone(), 1.2);
     world.shake(0.4, 0.4);
     this.root.parent && this.root.parent.remove(this.root);
-    disposeSkeletons(this.root);
+    disposeInstance(this.root);
     world.onHeliKilled?.();
   }
 }
@@ -491,7 +495,7 @@ export class Mech {
     world.spawnExplosion(this.root.position.clone().setY(4), 1.6);
     world.shake(0.6, 0.4);
     this.root.parent && this.root.parent.remove(this.root);
-    disposeSkeletons(this.root);
+    disposeInstance(this.root);
     world.onMechKilled?.();
   }
 }
@@ -623,7 +627,7 @@ export class Jet {
     world.spawnExplosion(this.root.position.clone(), 1.4);
     world.shake(0.5, 0.4);
     this.root.parent && this.root.parent.remove(this.root);
-    disposeSkeletons(this.root);
+    disposeInstance(this.root);
     world.onJetKilled?.();
   }
 }
@@ -717,7 +721,7 @@ export class Artillery {
     world.spawnExplosion(this.root.position.clone().setY(2), 1.3);
     world.shake(0.4, 0.3);
     this.root.parent && this.root.parent.remove(this.root);
-    disposeSkeletons(this.root);
+    disposeInstance(this.root);
     world.onArtilleryKilled?.();
   }
 }
@@ -836,7 +840,7 @@ export class Soldier {
     this.dead = true;
     world.spawnSparks(this.root.position.clone().setY(1), 4);
     this.root.parent && this.root.parent.remove(this.root);
-    disposeSkeletons(this.root);
+    disposeInstance(this.root);
     world.onSoldierKilled?.();
   }
 }
@@ -854,6 +858,14 @@ export class BossMech {
     this.specialCooldown = 8.0;
     this.speed = 4.5;
     this._currentAnim = '';
+    // Telegraphed attacks (see update): cannon volleys charge for
+    // VOLLEY_WINDUP s with glowing muzzles before firing at where the
+    // kaiju IS at release (dodge by moving); the ground pound shows a
+    // growing red warning disc for SLAM_WINDUP s and only hits if the
+    // kaiju is still inside SLAM_RADIUS when it lands.
+    this._volleyT = 0;   // >0 while charging a volley
+    this._slamT = 0;     // >0 while winding up a ground pound
+    this._chargePulseT = 0;
 
     const root = new THREE.Group();
     root.position.set(x, 0, z);
@@ -949,28 +961,51 @@ export class BossMech {
     }
     this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
 
+    const VOLLEY_WINDUP = 0.9, SLAM_WINDUP = 1.5, SLAM_RADIUS = 45;
+
+    // Cannon volley: charge (glowing muzzles) -> fire 2 shells.
     this.cooldown -= dt;
-    if (this.cooldown <= 0 && dist < 160) {
-      this.cooldown = 1.2;
-      if (this._actions) this._playAnim('attack');
-      for (const muzzle of [this._muzzleL, this._muzzleR]) {
-        muzzle.getWorldPosition(_aiVB);
-        _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
-        world.spawnShell(_aiVB, _aiVC, 'boss');
-        world.spawnMuzzleFlash(_aiVB, 0.6);
+    if (this._volleyT > 0) {
+      this._volleyT -= dt;
+      this._chargePulseT -= dt;
+      if (this._chargePulseT <= 0) {
+        this._chargePulseT = 0.18;
+        for (const muzzle of [this._muzzleL, this._muzzleR]) {
+          muzzle.getWorldPosition(_aiVB);
+          world.spawnHitPulse(_aiVB.clone(), 0xff3322);
+        }
       }
+      if (this._volleyT <= 0) {
+        if (this._actions) this._playAnim('attack');
+        for (const muzzle of [this._muzzleL, this._muzzleR]) {
+          muzzle.getWorldPosition(_aiVB);
+          _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
+          world.spawnShell(_aiVB, _aiVC, 'boss');
+          world.spawnMuzzleFlash(_aiVB, 0.6);
+        }
+      }
+    } else if (this.cooldown <= 0 && dist < 160 && this._slamT <= 0) {
+      this.cooldown = 2.8 + Math.random() * 0.8; // was a 1.2 s volley cadence
+      this._volleyT = VOLLEY_WINDUP;
+      this._chargePulseT = 0;
     }
 
-    // Special: ground-pound shockwave (radial AOE) at close range
+    // Special: telegraphed ground pound at close range.
     this.specialCooldown -= dt;
-    if (this.specialCooldown <= 0 && dist < 70) {
+    if (this._slamT > 0) {
+      this._slamT -= dt;
+      if (this._slamT <= 0) {
+        world.spawnShockwave(myPos.clone(), 0xff3333, SLAM_RADIUS);
+        world.shake(1.0, 0.6);
+        const dx = kaijuPos.x - myPos.x;
+        const dz = kaijuPos.z - myPos.z;
+        if (dx * dx + dz * dz < SLAM_RADIUS * SLAM_RADIUS) world.onBossSlam?.();
+      }
+    } else if (this.specialCooldown <= 0 && dist < 55 && this._volleyT <= 0) {
       this.specialCooldown = 9 + Math.random() * 3;
-      world.spawnShockwave(myPos.clone(), 0xff3333, 60);
-      world.shake(1.0, 0.6);
-      // Telegraph: immediate damage circle (player should kite)
-      const dx = kaijuPos.x - myPos.x;
-      const dz = kaijuPos.z - myPos.z;
-      if (dx * dx + dz * dz < 60 * 60) world.onBossSlam?.();
+      this._slamT = SLAM_WINDUP;
+      world.spawnBossTelegraph?.(myPos.clone(), SLAM_RADIUS, SLAM_WINDUP);
+      if (this._actions) this._playAnim('attack');
     }
   }
 
@@ -987,7 +1022,7 @@ export class BossMech {
     world.spawnExplosion(this.root.position.clone().setY(12), 2.0);
     world.shake(1.5, 1.0);
     this.root.parent && this.root.parent.remove(this.root);
-    disposeSkeletons(this.root);
+    disposeInstance(this.root);
     world.onBossKilled?.();
   }
 }
