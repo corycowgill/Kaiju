@@ -54,15 +54,30 @@ export function loadFlipbook(baseName) {
   return promise;
 }
 
-// init/tick are no-ops today. They exist so game.js's setup +
-// render-loop integration is in place for when a particle system or
-// other per-frame VFX state needs to be ticked.
+// Flipbook sheets shipped in assets/vfx/ (8x8 grids, RGBA webp, straight
+// alpha, element generated on black then animated offline). Resolved
+// textures land in _flipTex as they finish loading; spawners check it and
+// fall back to the procedural shader path until (or unless) a sheet is
+// available, so a missing file never breaks an effect.
+const FLIPBOOKS = ['explosion_fireball_8x8', 'smoke_plume_8x8', 'dust_burst_8x8', 'fire_loop_8x8', 'scorch_decal',
+  // Grayscale-intensity sheets, tinted per monster with additive blending:
+  'energy_burst_8x8', 'impact_glow_decal', 'arc_strip_1x8'];
+const _flipTex = Object.create(null);
+
+// init kicks off the flipbook preloads; tick is still a no-op hook.
 export function init(_scene) {
   initialized = true;
+  while (_vfxLightPool.length < _MAX_LIGHTS) _acquireLight(_scene);
+  if (LEGACY_VFX) return;
+  for (const name of FLIPBOOKS) {
+    loadFlipbook(name).then((tex) => { _flipTex[name] = tex; })
+      .catch(() => { /* keep procedural fallback */ });
+  }
 }
 
 export function tick(_dt) {
   if (!initialized) return;
+  _tickScorch();
 }
 
 // Register a builder for a named effect. Replaces any existing entry, so
@@ -121,6 +136,220 @@ class VFXEffect {
     }
     const t = 1 - this.life / this.maxLife;
     this.update(dt, t, this);
+  }
+}
+
+// ----- Flipbook billboards -----
+const FLIP_MAX_SIZE = 30;    // world units
+const FLIP_MAX_ANG = 0.85;   // max size / view distance
+const FLIP_FADE_NEAR = 6;    // fully faded at this camera distance
+const FLIP_FADE_FAR = 22;    // fully visible beyond this
+// Concurrent large fireballs (main sprite >= 10u). Beyond the cap new
+// explosions spawn smaller, without secondary bursts.
+// Tracked as expiry timestamps (not a counter) so effects dropped without
+// finishing, e.g. by an in-place restart, can't leak slots.
+const MAX_BIG_FIREBALLS = 4;
+const _bigFireballEnds = [];
+function _bigFireballSlot(lifeSec) {
+  const now = performance.now();
+  for (let i = _bigFireballEnds.length - 1; i >= 0; i--) if (_bigFireballEnds[i] <= now) _bigFireballEnds.splice(i, 1);
+  if (_bigFireballEnds.length >= MAX_BIG_FIREBALLS) return false;
+  _bigFireballEnds.push(now + lifeSec * 1000);
+  return true;
+}
+//
+// Camera-facing quad (billboarded in the vertex shader, so no per-frame
+// lookAt) that plays one frame of an 8x8 sheet, cross-fading to the next
+// frame for smooth playback at any lifetime. Straight-alpha normal
+// blending, so fireballs keep their dark smoke instead of washing out to
+// additive white; `glow` pushes only the hottest texels above 1.0 so the
+// bloom pass (threshold 0.85) catches flame cores and not the smoke.
+// Screen-fill guards (a stomp that collapses 5-6 buildings used to bury
+// the whole view in fireballs):
+//  - world size capped at FLIP_MAX_SIZE units;
+//  - size also capped to FLIP_MAX_ANG x view distance, i.e. one sprite
+//    covers at most ~60% of the screen height at fov 70;
+//  - sprites fade out between FLIP_FADE_FAR and FLIP_FADE_NEAR units from
+//    the camera, so nothing pops through the near plane as a hard card.
+const _FLIP_VS = `
+  uniform float rot;
+  varying vec2 vUv;
+  varying float vNearFade;
+  #include <fog_pars_vertex>
+  void main() {
+    vUv = uv;
+    vec4 mvPosition = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+    float dist = max(0.001, -mvPosition.z);
+    float sc = min(length(modelMatrix[0].xyz), min(${FLIP_MAX_SIZE.toFixed(1)}, dist * ${FLIP_MAX_ANG.toFixed(2)}));
+    vNearFade = smoothstep(${FLIP_FADE_NEAR.toFixed(1)}, ${FLIP_FADE_FAR.toFixed(1)}, dist);
+    float c = cos(rot), s = sin(rot);
+    vec2 p = position.xy * sc;
+    mvPosition.xy += vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+    gl_Position = projectionMatrix * mvPosition;
+    #include <fog_vertex>
+  }
+`;
+const _FLIP_FS = `
+  uniform sampler2D map;
+  varying float vNearFade;
+  uniform float frame;
+  uniform vec3 tint;
+  uniform float opacity;
+  uniform float glow;
+  varying vec2 vUv;
+  #include <fog_pars_fragment>
+  vec4 frameTex(float f) {
+    float col = mod(f, 8.0);
+    float row = floor(f / 8.0);
+    // Sheet is loaded with flipY=false: v=0 is the top image row.
+    return texture2D(map, vec2((col + vUv.x) / 8.0, (row + 1.0 - vUv.y) / 8.0));
+  }
+  void main() {
+    float f0 = floor(frame);
+    vec4 c = mix(frameTex(f0), frameTex(min(f0 + 1.0, 63.0)), frame - f0);
+    vec3 col = c.rgb * tint;
+    float hot = max(col.r, max(col.g, col.b));
+    col *= 1.0 + glow * smoothstep(0.55, 1.0, hot);
+    // Soft quad border (5%) so a card edge never reads as a hard line.
+    vec2 eb = smoothstep(vec2(0.0), vec2(0.05), vUv) * smoothstep(vec2(0.0), vec2(0.05), 1.0 - vUv);
+    gl_FragColor = vec4(col, c.a * opacity * vNearFade * eb.x * eb.y);
+    if (gl_FragColor.a < 0.004) discard;
+    #include <fog_fragment>
+  }
+`;
+const _G_FLIP = new THREE.PlaneGeometry(1, 1);
+const _flipProtos = new Map();
+function _flipMaterial(name) {
+  let proto = _flipProtos.get(name);
+  if (!proto) {
+    proto = new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+        map: { value: null }, frame: { value: 0 }, rot: { value: 0 },
+        tint: { value: new THREE.Color(1, 1, 1) }, opacity: { value: 1 }, glow: { value: 0 },
+      }]),
+      vertexShader: _FLIP_VS,
+      fragmentShader: _FLIP_FS,
+      transparent: true,
+      depthWrite: false,
+      fog: true,
+    });
+    _flipProtos.set(name, proto);
+  }
+  const m = proto.clone();
+  m.uniforms.map.value = _flipTex[name];
+  return m;
+}
+
+// Returns a billboard Mesh for the named sheet, or null if the sheet
+// isn't loaded (caller falls back to the procedural effect).
+function _flipSprite(name, size, opts = {}) {
+  if (!_flipTex[name]) return null;
+  const mat = _flipMaterial(name);
+  const u = mat.uniforms;
+  u.rot.value = opts.rot !== undefined ? opts.rot : Math.random() * Math.PI * 2;
+  if (opts.tint !== undefined) u.tint.value.set(opts.tint);
+  u.glow.value = opts.glow || 0;
+  const m = new THREE.Mesh(_G_FLIP, mat);
+  m.scale.setScalar(size);
+  m.frustumCulled = true;
+  return m;
+}
+
+// Additive variant for the grayscale energy sheets (energy_burst_8x8):
+// intensity is tinted by `tint`, the hottest texels go white-hot, and the
+// result is pushed into HDR so bloom carries it. No fog: additive light
+// should fade to nothing, not to the fog colour.
+const _FLIP_ADD_FS = `
+  uniform sampler2D map;
+  varying float vNearFade;
+  uniform float frame;
+  uniform vec3 tint;
+  uniform float opacity;
+  uniform float glow;
+  varying vec2 vUv;
+  vec4 frameTex(float f) {
+    float col = mod(f, 8.0);
+    float row = floor(f / 8.0);
+    return texture2D(map, vec2((col + vUv.x) / 8.0, (row + 1.0 - vUv.y) / 8.0));
+  }
+  void main() {
+    float f0 = floor(frame);
+    float I = mix(frameTex(f0).r, frameTex(min(f0 + 1.0, 63.0)).r, frame - f0);
+    if (I < 0.004) discard;
+    vec3 col = tint * I * (1.0 + glow) + vec3(smoothstep(0.55, 1.0, I)) * glow;
+    gl_FragColor = vec4(col * opacity * vNearFade, 1.0);
+  }
+`;
+function _flipSpriteAdd(name, size, tint, glow = 1.2) {
+  if (!_flipTex[name]) return null;
+  const key = name + '|add';
+  let proto = _flipProtos.get(key);
+  if (!proto) {
+    proto = new THREE.ShaderMaterial({
+      uniforms: {
+        map: { value: null }, frame: { value: 0 }, rot: { value: 0 },
+        tint: { value: new THREE.Color(1, 1, 1) }, opacity: { value: 1 }, glow: { value: 0 },
+      },
+      vertexShader: _FLIP_VS,
+      fragmentShader: _FLIP_ADD_FS,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    _flipProtos.set(key, proto);
+  }
+  const mat = proto.clone();
+  mat.uniforms.map.value = _flipTex[name];
+  mat.uniforms.rot.value = Math.random() * Math.PI * 2;
+  mat.uniforms.tint.value.set(tint);
+  mat.uniforms.glow.value = glow;
+  const m = new THREE.Mesh(_G_FLIP, mat);
+  m.scale.setScalar(size);
+  return m;
+}
+
+function _disposeFlip(m) {
+  if (m.parent) m.parent.remove(m);
+  m.material.dispose();
+}
+
+// Persistent ground scorch decals left by explosions. Pooled ring buffer
+// so heavy combat can't grow the scene; each fades out over its life.
+const _MAX_SCORCH = 28;
+const _scorchPool = [];
+let _scorchCursor = 0;
+const _G_SCORCH = new THREE.PlaneGeometry(1, 1);
+_G_SCORCH.rotateX(-Math.PI / 2);
+function _placeScorch(world, pos, radius) {
+  const tex = _flipTex.scorch_decal;
+  if (!tex || pos.y > 4) return;
+  let d = _scorchPool[_scorchCursor];
+  if (!d) {
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex, transparent: true, depthWrite: false, roughness: 1.0, metalness: 0,
+      polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+    });
+    d = { mesh: new THREE.Mesh(_G_SCORCH, mat), born: 0 };
+    d.mesh.renderOrder = -1;
+    d.mesh.receiveShadow = true;
+    _scorchPool[_scorchCursor] = d;
+  }
+  _scorchCursor = (_scorchCursor + 1) % _MAX_SCORCH;
+  d.mesh.position.set(pos.x, 0.11, pos.z);
+  d.mesh.rotation.y = Math.random() * Math.PI * 2;
+  d.mesh.scale.setScalar(radius * 2);
+  d.mesh.material.opacity = 0.9;
+  d.born = world.time || 0;
+  d.world = world;
+  if (d.mesh.parent !== world.scene) world.scene.add(d.mesh);
+}
+const _SCORCH_LIFE = 30;
+function _tickScorch() {
+  for (const d of _scorchPool) {
+    if (!d || !d.mesh.parent) continue;
+    const age = (d.world.time || 0) - d.born;
+    if (age > _SCORCH_LIFE) { d.mesh.parent.remove(d.mesh); continue; }
+    d.mesh.material.opacity = 0.9 * Math.min(1, (_SCORCH_LIFE - age) / 8);
   }
 }
 
@@ -195,20 +424,25 @@ function _spawnBeamShader(opts) {
   world.scene.add(beam);
 
   // Origin point light - kept for parity with legacy beam (effects.js:348).
-  const light = new THREE.PointLight(color, 4, 30);
+  // Taken from the shared pool: adding/removing a PointLight changes the
+  // scene's light count, which recompiles every lit material's shader.
+  const light = _acquireLight(world.scene);
   light.position.copy(origin);
-  world.scene.add(light);
+  light.color.set(color);
+  light.intensity = 4;
+  light.distance = 30;
+  const seq = (light._seq = (light._seq || 0) + 1);
 
   return new VFXEffect(beam, 0.6, (dt, t) => {
     uniforms.time.value = (uniforms.time.value + dt) % 1000;
     if (t > 0.6) {
       const fade = 1 - (t - 0.6) / 0.4;
       uniforms.fade.value = fade;
-      light.intensity = 4 * fade;
+      if (light._seq === seq) light.intensity = 4 * fade;
     }
     if (t >= 1) {
       world.scene.remove(beam);
-      world.scene.remove(light);
+      if (light._seq === seq) { light.intensity = 0; light.color.setHex(0xffaa33); }
       geom.dispose();
       mat.dispose();
     }
@@ -272,12 +506,20 @@ const _FIREBALL_FS = `
   }
 `;
 
-// Local light pool. Mirrors the one in src/effects.js (lines 13-30); we
-// keep them separate so the legacy and shader explosion paths don't
-// stomp on each other's lights when LEGACY_VFX toggles mid-game.
+// Shared PointLight pool for every transient light (explosions, beams, both
+// the shader and the legacy effects.js paths). Filled to _MAX_LIGHTS at
+// init() so the scene's light count never changes during play: each change
+// would recompile every lit material's shader (the first-run hitch). Users
+// tag the light with _seq and only touch it while the tag is still theirs.
 const _MAX_LIGHTS = 5;
 const _vfxLightPool = [];
 let   _vfxLightCursor = 0;
+export function acquirePooledLight(scene) { return _acquireLight(scene); }
+// Darken every pooled light and invalidate its owner (used after the
+// loading-screen shader prewarm, whose throwaway effects grab lights).
+export function resetPooledLights() {
+  for (const l of _vfxLightPool) { l.intensity = 0; l.color.setHex(0xffaa33); l._seq = (l._seq || 0) + 1; }
+}
 function _acquireLight(scene) {
   if (_vfxLightPool.length < _MAX_LIGHTS) {
     const l = new THREE.PointLight(0xffaa33, 0, 60);
@@ -320,7 +562,37 @@ function _spawnExplosionShader(opts) {
     blending: THREE.AdditiveBlending,
   });
   const ball = new THREE.Mesh(_G_FIREBALL, ballMat);
-  group.add(ball);
+
+  // Flipbook path (when the sheets are loaded): one main fireball, two
+  // offset secondary bursts and a dark smoke plume that outlives the fire.
+  // Times are in seconds. Smoke renders first so the fire sits on top.
+  const flips = [];
+  const mainFb = _flipSprite('explosion_fireball_8x8', 1, { glow: 1.8 });
+  if (mainFb) {
+    let fbSize = 15 * scale;
+    const crowded = fbSize >= 10 && !_bigFireballSlot(1.3);
+    if (crowded) fbSize *= 0.55;
+    flips.push({ m: mainFb, delay: 0, dur: 1.3, size: fbSize, y: 2.0 * scale, rise: 2.5 * scale });
+    for (let i = 0; i < (crowded ? 0 : 2); i++) {
+      const m2 = _flipSprite('explosion_fireball_8x8', 1, { glow: 1.6 });
+      m2.position.set((Math.random() - 0.5) * 7 * scale, 0, (Math.random() - 0.5) * 7 * scale);
+      flips.push({ m: m2, delay: 0.05 + Math.random() * 0.15, dur: 0.9, size: (7 + Math.random() * 4) * scale,
+                   y: (1 + Math.random() * 4) * scale, rise: 2 * scale });
+    }
+    const sm = _flipSprite('smoke_plume_8x8', 1, { tint: 0x8c8680 });
+    if (sm) {
+      sm.material.uniforms.opacity.value = crowded ? 0.55 : 0.85;
+      flips.push({ m: sm, delay: 0.25, dur: 2.6, size: 17 * scale * (crowded ? 0.6 : 1), y: 4 * scale, rise: 9 * scale, smoke: true });
+    }
+    for (const f of flips) {
+      f.m.visible = false;
+      f.m.renderOrder = f.smoke ? 0 : 1;
+      group.add(f.m);
+    }
+    if (scale >= 0.4) _placeScorch(world, pos, 4.5 * scale);
+  } else {
+    group.add(ball);
+  }
 
   // Ground shockwave ring - same as legacy, keeps the gameplay-readable
   // outward blast indicator on the floor.
@@ -343,6 +615,7 @@ function _spawnExplosionShader(opts) {
   // Pooled point light (intensity-keyed sequencer matches legacy logic).
   const light = _acquireLight(world.scene);
   light.position.copy(pos);
+  light.color.setHex(0xffaa33); // beam impacts tint pooled lights
   light.intensity = 7 * scale;
   light.distance = 70;
   const seq = (light._seq = (light._seq || 0) + 1);
@@ -372,7 +645,19 @@ function _spawnExplosionShader(opts) {
     sparks.push(s);
   }
 
-  return new VFXEffect(group, 1.4, (dt, t) => {
+  const totalLife = flips.length ? 2.9 : 1.4;
+  return new VFXEffect(group, totalLife, (dt, tTotal) => {
+    // Legacy layers keep their 1.4 s timeline; flipbooks run in seconds.
+    const T = tTotal * totalLife;
+    const t = Math.min(1, T / 1.4);
+    for (const f of flips) {
+      const p = (T - f.delay) / f.dur;
+      f.m.visible = p >= 0 && p < 1;
+      if (!f.m.visible) continue;
+      f.m.material.uniforms.frame.value = p * 63;
+      f.m.scale.setScalar(f.size * (0.9 + 0.2 * p));
+      f.m.position.y = f.y + f.rise * p;
+    }
     ballUniforms.time.value = (ballUniforms.time.value + dt) % 1000;
     ballUniforms.t01.value = t;
     // Scale the fireball outward (legacy expanded over ~9x; matches well).
@@ -381,11 +666,12 @@ function _spawnExplosionShader(opts) {
     // Ground ring blasts out then thins.
     const ringR = (1 + t * 18) * scale;
     ring.scale.set(ringR, ringR, 1);
-    ringMat.opacity = (1 - t) * 0.95;
-    // Smoke lifts and grows; fades the second half of life.
+    ringMat.opacity = (1 - t) * (flips.length ? 0.45 : 0.95);
+    // Smoke lifts and grows; fades the second half of life. (The flipbook
+    // path has its own smoke plume, so the sphere stays hidden.)
     smoke.scale.setScalar((0.6 + t * 4.5) * scale);
     smoke.position.y = -pos.y + 0.1 + t * 6.0 * scale;
-    smokeMat.opacity = t < 0.4 ? 0.0 : Math.min(0.7, (t - 0.4) * 1.4) * (1.4 - t);
+    smokeMat.opacity = flips.length ? 0 : (t < 0.4 ? 0.0 : Math.min(0.7, (t - 0.4) * 1.4) * (1.4 - t));
     // Light fades unless a newer explosion grabbed our slot.
     if (light._seq === seq) light.intensity = (1 - t) * 7 * scale;
     // Shrapnel ballistics + tumble.
@@ -398,10 +684,12 @@ function _spawnExplosionShader(opts) {
       if (sp.userData.ember) {
         sp.material.opacity = Math.max(0, 1 - t * 1.6);
       }
+      sp.visible = t < 1;
     }
-    if (t >= 1) {
+    if (tTotal >= 1) {
       if (light._seq === seq) light.intensity = 0;
       world.scene.remove(group);
+      for (const f of flips) f.m.material.dispose();
       ballMat.dispose();
       ringMat.dispose();
       smokeMat.dispose();
@@ -547,6 +835,20 @@ function _spawnSmokePuffShader(opts) {
   const { world, pos, args = [] } = opts;
   const scale = args[0] !== undefined ? args[0] : 1.0;
 
+  const fb = _flipSprite('smoke_plume_8x8', 1, { tint: 0xa8a4a0 });
+  if (fb) {
+    fb.position.copy(pos);
+    world.scene.add(fb);
+    const u = fb.material.uniforms;
+    return new VFXEffect(fb, 2.5, (dt, t) => {
+      fb.position.y += dt * 1.6;
+      fb.scale.setScalar(scale * (4 + t * 5));
+      u.frame.value = t * 63;
+      u.opacity.value = 0.8;
+      if (t >= 1) _disposeFlip(fb);
+    });
+  }
+
   const gear = _makeSmokeMaterial(0x444444);
   const m = new THREE.Mesh(_G_SMOKE_PUFF_S, gear.mat);
   m.scale.setScalar(scale);
@@ -579,9 +881,62 @@ function _spawnSmokeColumnShader(opts) {
   const totalLife = 8.0;
   let nextEmit = 0;
 
+  // Flipbook path: looping fire at the base of the column that dies down
+  // over the first ~70% of the column's life.
+  const fires = [];
+  if (_flipTex.fire_loop_8x8) {
+    const n = height > 20 ? 3 : 2;
+    for (let i = 0; i < n; i++) {
+      const sz = (height > 20 ? 11 : 8) * (0.75 + Math.random() * 0.4);
+      const f = _flipSprite('fire_loop_8x8', sz, { rot: 0, glow: 1.4 });
+      f.position.set(pos.x + (Math.random() - 0.5) * 6, baseY + sz * 0.47, pos.z + (Math.random() - 0.5) * 6);
+      f.renderOrder = 2;
+      f.userData.phase = Math.random() * 64;
+      f.userData.sz = sz;
+      world.scene.add(f);
+      fires.push(f);
+    }
+  }
+
   return new VFXEffect(proxy, totalLife, (dt, t) => {
+    for (const f of fires) {
+      const u = f.material.uniforms;
+      f.userData.phase = (f.userData.phase + dt * 30) % 64; // 30 fps loop
+      // Frame 63 -> 0 wrap is seamless in the sheet; avoid cross-fading
+      // the last frame into an out-of-range index.
+      u.frame.value = Math.min(f.userData.phase, 62.999);
+      const k = 1 - Math.min(1, t / 0.7);
+      u.opacity.value = Math.min(1, k * 1.6);
+      f.scale.setScalar(f.userData.sz * (0.55 + 0.45 * k));
+      if (t >= 1) _disposeFlip(f);
+    }
     nextEmit -= dt;
-    if (nextEmit <= 0 && t < 1) {
+    if (nextEmit <= 0 && t < 1 && _flipTex.smoke_plume_8x8) {
+      nextEmit = 0.5 + Math.random() * 0.35;
+      const intensity = (1 - t);
+      const m = _flipSprite('smoke_plume_8x8', 1, { tint: t < 0.4 ? 0x7a746e : 0xb4aea8 });
+      const sz = (height > 20 ? 9 : 6) * (0.8 + Math.random() * 0.5);
+      m.position.set(
+        pos.x + (Math.random() - 0.5) * 4,
+        baseY + 3 + (1 - intensity) * height * 0.3,
+        pos.z + (Math.random() - 0.5) * 4,
+      );
+      m.renderOrder = 1;
+      world.scene.add(m);
+      const vy = 2.4 + Math.random() * 1.6;
+      const vx = (Math.random() - 0.5) * 1.5 + 0.8; // slight shared wind drift
+      const vz = (Math.random() - 0.5) * 1.5;
+      const u = m.material.uniforms;
+      world.effects.push(new VFXEffect(m, 5.0, (dt2, t2) => {
+        m.position.x += vx * dt2;
+        m.position.y += vy * dt2;
+        m.position.z += vz * dt2;
+        m.scale.setScalar(sz * (1 + t2 * 2.2));
+        u.frame.value = t2 * 63;
+        u.opacity.value = 0.85 * (0.4 + 0.6 * intensity);
+        if (t2 >= 1) _disposeFlip(m);
+      }));
+    } else if (nextEmit <= 0 && t < 1) {
       nextEmit = 0.6 + Math.random() * 0.4;
       const intensity = (1 - t);
       // Color shifts darker at the start (fresh burn) to lighter as the
@@ -972,6 +1327,35 @@ function _spawnDustBurstShader(opts) {
   const { world, pos, args = [] } = opts;
   const radius = args[0] !== undefined ? args[0] : 14;
   const count = args[1] !== undefined ? args[1] : 8;
+
+  if (_flipTex.dust_burst_8x8) {
+    const n = Math.max(4, Math.min(10, count));
+    const fl = [];
+    const proxy = new THREE.Object3D();
+    world.scene.add(proxy);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+      const r = radius * (0.35 + Math.random() * 0.35);
+      const m = _flipSprite('dust_burst_8x8', 1, { tint: 0xf2eadf });
+      m.position.set(pos.x + Math.cos(a) * r, 2.0, pos.z + Math.sin(a) * r);
+      m.userData.vel = new THREE.Vector3(Math.cos(a) * radius * 0.6, 1.5 + Math.random(), Math.sin(a) * radius * 0.6);
+      m.userData.sz = radius * (0.55 + Math.random() * 0.3);
+      m.userData.f0 = Math.random() * 6;
+      world.scene.add(m);
+      fl.push(m);
+    }
+    return new VFXEffect(proxy, 1.8, (dt, t) => {
+      for (const m of fl) {
+        m.position.addScaledVector(m.userData.vel, dt);
+        m.userData.vel.multiplyScalar(Math.max(0, 1 - 2.2 * dt)); // drag
+        m.scale.setScalar(m.userData.sz * (0.7 + t * 0.9));
+        m.material.uniforms.frame.value = Math.min(63, m.userData.f0 + t * 63);
+        m.material.uniforms.opacity.value = 0.9;
+        if (t >= 1) _disposeFlip(m);
+      }
+      if (t >= 1) world.scene.remove(proxy);
+    });
+  }
 
   const puffs = [];
   const gears = [];
@@ -1500,6 +1884,89 @@ function _spawnHitPulseShader(opts) {
   });
 }
 
+// ----- Beam impact -----
+//
+// Where a beam lands: two tinted energy-burst flipbooks, a spray of
+// sparks, a coloured light flash and, on the ground, a glowing molten
+// impact decal that cools off over ~2.5 s and leaves a scorch mark.
+// opts: { world, pos, color }. Falls back to a hit pulse if the energy
+// sheet isn't loaded.
+const _G_IMPACT = new THREE.PlaneGeometry(1, 1);
+_G_IMPACT.rotateX(-Math.PI / 2);
+function _smoothstepJS(a, b, x) {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+function _spawnBeamImpactShader(opts) {
+  const { world, pos, color = 0xffffff } = opts;
+  const b1 = _flipSpriteAdd('energy_burst_8x8', 16, color, 1.6);
+  if (!b1) return builders.hitPulse ? builders.hitPulse({ world, pos, args: [color] }) : null;
+
+  const group = new THREE.Group();
+  group.position.copy(pos);
+  world.scene.add(group);
+  const bursts = [{ m: b1, delay: 0, dur: 0.55 }];
+  const b2 = _flipSpriteAdd('energy_burst_8x8', 10, color, 1.2);
+  b2.position.set((Math.random() - 0.5) * 2, 1 + Math.random() * 2, (Math.random() - 0.5) * 2);
+  bursts.push({ m: b2, delay: 0.08, dur: 0.45 });
+  for (const b of bursts) { b.m.visible = false; b.m.renderOrder = 3; group.add(b.m); }
+
+  // Ground decal: additive tinted glow that cools from white-hot to the
+  // monster colour, then out. Only when the hit is near street level.
+  let decal = null, decalMat = null;
+  if (pos.y < 4 && _flipTex.impact_glow_decal) {
+    decalMat = new THREE.MeshBasicMaterial({
+      map: _flipTex.impact_glow_decal, color, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6,
+    });
+    decal = new THREE.Mesh(_G_IMPACT, decalMat);
+    decal.position.y = 0.14 - pos.y;
+    decal.rotation.y = Math.random() * Math.PI * 2;
+    decal.scale.setScalar(13);
+    decal.renderOrder = 2;
+    group.add(decal);
+    _placeScorch(world, pos, 5.5);
+  }
+  const baseCol = new THREE.Color(color);
+  const hotCol = baseCol.clone().lerp(new THREE.Color(1, 1, 1), 0.6);
+
+  if (builders.sparks) {
+    const sp = builders.sparks({ world, pos, args: [14] });
+    if (sp) world.effects.push(sp);
+  }
+
+  const light = _acquireLight(world.scene);
+  light.position.copy(pos); light.position.y += 3;
+  light.color.copy(baseCol);
+  light.distance = 55;
+  light.intensity = 9;
+  const seq = (light._seq = (light._seq || 0) + 1);
+
+  const LIFE = 2.6;
+  return new VFXEffect(group, LIFE, (dt, t) => {
+    const T = t * LIFE;
+    for (const b of bursts) {
+      const p = (T - b.delay) / b.dur;
+      b.m.visible = p >= 0 && p < 1;
+      if (b.m.visible) b.m.material.uniforms.frame.value = p * 63;
+    }
+    if (decal) {
+      // White-hot for the first 0.3 s, cools to the beam colour, fades.
+      const k = Math.min(1, T / 0.3);
+      decalMat.color.copy(hotCol).lerp(baseCol, k).multiplyScalar(2.2 * (1 - _smoothstepJS(0.25, 1.0, t)));
+    }
+    if (light._seq === seq) light.intensity = 9 * Math.max(0, 1 - T / 0.5);
+    if (t >= 1) {
+      // Explosion lights in this pool default to warm orange; restore it.
+      if (light._seq === seq) { light.intensity = 0; light.color.setHex(0xffaa33); }
+      world.scene.remove(group);
+      for (const b of bursts) b.m.material.dispose();
+      if (decalMat) decalMat.dispose();
+    }
+  });
+}
+
 // ----- Shader-based chain lightning (replaces makeChainLightning, effects.js:377) -----
 //
 // Keeps the polyline jitter generation (it works well visually) but replaces
@@ -1544,6 +2011,7 @@ function _spawnChainLightningShader(opts) {
     points.push(p);
   }
   const curve = new THREE.CatmullRomCurve3(points);
+  if (_flipTex.arc_strip_1x8) return _spawnArcRibbon(world, curve, len, color, life, segs);
   // Single fat tube; the shader produces both the white core and colored halo
   // in one draw via radial UV sampling. Radius set between the legacy core
   // (0.30) and halo (0.95) so the visual silhouette is similar.
@@ -1576,6 +2044,113 @@ function _spawnChainLightningShader(opts) {
   });
 }
 
+// Textured arc ribbon: camera-facing strip along the jittered curve,
+// sampling one of the 8 procedural bolt rows in arc_strip_1x8 (fine
+// crackle + side branches the polyline alone can't show). The row flips
+// every ~50 ms so the bolt visibly re-strikes; a second, wider, dimmer
+// ribbon on a different row gives a secondary arc around the main one.
+// The tube shader below stays as the fallback when the sheet is missing.
+const _ARC_VS = `
+  attribute vec3 aDir;
+  attribute float aSide;
+  uniform float width;
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vec3 mv2 = (modelViewMatrix * vec4(position + aDir, 1.0)).xyz;
+    vec3 tv = normalize(mv2 - mv.xyz);
+    vec3 perp = normalize(cross(tv, normalize(-mv.xyz)));
+    mv.xyz += perp * aSide * width * 0.5;
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+const _ARC_FS = `
+  uniform sampler2D map;
+  uniform vec3 boltColor;
+  uniform float row;
+  uniform float fade;
+  varying vec2 vUv;
+  void main() {
+    // Sheet loaded with flipY=false: v=0 is the top row.
+    float I = texture2D(map, vec2(vUv.x, (row + vUv.y) / 8.0)).r;
+    if (I < 0.004) discard;
+    vec3 col = boltColor * I * 2.2 + vec3(smoothstep(0.6, 1.0, I)) * 1.8;
+    gl_FragColor = vec4(col * fade, 1.0);
+  }
+`;
+function _arcRibbonGeometry(curve, n) {
+  const pts = curve.getSpacedPoints(n);
+  const pos = new Float32Array((n + 1) * 6);
+  const dir = new Float32Array((n + 1) * 6);
+  const side = new Float32Array((n + 1) * 2);
+  const uv = new Float32Array((n + 1) * 4);
+  const idx = [];
+  for (let i = 0; i <= n; i++) {
+    const p = pts[i];
+    const q = pts[Math.min(n, i + 1)], o = pts[Math.max(0, i - 1)];
+    const dx = q.x - o.x, dy = q.y - o.y, dz = q.z - o.z;
+    for (let k = 0; k < 2; k++) {
+      const j = i * 2 + k;
+      pos[j * 3] = p.x; pos[j * 3 + 1] = p.y; pos[j * 3 + 2] = p.z;
+      dir[j * 3] = dx; dir[j * 3 + 1] = dy; dir[j * 3 + 2] = dz;
+      side[j] = k ? 1 : -1;
+      uv[j * 2] = i / n; uv[j * 2 + 1] = k;
+    }
+    if (i < n) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aDir', new THREE.BufferAttribute(dir, 3));
+  g.setAttribute('aSide', new THREE.BufferAttribute(side, 1));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeBoundingSphere();
+  // Ribbon is expanded in the vertex shader; pad the cull sphere for it.
+  g.boundingSphere.radius += 6;
+  return g;
+}
+function _spawnArcRibbon(world, curve, len, color, life, segs) {
+  const geom = _arcRibbonGeometry(curve, Math.max(8, segs * 4));
+  const group = new THREE.Group();
+  const layers = [];
+  // Widths scale with arc length so long beam-length bolts stay readable
+  // from the chase cam (core / halo).
+  for (const [w, dim] of [[Math.min(7, 3.2 + len * 0.03), 1.0], [Math.min(13, 6 + len * 0.05), 0.45]]) {
+    const uniforms = {
+      map: { value: _flipTex.arc_strip_1x8 },
+      boltColor: { value: new THREE.Color(color) },
+      row: { value: Math.floor(Math.random() * 8) },
+      fade: { value: dim },
+      width: { value: w },
+    };
+    const mat = new THREE.ShaderMaterial({
+      uniforms, vertexShader: _ARC_VS, fragmentShader: _ARC_FS,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+    group.add(new THREE.Mesh(geom, mat));
+    layers.push({ mat, uniforms, dim, next: 0 });
+  }
+  world.scene.add(group);
+  return new VFXEffect(group, life, (dt, t) => {
+    for (const L of layers) {
+      L.next -= dt;
+      if (L.next <= 0) {
+        L.next = 0.035 + Math.random() * 0.03;
+        L.uniforms.row.value = Math.floor(Math.random() * 8);
+      }
+      // Flicker: random dips on top of the linear fade.
+      L.uniforms.fade.value = L.dim * (1 - t) * (0.65 + Math.random() * 0.35);
+    }
+    if (t >= 1) {
+      world.scene.remove(group);
+      geom.dispose();
+      for (const L of layers) L.mat.dispose();
+    }
+  });
+}
+
 // Wire all legacy effects through the registry as a single bulk call.
 // Invoked once from game.js after the imports settle so the registry is
 // populated before any spawn() call. Each entry takes the user-facing name
@@ -1597,6 +2172,9 @@ export function registerLegacyEffects(legacy) {
   registerBuilder('smokePuff',          wrapPosArgs(legacy._makeSmokePuffLegacy || legacy.makeSmokePuff));
   registerBuilder('smokeColumn',        wrapPosArgs(legacy._makeSmokeColumnLegacy || legacy.makeSmokeColumn));
   registerBuilder('hitPulse',           wrapPosArgs(legacy._makeHitPulseLegacy || legacy.makeHitPulse));
+  // No legacy beam-impact effect existed; a coloured hit pulse stands in.
+  registerBuilder('beamImpact', (opts) => (legacy._makeHitPulseLegacy || legacy.makeHitPulse)(
+    opts.world, opts.pos, opts.color));
   registerBuilder('atomicDome',         wrapPosArgs(legacy._makeAtomicDomeLegacy || legacy.makeAtomicDome));
   registerBuilder('atomicDevastation',  wrapPosArgs(legacy._makeAtomicDevastationLegacy || legacy.makeAtomicDevastation));
   registerBuilder('soundRings',         wrapPosArgs(legacy._makeSoundWaveRingsLegacy || legacy.makeSoundWaveRings));
@@ -1630,6 +2208,8 @@ export function registerLegacyEffects(legacy) {
   registerBuilder('windStreaks', (opts) => (legacy._makeWindStreaksLegacy || legacy.makeWindStreaks)(
     opts.world, opts.origin, opts.dir, opts.color, opts.count));
 }
+
+export function listBuilders() { return Object.keys(builders); }
 
 export function spawn(name, opts) {
   const fn = builders[name];
@@ -1670,6 +2250,7 @@ function _registerUpgradedBuilders() {
   registerBuilder('muzzleFlash',       _spawnMuzzleFlashShader);
   registerBuilder('missileLaunchFlash', _spawnMissileLaunchFlashShader);
   registerBuilder('missileSwarm',      _spawnMissileSwarmShader);
+  registerBuilder('beamImpact',        _spawnBeamImpactShader);
 }
 
 // Convenience: register legacy fallbacks first, then upgrade overrides.

@@ -365,7 +365,9 @@
   button.start-btn:hover { transform: scale(1.05); }
   button.start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  #gameover { position: relative; }
+  /* Keep .overlay's position: fixed + inset: 0 (a 'relative' override here
+     collapsed the overlay to its content height, so the bottom third of
+     the screen showed the live scene). ::before anchors to the fixed box. */
   #gameover::before {
     content: '\6557\5317'; /* 敗北 = "defeat" */
     position: absolute; left: 50%; top: 50%;
@@ -429,6 +431,26 @@
     margin-bottom: 8px;
   }
   .hidden { display: none !important; }
+  /* Damage direction chevron: a tall invisible box rotated about the
+     screen centre with a red arrowhead at its top edge. */
+  .dmg-ind {
+    position: absolute; left: 50%; top: 50%;
+    width: 120px; height: min(62vh, 520px);
+    opacity: 0; transition: opacity 0.12s linear;
+  }
+  .dmg-ind::before {
+    content: ''; position: absolute; top: 0; left: 50%;
+    transform: translateX(-50%);
+    border-left: 44px solid transparent; border-right: 44px solid transparent;
+    border-bottom: 30px solid rgba(255, 46, 46, 0.92);
+    filter: drop-shadow(0 0 10px rgba(255, 0, 0, 0.85));
+  }
+  .dmg-ind::after {
+    content: ''; position: absolute; top: 34px; left: 50%;
+    transform: translateX(-50%);
+    width: 70px; height: 6px; border-radius: 3px;
+    background: rgba(255, 70, 70, 0.75);
+  }
 
   #wave-banner {
     position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%);
@@ -890,6 +912,8 @@
 
 <!-- Damage screen flash -->
 <div id="damage-flash" style="position:fixed; inset:0; pointer-events:none; z-index:9; background:radial-gradient(ellipse at center, transparent 40%, #ff0033 100%); opacity:0; transition:opacity 0.25s;"></div>
+<!-- Directional damage chevrons (populated by addDamageIndicator in game.js) -->
+<div id="dmg-indicators" style="position:fixed; inset:0; pointer-events:none; z-index:10; overflow:hidden;"></div>
 <div id="lowhp-warning" style="position:fixed; inset:0; pointer-events:none; z-index:9; box-shadow:inset 0 0 120px 60px #ff0033; opacity:0;"></div>
 
 <!-- Floating score popup container -->
@@ -1018,7 +1042,7 @@
     <div class="stats-row"><span>Time Survived</span> <b id="finalTime">0:00</b></div>
   </div>
   <div class="stats-divider"></div>
-  <button class="start-btn" onclick="location.reload()">UNLEASH AGAIN</button>
+  <button class="start-btn" onclick="window.__restartInPlace ? window.__restartInPlace() : location.reload()">UNLEASH AGAIN</button>
 </div>
 
 <!-- Mobile data warning -->
@@ -1101,11 +1125,28 @@
 })();
 </script>
 
+<!-- Cache-busting: python http.server sends no Cache-Control, so Chrome
+     heuristically reuses stale src/*.js. Every module is mapped to a ?v= URL
+     (relative imports like './city.js' resolve to ./src/city.js and hit these
+     keys). Bump v= here (all entries + the game.js tag below) whenever src/
+     changes, and ASSET_VERSION in src/assetCache.js whenever assets/ change.
+     A new src/*.js file needs its own entry. -->
 <script type="importmap">
 {
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+    "./src/assetCache.js": "./src/assetCache.js?v=1.7.3",
+    "./src/audio.js": "./src/audio.js?v=1.7.3",
+    "./src/city.js": "./src/city.js?v=1.7.3",
+    "./src/effects.js": "./src/effects.js?v=1.7.3",
+    "./src/enemies.js": "./src/enemies.js?v=1.7.3",
+    "./src/game.js": "./src/game.js?v=1.7.3",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.7.3",
+    "./src/monsters.js": "./src/monsters.js?v=1.7.3",
+    "./src/pickups.js": "./src/pickups.js?v=1.7.3",
+    "./src/quality.js": "./src/quality.js?v=1.7.3",
+    "./src/vfx.js": "./src/vfx.js?v=1.7.3"
   }
 }
 </script>
@@ -1119,6 +1160,6 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js"></script>
+<script type="module" src="./src/game.js?v=1.7.3"></script>
 </body>
 </html>

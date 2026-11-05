@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
-import { cachedFetch } from './assetCache.js';
+import { cachedFetch, normalizeGLTFMaterials, disposeSkeletons } from './assetCache.js';
 
 // Module-level scratch vectors reused by every AI tick to avoid GC churn.
 const _aiVA = new THREE.Vector3();
@@ -25,12 +25,13 @@ const _templates = {
 function _cachedGLB(url) {
   return cachedFetch(url).then((buf) =>
     new Promise((resolve, reject) => _glbLoader.parse(buf, '', resolve, reject))
-  );
+  ).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
 }
 
-// Animated biped model config: base file is Running.glb (contains skinned mesh),
-// additional files provide extra animation clips.
-const SOLDIER_BASE = './assets/enemies/soldier/';
+// Animated biped model config: each biped is ONE merged GLB (skinned mesh +
+// every clip). Clips are named after the original per-animation file minus
+// '.glb' (e.g. 'Running'), so these tables map game keys -> clip names.
+const SOLDIER_FILE = './assets/enemies/soldier/soldier.glb';
 const SOLDIER_ANIMS = {
   run:          'Running.glb',
   walk:         'Walking.glb',
@@ -38,7 +39,7 @@ const SOLDIER_ANIMS = {
   runAndShoot:  'Run_and_Shoot.glb',
 };
 
-const MECH_BASE = './assets/enemies/mech/';
+const MECH_FILE = './assets/enemies/mech/mech.glb';
 const MECH_ANIMS = {
   run:       'Running.glb',
   idle:      'Alert.glb',
@@ -49,40 +50,27 @@ const MECH_ANIMS = {
 };
 
 /**
- * Load a biped GLB set: base model (Running) + additional animation files.
+ * Load a merged biped GLB (skinned mesh + all clips).
  * Returns { scene, animations: { name: AnimationClip } }
  */
-async function _loadBipedSet(basePath, animFiles, label, onProgress, startIdx, total) {
-  const animNames = Object.keys(animFiles);
+async function _loadBipedSet(file, animFiles, label, onProgress, startIdx, total) {
   let scene = null;
   const animations = {};
-  let idx = startIdx;
-
-  // Load base model first (Running.glb — contains the skinned mesh)
   try {
-    const gltf = await _cachedGLB(basePath + animFiles.run);
+    const gltf = await _cachedGLB(file);
     scene = gltf.scene;
     scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
-    if (gltf.animations.length > 0) animations.run = gltf.animations[0];
-  } catch (e) {
-    console.warn(`[EnemyGLB] Failed to load ${label} base:`, e.message);
-  }
-  idx++;
-  if (onProgress) onProgress(idx, total, label + ' base');
-
-  // Load remaining animation files
-  for (const name of animNames) {
-    if (name === 'run') continue; // already loaded
-    try {
-      const gltf = await _cachedGLB(basePath + animFiles[name]);
-      if (gltf.animations.length > 0) animations[name] = gltf.animations[0];
-    } catch (e) {
-      console.warn(`[EnemyGLB] Failed to load ${label} ${name}:`, e.message);
+    const clips = new Map(gltf.animations.map((c) => [c.name, c]));
+    for (const [name, animFile] of Object.entries(animFiles)) {
+      const clip = clips.get(animFile.replace(/\.glb$/, ''));
+      if (clip) animations[name] = clip;
+      else console.warn(`[EnemyGLB] ${label} missing clip ${animFile}`);
     }
-    idx++;
-    if (onProgress) onProgress(idx, total, label + ' ' + name);
+  } catch (e) {
+    console.warn(`[EnemyGLB] Failed to load ${label}:`, e.message);
   }
-
+  const idx = startIdx + Object.keys(animFiles).length;
+  if (onProgress) onProgress(idx, total, label);
   return { scene, animations, nextIdx: idx };
 }
 
@@ -97,8 +85,10 @@ export async function loadEnemyTemplates(onProgress) {
     { key: 'tank_a1',    url: './assets/enemies/tank_anim_1.glb' },
     { key: 'tank_a2',    url: './assets/enemies/tank_anim_2.glb' },
     { key: 'tank_a3',    url: './assets/enemies/tank_anim_3.glb' },
-    { key: 'helicopter', url: './assets/enemies/helicopter.glb' },
-    { key: 'artillery',  url: './assets/enemies/tank.glb' },
+    // v2 military GLBs (front faces +Z, bottom-centre origin, real-world metres);
+    // the old models stay as fallbacks if a v2 file fails to load.
+    { key: 'helicopter', url: './assets/military/attack_helicopter.glb', fallback: './assets/enemies/helicopter.glb' },
+    { key: 'artillery',  url: './assets/military/artillery_spg.glb', fallback: './assets/enemies/tank.glb' },
     { key: 'jet',        url: './assets/enemies/jet.glb' },
   ];
   const soldierAnimCount = Object.keys(SOLDIER_ANIMS).length;
@@ -107,9 +97,17 @@ export async function loadEnemyTemplates(onProgress) {
   let loaded = 0;
 
   // Load static models
-  for (const { key, url } of staticFiles) {
+  for (const { key, url, fallback } of staticFiles) {
     try {
-      const gltf = await _cachedGLB(url);
+      let gltf, v2 = !!fallback;
+      try {
+        gltf = await _cachedGLB(url);
+      } catch (e) {
+        if (!fallback) throw e;
+        console.warn(`[EnemyGLB] ${key}: ${url} failed (${e.message}), using ${fallback}`);
+        gltf = await _cachedGLB(fallback);
+        v2 = false;
+      }
       const s = gltf.scene;
       s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
       if (key === 'tank') {
@@ -117,9 +115,9 @@ export async function loadEnemyTemplates(onProgress) {
       } else if (key.startsWith('tank_a')) {
         _templates.tankAnims.push(gltf.animations);
       } else if (key === 'helicopter') {
-        _templates.helicopter = { scene: s, animations: gltf.animations };
+        _templates.helicopter = { scene: s, animations: gltf.animations, v2 };
       } else if (key === 'artillery') {
-        _templates.artillery = { scene: s, animations: gltf.animations };
+        _templates.artillery = { scene: s, animations: gltf.animations, v2 };
       } else if (key === 'jet') {
         _templates.jet = { scene: s, animations: gltf.animations };
       }
@@ -131,14 +129,14 @@ export async function loadEnemyTemplates(onProgress) {
   }
 
   // Load soldier biped
-  const soldierResult = await _loadBipedSet(SOLDIER_BASE, SOLDIER_ANIMS, 'soldier', onProgress, loaded, total);
+  const soldierResult = await _loadBipedSet(SOLDIER_FILE, SOLDIER_ANIMS, 'soldier', onProgress, loaded, total);
   if (soldierResult.scene) {
     _templates.soldier = { scene: soldierResult.scene, animations: soldierResult.animations };
   }
   loaded = soldierResult.nextIdx;
 
   // Load mech biped
-  const mechResult = await _loadBipedSet(MECH_BASE, MECH_ANIMS, 'mech', onProgress, loaded, total);
+  const mechResult = await _loadBipedSet(MECH_FILE, MECH_ANIMS, 'mech', onProgress, loaded, total);
   if (mechResult.scene) {
     _templates.mech = { scene: mechResult.scene, animations: mechResult.animations };
   }
@@ -267,6 +265,7 @@ export class Tank {
     world.spawnExplosion(this.root.position.clone().setY(2), 1.0);
     world.shake(0.3, 0.3);
     this.root.parent && this.root.parent.remove(this.root);
+    disposeSkeletons(this.root);
     world.onTankKilled?.();
   }
 }
@@ -286,17 +285,22 @@ export class Helicopter {
 
     const tpl = _cloneTemplate(_templates.helicopter);
     if (tpl) {
+      const v2 = _templates.helicopter.v2;
       const box = new THREE.Box3().setFromObject(tpl);
       const size = box.getSize(new THREE.Vector3());
-      const targetLen = 6.0;
+      // v2 model is 15m nose-to-tail; scale up so it reads next to a 32u kaiju
+      const targetLen = v2 ? 12.0 : 6.0;
       const s = targetLen / Math.max(size.x, size.y, size.z);
       tpl.scale.setScalar(s);
       box.setFromObject(tpl);
       tpl.position.y = -box.min.y;
-      // Align visual front with +Z
-      tpl.rotation.y = Math.PI;
+      // Old model faces -Z; the v2 model already faces +Z
+      if (!v2) tpl.rotation.y = Math.PI;
       root.add(tpl);
       this._glbModel = tpl;
+      // v2 rotors are separate nodes pivoted at their hubs (main spins about Y, tail about X)
+      this.rotor = tpl.getObjectByName('rotor_main') || null;
+      this.tailRotor = tpl.getObjectByName('rotor_tail') || null;
     } else {
       // Minimal fallback
       const body = new THREE.Mesh(new THREE.SphereGeometry(1.5, 12, 12),
@@ -338,7 +342,7 @@ export class Helicopter {
       this.root.rotation.z = -dx * 0.15;
     }
 
-    // Spin rotors (fallback only — GLB model is static)
+    // Spin rotors (fallback boxes, or the v2 GLB's rotor_main / rotor_tail nodes)
     if (this.rotor) this.rotor.rotation.y += dt * 30;
     if (this.tailRotor) this.tailRotor.rotation.x += dt * 40;
 
@@ -363,6 +367,7 @@ export class Helicopter {
     world.spawnExplosion(this.root.position.clone(), 1.2);
     world.shake(0.4, 0.4);
     this.root.parent && this.root.parent.remove(this.root);
+    disposeSkeletons(this.root);
     world.onHeliKilled?.();
   }
 }
@@ -486,6 +491,7 @@ export class Mech {
     world.spawnExplosion(this.root.position.clone().setY(4), 1.6);
     world.shake(0.6, 0.4);
     this.root.parent && this.root.parent.remove(this.root);
+    disposeSkeletons(this.root);
     world.onMechKilled?.();
   }
 }
@@ -617,6 +623,7 @@ export class Jet {
     world.spawnExplosion(this.root.position.clone(), 1.4);
     world.shake(0.5, 0.4);
     this.root.parent && this.root.parent.remove(this.root);
+    disposeSkeletons(this.root);
     world.onJetKilled?.();
   }
 }
@@ -636,25 +643,31 @@ export class Artillery {
 
     // Use the artillery GLB template (larger, darker tank variant)
     const tpl = _cloneTemplate(_templates.artillery);
+    let muzzleY = 2.5, muzzleZ = 3.5;
     if (tpl) {
+      const v2 = _templates.artillery.v2;
       const box = new THREE.Box3().setFromObject(tpl);
       const size = box.getSize(new THREE.Vector3());
-      const targetLen = 6.5; // larger than the regular tank
+      // v2 is its own armoured gun truck (11m); the fallback is the tank GLB, larger and darkened
+      const targetLen = v2 ? 10.0 : 6.5;
       const s = targetLen / Math.max(size.x, size.y, size.z);
       tpl.scale.setScalar(s);
-      // Darken materials to distinguish from regular tanks
-      tpl.traverse((o) => {
-        if (o.isMesh && o.material) {
-          const m = o.material.clone();
-          m.color.multiplyScalar(0.6);
-          o.material = m;
-        }
-      });
+      if (!v2) {
+        // Darken materials to distinguish from regular tanks
+        tpl.traverse((o) => {
+          if (o.isMesh && o.material) {
+            const m = o.material.clone();
+            m.color.multiplyScalar(0.6);
+            o.material = m;
+          }
+        });
+      }
       box.setFromObject(tpl);
       tpl.position.y = -box.min.y;
-      // Align visual front with +Z
-      tpl.rotation.y = Math.PI;
+      // Old model faces -Z; the v2 model already faces +Z
+      if (!v2) tpl.rotation.y = Math.PI;
       root.add(tpl);
+      if (v2) { muzzleY = size.y * s * 0.8; muzzleZ = size.z * s * 0.3; }
     } else {
       const baseMat = new THREE.MeshStandardMaterial({ color: 0x383830, roughness: 0.85 });
       const base = new THREE.Mesh(new THREE.BoxGeometry(4.4, 1.2, 4.4), baseMat);
@@ -664,7 +677,7 @@ export class Artillery {
 
     // Muzzle point for firing (front of vehicle, raised)
     this._muzzle = new THREE.Object3D();
-    this._muzzle.position.set(0, 2.5, 3.5);
+    this._muzzle.position.set(0, muzzleY, muzzleZ);
     root.add(this._muzzle);
 
     this.root = root;
@@ -704,6 +717,7 @@ export class Artillery {
     world.spawnExplosion(this.root.position.clone().setY(2), 1.3);
     world.shake(0.4, 0.3);
     this.root.parent && this.root.parent.remove(this.root);
+    disposeSkeletons(this.root);
     world.onArtilleryKilled?.();
   }
 }
@@ -822,6 +836,7 @@ export class Soldier {
     this.dead = true;
     world.spawnSparks(this.root.position.clone().setY(1), 4);
     this.root.parent && this.root.parent.remove(this.root);
+    disposeSkeletons(this.root);
     world.onSoldierKilled?.();
   }
 }
@@ -972,6 +987,7 @@ export class BossMech {
     world.spawnExplosion(this.root.position.clone().setY(12), 2.0);
     world.shake(1.5, 1.0);
     this.root.parent && this.root.parent.remove(this.root);
+    disposeSkeletons(this.root);
     world.onBossKilled?.();
   }
 }

@@ -13,7 +13,7 @@
  */
 
 // ---- Bump this when assets change to force a re-download ----
-const ASSET_VERSION = '1.6.0';
+const ASSET_VERSION = '1.7.2';
 
 const DB_NAME = 'KaijuAssetCache';
 const DB_VERSION = 1;
@@ -161,6 +161,47 @@ export async function cachedBlobURL(url, mimeType) {
  */
 export function getCacheStats() {
   return { hits: _hits, misses: _misses, enabled: _enabled, version: ASSET_VERSION };
+}
+
+/**
+ * Fix-ups for every parsed GLB scene, applied in the shared load path:
+ *  - Meshy exports bake the albedo into the emissive slot (emissiveMap === map,
+ *    emissive #ffffff), so the model is self-lit and blooms like a ghost. Drop
+ *    that baked emissive; real glow maps (a separate emissiveMap, e.g. neon
+ *    signs) are left alone.
+ *  - The same exports ship metalness 1 with no metalnessMap, which renders
+ *    near-black once the baked emissive is gone (and always without an env
+ *    map). Clamp untextured metalness >= 0.9 down to 0.2. Code-built chrome
+ *    materials never pass through here.
+ *  - Tag geometry as template-owned (userData.template) so a teardown can skip
+ *    disposing buffers that every later clone still shares.
+ */
+export function normalizeGLTFMaterials(root) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    if (o.geometry) o.geometry.userData.template = true;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!m) continue;
+      if (m.emissiveMap && m.emissiveMap === m.map) {
+        m.emissiveMap = null;
+        m.emissive.setRGB(0, 0, 0);
+        m.needsUpdate = true;
+      }
+      if (m.metalness >= 0.9 && !m.metalnessMap) m.metalness = 0.2;
+    }
+  });
+  return root;
+}
+
+/**
+ * Free the per-instance GPU bone texture of every SkinnedMesh under root.
+ * SkeletonUtils.clone gives each clone its own Skeleton, and three.js
+ * uploads a bone DataTexture per Skeleton on first render; removing the
+ * clone from the scene does not free it (the texture leak across runs).
+ * Geometry and materials stay: they belong to the shared template.
+ */
+export function disposeSkeletons(root) {
+  root.traverse((o) => { if (o.isSkinnedMesh && o.skeleton) o.skeleton.dispose(); });
 }
 
 /**

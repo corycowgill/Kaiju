@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import vfx from './vfx.js';
+import vfx, { acquirePooledLight } from './vfx.js';
 import { LEGACY_VFX } from './quality.js';
 
 // Shared geometries / materials so high-rate effect spawns (sparks, smoke,
@@ -15,20 +15,11 @@ const G_SHRAPNEL  = new THREE.SphereGeometry(0.18, 4, 4);
 // Global pool of explosion PointLights. Three.js evaluates every light per
 // fragment, so an unbounded count tanks fps in heavy combat. We allocate a
 // fixed pool and reuse the oldest/dimmest light for new explosions.
-const MAX_EXPLOSION_LIGHTS = 5;
-const _lightPool = [];
-let _lightCursor = 0;
+// The pool now lives in vfx.js (shared with the shader path and filled at
+// vfx.init) so the scene's light count stays constant: adding a light at
+// runtime recompiles every lit material.
 function acquireLight(scene) {
-  if (_lightPool.length < MAX_EXPLOSION_LIGHTS) {
-    const l = new THREE.PointLight(0xffaa33, 0, 60);
-    scene.add(l);
-    _lightPool.push(l);
-    return l;
-  }
-  // Round-robin reuse so newest explosion always gets a light
-  const l = _lightPool[_lightCursor];
-  _lightCursor = (_lightCursor + 1) % _lightPool.length;
-  return l;
+  return acquirePooledLight(scene);
 }
 
 // Particle/effect helpers - explosions, sparks, beams, shockwaves, smoke.
@@ -113,6 +104,7 @@ export function _makeExplosionLegacy(world, pos, scale = 1.0) {
   // Pooled point light
   const light = acquireLight(world.scene);
   light.position.copy(pos);
+  light.color.setHex(0xffaa33);
   light.intensity = 7 * scale;
   light.distance = 70;
   const seq = (light._seq = (light._seq || 0) + 1);
@@ -417,9 +409,12 @@ export function _makeBeamLegacy(world, origin, dir, length, color = 0x66ff66, gl
   beam.quaternion.copy(q);
 
   // Add a point light at origin
-  const light = new THREE.PointLight(color, 4, 30);
+  const light = acquireLight(world.scene);
   light.position.copy(origin);
-  world.scene.add(light);
+  light.color.set(color);
+  light.intensity = 4;
+  light.distance = 30;
+  const seq = (light._seq = (light._seq || 0) + 1);
 
   world.scene.add(beam);
 
@@ -433,11 +428,11 @@ export function _makeBeamLegacy(world, origin, dir, length, color = 0x66ff66, gl
       core.material.opacity = 0.95 * fade;
       outer.material.opacity = 0.5 * fade;
       outer2.material.opacity = 0.25 * fade;
-      light.intensity = 4 * fade;
+      if (light._seq === seq) light.intensity = 4 * fade;
     }
     if (t >= 1) {
       world.scene.remove(beam);
-      world.scene.remove(light);
+      if (light._seq === seq) { light.intensity = 0; light.color.setHex(0xffaa33); }
     }
   });
 }

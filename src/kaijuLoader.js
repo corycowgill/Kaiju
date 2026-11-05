@@ -1,16 +1,15 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { cachedFetch } from './assetCache.js';
+import { cachedFetch, normalizeGLTFMaterials } from './assetCache.js';
 
 /** Fetch a GLB via the asset cache, then parse it with GLTFLoader. */
 function _cachedGLB(loader, url) {
   return cachedFetch(url).then((buf) =>
     new Promise((resolve, reject) => loader.parse(buf, '', resolve, reject))
-  );
+  ).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
 }
 
 // ---- Godzilla (reptile kaiju) ----
-const GODZILLA_BASE = './assets/kaiju_model/Meshy_AI_A_giant_bipedal_monst_biped/Meshy_AI_A_giant_bipedal_monst_biped_';
 const GODZILLA_ANIMS = {
   idle:       'Animation_Alert_withSkin.glb',
   idle2:      'Animation_Idle_10_withSkin.glb',
@@ -38,7 +37,6 @@ const GODZILLA_ANIMS = {
 };
 
 // ---- Ghidorah (three-headed dragon kaiju) ----
-const GHIDORAH_BASE = './assets/ghidorah_model/Meshy_AI_I_want_to_create_a_Ka_biped/Meshy_AI_I_want_to_create_a_Ka_biped_';
 const GHIDORAH_ANIMS = {
   idle:       'Animation_Alert_withSkin.glb',
   idle2:      'Animation_Idle_3_withSkin.glb',
@@ -63,7 +61,6 @@ const GHIDORAH_ANIMS = {
 };
 
 // ---- Mecha (robot kaiju) ----
-const MECHA_BASE = './assets/mecha_model/Meshy_AI_I_want_to_create_a_Ro_biped/Meshy_AI_I_want_to_create_a_Ro_biped_';
 const MECHA_ANIMS = {
   idle:       'Animation_Alert_withSkin.glb',
   idle2:      'Animation_Idle_4_withSkin.glb',
@@ -95,21 +92,15 @@ const ONE_SHOT = new Set([
 ]);
 
 // Model configs by monster key
+// Each model ships as ONE merged GLB (mesh/skin/texture once + every clip).
+// Clips are named after the original per-animation file, minus the Meshy
+// prefix and '.glb' (e.g. 'Animation_Walking_withSkin'), so the ANIMS
+// tables above still describe which clip each game key uses.
 const MODEL_CONFIGS = {
-  godzilla: { base: GODZILLA_BASE, anims: GODZILLA_ANIMS },
-  ghidorah: { base: GHIDORAH_BASE, anims: GHIDORAH_ANIMS },
-  mecha:    { base: MECHA_BASE,    anims: MECHA_ANIMS },
+  godzilla: { file: './assets/kaiju_model/godzilla.glb',    anims: GODZILLA_ANIMS },
+  ghidorah: { file: './assets/ghidorah_model/ghidorah.glb', anims: GHIDORAH_ANIMS },
+  mecha:    { file: './assets/mecha_model/mecha.glb',       anims: MECHA_ANIMS },
 };
-
-// De-duplicate files so we don't load the same GLB twice
-function getUniqueFiles(animFiles) {
-  const seen = new Map();
-  for (const [name, file] of Object.entries(animFiles)) {
-    if (seen.has(file)) seen.get(file).push(name);
-    else seen.set(file, [name]);
-  }
-  return seen;
-}
 
 /**
  * @callback ProgressCallback
@@ -128,23 +119,15 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   const config = MODEL_CONFIGS[monsterKey];
   if (!config) throw new Error(`No GLB model config for "${monsterKey}"`);
 
-  const { base, anims } = config;
+  const { file, anims } = config;
   const loader = new GLTFLoader();
-  const uniqueFiles = getUniqueFiles(anims);
-  const totalSteps = uniqueFiles.size + 1;
-  let loaded = 0;
+  const totalSteps = 1;
 
-  function report(label) {
-    loaded++;
-    if (onProgress) onProgress(loaded, totalSteps, label);
-  }
-
-  // Load the base model (use the Running file — full skinned mesh)
-  if (onProgress) onProgress(0, totalSteps, 'Loading base model');
-  const baseGltf = await _cachedGLB(loader, base + 'Animation_Running_withSkin.glb');
-  const root = baseGltf.scene;
+  if (onProgress) onProgress(0, totalSteps, 'Loading model');
+  const gltf = await _cachedGLB(loader, file);
+  const root = gltf.scene;
   root.name = 'kaiju';
-  report('Base model loaded');
+  if (onProgress) onProgress(1, totalSteps, 'Model loaded');
 
   // Scale to match the game (~15 units tall)
   root.scale.setScalar(18);
@@ -163,31 +146,19 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   const animations = {};
   const actions = {};
 
-  // The base file already has the 'run' animation baked in
-  if (baseGltf.animations.length > 0) {
-    animations.run = baseGltf.animations[0];
-    actions.run = mixer.clipAction(animations.run);
+  // Map game keys -> clips by clip name (shared clips reuse one action set per key,
+  // exactly like the old one-file-per-animation loader)
+  const clipsByName = new Map(gltf.animations.map((c) => [c.name, c]));
+  for (const [name, animFile] of Object.entries(anims)) {
+    const clip = clipsByName.get(animFile.replace(/\.glb$/, ''));
+    if (!clip) { console.warn(`[KaijuLoader] Missing clip "${animFile}" for "${name}"`); continue; }
+    animations[name] = clip;
+    actions[name] = mixer.clipAction(clip);
   }
-
-  // Load remaining animation files (de-duplicated)
-  for (const [file, names] of uniqueFiles) {
-    if (file === 'Animation_Running_withSkin.glb') {
-      report('Running animation');
-      continue;
-    }
-    try {
-      const gltf = await _cachedGLB(loader, base + file);
-      if (gltf.animations.length > 0) {
-        const clip = gltf.animations[0];
-        for (const name of names) {
-          animations[name] = clip;
-          actions[name] = mixer.clipAction(clip);
-        }
-      }
-    } catch (e) {
-      console.warn(`[KaijuLoader] Failed to load "${file}":`, e.message);
-    }
-    report(names[0] + ' animation');
+  // 'run' always came from the base Running file
+  if (!animations.run) {
+    const clip = clipsByName.get('Animation_Running_withSkin');
+    if (clip) { animations.run = clip; actions.run = mixer.clipAction(clip); }
   }
 
   // Configure one-shot vs looping
@@ -224,48 +195,101 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   // Animation state
   let currentAction = null;
   let currentName = '';
+  // Active one-shot lock. While set, locomotion play() calls are deferred
+  // (remembered in `wanted`) so attacks aren't cut off by the per-frame
+  // walk/idle request. After `commit` seconds a *moving* clip may
+  // interrupt (so the kaiju doesn't skate while finishing a long combo);
+  // 'idle' never interrupts, it just waits for the clip to finish.
+  let oneShot = null;   // { action, name, start, commit, onFinished }
+  let wanted = 'idle';  // last locomotion clip requested during a one-shot
 
-  function play(name, fadeTime = 0.25, timeScale = 1) {
-    const action = actions[name];
-    if (!action) return;
-    if (currentName === name && currentAction?.isRunning()) return;
+  function _clearOneShot() {
+    if (!oneShot) return;
+    mixer.removeEventListener('finished', oneShot.onFinished);
+    oneShot = null;
+  }
 
-    if (currentAction) currentAction.fadeOut(fadeTime);
-
+  function _start(action, name, fadeTime, timeScale) {
+    if (currentAction && currentAction !== action) currentAction.fadeOut(fadeTime);
     action.reset();
     action.setEffectiveTimeScale(timeScale);
     action.setEffectiveWeight(1);
     action.fadeIn(fadeTime);
     action.play();
-
     currentAction = action;
     currentName = name;
   }
 
-  function playOnce(name, fadeTime = 0.15, timeScale = 1) {
+  function play(name, fadeTime = 0.25, timeScale = 1) {
     const action = actions[name];
-    if (!action) return;
-    if (currentName === name && currentAction?.isRunning()) return;
+    if (!action) return false;
+    if (oneShot) {
+      const elapsed = mixer.time - oneShot.start;
+      if (name === 'idle' || elapsed < oneShot.commit) { wanted = name; return false; }
+      _clearOneShot();
+    }
+    // Already the active target: never restart it (restarting every frame
+    // was the source of the walk-turn stutter).
+    if (currentName === name && currentAction === action) {
+      if (action.getEffectiveTimeScale() !== timeScale) action.setEffectiveTimeScale(timeScale);
+      return true;
+    }
+    _start(action, name, fadeTime, timeScale);
+    return true;
+  }
 
-    const prevName = currentName;
-    if (currentAction) currentAction.fadeOut(fadeTime);
+  // opts.duration: stretch/squash the clip to last this many seconds
+  //   (overrides timeScale) so e.g. a 5.9 s jump matches 0.55 s of airtime.
+  // opts.commit: seconds during which locomotion can't interrupt
+  //   (default: the whole clip).
+  // opts.hold: stay on the final frame afterwards (death).
+  function playOnce(name, fadeTime = 0.15, timeScale = 1, opts = {}) {
+    const action = actions[name];
+    if (!action) return false;
+    if (oneShot && oneShot.name === name && action.isRunning()) return true;
+    const clipDur = action.getClip().duration || 1;
+    if (opts.duration) timeScale = clipDur / opts.duration;
+    const realDur = clipDur / Math.max(1e-3, timeScale);
 
-    action.reset();
-    action.setEffectiveTimeScale(timeScale);
-    action.setEffectiveWeight(1);
-    action.fadeIn(fadeTime);
-    action.play();
-
-    currentAction = action;
-    currentName = name;
+    if (!oneShot) wanted = (currentName && !ONE_SHOT.has(currentName)) ? currentName : 'idle';
+    _clearOneShot();
+    _start(action, name, fadeTime, timeScale);
 
     const onFinished = (e) => {
-      if (e.action === action) {
+      if (e.action !== action) return;
+      if (opts.hold) {
+        // Stay on the clamped last frame (death pose) and keep blocking
+        // locomotion until something explicitly plays a new one-shot.
         mixer.removeEventListener('finished', onFinished);
-        play(prevName, 0.3);
+        if (oneShot) oneShot.commit = Infinity;
+        return;
       }
+      _clearOneShot();
+      play(wanted || 'idle', 0.3);
+    };
+    oneShot = {
+      action, name, start: mixer.time,
+      commit: Math.min(realDur, opts.commit !== undefined ? opts.commit : realDur),
+      onFinished,
     };
     mixer.addEventListener('finished', onFinished);
+    return true;
+  }
+
+  // Return to a clean idle state: used when game.js reuses a cached kaiju
+  // for a new run (clears a held death pose / pending one-shot lock).
+  function resetAnim() {
+    _clearOneShot();
+    wanted = 'idle';
+    mixer.stopAllAction();
+    mixer.timeScale = 1; // a death topple freezes the mixer
+    currentAction = null;
+    currentName = '';
+    if (actions.idle) {
+      actions.idle.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).play();
+      currentAction = actions.idle;
+      currentName = 'idle';
+    }
   }
 
   // Start idle
@@ -277,7 +301,8 @@ export async function loadKaijuModel(monsterKey, onProgress) {
 
   return {
     root, mixer, animations, actions, head, tail,
-    play, playOnce,
+    play, playOnce, resetAnim,
     get currentName() { return currentName; },
+    get oneShotActive() { return !!oneShot; },
   };
 }

@@ -54,7 +54,9 @@ export const QUALITY_PROFILE = {
   },
   high: {
     particleMul: 1.00,
-    flipbookRes: 2048,
+    // @1k sheets (128px frames): 5 sheets ~28 MB VRAM vs ~110 MB at @2k; the
+    // difference is negligible on fast, additive, bloomed effects.
+    flipbookRes: 1024,
     softParticles: true,
     maxEmitters: 32,
     godRaySamples: 60,

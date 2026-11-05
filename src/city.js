@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
-import { cachedFetch, cachedBlobURL } from './assetCache.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeSkeletons } from './assetCache.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
 // and loadPedestrianTemplates() run at module-load time via top-level await in game.js.
@@ -14,17 +15,26 @@ const _glbLoader = new GLTFLoader();
 const _texLoader = new THREE.TextureLoader();
 const TEX_BASE = './assets/textures/';
 
+// Cached per (file, repeat) so a rebuilt city (restartInPlace) reuses the
+// already-uploaded textures instead of decoding + uploading new copies.
+const _groundTexCache = new Map();
 function _loadTileTex(file, repeatX, repeatY) {
+  const key = `${file}|${repeatX}|${repeatY}|srgb`;
+  if (_groundTexCache.has(key)) return _groundTexCache.get(key);
   const t = _texLoader.load(TEX_BASE + file);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(repeatX, repeatY);
   t.colorSpace = THREE.SRGBColorSpace;
+  _groundTexCache.set(key, t);
   return t;
 }
 function _loadDataTex(file, repeatX, repeatY) {
+  const key = `${file}|${repeatX}|${repeatY}`;
+  if (_groundTexCache.has(key)) return _groundTexCache.get(key);
   const t = _texLoader.load(TEX_BASE + file);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(repeatX, repeatY);
+  _groundTexCache.set(key, t);
   return t;
 }
 
@@ -43,6 +53,42 @@ const LOT_TILE = 12; // world units per texture repeat
 const STREET_TILE = 12; // world units per texture repeat
 
 // Sidewalk paving stones
+// Worn road-paint texture for crosswalks / stop lines: white RGBA canvas
+// whose alpha is broken up by speckle and a few scuffed tyre streaks, so
+// markings read as old paint instead of crisp glowing decals.
+let _wornPaintTex = null; // built once, reused by every rebuilt city
+function _makeWornPaintTexture() {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(S, S);
+  const d = img.data;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      // Two octaves of cheap hash noise: fine speckle + coarse patches.
+      const fine = Math.random();
+      const coarse = 0.5 + 0.5 * Math.sin(x * 0.07 + Math.sin(y * 0.05) * 2.0) * Math.cos(y * 0.06 + x * 0.013);
+      let a = 0.92 - (fine < 0.10 ? 0.6 : 0) - (coarse < 0.18 ? 0.45 : 0);
+      const lum = 225 + (Math.random() * 25 | 0);
+      const i = (y * S + x) * 4;
+      d[i] = lum; d[i + 1] = lum; d[i + 2] = lum - 6;
+      d[i + 3] = Math.max(0, Math.min(255, a * 255)) | 0;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // Tyre scuffs: dark translucent streaks that eat into the paint alpha.
+  ctx.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 10; i++) {
+    ctx.fillStyle = `rgba(0,0,0,${0.15 + Math.random() * 0.25})`;
+    ctx.fillRect(Math.random() * S, 0, 6 + Math.random() * 14, S);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
 const SIDEWALK_TILE = 6; // world units per texture repeat
 
 const BUILDING_PALETTE = [
@@ -141,6 +187,7 @@ export function loadTreeTemplates(onProgress) {
           return;
         }
         s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        normalizeGLTFMaterials(s);
         const box = new THREE.Box3().setFromObject(s);
         const size = box.getSize(new THREE.Vector3());
         console.log(`[TreeGLB] Bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
@@ -154,6 +201,68 @@ export function loadTreeTemplates(onProgress) {
       });
     })
   ));
+}
+
+// --------------- Static batching (draw-call reduction) ---------------
+// Props are tagged where they are created and folded together once at the
+// end of buildCity. Nothing here is ever moved, destroyed or raycast.
+//  - userData.instance: a GLB clone (tree, parked car). Every mesh of every
+//    tagged clone becomes one instance of an InstancedMesh per
+//    (geometry, material, BATCH_TILE x BATCH_TILE tile); tiles keep frustum
+//    culling effective.
+//  - userData.batch: a plain static Mesh child of the scene (street strips,
+//    lot pads, cables). Merged into one BufferGeometry per material.
+const BATCH_TILE = 120;
+
+function _instanceStaticClones(scene) {
+  scene.updateMatrixWorld(true);
+  const clones = [];
+  scene.traverse((o) => { if (o.userData.instance) clones.push(o); });
+  const buckets = new Map();
+  for (const c of clones) {
+    c.traverse((m) => {
+      if (!m.isMesh) return;
+      const e = m.matrixWorld.elements;
+      const key = `${m.geometry.uuid}|${m.material.uuid}|${Math.floor(e[12] / BATCH_TILE)},${Math.floor(e[14] / BATCH_TILE)}`;
+      let b = buckets.get(key);
+      if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, cast: m.castShadow, recv: m.receiveShadow, matrices: [] });
+      b.matrices.push(m.matrixWorld.clone());
+    });
+    c.parent.remove(c);
+  }
+  for (const b of buckets.values()) {
+    const im = new THREE.InstancedMesh(b.geometry, b.material, b.matrices.length);
+    b.matrices.forEach((mat, i) => im.setMatrixAt(i, mat));
+    im.castShadow = b.cast;
+    im.receiveShadow = b.recv;
+    im.computeBoundingSphere();
+    im.matrixAutoUpdate = false;
+    scene.add(im);
+  }
+}
+
+function _mergeStaticMeshes(scene) {
+  const groups = new Map();
+  for (const m of scene.children) {
+    if (!m.isMesh || !m.userData.batch) continue;
+    const attrs = Object.keys(m.geometry.attributes).sort().join();
+    const key = `${m.material.uuid}|${m.castShadow}|${m.receiveShadow}|${attrs}|${!!m.geometry.index}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  }
+  const oldGeoms = new Set();
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const merged = mergeGeometries(list.map((m) => m.geometry.clone().applyMatrix4(m.matrix)), false);
+    if (!merged) continue; // incompatible attributes: keep the originals
+    const mesh = new THREE.Mesh(merged, list[0].material);
+    mesh.castShadow = list[0].castShadow;
+    mesh.receiveShadow = list[0].receiveShadow;
+    mesh.matrixAutoUpdate = false;
+    scene.add(mesh);
+    for (const m of list) { scene.remove(m); oldGeoms.add(m.geometry); }
+  }
+  for (const g of oldGeoms) g.dispose();
 }
 
 // Single tree: uses GLB clone if templates loaded, else procedural fallback.
@@ -174,6 +283,7 @@ function makeTree(x = 0, z = 0, scale = 1) {
     clone.rotation.y = Math.random() * Math.PI * 2;
     clone.position.x = x;
     clone.position.z = z;
+    clone.userData.instance = true; // folded into InstancedMeshes by _instanceStaticClones
     return clone;
   }
 
@@ -2035,14 +2145,13 @@ const ALL_BUILDING_GLBS = [
   BLDG_GLB_BASE + 'bridge_1.glb',
   BLDG_GLB_BASE + 'bridge_2.glb',
   BLDG_GLB_BASE + 'electronics_district_1.glb',
-  BLDG_GLB_BASE + 'electronics_district_2.glb',
 ];
 
 /** Fetch a GLB via the asset cache, then parse with GLTFLoader. */
 function _cachedGLB(url) {
   return cachedFetch(url).then((buf) =>
     new Promise((resolve, reject) => _glbLoader.parse(buf, '', resolve, reject))
-  );
+  ).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
 }
 
 /** Load all unique building GLB templates once. */
@@ -2242,6 +2351,8 @@ export function buildCity(scene, world, opts = {}) {
   const RIVER_WIDTH = 26;
   const RIVER_MIN = RIVER_Z - RIVER_WIDTH / 2 - 2;
   const RIVER_MAX = RIVER_Z + RIVER_WIDTH / 2 + 2;
+  _pedRiverMin = RIVER_Z - RIVER_WIDTH / 2 - 1;
+  _pedRiverMax = RIVER_Z + RIVER_WIDTH / 2 + 1;
   /** Returns true if a z-position falls inside the river zone */
   function inRiver(z) { return z > RIVER_MIN && z < RIVER_MAX; }
   /** Returns true if a range [zMin, zMax] overlaps the river zone */
@@ -2255,6 +2366,7 @@ export function buildCity(scene, world, opts = {}) {
     m.position.set(x, y, z);
     if (opts.shadow) m.receiveShadow = true;
     m.matrixAutoUpdate = false; m.updateMatrix();
+    m.userData.batch = true; // merged per material by _mergeStaticMeshes
     scene.add(m);
     return m;
   }
@@ -2332,34 +2444,78 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
-  // Crosswalk decals at every intersection — wide Japanese piano-key style
-  // Skip intersections that fall inside the river zone
+  // Zebra crosswalks: one on each approach arm of every intersection, just
+  // outside the junction box (the old version centred both stripe sets on
+  // the junction itself, so they overlapped into a glowing plaid). All
+  // bars + stop lines go into a single merged BufferGeometry: one draw
+  // call instead of ~20 meshes per intersection. Matte white with a
+  // speckled "worn paint" alpha texture; bars sample random sub-regions
+  // so no two crossings wear identically.
   const crossMat = new THREE.MeshStandardMaterial({
-    color: 0xf0f0f0, roughness: 0.45, depthWrite: false,
-    polygonOffset: true, polygonOffsetFactor: -1,
+    color: 0xd9d9d2, roughness: 0.85, metalness: 0.0,
+    map: _wornPaintTex || (_wornPaintTex = _makeWornPaintTexture()),
+    transparent: true, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
-  const stopLineMat = new THREE.MeshStandardMaterial({
-    color: 0xeeeeee, roughness: 0.5, depthWrite: false,
-    polygonOffset: true, polygonOffsetFactor: -1,
-  });
-  for (let bx = -CITY_RADIUS; bx <= CITY_RADIUS; bx += BLOCK) {
-    for (let bz = -CITY_RADIUS; bz <= CITY_RADIUS; bz += BLOCK) {
-      if (inRiver(bz)) continue; // skip crosswalks in river
-      const stripeW = 0.55, stripeGap = 0.55, stripeCount = 8;
-      const crossLen = STREET - 0.8;
-      for (let s = 0; s < stripeCount; s++) {
-        const offset = (s - (stripeCount - 1) / 2) * (stripeW + stripeGap);
-        addStrip(new THREE.PlaneGeometry(stripeW, crossLen), crossMat, bx + offset, 0.08, bz);
-        addStrip(new THREE.PlaneGeometry(crossLen, stripeW), crossMat, bx, 0.08, bz + offset);
-      }
-      const stopW = STREET - 1.5, stopH = 0.3;
-      const stopOff = (stripeCount / 2) * (stripeW + stripeGap) + 0.6;
-      for (const dir of [-1, 1]) {
-        if (inRiver(bz + dir * stopOff)) continue;
-        addStrip(new THREE.PlaneGeometry(stopW, stopH), stopLineMat, bx, 0.08, bz + dir * stopOff);
-        addStrip(new THREE.PlaneGeometry(stopH, stopW), stopLineMat, bx + dir * stopOff, 0.08, bz);
+  {
+    const pos = [], uv = [], idx = [];
+    // Axis-aligned quad on the ground plane, centred (cx, cz), size sx by sz.
+    function quad(cx, cz, sx, sz) {
+      const v = pos.length / 3;
+      const hx = sx / 2, hz = sz / 2;
+      pos.push(cx - hx, 0, cz - hz,  cx + hx, 0, cz - hz,  cx + hx, 0, cz + hz,  cx - hx, 0, cz + hz);
+      const u0 = Math.random() * 0.7, v0 = Math.random() * 0.7;
+      const du = Math.min(0.3, sx * 0.08), dv = Math.min(0.3, sz * 0.08);
+      uv.push(u0, v0,  u0 + du, v0,  u0 + du, v0 + dv,  u0, v0 + dv);
+      idx.push(v, v + 2, v + 1,  v, v + 3, v + 2);
+    }
+    const JUNCTION = STREET / 2 + SIDEWALK_W;   // half-size of the junction box
+    const CROSS_D = 3.2;                         // crossing depth (walk direction)
+    const CROSS_C = JUNCTION + 0.4 + CROSS_D / 2; // arm offset of crossing centre
+    const BAR_W = 0.45, BAR_GAP = 0.45;
+    const BAR_N = Math.floor((STREET - 0.8 + BAR_GAP) / (BAR_W + BAR_GAP));
+    const barSpan = BAR_N * BAR_W + (BAR_N - 1) * BAR_GAP;
+    const STOP_OFF = CROSS_C + CROSS_D / 2 + 1.0; // stop line behind the crossing
+    const STOP_T = 0.35;
+    const edge = CITY_RADIUS - 1;
+    for (let bx = -CITY_RADIUS; bx <= CITY_RADIUS; bx += BLOCK) {
+      for (let bz = -CITY_RADIUS; bz <= CITY_RADIUS; bz += BLOCK) {
+        if (inRiver(bz)) continue; // no junction on the water
+        for (const dir of [-1, 1]) {
+          // N/S arms cross the N-S street (bars run along z, arrayed across x).
+          const az = bz + dir * CROSS_C;
+          const armA = bz + dir * JUNCTION, armB = bz + dir * (STOP_OFF + STOP_T);
+          if (Math.abs(az) < edge && !overlapsRiver(Math.min(armA, armB), Math.max(armA, armB))) {
+            for (let b = 0; b < BAR_N; b++) {
+              quad(bx - barSpan / 2 + BAR_W / 2 + b * (BAR_W + BAR_GAP), az, BAR_W, CROSS_D);
+            }
+            // Japan drives on the left: inbound lane on the north arm is
+            // x < bx (heading -z), on the south arm x > bx.
+            quad(bx - dir * STREET / 4, bz + dir * STOP_OFF, STREET / 2 - 0.4, STOP_T);
+          }
+          // E/W arms cross the E-W street (bars run along x, arrayed across z).
+          const ax = bx + dir * CROSS_C;
+          if (Math.abs(ax) < edge) {
+            for (let b = 0; b < BAR_N; b++) {
+              quad(ax, bz - barSpan / 2 + BAR_W / 2 + b * (BAR_W + BAR_GAP), CROSS_D, BAR_W);
+            }
+            quad(bx + dir * STOP_OFF, bz + dir * STREET / 4, STOP_T, STREET / 2 - 0.4);
+          }
+        }
       }
     }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    const nrm = new Float32Array(pos.length);
+    for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+    g.setIndex(idx);
+    const cw = new THREE.Mesh(g, crossMat);
+    cw.position.y = 0.075;
+    cw.receiveShadow = true;
+    cw.matrixAutoUpdate = false; cw.updateMatrix();
+    scene.add(cw);
   }
 
   // Reserved zones where landmarks / parks / districts live. Procedural
@@ -2383,8 +2539,12 @@ export function buildCity(scene, world, opts = {}) {
     { kind: 'c', x: -260, z:  100, r: 18 },    // Western pagoda
     { kind: 'c', x:  180, z:  260, r: 18 },    // Northeast pagoda
     // Small street-level landmarks (koban / yatai cluster)
-    { kind: 'c', x:   40, z:   50, r: 8 },     // Police koban
-    { kind: 'c', x: -150, z:  -10, r: 10 },    // Ramen yatai cluster
+    // Street-level landmarks in two corners of the open spawn plaza. The
+    // old anchors were (40,50), the middle of the x=40 N-S street, and
+    // (-150,-10), which didn't cover its block centre so a building
+    // spawned on top. `owner` lets the landmark ignore its own zone.
+    { kind: 'c', x:   27, z:   27, r: 7, owner: 'koban' },  // Police koban
+    { kind: 'c', x:  -28, z:   29, r: 8, owner: 'yatai' },  // Ramen yatai cluster
     // Electronics district blocks (Akihabara-style)
     { kind: 'c', x:  -40, z:  200, r: 28 },
     { kind: 'c', x: -160, z: -260, r: 28 },
@@ -2394,9 +2554,12 @@ export function buildCity(scene, world, opts = {}) {
       x1: -CITY_RADIUS - 50, z1: RIVER_Z - RIVER_WIDTH / 2 - 4,
       x2:  CITY_RADIUS + 50, z2: RIVER_Z + RIVER_WIDTH / 2 + 4 },
   ];
-  function isReserved(bx, bz) {
+  // `ignoreOwner`: skip the zone a landmark reserved for itself, while
+  // still rejecting every other zone (river, parks, other landmarks).
+  function isReserved(bx, bz, ignoreOwner) {
     for (let i = 0; i < RESERVED.length; i++) {
       const r = RESERVED[i];
+      if (ignoreOwner && r.owner === ignoreOwner) continue;
       if (r.kind === 'r') {
         if (bx > r.x1 && bx < r.x2 && bz > r.z1 && bz < r.z2) return true;
       } else {
@@ -2429,6 +2592,7 @@ export function buildCity(scene, world, opts = {}) {
         lot.position.set(bx, 0.13, bz);
         lot.receiveShadow = true;
         lot.matrixAutoUpdate = false; lot.updateMatrix();
+        lot.userData.batch = true;
         scene.add(lot);
       }
     }
@@ -2541,7 +2705,7 @@ export function buildCity(scene, world, opts = {}) {
 
   // ---------- Electronics District (Akihabara-style blocks) ----------
   addGLBLandmark( -40,  200, 40, 40, 25, 350, BLDG_GLB_BASE + 'electronics_district_1.glb');
-  addGLBLandmark(-160, -260, 40, 40, 25, 350, BLDG_GLB_BASE + 'electronics_district_2.glb');
+  addGLBLandmark(-160, -260, 40, 40, 25, 350, BLDG_GLB_BASE + 'electronics_district_1.glb');
   addGLBLandmark( 260,  160, 40, 40, 25, 350, BLDG_GLB_BASE + 'electronics_district_1.glb');
 
   // ---------- Industrial ----------
@@ -3007,6 +3171,7 @@ export function buildCity(scene, world, opts = {}) {
               cableMat
             );
             tube.matrixAutoUpdate = false; tube.updateMatrix();
+            tube.userData.batch = true;
             scene.add(tube);
           }
         }
@@ -3057,12 +3222,13 @@ export function buildCity(scene, world, opts = {}) {
         if (Math.random() < 0.18) positions.push({ x: along, z: i - STREET_OFFSET_P, dir: -1 });
       }
     }
-    if (_carTemplates.length > 0) {
+    const parkable = _carTemplates.filter((t) => t.parked);
+    if (parkable.length > 0) {
       for (const p of positions) {
-        const tpl = _carTemplates[Math.floor(Math.random() * _carTemplates.length)];
+        const tpl = parkable[Math.floor(Math.random() * parkable.length)];
         const clone = _cloneCarScene(tpl);
         const size = tpl.box.getSize(new THREE.Vector3());
-        const targetLen = 3.6;
+        const targetLen = _carTargetLen(tpl);
         const s = targetLen / Math.max(size.x, size.y, size.z);
         clone.scale.setScalar(s);
         clone.updateMatrixWorld(true);
@@ -3071,6 +3237,7 @@ export function buildCity(scene, world, opts = {}) {
         clone.position.set(p.x, -cloneBox.min.y, p.z);
         clone.rotation.y = yaw;
         clone.matrixAutoUpdate = false; clone.updateMatrix();
+        clone.userData.instance = true; // folded into InstancedMeshes by _instanceStaticClones
         scene.add(clone);
       }
     }
@@ -3152,21 +3319,25 @@ export function buildCity(scene, world, opts = {}) {
   // outside, but at this scale the box itself reads as one. Single Group.
   {
     const koban = makePoliceKoban();
-    const kx = 40, kz = 50;
-    if (!isReserved(kx, kz)) {
+    const kx = 27, kz = 27; // NE corner of the spawn plaza, facing the street
+    if (!isReserved(kx, kz, 'koban')) {
       koban.position.set(kx, 0, kz);
+      koban.matrixAutoUpdate = false; koban.updateMatrix();
       scene.add(koban);
     }
   }
 
   // ---- Ramen yatai cluster (ramen food carts) ----
   // 2 carts side-by-side with red chochin lanterns + steam rising. Placed
-  // at a corner near the park.
+  // at a corner of the spawn plaza.
   {
     const yatai = makeRamenYatai();
-    const yx = -150, yz = -10;
-    if (!isReserved(yx, yz)) {
+    // Carts extend +x from the anchor (2 x 5.5u), so the cluster spans
+    // roughly x -33..-23 in the NW corner of the spawn plaza.
+    const yx = -31, yz = 29;
+    if (!isReserved(yx, yz, 'yatai')) {
       yatai.position.set(yx, 0, yz);
+      yatai.matrixAutoUpdate = false; yatai.updateMatrix();
       scene.add(yatai);
     }
   }
@@ -3178,6 +3349,10 @@ export function buildCity(scene, world, opts = {}) {
     const torii = makeToriiGate();
     torii.position.set(200, 0, 175); // just south of Park 1 (200, 200)
     torii.rotation.y = 0;
+    // Freeze after positioning. (The factory used to freeze the matrix
+    // itself, so this gate stayed at the origin and clipped the kaiju at
+    // every spawn.)
+    torii.matrixAutoUpdate = false; torii.updateMatrix();
     scene.add(torii);
   }
 
@@ -3204,6 +3379,10 @@ export function buildCity(scene, world, opts = {}) {
       scene.add(sub);
     }
   }
+
+  // Fold static props into a handful of draw calls (was ~1 per tree/car/strip).
+  _instanceStaticClones(scene);
+  _mergeStaticMeshes(scene);
 
   const animators = [flock];
   if (windowPulse) animators.push(windowPulse);
@@ -3250,7 +3429,9 @@ function makePoliceKoban() {
     const w2 = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 0.1), winMat);
     w2.position.set(sx * 1.6, 5.0, 5.5 / 2 + 0.05); g.add(w2);
   }
-  g.matrixAutoUpdate = false;
+  // Matrix is left auto-updating: callers position the group and then
+  // freeze it (matrixAutoUpdate=false + updateMatrix()) themselves.
+  // Freezing here meant a later position.set() never took effect.
   return g;
 }
 
@@ -3312,7 +3493,9 @@ function makeRamenYatai() {
     const str = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.55, 0.04), lanternFrameMat);
     str.position.set(0.5 + i * 1.6, 3.78, 0); g.add(str);
   }
-  g.matrixAutoUpdate = false;
+  // Matrix is left auto-updating: callers position the group and then
+  // freeze it (matrixAutoUpdate=false + updateMatrix()) themselves.
+  // Freezing here meant a later position.set() never took effect.
   return g;
 }
 
@@ -3358,7 +3541,9 @@ function makeToriiGate() {
   const plaque = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.6, 0.18), new THREE.MeshStandardMaterial({ color: 0xeeeeec, emissive: 0xeeeeec, emissiveIntensity: 0.4 }));
   plaque.position.set(0, PILLAR_H * 0.92, 0.6);
   g.add(plaque);
-  g.matrixAutoUpdate = false;
+  // Matrix is left auto-updating: callers position the group and then
+  // freeze it (matrixAutoUpdate=false + updateMatrix()) themselves.
+  // Freezing here meant a later position.set() never took effect.
   return g;
 }
 
@@ -3488,30 +3673,52 @@ function makeSubwayEntrance() {
 const CAR_COLORS = [0xff3344, 0x33aaff, 0xffcc33, 0xffffff, 0x222222, 0x44aa66, 0xaa44ff];
 
 // --------------- GLB car templates ---------------
+// v2 Japanese vehicles: front faces +Z, bottom-centre origin, real-world metres
+// (len). Clones are scaled by CAR_UNITS_PER_M so a bus stays ~3x a kei van.
+// parked:false keeps long vehicles out of the 6u-spaced kerbside parking rows.
 const CAR_GLBS = [
-  './assets/cars/car_1.glb',
-  './assets/cars/car_2.glb',
+  { url: './assets/vehicles/kei_van.glb',     len: 3.4 },
+  { url: './assets/vehicles/taxi_black.glb',  len: 4.7 },
+  { url: './assets/vehicles/police_car.glb',  len: 4.8 },
+  { url: './assets/vehicles/small_truck.glb', len: 4.7 },
+  { url: './assets/vehicles/city_bus.glb',    len: 11.0, parked: false },
 ];
-const _carTemplates = []; // array of { scene, box } after loading
+// Old Meshy cars, loaded only if none of the v2 vehicles load
+const CAR_GLBS_FALLBACK = [
+  { url: './assets/cars/car_1.glb' },
+  { url: './assets/cars/car_2.glb' },
+];
+const CAR_UNITS_PER_M = 3.6 / 4.5; // a 4.5m sedan matches the old 3.6u car
+const _carTemplates = []; // array of { scene, box, len, parked } after loading
 
-/** Load car GLB templates. Call once at startup. */
-export function loadCarTemplates(onProgress) {
-  return Promise.all(CAR_GLBS.map((url, idx) =>
-    _cachedGLB(url).then((gltf) => {
+/** Car clone length in world units (old templates have no len: fixed 3.6u). */
+function _carTargetLen(tpl) {
+  return tpl.len ? tpl.len * CAR_UNITS_PER_M : 3.6;
+}
+
+function _loadCarList(list, onProgress) {
+  return Promise.all(list.map((def, idx) =>
+    _cachedGLB(def.url).then((gltf) => {
       const s = gltf.scene;
       let meshCount = 0;
       s.traverse((o) => { if (o.isMesh) { meshCount++; o.castShadow = true; o.receiveShadow = true; } });
       if (meshCount === 0) {
-        console.warn('[CarGLB] No meshes found in', url);
+        console.warn('[CarGLB] No meshes found in', def.url);
         return;
       }
-      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s) });
-      if (onProgress) onProgress(idx + 1, CAR_GLBS.length, url.split('/').pop().replace('.glb', ''));
+      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false });
+      if (onProgress) onProgress(idx + 1, list.length, def.url.split('/').pop().replace('.glb', ''));
     }).catch((err) => {
-      console.warn('[CarGLB] Failed to load', url, err.message);
-      if (onProgress) onProgress(idx + 1, CAR_GLBS.length, 'error');
+      console.warn('[CarGLB] Failed to load', def.url, err.message);
+      if (onProgress) onProgress(idx + 1, list.length, 'error');
     })
   ));
+}
+
+/** Load car GLB templates. Call once at startup. */
+export async function loadCarTemplates(onProgress) {
+  await _loadCarList(CAR_GLBS, onProgress);
+  if (_carTemplates.length === 0) await _loadCarList(CAR_GLBS_FALLBACK, onProgress);
 }
 
 function _cloneCarScene(tpl) {
@@ -3542,7 +3749,7 @@ export class Car {
       const tpl = _carTemplates[Math.floor(Math.random() * _carTemplates.length)];
       const clone = _cloneCarScene(tpl);
       const size = tpl.box.getSize(new THREE.Vector3());
-      const targetLen = 3.6; // ~3.6 units long to match procedural size
+      const targetLen = _carTargetLen(tpl); // old cars: ~3.6u to match procedural size
       const s = targetLen / Math.max(size.x, size.y, size.z);
       clone.scale.setScalar(s);
       clone.updateMatrixWorld(true);
@@ -3668,7 +3875,9 @@ export function spawnCars(scene, count, cityRadius = 380, blockSize = 36) {
 // grid, no collision against buildings (they're tiny enough to clip OK).
 
 // --------------- Pedestrian GLB templates ---------------
-const PED_BASE = './assets/enemies/pedestrian/';
+// One merged GLB (skinned mesh + all clips); clips are named after the
+// original per-animation file minus '.glb'.
+const PED_FILE = './assets/enemies/pedestrian/pedestrian.glb';
 const PED_ANIMS = {
   walk: 'Walking.glb',
   run:  'Running.glb',
@@ -3681,28 +3890,20 @@ export async function loadPedestrianTemplates(onProgress) {
   const animNames = Object.keys(PED_ANIMS);
   let scene = null;
   const animations = {};
-  // Load base model (Walking.glb has the skinned mesh)
   try {
-    const gltf = await _cachedGLB(PED_BASE + PED_ANIMS.walk);
+    const gltf = await _cachedGLB(PED_FILE);
     scene = gltf.scene;
     scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    if (gltf.animations.length > 0) animations.walk = gltf.animations[0];
-  } catch (e) {
-    console.warn('[PedGLB] Failed to load base:', e.message);
-  }
-  if (onProgress) onProgress(1, animNames.length, 'pedestrian walk');
-
-  // Load remaining animations
-  for (const name of animNames) {
-    if (name === 'walk') continue;
-    try {
-      const gltf = await _cachedGLB(PED_BASE + PED_ANIMS[name]);
-      if (gltf.animations.length > 0) animations[name] = gltf.animations[0];
-    } catch (e) {
-      console.warn(`[PedGLB] Failed to load ${name}:`, e.message);
+    const clips = new Map(gltf.animations.map((c) => [c.name, c]));
+    for (const name of animNames) {
+      const clip = clips.get(PED_ANIMS[name].replace(/\.glb$/, ''));
+      if (clip) animations[name] = clip;
+      else console.warn(`[PedGLB] Missing clip ${PED_ANIMS[name]}`);
     }
-    if (onProgress) onProgress(Object.keys(animations).length + 1, animNames.length, 'pedestrian ' + name);
+  } catch (e) {
+    console.warn('[PedGLB] Failed to load:', e.message);
   }
+  if (onProgress) onProgress(animNames.length, animNames.length, 'pedestrian');
 
   if (scene) _pedTemplate = { scene, animations };
 }
@@ -3792,8 +3993,15 @@ export class Civilian {
       }
     }
 
+    const prevZ = myPos.z;
     myPos.x += Math.sin(this.heading) * speed * dt;
     myPos.z += Math.cos(this.heading) * speed * dt;
+    // The river is off limits: stop at the bank and turn back.
+    if (myPos.z > _pedRiverMin && myPos.z < _pedRiverMax) {
+      myPos.z = prevZ;
+      this.heading = Math.PI - this.heading;
+      this.headingChangeT = 1.5 + Math.random() * 2;
+    }
     const lim = cityRadius;
     if (myPos.x > lim)  myPos.x = -lim;
     if (myPos.x < -lim) myPos.x =  lim;
@@ -3817,16 +4025,27 @@ export class Civilian {
     if (this.dead) return;
     this.dead = true;
     if (this.root.parent) this.root.parent.remove(this.root);
+    disposeSkeletons(this.root);
     world.onCivilianStomped?.();
   }
 }
+
+// River band (z) that pedestrians must stay out of. Written by buildCity()
+// so it tracks the lite/desktop RIVER_Z; NaN until then (no-op checks).
+let _pedRiverMin = NaN, _pedRiverMax = NaN;
 
 export function spawnCivilians(scene, count, cityRadius) {
   const arr = [];
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
     const r = 50 + Math.random() * (cityRadius - 80);
-    const c = new Civilian(Math.cos(a) * r, Math.sin(a) * r);
+    let z = Math.sin(a) * r;
+    // Never spawn on the water; push to the nearer bank.
+    if (z > _pedRiverMin && z < _pedRiverMax) {
+      const mid = (_pedRiverMin + _pedRiverMax) / 2;
+      z = z < mid ? _pedRiverMin - 2 - Math.random() * 6 : _pedRiverMax + 2 + Math.random() * 6;
+    }
+    const c = new Civilian(Math.cos(a) * r, z);
     scene.add(c.root);
     arr.push(c);
   }

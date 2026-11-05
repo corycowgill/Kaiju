@@ -1428,5 +1428,6 @@ export function renderMonsterPreviews(size = 220) {
     });
   }
   r.dispose();
+  r.forceContextLoss(); // release the temp WebGL context now instead of waiting for GC
   return out;
 }

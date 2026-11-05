@@ -25,7 +25,7 @@ import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
 import { initAssetCache, getCacheStats } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE } from './quality.js';
-import vfx from './vfx.js';
+import vfx, { listBuilders, resetPooledLights } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
 // ------------------------- High score (localStorage) -------------------------
@@ -99,7 +99,9 @@ vfx.registerAllBuilders(legacyEffects);
 // Phase 6: exponential fog matched to the sunset palette. Distance buildings
 // fade smoothly into haze instead of popping at a linear cut. Density tuned
 // so things ~150u away stay readable but the city horizon dissolves.
-scene.fog = new THREE.FogExp2(0x4a1a3a, 0.0042);
+// Desaturated dusk purple-blue (was saturated magenta 0x4a1a3a @ 0.0042,
+// which tinted every surface pink and flattened the city).
+scene.fog = new THREE.FogExp2(0x3a3048, 0.0032);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 2000);
 
@@ -118,7 +120,7 @@ if (!isMobile) {
     new THREE.Vector2(window.innerWidth * 0.5, window.innerHeight * 0.5),
     Q_HIGH ? 0.85 : (Q_MED ? 0.65 : 0.45), // strength
     Q_HIGH ? 0.55 : (Q_MED ? 0.50 : 0.40), // radius
-    0.7                                     // threshold
+    0.85                                    // threshold (0.7 bloomed lit props/flipbook smoke)
   );
   composer.addPass(bloomPass);
 
@@ -131,14 +133,16 @@ if (!isMobile) {
     const cineUniforms = {
       tDiffuse: { value: null },
       time:     { value: 0 },
-      vignette: { value: Q_HIGH ? 0.55 : 0.40 },
-      grain:    { value: Q_HIGH ? 0.045 : 0.025 },
-      ca:       { value: Q_HIGH ? 0.0026 : 0.0014 },
+      // Toned down from 0.55 / 0.045 / 0.0026: the old values made every
+      // frame muddy and noisy and smeared thin geometry with colour fringes.
+      vignette: { value: Q_HIGH ? 0.35 : 0.28 },
+      grain:    { value: Q_HIGH ? 0.018 : 0.012 },
+      ca:       { value: Q_HIGH ? 0.0010 : 0.0006 },
       // Sun screen position is fed each frame from a world-space sun dir.
       sunPos:   { value: new THREE.Vector2(0.85, 0.62) },
       // God-ray strength + sample density. HIGH does 12 samples; MED 6.
       godStr:   { value: Q_HIGH ? 0.55 : 0.30 },
-      gradeMix: { value: Q_HIGH ? 0.65 : 0.40 },
+      gradeMix: { value: Q_HIGH ? 0.35 : 0.25 },
     };
     const SAMPLES = Q_HIGH ? 12 : 6;
     const cinePass = new ShaderPass({
@@ -168,12 +172,12 @@ if (!isMobile) {
               (c * (c * 0.295 + 0.477) + 0.0666);
           // Tint shadows + highlights
           float lum = dot(c, vec3(0.299, 0.587, 0.114));
-          vec3 shadowTint = vec3(0.55, 0.32, 0.78);
+          vec3 shadowTint = vec3(0.70, 0.60, 0.92);
           vec3 highTint   = vec3(1.05, 0.92, 0.74);
           float sMix = 1.0 - smoothstep(0.0, 0.45, lum);
           float hMix = smoothstep(0.55, 1.0, lum);
-          c = mix(c, c * shadowTint, sMix * 0.45);
-          c = mix(c, c * highTint,   hMix * 0.55);
+          c = mix(c, c * shadowTint, sMix * 0.25);
+          c = mix(c, c * highTint,   hMix * 0.40);
           return c;
         }
         void main() {
@@ -233,9 +237,11 @@ if (!isMobile) {
 // Phase 4 lighting: low-angle synthwave-dusk sun + reduced ambient (IBL
 // from Phase 3 handles fill on desktop), plus 6 neon point lights as set
 // dressing. Hemisphere kept as a cheap colour fill on mobile (no IBL there).
-const hemi = new THREE.HemisphereLight(0xff7780, 0x1a0633, Q_HIGH ? 0.30 : (Q_MED ? 0.45 : 0.55));
+// Sky colour pulled from hot pink toward warm peach and the ground bounce
+// lifted from near-black violet, so shadowed facades keep their colour.
+const hemi = new THREE.HemisphereLight(0xffb0a0, 0x2a2440, Q_HIGH ? 0.50 : (Q_MED ? 0.60 : 0.65));
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xff8866, 1.45);
+const sun = new THREE.DirectionalLight(0xffa070, 2.0);
 sun.position.set(-90, 60, 40); // low-angle sunset rake from the side
 if (Q_HIGH) {
   sun.castShadow = true;
@@ -248,7 +254,12 @@ if (Q_HIGH) {
   sun.shadow.bias = -0.0005;
 }
 scene.add(sun);
-const ambient = new THREE.AmbientLight(0x334455, Q_HIGH ? 0.10 : (Q_MED ? 0.30 : 0.45));
+// Cool back/rim light opposite the sunset key. No shadows (cheap); it
+// separates kaiju and vehicle silhouettes from the warm background.
+const rimLight = new THREE.DirectionalLight(0x6fa8ff, Q_LOW ? 0.45 : 0.65);
+rimLight.position.set(80, 70, -60);
+scene.add(rimLight);
+const ambient = new THREE.AmbientLight(0x445566, Q_HIGH ? 0.15 : (Q_MED ? 0.30 : 0.45));
 scene.add(ambient);
 
 // Six (high) / 5 (med) / 4 (low) neon point lights scattered through the
@@ -435,10 +446,58 @@ const SHELL_PROFILES = {
   tank:  { speed: 80,  damage: 9,  size: 0.35, mat: new THREE.MeshBasicMaterial({ color: 0xffaa44 }) },
   heli:  { speed: 90,  damage: 6,  size: 0.30, mat: new THREE.MeshBasicMaterial({ color: 0xffeeaa }) },
   mech:  { speed: 70,  damage: 20, size: 0.40, mat: new THREE.MeshBasicMaterial({ color: 0xff8844 }) },
-  jet:   { speed: 110, damage: 11, size: 0.32, mat: new THREE.MeshBasicMaterial({ color: 0xff5533 }) },
+  jet:   { speed: 110, damage: 7,  size: 0.32, mat: new THREE.MeshBasicMaterial({ color: 0xff5533 }) }, // was 11 @ 0.4 s strafe cadence
   rifle: { speed: 140, damage: 2,  size: 0.18, mat: new THREE.MeshBasicMaterial({ color: 0xffeecc }) },
   boss:  { speed: 75,  damage: 32, size: 0.55, mat: new THREE.MeshBasicMaterial({ color: 0xff3322 }) },
 };
+// Push shell colours into HDR (>1) so they cross the bloom threshold and
+// read as glowing tracers; at 1.0 they were near-invisible dots.
+for (const p of Object.values(SHELL_PROFILES)) p.mat.color.multiplyScalar(2.6);
+
+// ----- Incoming damage tuning -----
+// Early waves were lethal: wave 1 (4 tanks + 1 heli, no line-of-sight
+// check) dealt ~14.6 DPS to a stationary kaiju, i.e. death in 12-18 s.
+// All damage TO the kaiju now goes through hurtKaiju(), which scales it
+// by wave (x0.20 on wave 1, +0.16 per wave, full strength from wave 6)
+// and stamps the time for out-of-combat regen. Shells are also stopped
+// by buildings (see _shellHitsBuilding), so cover matters.
+function incomingDamageMult() {
+  return Math.min(1, 0.20 + 0.16 * Math.max(0, (state.wave || 1) - 1));
+}
+const OOC_REGEN_DELAY = 5.0; // seconds without taking damage
+const OOC_REGEN_RATE  = 2.5; // HP per second once out of combat
+// Burst cap: damage over a ~3 s leaky window is limited to
+// DPS_CAP_FRAC(wave) x maxHp per second; anything above it is cut to 15%.
+// Stops stacked jets + helis + artillery (wave 2 "AIR DOMINANCE" took 42%
+// HP in 5 s) from deleting the player before they can react.
+const DPS_WINDOW = 3.0;
+function dpsCapFrac() {
+  const w = state.wave || 1;
+  return w <= 3 ? 0.025 + 0.005 * (w - 1) : Math.min(0.10, 0.035 + 0.012 * (w - 3));
+}
+function hurtKaiju(amount) {
+  let dmg = amount * incomingDamageMult();
+  const limit = dpsCapFrac() * state.maxHp * DPS_WINDOW;
+  const room = Math.max(0, limit - (state._dmgWindow || 0));
+  if (dmg > room) dmg = room + (dmg - room) * 0.15;
+  state._dmgWindow = (state._dmgWindow || 0) + dmg;
+  state.hp -= dmg;
+  state._lastHurtT = world.time;
+  if (state.hp <= 0 && !state.gameOver) gameOver(false);
+  return dmg;
+}
+// True if p is inside an intact building's footprint below its roof.
+const _shellHitB = { b: null };
+function _shellHitsBuilding(p) {
+  const grid = world.buildingGrid;
+  if (!grid || p.y < 0.5) return null;
+  _shellHitB.b = null;
+  grid.forEachNear(p.x, p.z, 4, (b) => {
+    if (_shellHitB.b || b.destroyed || p.y > b.h) return;
+    if (Math.abs(p.x - b.x) < b.w / 2 && Math.abs(p.z - b.z) < b.d / 2) _shellHitB.b = b;
+  });
+  return _shellHitB.b;
+}
 
 // Reusable temp vectors so hot loops don't allocate a Vector3 per call.
 const _tmpV1 = new THREE.Vector3();
@@ -455,6 +514,54 @@ const _right = new THREE.Vector3();
 const _move = new THREE.Vector3();
 const _impact = new THREE.Vector3();
 const _beamRay = new THREE.Raycaster();
+const _beamImpact = new THREE.Vector3();
+const _beamBox = new THREE.Box3();
+const _beamBoxHit = new THREE.Vector3();
+// GLB buildings (b.customMesh) are not instances in world.bodiesIM, so
+// bodiesIM raycasts miss them. Returns the nearest intact GLB building
+// whose footprint AABB the ray enters within maxDist as { b, d }, writing
+// the entry point into outPoint, or null. Boxes containing the ray origin
+// are skipped (kaiju standing in a tower's footprint).
+function _rayNearestGLBBuilding(ray, maxDist, outPoint) {
+  const grid = world.buildingGrid;
+  if (!grid) return null;
+  let best = null;
+  const mx = ray.origin.x + ray.direction.x * maxDist * 0.5;
+  const mz = ray.origin.z + ray.direction.z * maxDist * 0.5;
+  grid.forEachNear(mx, mz, maxDist * 0.5 + 30, (b) => {
+    if (b.destroyed || !b.customMesh) return;
+    _beamBox.min.set(b.x - b.w / 2, 0, b.z - b.d / 2);
+    _beamBox.max.set(b.x + b.w / 2, b.h, b.z + b.d / 2);
+    if (_beamBox.containsPoint(ray.origin)) return;
+    if (ray.intersectBox(_beamBox, _tmpV3)) {
+      const d = _tmpV3.distanceTo(ray.origin);
+      if (d < maxDist && (!best || d < best.d)) { best = { b, d }; outPoint.copy(_tmpV3); }
+    }
+  });
+  return best;
+}
+// All intact GLB buildings the ray enters within maxDist, nearest first,
+// as [{ b, d, point }]. Used by the piercing ultimate beam.
+function _rayGLBBuildingsAll(ray, maxDist) {
+  const grid = world.buildingGrid;
+  const out = [];
+  if (!grid) return out;
+  const mx = ray.origin.x + ray.direction.x * maxDist * 0.5;
+  const mz = ray.origin.z + ray.direction.z * maxDist * 0.5;
+  grid.forEachNear(mx, mz, maxDist * 0.5 + 30, (b) => {
+    if (b.destroyed || !b.customMesh) return;
+    _beamBox.min.set(b.x - b.w / 2, 0, b.z - b.d / 2);
+    _beamBox.max.set(b.x + b.w / 2, b.h, b.z + b.d / 2);
+    if (_beamBox.containsPoint(ray.origin)) return;
+    const p = new THREE.Vector3();
+    if (ray.intersectBox(_beamBox, p)) {
+      const d = p.distanceTo(ray.origin);
+      if (d < maxDist) out.push({ b, d, point: p });
+    }
+  });
+  out.sort((a, c) => a.d - c.d);
+  return out;
+}
 
 const world = {
   scene,
@@ -511,7 +618,10 @@ if (!isMobile) {
 
 // Build city
 window.__dbg && window.__dbg('DBG · buildCity starting…');
-{
+// Everything in the scene before the city is built (lights, sky, barrier)
+// survives an in-place restart; everything added after is torn down.
+const _sceneBaseline = new Set(scene.children);
+function buildWorldCity() {
   const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = buildCity(scene, world, { lite: isMobile });
   world.buildings = buildings;
   world.buildingGrid = grid;
@@ -519,6 +629,7 @@ window.__dbg && window.__dbg('DBG · buildCity starting…');
   world.cityAnimators = cityAnimators || [];
   world.cityRadius = cityRadius;
 }
+buildWorldCity();
 window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
 
 // ------------------------- Game state -------------------------
@@ -573,6 +684,25 @@ const state = {
   // a bonus. Resets each startWave().
   waveObjective: { goal: 0, current: 0, complete: false },
 };
+// Pristine copy of the per-run state, used by restartInPlace(). Vector3s
+// are reset in place; underscore-prefixed scratch fields that get added
+// lazily during play are deleted.
+const _STATE_INIT = {};
+for (const k of Object.keys(state)) {
+  const v = state[k];
+  _STATE_INIT[k] = (v && v.isVector3) ? v.clone() : (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+}
+
+// requestPointerLock() returns a Promise in modern browsers and rejects
+// (WrongDocumentError, or "user exited lock too recently") when called
+// from a non-focused/transitioning document. Swallow those so they don't
+// surface as unhandled rejections; older browsers return undefined.
+function _requestPointerLock() {
+  try {
+    const p = renderer.domElement.requestPointerLock?.();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch (e) { /* not lockable right now */ }
+}
 
 const keys = {};
 window.addEventListener('keydown', (e) => {
@@ -589,7 +719,7 @@ window.addEventListener('mousedown', (e) => { if (e.button === 0) state.mouseDow
 window.addEventListener('mouseup', (e) => { if (e.button === 0) state.mouseDown = false; });
 
 renderer.domElement.addEventListener('click', () => {
-  if (!state.gameOver && state.kaiju) renderer.domElement.requestPointerLock?.();
+  if (!state.gameOver && state.kaiju) _requestPointerLock();
 });
 window.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement === renderer.domElement) {
@@ -1060,6 +1190,122 @@ function _showMobileDataWarning() {
 
 // ------------------------- Start game -------------------------
 let _startingGame = false; // guard against double-start during async load
+let _worldTemplatesLoaded = false; // building/debris/enemy GLBs parsed (desktop)
+
+// The parsed kaiju GLB for the current/last run, keyed by monster. Picking
+// the same kaiju again after "UNLEASH AGAIN" reuses it (no re-parse, no
+// re-upload); picking a different one disposes this one first. Each
+// loadKaijuModel() call parses its own copy, so this run is the sole
+// owner of these resources: nothing else shares them, which is why it's
+// correct to dispose them here even though normalizeGLTFMaterials tags
+// the geometry userData.template.
+let _kaijuCache = null; // { key, glb }
+function _disposeKaijuGLB(glb) {
+  if (!glb) return;
+  glb.mixer.stopAllAction();
+  glb.mixer.uncacheRoot(glb.root);
+  if (glb.root.parent) glb.root.parent.remove(glb.root);
+  const texKeys = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap'];
+  const seen = new Set();
+  glb.root.traverse((n) => {
+    if (n.geometry && !seen.has(n.geometry)) { seen.add(n.geometry); n.geometry.dispose(); }
+    if (n.skeleton && !seen.has(n.skeleton)) { seen.add(n.skeleton); n.skeleton.dispose(); }
+    const mats = Array.isArray(n.material) ? n.material : (n.material ? [n.material] : []);
+    for (const m of mats) {
+      if (seen.has(m)) continue;
+      seen.add(m);
+      for (const k of texKeys) if (m[k] && !seen.has(m[k])) { seen.add(m[k]); m[k].dispose(); }
+      m.dispose();
+    }
+  });
+}
+
+// Compile every shader program the run needs while the loading screen is up
+// (programs jumped 34 -> 169 during the first run, each one a hitch). The
+// city is already in the scene; the kaiju, one of each enemy, a car, a
+// civilian and one of every registered VFX effect are staged off-scene and
+// compiled against the scene's lights. compile() only builds programs (no
+// buffer/texture uploads), and the staged throwaways are simply dropped --
+// their materials are not disposed, which would release the programs again.
+async function _prewarmShaders(kaijuRoot) {
+  const t0 = performance.now();
+  const stage = new THREE.Group();
+  if (kaijuRoot) stage.add(kaijuRoot); // re-parented to the scene right after
+  for (const C of [Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech]) {
+    try { stage.add(new C(0, 0).root); } catch (e) { /* template missing: nothing to warm */ }
+  }
+  const stagedCivs = [];
+  try { spawnCars(stage, 1, 10, 40); } catch (e) { /* ignore */ }
+  try { stagedCivs.push(...spawnCivilians(stage, 1, 10)); } catch (e) { /* ignore */ }
+  const stubWorld = Object.create(world);
+  stubWorld.scene = stage; stubWorld.effects = []; stubWorld.shells = []; stubWorld.debris = [];
+  const P = new THREE.Vector3(0, 2, 0), D = new THREE.Vector3(0, 0, 1), B = new THREE.Vector3(0, 2, 10);
+  for (const name of listBuilders()) {
+    try {
+      vfx.spawn(name, { world: stubWorld, pos: P.clone(), origin: P.clone(), dir: D.clone(), length: 20,
+        color: 0xffaa33, glowColor: 0xffffff, a: P.clone(), b: B.clone(), life: 0.5, segs: 6, radius: 10,
+        count: 2, fromPos: P.clone(), toPos: B.clone(), args: [] });
+    } catch (e) { /* builder needs a fuller world: it compiles on first use instead */ }
+  }
+  resetPooledLights();
+  try {
+    if (renderer.compileAsync) await renderer.compileAsync(stage, camera, scene);
+    else renderer.compile(stage, camera, scene);
+    if (renderer.compileAsync) await renderer.compileAsync(scene, camera);
+    else renderer.compile(scene, camera);
+  } catch (e) { console.warn('[prewarm] shader compile failed', e); }
+  if (kaijuRoot) stage.remove(kaijuRoot);
+  stage.traverse((n) => { if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose(); });
+  console.log(`[prewarm] ${renderer.info.programs.length} programs ready in ${(performance.now() - t0).toFixed(0)} ms`);
+}
+
+// "UNLEASH AGAIN": reset the run without reloading the page, so the parsed
+// GLB templates (15-20 s of parsing) are reused. Tears down every object
+// added since boot (kaiju, enemies, effects, debris, cars, civilians and
+// the city itself), rebuilds a fresh city from the cached templates,
+// resets per-run state and returns to the monster-select menu.
+function restartInPlace() {
+  // The kaiju GLB stays alive in _kaijuCache: reused if the same monster
+  // is picked again, disposed by _startGameInner if a different one is.
+  const keepRoot = state.kaiju && state.kaiju.glb ? state.kaiju.root : null;
+  if (keepRoot) state.kaiju.glb.mixer.stopAllAction();
+  for (const o of [...scene.children]) {
+    // Pooled point lights (effects.js / vfx.js) are added lazily and are
+    // reused forever, so they stay.
+    if (_sceneBaseline.has(o) || o.isLight) continue;
+    scene.remove(o);
+    if (o === keepRoot) continue; // cached kaiju: detach only
+    o.traverse((n) => {
+      // Template-owned GLB geometry (userData.template, set in assetCache.js)
+      // is shared by every clone and reused by the next city; keep it.
+      if (n.geometry && !n.geometry.userData.template) n.geometry.dispose();
+      if (n.isInstancedMesh) n.dispose();
+      // Each skinned clone (civilians, soldiers, mechs) owns a GPU bone texture.
+      if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose();
+    });
+  }
+  if (state.kaiju && state.kaiju.mixer && !state.kaiju.glb) state.kaiju.mixer.stopAllAction();
+  world.effects.length = 0;
+  world.shells.length = 0;
+  world.debris.length = 0;
+  world.enemies.length = 0;
+  world._shakeMag = 0; world._shakeTime = 0;
+  for (const k of Object.keys(state)) {
+    if (!(k in _STATE_INIT)) { if (k[0] === '_') delete state[k]; continue; }
+    const v = _STATE_INIT[k];
+    if (v && v.isVector3) state[k].copy(v);
+    else state[k] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+  }
+  state.kaiju = null;
+  _hudLastScore = -1;
+  buildWorldCity();
+  if (_worldTemplatesLoaded) flushPendingGLBBuildings(scene);
+  document.getElementById('gameover').classList.add('hidden');
+  document.getElementById('minimap').classList.add('hidden');
+  document.getElementById('boss-bar').style.display = 'none';
+  document.getElementById('menu').classList.remove('hidden');
+}
+window.__restartInPlace = restartInPlace;
 async function startGame(key) {
   if (_startingGame) return;
 
@@ -1091,6 +1337,7 @@ async function _startGameInner(key) {
 
   state.monsterKey = key;
   state.monsterCfg = MONSTERS[key];
+  audio.setMonster(state.monsterCfg.variant);
   state.maxHp = state.monsterCfg.stats.hp;
   state.hp = state.maxHp;
   state.score = 0;
@@ -1132,7 +1379,21 @@ async function _startGameInner(key) {
     // Buildings, enemies, debris, trees all use procedural fallbacks.
     // On desktop: load everything in parallel.
     let glb;
-    if (isMobile) {
+    if (_kaijuCache && _kaijuCache.key !== key) {
+      _disposeKaijuGLB(_kaijuCache.glb);
+      _kaijuCache = null;
+    }
+    if (_kaijuCache) {
+      // Same kaiju as last run: reuse the parsed model, reset its anims.
+      glb = _kaijuCache.glb;
+      glb.resetAnim();
+      progress.kaijuLoaded = progress.kaijuTotal = 1;
+      progress.bldgTotal = 0; progress.enemyTotal = 0;
+      updateLoadingUI();
+    } else if (isMobile || _worldTemplatesLoaded) {
+      // Mobile never loads world templates; on desktop restarts the
+      // building / debris / enemy templates are already parsed and only
+      // the (possibly different) kaiju has to load.
       glb = await loadKaijuModel(key, (loaded, total, label) => {
         progress.kaijuLoaded = loaded;
         progress.kaijuTotal = total;
@@ -1162,7 +1423,9 @@ async function _startGameInner(key) {
           updateLoadingUI();
         }),
       ]);
+      _worldTemplatesLoaded = true;
     }
+    _kaijuCache = { key, glb };
 
     // Clone + place every queued building now that templates are loaded
     if (!isMobile) {
@@ -1178,6 +1441,8 @@ async function _startGameInner(key) {
       ? `KAIJU READY \u2022 ${cs.hits} cached / ${cs.misses} downloaded`
       : 'KAIJU READY';
     await new Promise(r => setTimeout(r, cs.hits > 0 ? 600 : 400));
+    loadingStatus.textContent = 'WARMING UP SHADERS';
+    await _prewarmShaders(glb.root);
     loadingScreen.classList.remove('visible');
 
     k = { root: glb.root, head: glb.head, tail: glb.tail, mixer: glb.mixer, glb };
@@ -1185,6 +1450,7 @@ async function _startGameInner(key) {
     k = buildKaiju(state.monsterCfg);
   }
   k.root.position.set(0, 0, 0);
+  k.root.rotation.set(0, 0, 0); // clear a previous run's death topple (cached GLB)
   // Phase 4: kaiju is the only object that casts shadows. Traverse its mesh
   // tree once and flip the flags so the shadow pass picks up every limb.
   k.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -1234,7 +1500,7 @@ async function _startGameInner(key) {
   audio.startMusic();
 
   startWave(1);
-  if (!isMobile) renderer.domElement.requestPointerLock?.();
+  if (!isMobile) _requestPointerLock();
 }
 
 // ------------------------- HUD -------------------------
@@ -1456,7 +1722,11 @@ function startWave(n) {
     { id: 'air',      name: 'AIR DOMINANCE',             mods: { tank: 0.5, heli: 2.5, mech: 0.0, jet: 2.5, arty: 0.0, soldier: 0.0 } },
     { id: 'siege',    name: 'ARTILLERY SIEGE',           mods: { tank: 0.5, heli: 0.5, mech: 1.2, jet: 0.5, arty: 3.0, soldier: 0.5 } },
   ];
-  const theme = isBossWave ? null : (n <= 1 ? THEMES[0] : THEMES[Math.floor(Math.random() * THEMES.length)]);
+  // Waves 2-3 only roll the gentle themes (standard / infantry swarm); the
+  // spiky ones (armor x2 tanks, air x2.5 helis+jets, siege x3 artillery)
+  // unlock from wave 4 so pressure ramps instead of spiking at wave 2.
+  const themePool = n <= 3 ? THEMES.slice(0, 2) : THEMES;
+  const theme = isBossWave ? null : (n <= 1 ? THEMES[0] : themePool[Math.floor(Math.random() * themePool.length)]);
   if (isBossWave) {
     showWaveBanner(`WAVE ${n}`, 'BOSS APPROACHING');
     toast('⚠ BOSS WAVE ⚠', 'bad');
@@ -1647,11 +1917,13 @@ function maybeDropPickup(pos, source = 'building') {
 
 world.onTankKilled = () => {
   state.tanksKilled++;
+  audio.vehicleDestroyed('tank');
   addScore(250); addRage(8); bumpCombo(); registerKill();
   progressObjective('tanks');
 };
 world.onHeliKilled = () => {
   state.helisKilled++;
+  audio.vehicleDestroyed('heli');
   addScore(350); addRage(10); bumpCombo(); registerKill();
 };
 world.onMechKilled = () => {
@@ -1660,6 +1932,7 @@ world.onMechKilled = () => {
 };
 world.onJetKilled = () => {
   state.jetsKilled++;
+  audio.vehicleDestroyed('jet');
   addScore(450); addRage(12); bumpCombo(); registerKill();
   toastMini('JET DOWN!', 'good');
 };
@@ -1684,22 +1957,23 @@ world.onBossKilled = () => {
   if (state.kaiju && state.kaiju.glb) {
     const v = state.monsterCfg.variant;
     const anim = v === 'ghidorah' ? 'cheer' : v === 'mecha' ? 'shrug' : 'flex';
-    state.kaiju.glb.playOnce(anim, 0.2);
+    kaijuOneShot([anim, 'skill2'], 0.2, 1, { commit: 0.5 });
   }
 };
 world.onBossSlam = () => {
   // Damage to player if too close
-  state.hp -= 22;
+  hurtKaiju(22);
   world.shake(1.0, 0.5);
-  if (state.hp <= 0 && !state.gameOver) gameOver(false);
 };
 world.onCarDestroyed = () => {
   state.carsCrushed++;
+  audio.carCrush();
   addScore(80); addRage(2);
   progressObjective('cars');
 };
 world.onCivilianStomped = () => {
   state.civiliansStomped++;
+  audio.scream();
   addScore(35); addRage(1);
   progressObjective('civilians');
   // Tiny popup so the player gets feedback on every flatten
@@ -1753,6 +2027,7 @@ function progressObjective(kind) {
 
 world.onBuildingDestroyed = (b) => {
   state.buildingsDestroyed++;
+  audio.collapse();
   progressObjective('buildings');
   const base = Math.floor(b.maxHp * 1.5);
   addScore(base);
@@ -1802,10 +2077,16 @@ function gameOver(victory) {
   if (state.kaiju && state.kaiju.glb) {
     const glb = state.kaiju.glb;
     if (victory) {
-      glb.play('dance', 0.3);
+      // As a one-shot so per-frame locomotion 'idle' can't override it.
+      kaijuOneShot(['dance'], 0.3);
     } else {
-      // Godzilla has a dedicated death anim; Ghidorah falls back to stomp
-      glb.playOnce(glb.actions.death ? 'death' : 'stomp', 0.2);
+      // Godzilla/Mechra have a death anim (hold: stay on the final frame).
+      // Rigs without one (Tridon) get a procedural topple instead of
+      // standing upright on a stomp end-frame.
+      if (!kaijuOneShot(['death', 'dead'], 0.2, 1, { hold: true })) {
+        kaijuOneShot(['stomp'], 0.2, 1.6, { hold: true });
+        state._topple = { t: 0, side: Math.random() < 0.5 ? 1 : -1, landed: false };
+      }
     }
   }
   document.exitPointerLock?.();
@@ -1911,6 +2192,84 @@ function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample =
   }
 }
 
+// Aim assist: the live enemy closest to the ray (origin, dir) within
+// maxAngle radians (horizontal) and maxDist, weighted toward nearer ones.
+// Military units are ~4-7 u next to a 32 u kaiju, so unassisted beams and
+// punches almost never connected ("military destroyed 0").
+function _assistTarget(origin, dir, maxAngle, maxDist, groundOnly) {
+  let best = null, bestScore = Infinity;
+  const fl = Math.hypot(dir.x, dir.z) || 1;
+  const fx = dir.x / fl, fz = dir.z / fl;
+  const cosMax = Math.cos(maxAngle);
+  for (const e of world.enemies) {
+    if (e.dead) continue;
+    if (groundOnly && (e.type === 'heli' || e.type === 'jet')) continue;
+    const p = e.root.position;
+    const dx = p.x - origin.x, dz = p.z - origin.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 1 || d > maxDist) continue;
+    const c = (dx * fx + dz * fz) / d;
+    if (c < cosMax) continue;
+    const score = (1 - c) * 400 + d; // angle dominates, distance breaks ties
+    if (score < bestScore) { bestScore = score; best = e; }
+  }
+  return best;
+}
+// Ground units the kaiju walks into are crushed outright (tanks only died
+// inside 4.5 u of the kaiju's centre, which its 8 u body rarely reached).
+const _CRUSH_TYPES = new Set(['tank', 'artillery', 'soldier']);
+function crushUnderfoot() {
+  const k = state.kaiju;
+  if (!k) return;
+  const r = KAIJU_BODY_RADIUS * (state.monsterCfg.stats.scale || 1) + 2.5;
+  const p = k.root.position;
+  for (const e of world.enemies) {
+    if (e.dead || !_CRUSH_TYPES.has(e.type)) continue;
+    const ep = e.root.position;
+    const dx = ep.x - p.x, dz = ep.z - p.z;
+    if (dx * dx + dz * dz < r * r) {
+      e.damage(999, world);
+      if (e.dead && e.type !== 'soldier') {
+        _tmpV2.set(ep.x, ep.y + 6, ep.z);
+        spawnPopup(_tmpV2, 'CRUSHED!', '#ffee44');
+      }
+    }
+  }
+}
+
+// Procedural death topple for rigs with no death clip: tip the root over
+// sideways about its feet with a gravity ease (~1.1 s), then a dust burst
+// and camera shake on impact, and freeze the mixer so it lies still.
+// rotation.z is applied in the root's local frame (Euler XYZ, after the
+// yaw), so it always falls to the kaiju's own left or right.
+function _updateTopple(dt) {
+  const tp = state._topple, k = state.kaiju;
+  if (!tp || !k) return;
+  // The world tick is stopped on game over, so the impact dust is ticked here.
+  if (tp.fx && !tp.fx.dead) tp.fx.tick(dt);
+  tp.t = Math.min(1, tp.t + dt / 1.1);
+  const e = tp.t * tp.t; // accelerate like a falling body
+  k.root.rotation.z = tp.side * e * Math.PI * 0.47;
+  k.root.position.y = -e * 1.5;
+  if (tp.t >= 1 && !tp.landed) {
+    tp.landed = true;
+    world.shake(1.2, 0.5);
+    _tmpV1.copy(k.root.position).setY(0);
+    tp.fx = makeDustBurst(world, _tmpV1, 26, 10);
+    audio.collapse && audio.collapse();
+    if (k.glb) k.glb.mixer.timeScale = 0;
+  }
+}
+
+// Play the first one-shot clip this kaiju actually has (rigs differ: e.g.
+// Gorrak has no 'tantrum'/'flex'/'stomp2', Mechra has no 'jump').
+function kaijuOneShot(names, fade = 0.15, timeScale = 1, opts) {
+  const glb = state.kaiju && state.kaiju.glb;
+  if (!glb) return false;
+  for (const n of names) if (glb.playOnce(n, fade, timeScale, opts)) return true;
+  return false;
+}
+
 function fireBeam() {
   const cfg = state.monsterCfg.beam;
   if (state.rage < cfg.cost || state.cooldowns.beam > 0) return;
@@ -1921,7 +2280,7 @@ function fireBeam() {
   if (state.kaiju.glb) {
     const v = state.monsterCfg.variant;
     const anim = v === 'ghidorah' ? 'cast1' : v === 'mecha' ? 'cast1' : 'skill1';
-    state.kaiju.glb.playOnce(anim, 0.15);
+    kaijuOneShot([anim, 'skill1'], 0.15, 1.3, { commit: 0.6 });
   }
   state.kaiju.head.getWorldPosition(_beamOrigin);
   _beamOrigin.y += 1;
@@ -1931,6 +2290,12 @@ function fireBeam() {
   _beamOrigin.addScaledVector(_beamDir, 5.5);
 
   const length = 260;
+  // Snap onto an enemy within ~14 deg of the aim (centre of its hull).
+  const tgt = _assistTarget(_beamOrigin, _beamDir, 0.25, length, false);
+  if (tgt) {
+    _tmpV1.copy(tgt.root.position); _tmpV1.y += 3;
+    _beamDir.subVectors(_tmpV1, _beamOrigin).normalize();
+  }
   world.spawnBeam(_beamOrigin, _beamDir, length, cfg.color, cfg.glow);
   world.shake(0.3, 0.4);
   audio.beam();
@@ -1942,17 +2307,36 @@ function fireBeam() {
     // FULL beam length, plus extra branching arcs every 50u for the
     // electrical-storm read. Bolts are thick + last 0.65s so they're
     // dominant, not a subtle fork next to a green tube.
+    //
+    // Visibility from the chase cam: the camera looks straight down the
+    // beam from behind Tridon, so bolts ON the beam axis were end-on and
+    // hidden by its wings/body. The main bolt now starts 10 u ahead of the
+    // head and coils around the axis (helix, radius ~3.5 u), and two
+    // extra bolts leap from the wing tips (beside the body, in view) and
+    // converge onto the beam ~50 u out.
+    const right = _tmpV1.crossVectors(_beamDir, THREE.Object3D.DEFAULT_UP).normalize().clone();
+    const up2 = new THREE.Vector3().crossVectors(right, _beamDir).normalize();
     const SEGS = 6;
-    const segLen = length / SEGS;
+    const START = 10;
+    const segLen = (length - START) / SEGS;
+    const ph0 = Math.random() * Math.PI * 2;
+    const helix = (i) => {
+      const p = _beamOrigin.clone().addScaledVector(_beamDir, START + i * segLen);
+      const a = ph0 + i * 1.4;
+      const r = i === 0 ? 1.0 : 3.5;
+      return p.addScaledVector(right, Math.cos(a) * r).addScaledVector(up2, Math.sin(a) * r);
+    };
+    let prev = helix(0);
     for (let i = 0; i < SEGS; i++) {
-      const a = _beamOrigin.clone().addScaledVector(_beamDir, i * segLen);
-      const b = _beamOrigin.clone().addScaledVector(_beamDir, (i + 1) * segLen);
-      // Stagger the segments slightly off-axis so they read as one
-      // continuous-but-jagged bolt
-      b.x += (Math.random() - 0.5) * 1.2;
-      b.y += (Math.random() - 0.5) * 0.6;
-      b.z += (Math.random() - 0.5) * 1.2;
-      world.effects.push(makeChainLightning(world, a, b, cfg.color, 0.65, 12));
+      const next = helix(i + 1);
+      world.effects.push(makeChainLightning(world, prev, next, cfg.color, 0.65, 12));
+      prev = next;
+    }
+    for (const side of [-1, 1]) {
+      const wing = _beamOrigin.clone()
+        .addScaledVector(right, side * 11).addScaledVector(up2, 4).addScaledVector(_beamDir, -2);
+      const meet = _beamOrigin.clone().addScaledVector(_beamDir, 45 + Math.random() * 15);
+      world.effects.push(makeChainLightning(world, wing, meet, cfg.color, 0.55, 10));
     }
     // Branching forks coming off the main bolt
     for (let f = 0; f < 5; f++) {
@@ -1976,26 +2360,47 @@ function fireBeam() {
   _beamRay.set(_beamOrigin, _beamDir);
   _beamRay.near = 0.5; _beamRay.far = length;
   const beamDmg = cfg.damage * (state.upgrades.dmgMult || 1);
+  // The beam stops at the NEAREST building, whether it's an instance in
+  // bodiesIM (procedural) or a GLB tower (customMesh, not in bodiesIM, so
+  // tested via its footprint AABB). Exactly one building takes the hit,
+  // so nothing can be damaged twice by one shot.
+  let impactDist = length;
+  let hitB = null;
   if (world.bodiesIM) {
     const hits = _beamRay.intersectObject(world.bodiesIM, false);
     for (let hi = 0; hi < hits.length; hi++) {
       const h = hits[hi];
       const b = world.buildings[h.instanceId];
       if (!b || b.destroyed) continue;
-      b.damage(beamDmg, h.point, world);
-      world.spawnExplosion(h.point, 0.8);
-      // Variant-specific impact signature at the hit point
-      if (variant === 'gojira') {
-        world.spawnHitPulse(h.point, cfg.color); // bright green flash
-      } else if (variant === 'mecha') {
-        // Plasma cannon: secondary explosion ring for double-impact
-        world.spawnShockwave(h.point.clone().setY(0.3), cfg.color, 14);
-      } else if (variant === 'ghidorah') {
-        // Final lightning crack from origin to hit point
-        world.effects.push(makeChainLightning(world, _beamOrigin, h.point, cfg.color, 0.3));
-      }
+      impactDist = h.distance; hitB = b; _beamImpact.copy(h.point);
       break;
     }
+  }
+  const nearestGLB = _rayNearestGLBBuilding(_beamRay.ray, impactDist, _beamBoxHit);
+  if (nearestGLB) { hitB = nearestGLB.b; impactDist = nearestGLB.d; _beamImpact.copy(_beamBoxHit); }
+  if (hitB) {
+    const hp = _beamImpact.clone();
+    hitB.damage(beamDmg, hp, world);
+    world.spawnExplosion(hp, 0.8);
+    // Variant-specific impact signature at the hit point
+    if (variant === 'gojira') {
+      world.spawnHitPulse(hp, cfg.color); // bright green flash
+    } else if (variant === 'mecha') {
+      // Plasma cannon: secondary explosion ring for double-impact
+      world.spawnShockwave(hp.clone().setY(0.3), cfg.color, 14);
+    } else if (variant === 'ghidorah') {
+      // Final lightning crack from origin to hit point
+      world.effects.push(makeChainLightning(world, _beamOrigin, hp, cfg.color, 0.3));
+    }
+  }
+  if (_beamDir.y < -1e-3) {
+    const tg = -_beamOrigin.y / _beamDir.y;
+    if (tg > 0 && tg < impactDist) { impactDist = tg; _beamImpact.copy(_beamOrigin).addScaledVector(_beamDir, tg).setY(0); }
+  }
+  if (impactDist < length) {
+    const fx = vfx.spawn('beamImpact', { world, pos: _beamImpact.clone(), color: cfg.color });
+    if (fx) world.effects.push(fx);
+    else world.spawnHitPulse(_beamImpact.clone(), cfg.color);
   }
   // Enemy hits along beam (sphere check; uses module-level scratch vectors)
   for (const e of world.enemies) {
@@ -2006,7 +2411,7 @@ function fireBeam() {
     if (along < 0 || along > length) continue;
     _tmpV3.copy(_beamOrigin).addScaledVector(_beamDir, along);
     const distSq = _tmpV3.distanceToSquared(_tmpV1);
-    if (distSq < 9) {
+    if (distSq < 36) { // 6 u hit tube (was 3 u)
       e.damage(beamDmg * 0.7, world);
       world.spawnExplosion(_tmpV1, 0.7);
     }
@@ -2022,7 +2427,7 @@ function fireRoar() {
   if (state.kaiju.glb) {
     const v = state.monsterCfg.variant;
     const anim = v === 'ghidorah' ? 'cast2' : v === 'mecha' ? 'cast2' : 'tantrum';
-    state.kaiju.glb.playOnce(anim, 0.15);
+    kaijuOneShot([anim, 'skill2'], 0.15, 1.2, { commit: 0.7 });
   }
 
   const variant = state.monsterCfg.variant;
@@ -2086,7 +2491,7 @@ function fireCharge() {
   if (state.kaiju.glb) {
     const v = state.monsterCfg.variant;
     const anim = v === 'ghidorah' ? 'skill3' : v === 'mecha' ? 'skill3' : 'stomp';
-    state.kaiju.glb.playOnce(anim, 0.15);
+    kaijuOneShot([anim, 'stomp'], 0.15, 1.2, { commit: 0.45 });
   }
 
   const variant = state.monsterCfg.variant;
@@ -2156,7 +2561,11 @@ function fireStomp() {
   state._stompJumpT = 0.55;
   state._stompJumpD = 0.55;
   state._stompImpacted = false;
-  if (state.kaiju.glb) state.kaiju.glb.playOnce('jump', 0.1);
+  // Jump clip squashed to the 0.55 s airtime + ~0.45 s landing (Gorrak's
+  // Basic_Jump is 5.9 s). Mechra has no jump: Angry_Stomp at 2.2x.
+  if (!kaijuOneShot(['jump'], 0.1, 1, { duration: 1.0 })) {
+    kaijuOneShot(['stomp'], 0.1, 2.2, { commit: 0.9 });
+  }
   audio.charge && audio.charge(); // launch whoosh
 }
 
@@ -2174,7 +2583,7 @@ function fireUltimate() {
   if (state.kaiju.glb) {
     const v = state.monsterCfg.variant;
     const anim = v === 'ghidorah' ? 'cast3' : v === 'mecha' ? 'cast3' : 'stomp2';
-    state.kaiju.glb.playOnce(anim, 0.1);
+    kaijuOneShot([anim, 'stomp', 'skill2'], 0.1, 1.2, { commit: 1.0 });
   }
   slowMo(0.45, 0.5);
 
@@ -2261,18 +2670,25 @@ function fireUltimate() {
     world.spawnShockwave(center, 0xffffff, 100);
   }
 
-  // Beam line damage too -- pierce up to 3 instances along the path
+  // Beam line damage too -- pierce up to 3 buildings along the path.
+  // Procedural instances (bodiesIM) and GLB towers (AABB test) are merged
+  // and sorted by distance; a Set guards against hitting one twice.
   const ray = new THREE.Raycaster(origin, dir, 0.5, 360);
+  const cands = _rayGLBBuildingsAll(ray.ray, 360);
   if (world.bodiesIM) {
-    const hits = ray.intersectObject(world.bodiesIM, false);
-    let hit = 0;
-    for (let i = 0; i < hits.length && hit < 3; i++) {
-      const b = world.buildings[hits[i].instanceId];
-      if (!b || b.destroyed) continue;
-      b.damage(300, hits[i].point, world);
-      world.spawnExplosion(hits[i].point, 1.4);
-      hit++;
+    for (const h of ray.intersectObject(world.bodiesIM, false)) {
+      const b = world.buildings[h.instanceId];
+      if (b && !b.destroyed) cands.push({ b, d: h.distance, point: h.point });
     }
+  }
+  cands.sort((a, c) => a.d - c.d);
+  const pierced = new Set();
+  for (let i = 0; i < cands.length && pierced.size < 3; i++) {
+    const { b, point } = cands[i];
+    if (b.destroyed || pierced.has(b)) continue;
+    pierced.add(b);
+    b.damage(300, point, world);
+    world.spawnExplosion(point, 1.4);
   }
 }
 
@@ -2283,12 +2699,21 @@ function fireMelee() {
   // _impact is safe here -- damageInRadius internally writes to _tmpV1/_tmpV2
   // but never touches _impact, so the center vector survives the loop.
   const center = _impact.copy(state.kaiju.root.position).addScaledVector(forward, 14);
+  // Assist: a ground unit within 36 u and ~70 deg of facing pulls the
+  // swing centre onto it (capped at 30 u from the kaiju).
+  const mt = _assistTarget(state.kaiju.root.position, forward, 1.2, 36, true);
+  if (mt) {
+    center.copy(mt.root.position).setY(0);
+    _tmpV3.subVectors(center, state.kaiju.root.position).setY(0);
+    if (_tmpV3.length() > 30) center.copy(state.kaiju.root.position).addScaledVector(_tmpV3.normalize(), 30);
+  }
   const dmg = state.monsterCfg.stats.melee;
   damageInRadius(center, 17, dmg, false);
   state.rage = Math.min(state.maxRage, state.rage + 4);
   // Animate arm swing (GLB uses punch combo, procedural uses armR swing)
   if (state.kaiju.glb) {
-    state.kaiju.glb.playOnce('punch', 0.1, 1.4);
+    // Full combo when standing; walking may cut in after 0.6 s.
+    state.kaiju.glb.playOnce('punch', 0.1, 1.4, { commit: 0.6 });
   } else {
     const armR = state.kaiju.bones?.armR;
     if (armR) armR.userData.swing = 0.4;
@@ -2404,6 +2829,7 @@ function updatePlayer(dt) {
   k.root.position.x += state.vel.x * dt;
   k.root.position.z += state.vel.z * dt;
   resolveBuildingCollisions(k.root.position, dt);
+  crushUnderfoot();
   // Clamp to play area. The visible distant scenery (silhouette skyline +
   // mountains) starts beyond ~480u so the boundary always reads as
   // "city extends into the distance" instead of "edge of the world".
@@ -2420,35 +2846,47 @@ function updatePlayer(dt) {
     // Update the animation mixer
     glb.mixer.update(dt);
 
-    // Determine turning direction based on yaw change
+    // Turn detection on a SMOOTHED yaw rate (rad/s). The raw per-frame
+    // delta is 0 on frames without a mousemove, which made the turn test
+    // flicker and restart Walk_Turn <-> Walking ~60x/s. EMA (~0.15 s) +
+    // hysteresis (enter 1.1 rad/s, leave 0.55 rad/s) + a 0.3 s minimum
+    // hold on each locomotion clip.
     const yawDelta = (state._prevYaw != null) ? (state.yaw - state._prevYaw) : 0;
     state._prevYaw = state.yaw;
+    const rawRate = dt > 0 ? yawDelta / dt : 0;
+    const ema = 1 - Math.exp(-dt / 0.15);
+    state._yawRate = (state._yawRate || 0) + (rawRate - (state._yawRate || 0)) * ema;
+    const yr = state._yawRate;
+    if (!state._turnDir) {
+      if (Math.abs(yr) > 1.1) state._turnDir = Math.sign(yr);
+    } else if (Math.abs(yr) < 0.55 || Math.sign(yr) !== state._turnDir) {
+      state._turnDir = 0;
+    }
+    state._locoHoldT = Math.max(0, (state._locoHoldT || 0) - dt);
 
-    // Determine which animation to play based on state
-    if (state._beamStanceT > 0) {
-      glb.playOnce('skill1', 0.2);
-    } else if (state._roarStanceT > 0) {
-      glb.playOnce('skill2', 0.2);
-    } else if (state._stompJumpT > 0) {
-      glb.playOnce('jump', 0.15);
-    } else if (state._chargeStanceT > 0) {
-      glb.playOnce('stomp', 0.2);
-    } else if (moving) {
+    // One-shots (attacks, jump, death) are started by the fire*()
+    // functions and locked inside glb.playOnce; locomotion requests made
+    // meanwhile are deferred by glb.play until the clip's commit window
+    // passes (moving) or it finishes (idle), then crossfade back.
+    let loco, fade;
+    if (moving) {
       const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
-      if (Math.abs(yawDelta) > 0.015) {
+      if (state._turnDir) {
         // Turning while moving — fall back to walk turns if run turns unavailable
-        if (sprint && glb.actions.turnLeft) {
-          glb.play(yawDelta > 0 ? 'turnLeft' : 'turnRight', 0.2);
-        } else {
-          glb.play(yawDelta > 0 ? 'walkTurnL' : 'walkTurnR', 0.2);
-        }
-      } else if (sprint) {
-        glb.play('run', 0.25);
+        const left = state._turnDir > 0;
+        if (sprint && glb.actions.turnLeft) loco = left ? 'turnLeft' : 'turnRight';
+        else loco = left ? 'walkTurnL' : 'walkTurnR';
+        fade = 0.2;
       } else {
-        glb.play('walk', 0.25);
+        loco = sprint ? 'run' : 'walk';
+        fade = 0.25;
       }
+      if (!glb.actions[loco]) loco = 'walk';
     } else {
-      glb.play('idle', 0.4);
+      loco = 'idle'; fade = 0.4;
+    }
+    if (loco !== glb.currentName && (state._locoHoldT <= 0 || glb.oneShotActive)) {
+      if (glb.play(loco, fade)) state._locoHoldT = 0.3;
     }
 
     // Keep yaw rotation driven by player input
@@ -2741,12 +3179,55 @@ function updatePlayer(dt) {
   }
 }
 
+// ------------------------- Damage direction indicator -------------------------
+// Red chevrons around the screen centre pointing at whatever just shot the
+// kaiju, so off-screen tanks/helis aren't invisible damage. Pooled DOM
+// nodes; the angle is recomputed every frame against the camera so the
+// chevron keeps tracking the source while the player turns.
+const _dmgInd = [];
+const DMG_IND_LIFE = 1.6;
+function addDamageIndicator(srcX, srcZ) {
+  const root = document.getElementById('dmg-indicators');
+  if (!root) return;
+  let ind = _dmgInd.find((d) => d.t <= 0);
+  if (!ind) {
+    if (_dmgInd.length >= 6) ind = _dmgInd.reduce((a, b) => (a.t < b.t ? a : b));
+    else {
+      const el = document.createElement('div');
+      el.className = 'dmg-ind';
+      root.appendChild(el);
+      ind = { el, x: 0, z: 0, t: 0 };
+      _dmgInd.push(ind);
+    }
+  }
+  ind.x = srcX; ind.z = srcZ; ind.t = DMG_IND_LIFE;
+}
+function updateDamageIndicators(dt) {
+  if (!_dmgInd.length || !state.kaiju) return;
+  const kp = state.kaiju.root.position;
+  // Camera forward projected on the ground plane.
+  camera.getWorldDirection(_tmpV1);
+  const fx = _tmpV1.x, fz = _tmpV1.z;
+  for (const d of _dmgInd) {
+    if (d.t <= 0) continue;
+    d.t -= dt;
+    if (d.t <= 0 || state.gameOver) { d.t = 0; d.el.style.opacity = '0'; continue; }
+    const dx = d.x - kp.x, dz = d.z - kp.z;
+    // Screen-space angle (0 = up/ahead, positive = clockwise/right).
+    const ang = Math.atan2(dx * -fz + dz * fx, dx * fx + dz * fz);
+    d.el.style.transform = `translate(-50%, -50%) rotate(${ang}rad)`;
+    d.el.style.opacity = String(Math.min(1, d.t / (DMG_IND_LIFE * 0.5)));
+  }
+}
+
 const _camRay = new THREE.Raycaster();
 const _camHead = new THREE.Vector3();
 const _camOffset = new THREE.Vector3();
 const _camTarget = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
 const _camCandidates = []; // reused across frames -- we only mutate length
+const _camBox = new THREE.Box3();
+const _camHit = new THREE.Vector3();
 function updateCamera() {
   const k = state.kaiju;
   if (!k) return;
@@ -2773,6 +3254,26 @@ function updateCamera() {
   if (world.bodiesIM) {
     const hit = _camRay.intersectObject(world.bodiesIM, false)[0];
     if (hit && hit.distance < dist) dist = Math.max(11, hit.distance - 1.5);
+  }
+  // GLB towers and landmarks are separate customMesh roots, not instances
+  // in bodiesIM, so the raycast above misses them and the camera dives
+  // inside. Test the ray against each nearby building's footprint AABB
+  // (w/d/h are rewritten to the GLB's scaled bounds on placement). Boxes
+  // that already contain the head are skipped so smashing through a
+  // building doesn't yank the camera in.
+  if (world.buildingGrid) {
+    const midX = _camHead.x + _camOffset.x * desiredDist * 0.5;
+    const midZ = _camHead.z + _camOffset.z * desiredDist * 0.5;
+    world.buildingGrid.forEachNear(midX, midZ, desiredDist * 0.5 + 30, (b) => {
+      if (b.destroyed || !b.customMesh) return;
+      _camBox.min.set(b.x - b.w / 2, 0, b.z - b.d / 2);
+      _camBox.max.set(b.x + b.w / 2, b.h, b.z + b.d / 2);
+      if (_camBox.containsPoint(_camHead)) return;
+      if (_camRay.ray.intersectBox(_camBox, _camHit)) {
+        const d = _camHit.distanceTo(_camHead);
+        if (d < dist) dist = Math.max(11, d - 1.5);
+      }
+    });
   }
 
   _camTarget.copy(_camHead).addScaledVector(_camOffset, dist);
@@ -2874,6 +3375,7 @@ function updateWorld(dt) {
     if (e.dead) { world.enemies.splice(i, 1); continue; }
     e.update(dt, world, kpos);
   }
+  audio.updateAmbience(world.enemies, kpos);
 
   // Shells -- compute kaiju centre once per frame, not per shell
   if (state.kaiju) {
@@ -2886,16 +3388,24 @@ function updateWorld(dt) {
     // Hit kaiju?
     if (state.kaiju) {
       if (s.mesh.position.distanceTo(_tmpV3) < 5) {
-        state.hp -= s.damage;
+        const dealt = hurtKaiju(s.damage);
         world.spawnExplosion(s.mesh.position.clone(), 0.5);
         world.shake(0.25, 0.2);
-        state.damageFlash = Math.min(1, state.damageFlash + s.damage / 60);
+        state.damageFlash = Math.min(1, state.damageFlash + dealt / 60);
+        // Point the damage indicator back along the shell's flight path.
+        addDamageIndicator(s.mesh.position.x - s.vel.x, s.mesh.position.z - s.vel.z);
         audio.shellHit();
         scene.remove(s.mesh);
         world.shells.splice(i, 1);
-        if (state.hp <= 0 && !state.gameOver) gameOver(false);
         continue;
       }
+    }
+    // Buildings block fire: a shell entering a footprint bursts on it.
+    if (_shellHitsBuilding(s.mesh.position)) {
+      world.spawnExplosion(s.mesh.position.clone(), 0.35);
+      scene.remove(s.mesh);
+      world.shells.splice(i, 1);
+      continue;
     }
     if (s.life <= 0 || s.mesh.position.y < 0) {
       world.spawnExplosion(s.mesh.position.clone(), 0.4);
@@ -2916,9 +3426,8 @@ function updateWorld(dt) {
     }, 1800);
     showMessage('WAVE CLEARED · +1000', 2.0);
     // Victory dance on wave clear
-    if (state.kaiju && state.kaiju.glb) {
-      state.kaiju.glb.play('dance', 0.3);
-    }
+    // (one-shot lock, commit 0: dances while standing, moving cuts it off)
+    kaijuOneShot(['dance'], 0.3, 1, { commit: 0 });
   }
 
   // Slowly regenerate small rage when idle (rageGain upgrade)
@@ -2927,8 +3436,14 @@ function updateWorld(dt) {
   if (state.upgrades.regenRate > 0) {
     state.hp = Math.min(state.maxHp, state.hp + state.upgrades.regenRate * dt);
   }
+  if (state._dmgWindow) state._dmgWindow *= Math.exp(-dt / DPS_WINDOW);
+  // Out-of-combat regen: after OOC_REGEN_DELAY s without taking damage.
+  if (!state.gameOver && state.hp > 0 && world.time - (state._lastHurtT || 0) > OOC_REGEN_DELAY) {
+    state.hp = Math.min(state.maxHp, state.hp + OOC_REGEN_RATE * dt);
+  }
   // Decay damage flash
   if (state.damageFlash > 0) state.damageFlash = Math.max(0, state.damageFlash - dt * 1.6);
+  updateDamageIndicators(dt);
 
   // Flush any pending GPU uploads for the building InstancedMesh once per
   // frame instead of once per damage event.
@@ -3020,8 +3535,8 @@ function updateWorld(dt) {
       const dx = state.kaiju.root.position.x - impact.x;
       const dz = state.kaiju.root.position.z - impact.z;
       if (dx * dx + dz * dz < 18 * 18) {
-        state.hp -= s.damage;
-        if (state.hp <= 0 && !state.gameOver) gameOver(false);
+        hurtKaiju(s.damage);
+        addDamageIndicator(impact.x, impact.z);
       }
       scene.remove(s.mesh);
       if (s.ring) scene.remove(s.ring);
@@ -3047,8 +3562,7 @@ function updateWorld(dt) {
       const dx = state.kaiju.root.position.x - a.x;
       const dz = state.kaiju.root.position.z - a.z;
       if (dx * dx + dz * dz < 22 * 22) {
-        state.hp -= 40;
-        if (state.hp <= 0 && !state.gameOver) gameOver(false);
+        hurtKaiju(40);
       }
       scene.remove(a.ring);
       state.airstrikes.splice(i, 1);
@@ -3192,7 +3706,7 @@ function offerUpgrades() {
       state.upgradePending = false;
       state.paused = false;
       _menuPad.focused = -1;
-      if (!isMobile) renderer.domElement.requestPointerLock?.();
+      if (!isMobile) _requestPointerLock();
       // Now actually advance the wave
       if (!state.gameOver) startWave(state.wave + 1);
     };
@@ -3237,6 +3751,7 @@ function tick(now) {
     // death, dance, and idle animations continue playing
     if (state.kaiju.mixer) {
       state.kaiju.mixer.update(Math.min(0.05, dtRaw));
+      if (state._topple) _updateTopple(Math.min(0.05, dtRaw));
     }
     updateCamera();
     updatePopups(dt);
