@@ -154,10 +154,10 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 // Set ready: true only once the file is on disk and has passed preview, so
 // missing assets never 404 at load.
 const TREE_GLBS = [
-  { url: './assets/trees/tree_zelkova.glb',    h: 7.0, ready: false },
-  { url: './assets/trees/tree_sakura.glb',     h: 5.6, ready: false },
+  { url: './assets/trees/tree_zelkova.glb',    h: 7.0, ready: true },
+  { url: './assets/trees/tree_sakura.glb',     h: 5.6, ready: true },
   { url: './assets/trees/tree_black_pine.glb', h: 4.8, ready: false },
-  { url: './assets/trees/tree_ginkgo.glb',     h: 8.0, ready: false },
+  { url: './assets/trees/tree_ginkgo.glb',     h: 8.0, ready: true },
 ].filter((t) => t.ready);
 const TREE_GLBS_FALLBACK = [
   { url: './assets/trees/normal_tree.glb' },
