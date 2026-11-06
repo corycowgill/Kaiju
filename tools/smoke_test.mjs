@@ -174,6 +174,15 @@ const sceneTotals = () => {
   });
   return { draws, tris, shadowDraws };
 };
+// Run the LOD controllers (onBeforeRender hooks) once from a chase-camera spot over the
+// spawn, so each tile pair counts its LOD0 or LOD1 copy like a real frame would
+{
+  const sp = (res && res.spawn) || { x: 0, z: 0 };
+  const cam = new THREE.PerspectiveCamera();
+  cam.position.set(sp.x, 40, sp.z + 40); cam.updateMatrixWorld(true);
+  const base = THREE.Object3D.prototype.onBeforeRender;
+  scene.traverse((o) => { if (o.onBeforeRender !== base) o.onBeforeRender(null, scene, cam); });
+}
 const totals = sceneTotals();
 if (process.env.SMOKE_BREAKDOWN) {
   // Top triangle contributors (debug aid): by geometry name / material
@@ -187,15 +196,15 @@ if (process.env.SMOKE_BREAKDOWN) {
   for (const [k, e] of [...by].sort((a, b) => b[1].tris - a[1].tris).slice(0, 25)) log(`${(e.tris / 1e3).toFixed(0)}k tris, ${e.draws} draws: ${k}`);
 }
 summary += `${res && res.buildings ? res.buildings.length : 0} buildings, scene ${totals.draws} meshes (${totals.shadowDraws} cast), ${(totals.tris / 1e6).toFixed(2)}M tris; `;
-// Chicago budget (desktop): Tokyo's own totals with this counter (desktop HIGH 708 meshes / 8.33M
-// tris) plus ~15%; phones: the MED target of ~450 draws and 4-5M tris (Tokyo MED: 369 / 3.49M)
-const BUDGET = Q.isMobile ? { draws: 450, tris: 4.5e6 } : { draws: 815, tris: 9.6e6 };
+// Chicago budget (desktop): Tokyo's own totals with this counter (desktop HIGH ~710 meshes /
+// ~5.0M tris) plus ~15%; phones: the MED target of ~450 draws and 4-5M tris (Tokyo MED: ~365 / ~2.3M)
+const BUDGET = Q.isMobile ? { draws: 450, tris: 4.5e6 } : { draws: 815, tris: 5.8e6 };
 if (level === 'chicago' && res && res.bounds) {
   const B = res.bounds;
   // Footprint centres (edge blocks may overhang the play limit a little)
   const outside = res.buildings.filter((b) => b.x < B.minX || b.x > B.maxX || b.z < B.minZ || b.z > B.maxZ);
   if (outside.length) fail(`chicago: ${outside.length} buildings outside bounds, e.g. (${outside[0].x.toFixed(1)}, ${outside[0].z.toFixed(1)})`);
-  const wet = res.buildings.filter((b) => b.h > 4 && res.isWater && res.isWater(b.x, b.z));
+  const wet = res.buildings.filter((b) => !b.isBridge && b.h > 4 && res.isWater && res.isWater(b.x, b.z));
   if (wet.length) fail(`chicago: ${wet.length} buildings stand on water, e.g. (${wet[0].x.toFixed(1)}, ${wet[0].z.toFixed(1)})`);
   if (res.isWater && res.isWater(res.spawn.x, res.spawn.z)) fail(`chicago: kaiju spawn (${res.spawn.x}, ${res.spawn.z}) is on water`);
   if (res.spawn.x < B.minX || res.spawn.x > B.maxX || res.spawn.z < B.minZ || res.spawn.z > B.maxZ) fail('chicago: kaiju spawn outside bounds');

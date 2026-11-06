@@ -4,7 +4,7 @@ import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL, withParseSlot, reportLoadError, isCodeBug, setKTX2Enabled } from './assetCache.js';
-import { buildChicago, loadChicagoLayout, chicagoBuildingGLBs, chicagoPropGLBs, chicagoVehicleGLBs } from './levels/chicago.js';
+import { buildChicago, loadChicagoLayout, chicagoBuildingGLBs, chicagoPropGLBs, chicagoVehicleGLBs, chicagoLod1GLBs } from './levels/chicago.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
 // and loadPedestrianTemplates() run at module-load time via top-level await in game.js.
@@ -207,6 +207,7 @@ const LOD1_READY = new Set([
   './assets/trees/tree_ginkgo.glb',
   './assets/props/traffic_signal.glb', './assets/props/street_lamp.glb', './assets/props/vending_machine.glb',
 ]);
+for (const u of chicagoLod1GLBs()) LOD1_READY.add(u);
 const _lod1ByGeom = new Map(); // LOD0 BufferGeometry -> LOD1 BufferGeometry
 const _lod1Attached = new Set(); // LOD0 urls whose twin registered (smoke test)
 // Beyond this distance (camera to a 120u instancing tile's centre, or kaiju to
@@ -2447,6 +2448,7 @@ export function loadBuildingTemplates(onProgress, level = 'tokyo') {
       _glbTemplates.set(url, { scene: s, box: new THREE.Box3().setFromObject(s) });
       loaded++;
       if (onProgress) onProgress(loaded, total, url.split('/').pop().replace('.glb', ''));
+      return _attachLod1(url, s); // listed buildings only (Chicago landmarks, L track)
     }).catch((err) => {
       reportLoadError('BuildingGLB', url, err);
       loaded++;
@@ -2642,18 +2644,29 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY) 
 const BLDG_TILE = 120;
 const _glbBuckets = new Map();
 function _buildGLBBuildingInstances(scene) {
+  const lodPairs = [];
   for (const b of _glbBuckets.values()) {
-    const im = new THREE.InstancedMesh(b.geometry, b.material, b.items.length);
-    b.items.forEach((it, i) => {
-      im.setMatrixAt(i, it.building.destroyed ? _zeroMatrix : it.matrix);
-      it.building._glbSlots.push({ im, idx: i });
+    // Templates with a registered LOD1 twin get a far copy of the bucket;
+    // the LOD controller shows exactly one of the pair (Tokyo has none)
+    const ims = [b.geometry, _lod1ByGeom.get(b.geometry)].filter(Boolean).map((geom) => {
+      const im = new THREE.InstancedMesh(geom, b.material, b.items.length);
+      b.items.forEach((it, i) => {
+        im.setMatrixAt(i, it.building.destroyed ? _zeroMatrix : it.matrix);
+        it.building._glbSlots.push({ im, idx: i });
+      });
+      im.castShadow = b.cast;
+      im.receiveShadow = b.recv;
+      im.computeBoundingSphere();
+      im.matrixAutoUpdate = false;
+      scene.add(im);
+      return im;
     });
-    im.castShadow = b.cast;
-    im.receiveShadow = b.recv;
-    im.computeBoundingSphere();
-    im.matrixAutoUpdate = false;
-    scene.add(im);
+    if (ims.length === 2) {
+      ims[1].visible = false;
+      lodPairs.push({ near: ims[0], far: ims[1], center: ims[0].boundingSphere.center });
+    }
   }
+  if (lodPairs.length) scene.add(_makeLodController(lodPairs));
   _glbBuckets.clear();
 }
 
@@ -4812,7 +4825,8 @@ export function spawnCivilians(scene, count, cityRadius) {
 
 /** Urls whose LOD1 twin a level loads (its trees, props and vehicles). */
 function _levelLod1Urls(level) {
-  return new Set([...TREE_GLBS.map((t) => t.url), ..._levelProps(level).map((p) => p.url), ..._levelCars(level).map((c) => c.url)]);
+  return new Set([...TREE_GLBS.map((t) => t.url), ..._levelProps(level).map((p) => p.url), ..._levelCars(level).map((c) => c.url),
+    ..._levelBuildingGLBs(level)]);
 }
 
 /** Loaded vs expected template sets, for tools/smoke_test.mjs (read-only). */
@@ -4834,7 +4848,7 @@ export function getTemplateStats(level = 'tokyo') {
 const CITY_KIT = {
   Building, BuildingGrid, setBuildingLite, buildGlobalBodies, buildGlobalWindows,
   instanceStaticClones: _instanceStaticClones, mergeStaticMeshes: _mergeStaticMeshes,
-  makeTree, makePigeonFlock, cloneProp: _cloneProp, hasProp: (n) => _propTemplates.has(n),
+  makeTree, makePigeonFlock, lod1Of: (geom) => _lod1ByGeom.get(geom) || null, cloneProp: _cloneProp, hasProp: (n) => _propTemplates.has(n),
   propSize: (n) => _propTemplates.get(n)?.size || null,
   loadTileTex: _loadTileTex, loadDataTex: _loadDataTex,
   groundMaps: () => ({ map: _groundColor, normalMap: _groundNorm, roughnessMap: _groundRough, aoMap: _groundAO }),

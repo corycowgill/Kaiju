@@ -24,8 +24,21 @@ export async function loadChicagoLayout() {
 // only once the file is in assets/ and has passed preview, so missing files
 // never 404; unready landmarks are built from the procedural massing below.
 const CHI_BASE = './assets/buildings/chicago/';
+// ids: the layout landmark ids the file stands in for (one model, several
+// sites). trueHeightM is the model's bbox height incl. spires; the layout
+// height is the roof, so the model is scaled by layoutH / heightMetres.
+// clone: placed as its own scene graph (not instanced) so a node can animate.
 const CHICAGO_LANDMARK_GLBS = [
-  // { id: 'willis_tower', file: 'willis_tower.glb', trueHeightM: 527, ready: false },
+  { id: 'willis_tower', file: 'willis_tower.glb', trueHeightM: 527.3, ready: true },
+  { id: 'tower_401_n_wabash', file: 'tower_401_n_wabash.glb', trueHeightM: 423, ready: true },
+  { id: 'st_regis', file: 'st_regis.glb', trueHeightM: 363, ready: true },
+  { id: 'aon_center', file: 'aon_center.glb', trueHeightM: 347, ready: true },
+  { id: 'two_prudential', file: 'two_prudential.glb', trueHeightM: 303, ready: true },
+  { id: 'chase_tower', file: 'chase_tower.glb', trueHeightM: 262.6, ready: true },
+  { id: 'aqua', file: 'aqua.glb', trueHeightM: 262, ready: true },
+  { id: 'crain_150_n_michigan', file: 'crain_150_n_michigan.glb', trueHeightM: 177.6, ready: true },
+  { id: 'marina_city', ids: ['marina_city_1', 'marina_city_2'], file: 'marina_city.glb', trueHeightM: 179, ready: true },
+  { id: 'navy_pier_wheel', file: 'navy_pier_wheel.glb', trueHeightM: 59.3, clone: 'wheel_rotor', ready: true },
 ];
 // Generic downtown blocks, picked by height bucket like Tokyo's pools.
 const CHICAGO_GENERIC_GLBS = [
@@ -44,20 +57,21 @@ const CHICAGO_VEHICLE_GLBS = [
 // bridges[] entry, spans along its local X) and the L track segment (tiled
 // along elevatedRail; length along local `axis`, `len` metres).
 const CHICAGO_KIT_GLBS = {
-  bascule_bridge: { file: 'bascule_bridge.glb', ready: false },
-  l_track_segment: { file: 'l_track_segment.glb', axis: 'x', len: 40, ready: false },
+  bascule_bridge: { file: 'bascule_bridge.glb', ready: true },
+  l_track_segment: { file: 'l_track_segment.glb', axis: 'x', len: 40, ready: true },
 };
 const _kit = (id) => (CHICAGO_KIT_GLBS[id]?.ready ? CHI_BASE + CHICAGO_KIT_GLBS[id].file : null);
 
 // Tokyo generic towers used while (or where) no Chicago block GLB is ready:
-// plain glass/concrete boxes, no Japanese signage.
+// plain glass/concrete towers only (the shopping blocks and narrow towers
+// carry Japanese billboards). An empty bucket builds Chicago-coloured boxes.
 const TOKYO_GENERIC = {
-  tall: ['skyscraper_large_1', 'skyscraper_large_2', 'skyscraper_large_3', 'narrow_tall_1', 'narrow_tall_2'],
+  tall: ['skyscraper_large_1', 'skyscraper_large_2', 'skyscraper_large_3'],
   medium: ['skyscraper_medium_1', 'skyscraper_medium_2', 'condo_1', 'condo_2'],
-  short: ['shopping_1', 'shopping_2', 'shopping_3'],
+  short: [],
 };
 
-const _landmarkGLB = (id) => CHICAGO_LANDMARK_GLBS.find((g) => g.ready && g.id === id);
+const _landmarkGLB = (id) => CHICAGO_LANDMARK_GLBS.find((g) => g.ready && (g.ids ? g.ids.includes(id) : g.id === id));
 function _pool(bucket) {
   const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket).map((g) => CHI_BASE + g.file);
   return own.length ? own : TOKYO_GENERIC[bucket].map((n) => `./assets/buildings/${n}.glb`);
@@ -72,6 +86,12 @@ export function chicagoBuildingGLBs() {
     ..._pool('tall'), ..._pool('medium'), ..._pool('short'),
   ];
 }
+/** GLB urls with a <name>_lod1.glb twin on disk (every ready landmark/kit file). */
+export function chicagoLod1GLBs() {
+  return [...CHICAGO_LANDMARK_GLBS.filter((g) => g.ready && g.lod1 !== false).map((g) => CHI_BASE + g.file),
+    ...Object.keys(CHICAGO_KIT_GLBS).map(_kit).filter(Boolean)];
+}
+
 /** Chicago-only street props as [{ name, url }]. */
 export function chicagoPropGLBs() {
   return CHICAGO_PROP_GLBS.filter((p) => p.ready).map((p) => ({ name: p.name, url: CHI_PROP_BASE + p.file }));
@@ -175,6 +195,7 @@ function _normalizeLayout(L) {
   out.landmarks = (L.landmarks || []).filter((o) => !KIT_IDS.has(o.id)).map((o) => ({
     ...(o.rot !== undefined ? { x: +o.x, z: +o.z, w: +o.w, d: +o.d, rotY: +o.rot } : _rect(o)),
     id: o.id, name: o.name || o.id, h: +(o.h ?? o.height ?? 30), hp: o.hp, kind: o.kind || 'building',
+    heightM: o.heightMetres ? +o.heightMetres : 0,
   }));
   return out;
 }
@@ -920,7 +941,8 @@ export function buildChicago(scene, world, opts, K) {
     // Low-rise (and the procedural-only tier) stays a coloured box in the one
     // global body InstancedMesh: a 12k-tri GLB on every 3-storey shop blew the
     // triangle budget
-    if (!glb || o.h < (REAL ? (lite ? 12 : 7) : 0)) {
+    const pool = _pool(_bucket(o.h));
+    if (!glb || !pool.length || o.h < (REAL ? (lite ? 16 : 7) : 0)) {
       const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true });
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       scene.add(b.group); buildings.push(b); grid.add(b);
@@ -930,7 +952,6 @@ export function buildChicago(scene, world, opts, K) {
     b._skipBodyIM = true;
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
-    const pool = _pool(_bucket(o.h));
     K.queueGLB({ url: pool[Math.floor(Math.random() * pool.length)], h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool });
   };
   {
@@ -955,8 +976,31 @@ export function buildChicago(scene, world, opts, K) {
     scene.add(b.group); buildings.push(b); grid.add(b);
     const def = glb ? _landmarkGLB(lm.id) : null;
     if (def) {
+      // Layout height is the roof; the model's bbox includes spires/antennas
+      const h = lm.heightM ? lm.h * def.trueHeightM / lm.heightM : lm.h;
+      const url = CHI_BASE + def.file;
+      if (def.clone) {
+        // Own scene graph so its node can move (the wheel's rotor)
+        K.onTemplatesReady((sc, get) => {
+          const tpl = get(url);
+          if (!tpl || b.destroyed) return;
+          const root = tpl.clone(true);
+          root.rotation.y = lm.rotY || 0;
+          const box = new THREE.Box3().setFromObject(root);
+          root.scale.setScalar(h / Math.max(1e-3, box.max.y - box.min.y));
+          box.setFromObject(root);
+          root.position.set(lm.x - (box.min.x + box.max.x) / 2, -box.min.y, lm.z - (box.min.z + box.max.z) / 2);
+          scene.add(root);
+          b.customMesh = root;
+          b.h = h;
+          const node = root.getObjectByName(def.clone);
+          if (node) animators.push({ update(dt) { if (!b.destroyed) node.rotation.z += dt * 0.12; } });
+        });
+        b.customMesh = new THREE.Object3D(); // AABB hit-test marker until placed
+        continue;
+      }
       // Exact layout height: no footprint clamp (maxW/maxD 0)
-      K.queueGLB({ url: CHI_BASE + def.file, h: lm.h, building: b, maxW: 0, maxD: 0, rotY: lm.rotY || 0, landmark: true });
+      K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY: lm.rotY || 0, landmark: true });
       continue;
     }
     const mesh = _builderFor(lm.id)(lm.h, lm.w, lm.d, M);
@@ -976,7 +1020,9 @@ export function buildChicago(scene, world, opts, K) {
   // One template (22u span, 15u deck) instanced per material and scaled to
   // each bridge, so every bridge together costs one draw per material;
   // collapse() zeroes the bridge's slots like an instanced GLB building.
-  const bridgeGLB = glb ? _kit('bascule_bridge') : null;
+  // Phones keep the procedural bridges: one draw per material for all of them,
+  // where the GLB costs 3 per 120u tile
+  const bridgeGLB = glb && !lite ? _kit('bascule_bridge') : null;
   if (bridgeGLB) {
     // Instanced GLB bridges: fitted inside each bridge's footprint (uniform
     // scale), destructible like any instanced GLB building
@@ -986,6 +1032,7 @@ export function buildChicago(scene, world, opts, K) {
       const b = new K.Building(br.x, br.z, aw, ad, 3, { skipWindows: true });
       b._skipBodyIM = true;
       b.maxHp = b.hp = 120;
+      b.isBridge = true;
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       scene.add(b.group); buildings.push(b); grid.add(b);
       // The GLB spans along local X; rotY here is the template-Z convention
@@ -1019,6 +1066,7 @@ export function buildChicago(scene, world, opts, K) {
       const b = new K.Building(br.x, br.z, br.width * c + br.length * s, br.width * s + br.length * c, 3, { skipWindows: true });
       b._skipBodyIM = true;
       b.maxHp = b.hp = 120;
+      b.isBridge = true;
       b.customMesh = new THREE.Object3D(); // scene-less marker: hit-tested by its AABB
       b._glbSlots = ims.map((im) => ({ im, idx: i }));
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
@@ -1084,7 +1132,8 @@ export function buildChicago(scene, world, opts, K) {
     const tiles = [];
     for (const r of L.rail) {
       const pts = railPts(r);
-      const sy = r.height / size.y, sw = r.width / rawW;
+      // Uniform: deck height from the layout, the girder keeps its proportions
+      const sy = r.height / size.y, sw = sy;
       for (let i = 0; i + 1 < pts.length; i++) {
         const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
         const l = Math.hypot(bx - ax, bz - az);
@@ -1104,18 +1153,23 @@ export function buildChicago(scene, world, opts, K) {
     const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), m = new THREE.Matrix4(), off = new THREE.Matrix4();
     // Template origin: bottom centre of its bbox
     off.makeTranslation(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2);
-    for (const src of meshes) {
-      const im = new THREE.InstancedMesh(src.geometry, src.material, tiles.length);
-      const local = new THREE.Matrix4().multiplyMatrices(off, src.matrixWorld);
-      tiles.forEach((t, i) => {
-        const sc = alongX ? new THREE.Vector3(t.sl, t.sy, t.sw) : new THREE.Vector3(t.sw, t.sy, t.sl);
-        m.compose(new THREE.Vector3(t.x, 0, t.z), q.setFromAxisAngle(up, t.ry), sc);
-        im.setMatrixAt(i, m.multiply(local));
+    // Static clones folded by instanceStaticClones: per-120u-tile
+    // InstancedMeshes (frustum culled) with the LOD1 twin far away
+    const locals = meshes.map((src) => new THREE.Matrix4().multiplyMatrices(off, src.matrixWorld));
+    for (const t of tiles) {
+      const sc = alongX ? new THREE.Vector3(t.sl, t.sy, t.sw) : new THREE.Vector3(t.sw, t.sy, t.sl);
+      m.compose(new THREE.Vector3(t.x, 0, t.z), q.setFromAxisAngle(up, t.ry), sc);
+      const g = new THREE.Group();
+      meshes.forEach((src, k) => {
+        const mesh = new THREE.Mesh(src.geometry, src.material);
+        mesh.applyMatrix4(new THREE.Matrix4().multiplyMatrices(m, locals[k]));
+        mesh.receiveShadow = true;
+        g.add(mesh);
       });
-      im.castShadow = true; im.receiveShadow = true;
-      im.computeBoundingSphere();
-      scene.add(im);
+      g.userData.instance = true;
+      scene.add(g);
     }
+    K.instanceStaticClones(scene);
   };
   const trackGLB = glb ? _kit('l_track_segment') : null;
   if (trackGLB) {
