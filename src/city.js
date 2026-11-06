@@ -117,12 +117,13 @@ const NEON_PHRASES = [
 ];
 // Cache: one CanvasTexture per (phrase, color) so repeated buildings reuse.
 const _signTexCache = new Map();
-function makeNeonSignTexture(text, colorHex) {
-  const key = text + ':' + colorHex;
+// vertical: one letter per row, stacked top to bottom (a theatre blade sign)
+function makeNeonSignTexture(text, colorHex, vertical = false) {
+  const key = text + ':' + colorHex + (vertical ? ':v' : '');
   const hit = _signTexCache.get(key);
   if (hit) return hit;
   const c = document.createElement('canvas');
-  c.width = 256; c.height = 96;
+  if (vertical) { c.width = 64; c.height = 64 * text.length; } else { c.width = 256; c.height = 96; }
   const g = c.getContext('2d');
   g.fillStyle = '#0a0006';
   g.fillRect(0, 0, c.width, c.height);
@@ -134,12 +135,14 @@ function makeNeonSignTexture(text, colorHex) {
   g.shadowColor = colorStr;
   g.shadowBlur = 28;
   g.fillStyle = colorStr;
-  g.fillText(text, c.width / 2, c.height / 2);
+  // Rows: the whole string centred, or one letter per 64px cell
+  const lines = vertical ? [...text].map((ch, i) => [ch, 32 + i * 64]) : [[text, c.height / 2]];
+  for (const [t, y] of lines) g.fillText(t, c.width / 2, y);
   g.shadowBlur = 14;
-  g.fillText(text, c.width / 2, c.height / 2);
+  for (const [t, y] of lines) g.fillText(t, c.width / 2, y);
   g.shadowBlur = 0;
   g.fillStyle = '#ffffff';
-  g.fillText(text, c.width / 2, c.height / 2);
+  for (const [t, y] of lines) g.fillText(t, c.width / 2, y);
   // Thin border frame
   g.strokeStyle = colorStr;
   g.lineWidth = 4;
@@ -4893,6 +4896,7 @@ const CITY_KIT = {
   propSize: (n) => _propTemplates.get(n)?.size || null,
   loadTileTex: _loadTileTex, loadDataTex: _loadDataTex,
   groundMaps: () => ({ map: _groundColor, normalMap: _groundNorm, roughnessMap: _groundRough, aoMap: _groundAO }),
+  signTex: makeNeonSignTexture,
   wornPaintTex: () => _wornPaintTex || (_wornPaintTex = _makeWornPaintTexture()),
   queueGLB: (entry) => _pendingGLBBuildings.push(entry),
   onTemplatesReady: (fn) => _flushHooks.push(fn),

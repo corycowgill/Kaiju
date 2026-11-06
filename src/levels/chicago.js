@@ -113,6 +113,8 @@ const TOKYO_GENERIC = {
   short: [],
 };
 
+// Front (+Z) direction of the procedural massing, where it matters
+const PROC_FACE = { chicago_theatre: 'west' }; // faces State St
 const _landmarkGLB = (id) => CHICAGO_LANDMARK_GLBS.find((g) => g.ready && (g.ids ? g.ids.includes(id) : g.id === id));
 function _pool(bucket) {
   const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket).map((g) => CHI_BASE + g.file);
@@ -784,10 +786,12 @@ const LANDMARK_BUILDERS = {
     return m.build();
   },
   chicago_theatre(h, w, d, M) {
+    // Terracotta front with the arch window; the blade sign and lit marquee
+    // are added by addTheatreSign (they carry the CHICAGO lettering)
     const m = new Massing();
-    m.box(M.terracotta, w, h * 0.7, d);
-    m.box(M.marquee, w * 0.9, h * 0.08, 2.4, 0, h * 0.12, d * 0.5 + 1.2);
-    m.box(M.marquee, 1.2, h * 0.6, 1.2, 0, h * 0.25, d * 0.5 + 0.8);
+    m.box(M.terracotta, w, h * 0.85, d);
+    m.box(M.limestone, w * 0.4, h * 0.45, 0.2, 0, h * 0.28, d * 0.5);
+    m.box(M.darkGlass, w * 0.3, h * 0.36, 0.25, 0, h * 0.32, d * 0.5);
     return m.build();
   },
   generic(h, w, d, M) {
@@ -800,6 +804,43 @@ const LANDMARK_BUILDERS = {
     return m.build();
   },
 };
+/** The Chicago Theatre's vertical blade sign (CHICAGO stacked, lit both
+ *  sides) over a bulb-lit marquee, on the front (+Z) of a landmark w x d
+ *  wide and h tall. Returned as a Group in the landmark's local frame. */
+function makeTheatreSign(h, w, d, K) {
+  const g = new THREE.Group();
+  const red = 0xff3a2a, warm = 0xffe2b0;
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2a0d0a, roughness: 0.6, metalness: 0.4 });
+  // Marquee: a deep box with lit edges and the name on its front
+  const mq = new THREE.Mesh(new THREE.BoxGeometry(w * 0.85, h * 0.14, h * 0.22),
+    new THREE.MeshStandardMaterial({ color: 0x551511, emissive: red, emissiveIntensity: 0.9, roughness: 0.5 }));
+  mq.position.set(0, h * 0.22, d / 2 + h * 0.11);
+  g.add(mq);
+  const name = K.signTex('CHICAGO', warm);
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.6, w * 0.6 * 96 / 256),
+    new THREE.MeshStandardMaterial({ map: name, emissiveMap: name, emissive: 0xffffff, emissiveIntensity: 1.5 }));
+  front.position.set(0, h * 0.22, d / 2 + h * 0.22 + 0.02);
+  front.scale.y = Math.min(1, (h * 0.13) / (w * 0.6 * 96 / 256));
+  g.add(front);
+  // Blade: perpendicular to the facade, above the marquee, letters stacked
+  // Taller than the facade, like the real one; seven letters, cells a touch wider than tall
+  const bh = h * 0.95, bw = bh / 7 * 1.15;
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.18, bh, bw), dark);
+  const by = h * 0.29 + bh / 2, bz = d / 2 + bw / 2 + 0.05;
+  blade.position.set(0, by, bz);
+  g.add(blade);
+  const letters = K.signTex('CHICAGO', red, true);
+  const lm = new THREE.MeshStandardMaterial({ map: letters, emissiveMap: letters, emissive: 0xffffff, emissiveIntensity: 1.8 });
+  for (const sx of [-1, 1]) {
+    // One plane per side, each facing outward so neither reads mirrored
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(bw * 0.95, bh * 0.97), lm);
+    pl.rotation.y = sx * Math.PI / 2;
+    pl.position.set(sx * (bw * 0.09 + 0.02), by, bz);
+    g.add(pl);
+  }
+  return g;
+}
+
 // Layout / manifest ids -> builder (substring match, so 'willis_tower' finds willis)
 const BUILDER_ALIASES = [
   ['willis', 'willis'], ['sears', 'willis'], ['hancock', 'hancock'], ['875', 'hancock'], ['trump', 'trump'],
@@ -1251,6 +1292,13 @@ export function buildChicago(scene, world, opts, K) {
   }
 
   // ---- landmarks ----
+  // The theatre's lettered blade sign + marquee ride on the building's group,
+  // so they go when it collapses
+  const addTheatreSign = (b, lm, ry) => {
+    const sg = makeTheatreSign(lm.h, lm.w, lm.d, K);
+    sg.rotation.y = ry;
+    b.group.add(sg);
+  };
   for (const lm of L.landmarks) {
     const c = Math.abs(Math.cos(lm.rotY || 0)), s = Math.abs(Math.sin(lm.rotY || 0));
     const aw = lm.w * c + lm.d * s, ad = lm.w * s + lm.d * c;
@@ -1267,6 +1315,7 @@ export function buildChicago(scene, world, opts, K) {
       const h = lm.heightM ? lm.h * def.trueHeightM / lm.heightM : lm.h;
       const url = CHI_BASE + def.file;
       const rotY = def.face ? _faceRot(lm.rotY || 0, def.face) : def.faceX ? _faceRot(lm.rotY || 0, def.faceX, true) : (lm.rotY || 0);
+      if (/theat/.test(lm.id)) addTheatreSign(b, lm, rotY); // the GLB's sign is blank
       if (def.clone) {
         // Own scene graph so its node can move (the wheel's rotor)
         K.onTemplatesReady((sc, get) => {
@@ -1311,7 +1360,8 @@ export function buildChicago(scene, world, opts, K) {
     }
     const mesh = _builderFor(lm.id)(lm.h, lm.w, lm.d, M);
     mesh.position.set(lm.x, 0, lm.z);
-    mesh.rotation.y = lm.rotY || 0;
+    mesh.rotation.y = PROC_FACE[lm.id] ? _faceRot(lm.rotY || 0, PROC_FACE[lm.id]) : (lm.rotY || 0);
+    if (/theat/.test(lm.id)) addTheatreSign(b, lm, mesh.rotation.y);
     if (mesh.userData.spin) {
       const spin = mesh.userData.spin;
       animators.push({ update(dt) { if (!b.destroyed) spin.rotation.z += dt * 0.12; } });
