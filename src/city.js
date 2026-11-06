@@ -2139,7 +2139,10 @@ export class Building {
     // More, smaller pieces with the v2 kit (facade panels, rebar, beams, glass)
     const chunks = 10 + Math.floor(Math.random() * 4) + Math.min(6, Math.floor(this.h / 15)) + (useGLBDebris ? 6 : 0);
     for (let i = 0; i < chunks; i++) {
-      const targetSize = Math.max(this.w, this.d) * (useGLBDebris ? rand(0.12, 0.35) : rand(0.25, 0.65));
+      // Capped in world units so wide GLB footprints don't throw kaiju-sized chunks
+      const targetSize = useGLBDebris
+        ? THREE.MathUtils.clamp(Math.max(this.w, this.d) * rand(0.06, 0.16), 1.2, 5.5)
+        : Math.max(this.w, this.d) * rand(0.25, 0.65);
       let m;
       if (useGLBDebris) {
         m = _cloneDebris(targetSize);
@@ -2172,7 +2175,7 @@ export class Building {
     // Ground rubble (stays permanently)
     const rubbleCount = 3 + Math.floor(Math.random() * 2);
     for (let i = 0; i < rubbleCount; i++) {
-      const rubSize = Math.max(this.w, this.d) * rand(0.35, 0.75);
+      const rubSize = THREE.MathUtils.clamp(Math.max(this.w, this.d) * rand(0.15, 0.3), 2.5, 8);
       let rub;
       if (useGLBDebris) {
         rub = _cloneDebris(rubSize);
