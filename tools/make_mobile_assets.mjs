@@ -14,6 +14,12 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const A = `${REPO}/assets`;
 const OUT = `${A}/m`;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+// Hand-authored phone models (an artist's lighter mesh, not just smaller
+// textures) live in assets/m/ already: never regenerate them, only list them
+const PINNED = new Set([
+  'buildings/chicago/soldier_field.glb',      // = artist's soldier_field_mobile.glb (9.8k tris)
+  'buildings/chicago/soldier_field_lod1.glb', // its matching LOD1
+]);
 const capFor = (rel) => (/^(kaiju_model|ghidorah_model|mecha_model|enemies\/mech)\//.test(rel) ? 1024 : 512);
 
 function walk(dir, rel = '') {
@@ -29,6 +35,10 @@ function walk(dir, rel = '') {
 const variants = [];
 let before = 0, after = 0;
 for (const rel of walk(A).filter((r) => r.endsWith('.glb'))) {
+  if (PINNED.has(rel)) {
+    if (fs.existsSync(`${OUT}/${rel}`)) variants.push(rel);
+    continue;
+  }
   const cap = capFor(rel);
   const doc = await io.read(`${A}/${rel}`);
   const texs = doc.getRoot().listTextures();

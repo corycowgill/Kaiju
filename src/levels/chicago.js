@@ -96,12 +96,12 @@ const CHICAGO_LANDMARK_GLBS = [
   // Scaled up to its site (the 180 x 146 m model vs the 348 x 208 m
   // layout outline, height up to 1.4x); colonnade sides (+Z) east and west,
   // open ends north-south
-  // Interim model: fitted to the corrected 296 x 207 x 60 m shell box
-  // (geometry.md). The hero GLB replaces it with { exact: true, phoneLod1:
-  // true, atOrigin: true } and no face: model +X = south, +Z = west (= the
-  // layout rot), origin at the shell centre; trueHeightM = its bbox height
-  // (canopy truss ~68 m)
-  { id: 'soldier_field', file: 'soldier_field.glb', trueHeightM: 50, face: 'east', fit: 'footprint', maxH: 1.0, ready: true },
+  // Hero v2 (301 x 215 m, rims 60 m, west canopy truss to 72.35 m = its
+  // bbox height): exact map scale, origin = shell centre on the layout shell
+  // centre, model +X = south / +Z = west matching the layout rot (no face).
+  // Phones get the artist's 9.8k-tri soldier_field_mobile.glb as the
+  // assets/m/ variant (pinned in make_mobile_assets), with its own LOD1
+  { id: 'soldier_field', file: 'soldier_field.glb', trueHeightM: 72.35, exact: true, atOrigin: true, ready: true },
   // Portico (+Z) and grand steps face north
   { id: 'field_museum', file: 'field_museum.glb', trueHeightM: 30, face: 'north', ready: true },
   // Only the 1930 tower (57 x 60 m, statue at 184 m), clock face (+Z) north up
@@ -146,6 +146,8 @@ const CHICAGO_GENERIC_GLBS = [
   { file: 'gen_low2_terracotta_comm.glb', bucket: 'low', ready: true },
   { file: 'gen_low2_warehouse.glb', bucket: 'low', share: 0.6, ready: true },
   { file: 'gen_low2_modern_mid.glb', bucket: 'low', ready: true },
+  // TRELLIS downtown commercial low-rise (artist-3d / cloud-3d)
+  { file: 'gen_low2_bank.glb', bucket: 'low', ready: true },
   { file: 'gen_low_brick_loft.glb', bucket: 'short', ready: true },
   { file: 'gen_low_limestone_block.glb', bucket: 'short', ready: true },
   { file: 'gen_low_terracotta_office.glb', bucket: 'short', ready: true },
@@ -202,7 +204,7 @@ const CHICAGO_KIT_GLBS = {
   sailboat_moored: { file: 'sailboat_moored.glb', ready: true },
   planter_bollard: { file: 'planter_bollard.glb', ready: true },
   // Soldier Field north wing wall: 105 x 10 x 20 m limestone, length along X
-  soldier_field_wing: { file: 'soldier_field_wing.glb', ready: false },
+  soldier_field_wing: { file: 'soldier_field_wing.glb', ready: true },
   // desktopOnly: phones neither download nor place them (draw budget)
   lakefront_trail_bench: { file: 'lakefront_trail_bench.glb', desktopOnly: true, ready: true },
   newspaper_box_cluster: { file: 'newspaper_box_cluster.glb', desktopOnly: true, ready: true },
