@@ -4444,6 +4444,9 @@ export async function loadPedestrianTemplates(onProgress) {
 function _clonePedestrian() {
   if (!_pedTemplate) return null;
   const clone = skinnedClone(_pedTemplate.scene);
+  // Pose the cloned skeleton before anyone measures it (see enemies.js _cloneBiped)
+  clone.updateMatrixWorld(true);
+  clone.traverse((o) => { if (o.isSkinnedMesh) { o.skeleton.update(); o.boundingBox = null; } });
   const mixer = new THREE.AnimationMixer(clone);
   const actions = {};
   for (const [name, clip] of Object.entries(_pedTemplate.animations)) {
@@ -4467,7 +4470,9 @@ export class Civilian {
     if (ped) {
       const box = new THREE.Box3().setFromObject(ped.root);
       const size = box.getSize(new THREE.Vector3());
-      const targetH = 0.9; // human height (halved)
+      // Same height as soldiers. (The old 0.9 was measured against an unposed
+      // clone, so civilians actually rendered ~3.8u tall.)
+      const targetH = 2.0;
       const s = targetH / size.y;
       ped.root.scale.setScalar(s);
       box.setFromObject(ped.root);

@@ -169,7 +169,38 @@ if (Q.GLB_CONTENT) {
     const t = trisOf(spawned[name] && spawned[name].root);
     if (!t) fail(`${name}: no mesh spawned`); else if (t > max) fail(`${name}: ${t} tris, budget ${max} (stale, undecimated model?)`);
   }
-  summary = `trees ${s.trees.loaded}/${s.trees.expected}, buildings ${s.buildings.loaded.length}/${s.buildings.expected.length}, `
+  // Spawn scale: a freshly cloned Skeleton has all-zero bone matrices, so measuring a skinned
+  // clone before posing it gave ~0 height and scaled soldiers ~100x / mechs ~500x into the
+  // sky. Check the posed world-space height against each class's target (+-40%)...
+  const skinnedHeight = (actor) => {
+    actor.mixer?.update(0);
+    actor.root.updateMatrixWorld(true);
+    const box = new THREE.Box3(), part = new THREE.Box3();
+    actor.root.traverse((o) => {
+      if (!o.isSkinnedMesh) return;
+      o.skeleton.update();
+      o.computeBoundingBox(); // posed vertices, mesh-local
+      box.union(part.copy(o.boundingBox).applyMatrix4(o.matrixWorld));
+    });
+    return box.isEmpty() ? 0 : box.max.y - box.min.y;
+  };
+  const heights = [];
+  for (const [name, target] of [['Soldier', 2.0], ['Mech', 9.0], ['BossMech', 16.0], ['Civilian', 2.0]]) {
+    const a = spawned[name];
+    if (!a) { fail(`${name}: not spawned`); continue; }
+    const h = skinnedHeight(a);
+    heights.push(`${name} ${h.toFixed(2)}u`);
+    if (!(h >= target * 0.6 && h <= target * 1.4)) fail(`${name}: skinned height ${h.toFixed(3)}u, expected ${target}u +-40%`);
+  }
+  // ...and that no spawned actor's model child is scaled absurdly (GLB units are metres-ish)
+  for (const [name, a] of Object.entries(spawned)) {
+    for (const c of a.root.children) {
+      const sc = Math.max(Math.abs(c.scale.x), Math.abs(c.scale.y), Math.abs(c.scale.z));
+      if (!(sc < 20)) fail(`${name}: child '${c.name || c.type}' scale ${sc.toFixed(1)} (>= 20)`);
+    }
+  }
+  summary += `heights ${heights.join(', ')}; `;
+  summary += `trees ${s.trees.loaded}/${s.trees.expected}, buildings ${s.buildings.loaded.length}/${s.buildings.expected.length}, `
     + `debris ${s.debris.loaded}/${s.debris.expected}, cars ${s.cars.loaded}/${s.cars.expected}, props ${s.props.loaded.length}/${s.props.expected.length}, `
     + `LOD1 ${s.lod1.loaded.length}/${s.lod1.expected.length}, ped clips ${s.pedestrian.loaded.join('+')} (${trisOf(spawned.Civilian && spawned.Civilian.root)} tris), `
     + `soldier clips ${en.soldier.loaded.join('+')} (${trisOf(spawned.Soldier && spawned.Soldier.root)} tris), mech clips ${en.mech.loaded.length}/${en.mech.expected.length}`;
