@@ -4,6 +4,8 @@
 // assetCache.assetURL() swaps these in on mobile. Re-run the script after
 // adding or replacing a GLB or ground texture.
 export const MOBILE_VARIANTS = new Set([
+  "buildings/bldg_danchi.glb",
+  "buildings/bldg_zakkyo.glb",
   "buildings/bridge_1.glb",
   "buildings/bridge_2.glb",
   "buildings/buddhist_temple.glb",

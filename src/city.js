@@ -2233,6 +2233,8 @@ const BLDG_POOL_MEDIUM = [
   BLDG_GLB_BASE + 'skyscraper_medium_2.glb',
   BLDG_GLB_BASE + 'condo_1.glb',
   BLDG_GLB_BASE + 'condo_2.glb',
+  BLDG_GLB_BASE + 'bldg_zakkyo.glb', // v2 pipeline: 8-storey zakkyo with sign stacks (12k tris)
+  BLDG_GLB_BASE + 'bldg_danchi.glb', // v2 pipeline: 1970s concrete danchi slab block (12k tris)
 ];
 const BLDG_POOL_SHORT = [
   BLDG_GLB_BASE + 'shopping_1.glb',
