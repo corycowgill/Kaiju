@@ -233,9 +233,10 @@ function _attachLod1(url, scene) {
   });
 }
 
-// Street props a non-Tokyo level uses from the Tokyo kit (no koban, yatai,
-// torii, subway kiosk, vending machines or Japanese street signs).
-const PROP_GLBS_GENERIC = ['street_lamp', 'traffic_signal', 'bench', 'roof_water_tank', 'roof_ac_cluster', 'roof_antenna'];
+// Street props a non-Tokyo level uses from the Tokyo kit: rooftop kit and
+// the plain lamp (no koban, yatai, torii, subway kiosk, vending machines,
+// Japanese signals or street signs).
+const PROP_GLBS_GENERIC = ['street_lamp', 'roof_water_tank', 'roof_ac_cluster', 'roof_antenna'];
 const _propLoading = new Map(); // name -> Promise (each prop loads once)
 
 /** Load prop templates [{ name, url }] not loaded yet. */
@@ -324,7 +325,7 @@ function _loadTreeList(list, onProgress) {
         const box = new THREE.Box3().setFromObject(s);
         const size = box.getSize(new THREE.Vector3());
         console.log(`[TreeGLB] Bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
-        _treeTemplates.push({ scene: s, box, h: def.h });
+        _treeTemplates.push({ scene: s, box, h: def.h, url });
         if (onProgress) onProgress(idx + 1, list.length, url.split('/').pop().replace('.glb', ''));
         _attachLod1(url, s).then(resolve);
       }).catch((err) => {
@@ -451,9 +452,19 @@ function _mergeStaticMeshes(scene) {
 }
 
 // Single tree: uses GLB clone if templates loaded, else procedural fallback.
+// Tree species a level leaves out (Chicago: no cherry blossom or Japanese
+// black pine); set by buildCity. Falls back to every template if that
+// would leave none.
+let _treeExclude = new Set();
+function _treePool() {
+  const ok = _treeTemplates.filter((t) => !_treeExclude.has(t.url));
+  return ok.length ? ok : _treeTemplates;
+}
+
 function makeTree(x = 0, z = 0, scale = 1) {
-  if (_treeTemplates.length > 0) {
-    const tpl = _treeTemplates[Math.floor(Math.random() * _treeTemplates.length)];
+  const pool = _treePool();
+  if (pool.length > 0) {
+    const tpl = pool[Math.floor(Math.random() * pool.length)];
     // Robust clone: rebuild meshes from geometry/material refs
     const clone = _cloneTreeScene(tpl);
     // v2 trees: their own height (tpl.h) at scale=1; old trees: ~6 units by largest side
@@ -2745,6 +2756,7 @@ export function buildCity(scene, world, opts = {}) {
   _pedCfg = null;
   _carNet = null;
   _carLevel = opts.level === 'chicago' ? 'chicago' : 'tokyo';
+  _treeExclude = new Set(opts.level === 'chicago' ? ['./assets/trees/tree_sakura.glb', './assets/trees/tree_black_pine.glb'] : []);
   if (opts.level === 'chicago') return buildChicago(scene, world, opts, CITY_KIT);
   return { ...buildTokyo(scene, world, opts), level: 'tokyo' };
 }
@@ -4280,7 +4292,7 @@ const CAR_COLORS = [0xff3344, 0x33aaff, 0xffcc33, 0xffffff, 0x222222, 0x44aa66, 
 const CAR_GLBS = [
   { url: './assets/vehicles/kei_van.glb',     len: 3.4,  weight: 34, levels: ['tokyo'] },
   { url: './assets/vehicles/taxi_black.glb',  len: 4.7,  weight: 30 },
-  { url: './assets/vehicles/police_car.glb',  len: 4.8,  weight: 10 },
+  { url: './assets/vehicles/police_car.glb',  len: 4.8,  weight: 10, levels: ['tokyo'] }, // Japanese livery
   { url: './assets/vehicles/small_truck.glb', len: 4.7,  weight: 20 },
   { url: './assets/vehicles/city_bus.glb',    len: 11.0, weight: 6, parked: false },
 ];

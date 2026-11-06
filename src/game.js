@@ -312,6 +312,9 @@ if (RP.post) {
       // God-ray strength + sample density. HIGH does 12 samples; MED 6.
       godStr:   { value: RP.godRays ? (Q_HIGH ? 0.55 : 0.30) : 0.0 },
       gradeMix: { value: Q_HIGH ? 0.35 : 0.25 },
+      // Grade tints (Tokyo values; applyLevelLook swaps them per level)
+      shadowTint: { value: new THREE.Vector3(0.70, 0.60, 0.92) },
+      highTint:   { value: new THREE.Vector3(1.05, 0.92, 0.74) },
       tGod:     { value: null },
     };
     const SAMPLES = Q_HIGH ? 12 : 6;
@@ -342,6 +345,7 @@ if (RP.post) {
         uniform float godStr;
         uniform sampler2D tGod;
         uniform float gradeMix;
+        uniform vec3 shadowTint, highTint;
         varying vec2 vUv;
         float hash(vec2 p, float t) {
           return fract(sin(dot(p, vec2(127.1, 311.7)) + t * 27.13) * 43758.5453);
@@ -354,8 +358,6 @@ if (RP.post) {
               (c * (c * 0.295 + 0.477) + 0.0666);
           // Tint shadows + highlights
           float lum = dot(c, vec3(0.299, 0.587, 0.114));
-          vec3 shadowTint = vec3(0.70, 0.60, 0.92);
-          vec3 highTint   = vec3(1.05, 0.92, 0.74);
           float sMix = 1.0 - smoothstep(0.0, 0.45, lum);
           float hMix = smoothstep(0.55, 1.0, lum);
           c = mix(c, c * shadowTint, sMix * 0.25);
@@ -900,16 +902,23 @@ const _TOKYO_LOOK = {
   amb: ambient.color.getHex(), ambI: ambient.intensity, neonI: _neonLights.map((l) => l.intensity),
   sky: Object.fromEntries(['horizon', 'midCol', 'zenith', 'sunRim'].map((k) => [k, skyMat.uniforms[k].value.toArray()])),
   nebula: skyMat.uniforms.nebula.value, env: scene.environmentIntensity,
+  grade: window.__cinePass && {
+    mix: window.__cinePass.uniforms.gradeMix.value,
+    shadow: window.__cinePass.uniforms.shadowTint.value.toArray(), high: window.__cinePass.uniforms.highTint.value.toArray(),
+  },
 };
-// Chicago: late-afternoon lakefront. Warm low sun out of the west over the
-// prairie, clean blue sky, light warm haze, no stars or nebula; neon dimmed.
+// Chicago: lakefront golden hour. Low amber sun out of the west over the
+// prairie raking the skyline, deep blue sky to the east over the lake, warm
+// honey haze, cool blue-teal shadows against gold highlights in the grade;
+// no stars, nebula or neon.
 const _CHICAGO_LOOK = {
-  bg: 0x9fb4c8, fog: 0xb9b2a4, fogDensity: 0.0024,
-  hemiSky: 0xd8e4f0, hemiGround: 0x5a5448, hemiI: Q_HIGH ? 0.55 : (Q_MED ? 0.70 : 0.75),
-  sun: 0xffc98a, sunI: 2.6, rim: 0x9cc4ff, rimI: Q_LOW ? 0.40 : 0.55,
-  amb: 0x667788, ambI: Q_HIGH ? 0.18 : (Q_MED ? 0.32 : 0.45), neonI: _neonLights.map(() => 1.2),
-  sky: { horizon: [1.0, 0.80, 0.55], midCol: [0.55, 0.68, 0.85], zenith: [0.20, 0.36, 0.66], sunRim: [1.0, 0.75, 0.45] },
-  nebula: 0.0, env: 0.75,
+  bg: 0x8fa9c4, fog: 0xd9b48a, fogDensity: 0.0030,
+  hemiSky: 0xffd8b0, hemiGround: 0x3e4a5a, hemiI: Q_HIGH ? 0.50 : (Q_MED ? 0.62 : 0.70),
+  sun: 0xffa95a, sunI: 3.1, rim: 0x7fb0ff, rimI: Q_LOW ? 0.50 : 0.70,
+  amb: 0x556a88, ambI: Q_HIGH ? 0.16 : (Q_MED ? 0.28 : 0.40), neonI: _neonLights.map(() => 0),
+  sky: { horizon: [1.0, 0.62, 0.30], midCol: [0.62, 0.62, 0.78], zenith: [0.14, 0.30, 0.62], sunRim: [1.0, 0.60, 0.25] },
+  nebula: 0.0, env: 0.8,
+  grade: { mix: Q_HIGH ? 0.55 : 0.45, shadow: [0.74, 0.86, 1.02], high: [1.14, 0.95, 0.70] },
 };
 let _lookLevel = 'tokyo';
 function applyLevelLook(level) {
@@ -925,6 +934,12 @@ function applyLevelLook(level) {
   _neonLights.forEach((l, i) => { l.intensity = L.neonI[i]; });
   for (const k of Object.keys(L.sky)) skyMat.uniforms[k].value.fromArray(L.sky[k]);
   skyMat.uniforms.nebula.value = L.nebula;
+  const cine = window.__cinePass;
+  if (cine && L.grade) {
+    cine.uniforms.gradeMix.value = L.grade.mix;
+    cine.uniforms.shadowTint.value.fromArray(L.grade.shadow);
+    cine.uniforms.highTint.value.fromArray(L.grade.high);
+  }
   // The Tokyo backdrop ring/mountains/barrier would stand in Lake Michigan
   for (const o of _horizon) o.visible = level === 'tokyo';
   if (Q_HIGH) { _captureEnv(); scene.environmentIntensity = L.env; }
@@ -946,6 +961,7 @@ function buildWorldCity() {
   world.spawn = res.spawn || { x: 0, z: 0 };
   world.isWater = res.isWater || null;
   world.landPoint = res.landPoint || null;
+  world.mapWater = res.mapWater || null;
   window.__barrier = res.barrier || _tokyoBarrier;
   applyLevelLook(res.level);
 }
@@ -4199,6 +4215,23 @@ function drawMinimap() {
   const kz = state.kaiju.root.position.z;
   const scale = (cw / 2) / MINIMAP_RANGE;
   function w2m(x, z) { return [cw / 2 + (x - kx) * scale, ch / 2 + (z - kz) * scale]; }
+
+  // Water (levels that carry outlines): lake, river, ponds; holes cut out
+  if (world.mapWater) {
+    ctx.fillStyle = 'rgba(40, 110, 170, 0.55)';
+    // One path per body so overlaps (river mouth into the lake) don't cancel
+    for (const w of world.mapWater) {
+      ctx.beginPath();
+      for (const ring of [w.polygon, ...(w.holes || [])]) {
+        for (let i = 0; i < ring.length; i++) {
+          const [x, y] = w2m(ring[i][0], ring[i][1]);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+      }
+      ctx.fill('evenodd');
+    }
+  }
 
   // Buildings (simple dots, sampled)
   ctx.fillStyle = 'rgba(180, 180, 200, 0.35)';

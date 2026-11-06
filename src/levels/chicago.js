@@ -39,15 +39,26 @@ const CHICAGO_LANDMARK_GLBS = [
   { id: 'crain_150_n_michigan', file: 'crain_150_n_michigan.glb', trueHeightM: 177.6, ready: true },
   { id: 'marina_city', ids: ['marina_city_1', 'marina_city_2'], file: 'marina_city.glb', trueHeightM: 179, ready: true },
   { id: 'navy_pier_wheel', file: 'navy_pier_wheel.glb', trueHeightM: 59.3, clone: 'wheel_rotor', ready: true },
+  { id: 'franklin_center', file: 'franklin_center.glb', trueHeightM: 307, ready: true },
+  { id: 'wacker_311_s', file: 'wacker_311_s.glb', trueHeightM: 293, ready: true },
+  { id: 'one_prudential', file: 'one_prudential.glb', trueHeightM: 278, ready: true },
+  { id: 'ama_plaza_330_n_wabash', file: 'ama_plaza_330_n_wabash.glb', trueHeightM: 212, ready: true },
+  { id: 'daley_center', file: 'daley_center.glb', trueHeightM: 198, ready: true },
+  { id: 'lake_point_tower', file: 'lake_point_tower.glb', trueHeightM: 197, ready: true },
+  { id: 'carbide_carbon', file: 'carbide_carbon.glb', trueHeightM: 154, ready: true },
+  { id: 'merchandise_mart', file: 'merchandise_mart.glb', trueHeightM: 103, ready: true },
+  // Chrome: needs scene.environment (desktop HIGH); duller steel elsewhere
+  { id: 'mirrored_sculpture', file: 'mirrored_sculpture.glb', trueHeightM: 10.4, chrome: true, ready: true },
 ];
 // Generic downtown blocks, picked by height bucket like Tokyo's pools.
 const CHICAGO_GENERIC_GLBS = [
   // { file: 'chi_limestone_mid_1.glb', bucket: 'medium', ready: false },
 ];
-// Street props: name -> file under assets/props/chicago/.
-const CHI_PROP_BASE = './assets/props/chicago/';
+// Street props: name -> file (same folder as the buildings).
+const CHI_PROP_BASE = CHI_BASE;
 const CHICAGO_PROP_GLBS = [
-  // { name: 'chi_bus_shelter', file: 'bus_shelter.glb', ready: false },
+  { name: 'chi_streetlamp', file: 'chicago_streetlamp.glb', ready: true },
+  { name: 'chi_bus_shelter', file: 'cta_bus_shelter.glb', ready: true },
 ];
 // Extra traffic (front faces +Z, real-world metres like the Tokyo vehicles).
 const CHICAGO_VEHICLE_GLBS = [
@@ -59,6 +70,12 @@ const CHICAGO_VEHICLE_GLBS = [
 const CHICAGO_KIT_GLBS = {
   bascule_bridge: { file: 'bascule_bridge.glb', ready: true },
   l_track_segment: { file: 'l_track_segment.glb', axis: 'x', len: 40, ready: true },
+  // 90-degree left curve from the origin heading +X to (30, 0, -30) heading -Z
+  l_track_curve: { file: 'l_track_curve.glb', radius: 30, ready: true },
+  // One car along glTF X, base at rail top; coupled every 14.9 m
+  l_train: { file: 'l_train.glb', ready: true },
+  // Hero Michigan Ave bridge, same node scheme as bascule_bridge
+  dusable_bridge: { file: 'dusable_bridge.glb', ready: true },
 };
 const _kit = (id) => (CHICAGO_KIT_GLBS[id]?.ready ? CHI_BASE + CHICAGO_KIT_GLBS[id].file : null);
 
@@ -89,7 +106,8 @@ export function chicagoBuildingGLBs() {
 /** GLB urls with a <name>_lod1.glb twin on disk (every ready landmark/kit file). */
 export function chicagoLod1GLBs() {
   return [...CHICAGO_LANDMARK_GLBS.filter((g) => g.ready && g.lod1 !== false).map((g) => CHI_BASE + g.file),
-    ...Object.keys(CHICAGO_KIT_GLBS).map(_kit).filter(Boolean)];
+    ...Object.keys(CHICAGO_KIT_GLBS).map(_kit).filter(Boolean),
+    ...CHICAGO_PROP_GLBS.filter((p) => p.ready).map((p) => CHI_PROP_BASE + p.file)];
 }
 
 /** Chicago-only street props as [{ name, url }]. */
@@ -145,14 +163,22 @@ function _normalizeLayout(L) {
   out.spawn = Array.isArray(sp) ? { x: sp[0], z: sp[1] } : { x: +sp.x, z: +sp.z, rot: sp.rot !== undefined ? +sp.rot : undefined };
   out.enemySpawns = (L.spawn?.enemies || []).map((e) => [+e.x, +e.z]);
   const kindOf = (r) => r.kind || (r.class === 'lsd' ? 'lsd' : r.class === 'minor' ? 'minor' : r.class === 'major' ? 'major' : 'street');
+  // Gameplay widths: true-scale streets are only ~1.5 Tokyo cars wide, so
+  // real-scale maps get minimum widths per class (landmarks stay exact;
+  // ordinary buildings are trimmed back from the wider roads below)
+  const minW = (cls) => (out.real ? (cls === 'lsd' ? 12 : cls === 'minor' ? 6 : 8.5) : 0);
   out.roads = (L.roads || []).map((r) => ({
-    id: r.id, name: r.name || '', kind: kindOf(r),
-    width: +(r.width || (r.kind === 'lsd' ? 16 : r.kind === 'arterial' ? 12 : r.kind === 'alley' ? 4 : 9)),
+    id: r.id, name: r.name || '', kind: kindOf(r), expressway: !!r.expressway,
+    width: Math.max(minW(r.class), +(r.width || (r.kind === 'lsd' ? 16 : r.kind === 'arterial' ? 12 : r.kind === 'alley' ? 4 : 9))),
     points: (r.points || r.polyline || []).map(_pt),
   })).filter((r) => r.points.length >= 2);
-  // Car network: the explicit road graph when there is one (minor/service roads excluded)
+  // Car network: the explicit road graph when there is one. Minor roads are
+  // left out, and so are expressways: planar noding makes false junctions
+  // where they fly over the street grid.
+  const expressway = new Set(out.roads.filter((r) => r.expressway).map((r) => r.id));
   out.netRoads = L.roadGraph
-    ? L.roadGraph.edges.filter((e) => e.class !== 'minor').map((e) => ({ width: +e.width, points: e.points.map(_pt) }))
+    ? L.roadGraph.edges.filter((e) => e.class !== 'minor' && !expressway.has(e.road))
+      .map((e) => ({ width: Math.max(minW(e.class), +e.width), points: e.points.map(_pt) }))
     : out.roads.filter((r) => r.kind !== 'alley');
   const W = L.water || {};
   const waters = Array.isArray(W) ? W : [
@@ -174,7 +200,8 @@ function _normalizeLayout(L) {
     paths: (p.paths || []).map((q) => ({ width: +(q.width || 2.4), points: (q.points || q).map(_pt) })),
   })).filter((p) => p.polygon.length >= 3);
   out.rail = [].concat(L.elevatedRail || L.rail || []).map((r) => ({
-    id: r.id, name: r.name || '', closed: !!r.closed, height: +(r.height || 5.5), width: +(r.width || 6.4),
+    // Real-scale L decks raised to 3.2u so a bus (~2.6u) clears them
+    id: r.id, name: r.name || '', closed: !!r.closed, height: Math.max(out.real ? 3.2 : 0, +(r.height || 5.5)), width: +(r.width || 6.4),
     points: (r.points || r.polyline || []).map(_pt),
   })).filter((r) => r.points.length >= 2);
   out.stations = (L.railStations || []).map((st) => ({ x: +st.x, z: +st.z, rotY: +(st.rot || 0), length: +(st.length || 20) }));
@@ -182,7 +209,8 @@ function _normalizeLayout(L) {
   out.bridges = (L.bridges || []).map((g) => ({
     id: g.id, name: g.name || '', x: +(g.x ?? g.pos?.[0]), z: +(g.z ?? g.pos?.[1]),
     rotY: g.rot !== undefined ? +g.rot + Math.PI / 2 : +(g.rotY || 0),
-    length: +(g.length || 30), width: +(g.width || 12), carries: g.carries || 'road',
+    length: +(g.length || 30), carries: g.carries || 'road',
+    width: Math.max(out.real && g.carries !== 'rail' ? 9.5 : 0, +(g.width || 12)),
   }));
   const lmIds = new Set((L.landmarks || []).map((l) => l.id));
   out.buildings = (L.buildings || [])
@@ -192,12 +220,67 @@ function _normalizeLayout(L) {
       return { ...r, h: +(o.h ?? o.height ?? 12), style: o.style || null };
     })
     .filter((o) => o.w > 0.5 && o.d > 0.5 && o.h > 0.5);
+  if (out.real) _clearRoads(out.buildings, out.roads, 1.2 + 0.3);
+  const dus = (L.landmarks || []).find((o) => o.id === 'dusable_bridge');
+  out.dusable = dus ? [+dus.x, +dus.z] : null;
   out.landmarks = (L.landmarks || []).filter((o) => !KIT_IDS.has(o.id)).map((o) => ({
     ...(o.rot !== undefined ? { x: +o.x, z: +o.z, w: +o.w, d: +o.d, rotY: +o.rot } : _rect(o)),
     id: o.id, name: o.name || o.id, h: +(o.h ?? o.height ?? 30), hp: o.hp, kind: o.kind || 'building',
     heightM: o.heightMetres ? +o.heightMetres : 0,
   }));
   return out;
+}
+
+/** Trim (and nudge) building boxes back from the road ribbons: every road
+ *  segment whose half width + `margin` reaches into a box pushes that face
+ *  back; the box keeps at least 45% of each side. */
+function _clearRoads(buildings, roads, margin) {
+  const CELL = 24;
+  const segs = new Map();
+  for (const r of roads) {
+    for (let i = 0; i + 1 < r.points.length; i++) {
+      const a = r.points[i], b = r.points[i + 1];
+      const seg = { a, b, hw: r.width / 2 };
+      const x0 = Math.floor((Math.min(a[0], b[0]) - 20) / CELL), x1 = Math.floor((Math.max(a[0], b[0]) + 20) / CELL);
+      const z0 = Math.floor((Math.min(a[1], b[1]) - 20) / CELL), z1 = Math.floor((Math.max(a[1], b[1]) + 20) / CELL);
+      for (let cx = x0; cx <= x1; cx++) for (let cz = z0; cz <= z1; cz++) {
+        const k = cx + ':' + cz;
+        if (!segs.has(k)) segs.set(k, []);
+        segs.get(k).push(seg);
+      }
+    }
+  }
+  for (const o of buildings) {
+    const w0 = o.w, d0 = o.d;
+    const near = segs.get(Math.floor(o.x / CELL) + ':' + Math.floor(o.z / CELL)) || [];
+    for (let pass = 0; pass < 2; pass++) {
+      for (const sg of near) {
+        const dx = sg.b[0] - sg.a[0], dz = sg.b[1] - sg.a[1], l = Math.hypot(dx, dz);
+        if (l < 1e-3) continue;
+        const ux = dx / l, uz = dz / l, nx = -uz, nz = ux;
+        // Box axes (local X -> (cos r, -sin r), local Z -> (sin r, cos r))
+        const c = Math.cos(o.rotY), s = Math.sin(o.rotY);
+        const ax = [c, -s], az = [s, c];
+        const ex = Math.abs(ax[0] * nx + ax[1] * nz) * o.w / 2 + Math.abs(az[0] * nx + az[1] * nz) * o.d / 2;
+        const el = Math.abs(ax[0] * ux + ax[1] * uz) * o.w / 2 + Math.abs(az[0] * ux + az[1] * uz) * o.d / 2;
+        const rx = o.x - sg.a[0], rz = o.z - sg.a[1];
+        const t = rx * ux + rz * uz;
+        if (t < -el || t > l + el) continue; // box lies beyond this segment's ends
+        const dist = rx * nx + rz * nz;
+        const over = sg.hw + margin - (Math.abs(dist) - ex);
+        if (over <= 0 || over > ex * 2) continue; // clear, or the road runs through it (layout's call)
+        // Move the face away: shift the centre by over/2, shorten the side
+        // most aligned with the road normal by `over`
+        const sgn = dist >= 0 ? 1 : -1;
+        const alongX = Math.abs(ax[0] * nx + ax[1] * nz) >= Math.abs(az[0] * nx + az[1] * nz);
+        const cur = alongX ? o.w : o.d, min = (alongX ? w0 : d0) * 0.45;
+        const cut = Math.min(over, cur - min);
+        if (cut <= 0) continue;
+        if (alongX) o.w -= cut; else o.d -= cut;
+        o.x += nx * sgn * cut / 2; o.z += nz * sgn * cut / 2;
+      }
+    }
+  }
 }
 
 // --------------- geometry helpers ---------------
@@ -574,11 +657,47 @@ const LANDMARK_BUILDERS = {
     return m.build();
   },
   art_institute(h, w, d, M) {
+    // Beaux-Arts front block on Michigan Ave (local -X): rusticated base,
+    // engaged columns, cornice + attic, a three-arch entrance pavilion with
+    // a pediment, grand steps and the two lions. Behind it the lower
+    // galleries, and the white Modern Wing (NE) under its floating
+    // "flying carpet" canopy.
     const m = new Massing();
-    m.box(M.limestone, w, h * 0.75, d);
-    m.add(M.limestone, new THREE.CylinderGeometry(0.1, w * 0.3, h * 0.15, 4), 0, h * 0.825, 0, Math.PI / 4, 0, 0, 1, 1, d / w);
-    for (let k = 0; k < 6; k++) m.cyl(M.white, 0.45, 0.45, h * 0.55, 8, (k - 2.5) * w * 0.09, 0, d * 0.48);
-    for (const sx of [-1, 1]) m.box(M.bronze, 1.4, 1.2, 2.6, sx * w * 0.3, 0, d * 0.62);
+    const fw = w * 0.30, fd = d * 0.62, fx = -w / 2 + fw / 2; // front block
+    m.box(M.concrete, fw, h * 0.22, fd, fx, 0, 0);                       // rusticated base
+    m.box(M.limestone, fw * 0.96, h * 0.56, fd * 0.98, fx, h * 0.22, 0); // piano nobile
+    m.box(M.limestone, fw * 1.04, h * 0.06, fd * 1.03, fx, h * 0.78, 0); // cornice
+    m.box(M.terracotta, fw * 0.9, h * 0.14, fd * 0.94, fx, h * 0.84, 0); // attic
+    // Engaged columns along the Michigan face
+    const face = -w / 2 - 0.05;
+    for (let k = 0; k < 14; k++) {
+      const z = -fd * 0.46 + k * fd * 0.92 / 13;
+      if (Math.abs(z) < fd * 0.16) continue; // pavilion in the middle
+      m.cyl(M.white, 0.16, 0.18, h * 0.54, 6, face + 0.1, h * 0.23, z);
+    }
+    // Entrance pavilion: projecting bay, three dark arches, pediment
+    const pw = fd * 0.32, px = face - 0.6;
+    m.box(M.limestone, 1.4, h * 0.8, pw, px + 0.7, 0, 0);
+    for (let k = -1; k <= 1; k++) {
+      m.box(M.darkGlass, 0.12, h * 0.42, pw * 0.2, px - 0.02, h * 0.12, k * pw * 0.3);
+      m.add(M.darkGlass, new THREE.CylinderGeometry(pw * 0.1, pw * 0.1, 0.12, 10, 1, false, 0, Math.PI), px - 0.02, h * 0.54, k * pw * 0.3, 0, 0, Math.PI / 2);
+    }
+    m.add(M.limestone, new THREE.CylinderGeometry(h * 0.16, h * 0.16, pw * 1.05, 3), px + 0.5, h * 0.86, 0, 0, Math.PI / 2, Math.PI / 2, 1.8, 1, 1);
+    // Grand steps and the lions on their plinths
+    for (let k = 0; k < 3; k++) m.box(M.concrete, 1.0 + k * 0.7, 0.12, pw * (1.3 - k * 0.1), face - 0.9 - k * 0.35, k * 0.12, 0);
+    for (const sz of [-1, 1]) {
+      m.box(M.limestone, 1.0, 0.55, 1.0, face - 2.6, 0, sz * pw * 0.75);
+      m.box(M.bronze, 0.5, 0.45, 1.1, face - 2.6, 0.55, sz * pw * 0.75);
+    }
+    // Lower gallery wings behind
+    m.box(M.limestone, w * 0.34, h * 0.6, d * 0.8, -w * 0.02, 0, -d * 0.05);
+    m.box(M.terracotta, w * 0.30, h * 0.08, d * 0.76, -w * 0.02, h * 0.6, -d * 0.05);
+    // Modern Wing: white flat-roofed block, glass ground floor, canopy on posts
+    const mx = w * 0.3, mz = -d * 0.18;
+    m.box(M.darkGlass, w * 0.36, h * 0.3, d * 0.5, mx, 0, mz);
+    m.box(M.white, w * 0.36, h * 0.55, d * 0.5, mx, h * 0.3, mz);
+    m.box(M.steel, w * 0.42, 0.08, d * 0.56, mx, h * 1.08, mz);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) m.box(M.steel, 0.12, h * 0.23, 0.12, mx + sx * w * 0.2, h * 0.85, mz + sz * d * 0.27);
     return m.build();
   },
   chicago_theatre(h, w, d, M) {
@@ -690,7 +809,7 @@ export function buildChicago(scene, world, opts, K) {
   // Real-scale map: narrower sidewalks, smaller markings and street furniture
   const REAL = L.real;
   const SIDEWALK_W = REAL ? 1.2 : 3.0;
-  const PS = REAL ? 0.6 : 1; // street-prop scale
+  const PS = REAL ? 0.8 : 1; // street-prop scale
 
   const addBatch = (geom, mat, shadow = true) => {
     const m = new THREE.Mesh(geom, mat);
@@ -999,6 +1118,14 @@ export function buildChicago(scene, world, opts, K) {
         b.customMesh = new THREE.Object3D(); // AABB hit-test marker until placed
         continue;
       }
+      if (def.chrome && !scene.environment) {
+        // No env map off desktop HIGH: metal 1 would render black
+        K.onTemplatesReady((sc, get) => {
+          get(url)?.traverse((o) => {
+            if (o.isMesh && o.material.metalness > 0.9) { o.material.metalness = 0.55; o.material.roughness = Math.max(0.25, o.material.roughness); }
+          });
+        });
+      }
       // Exact layout height: no footprint clamp (maxW/maxD 0)
       K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY: lm.rotY || 0, landmark: true });
       continue;
@@ -1035,8 +1162,10 @@ export function buildChicago(scene, world, opts, K) {
       b.isBridge = true;
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       scene.add(b.group); buildings.push(b); grid.add(b);
+      // The Michigan Ave crossing gets the hero DuSable model
+      const hero = L.dusable && _kit('dusable_bridge') && Math.hypot(br.x - L.dusable[0], br.z - L.dusable[1]) < 15;
       // The GLB spans along local X; rotY here is the template-Z convention
-      K.queueGLB({ url: bridgeGLB, h: 50, building: b, maxW: aw, maxD: ad, rotY: br.rotY - Math.PI / 2, landmark: true });
+      K.queueGLB({ url: hero ? _kit('dusable_bridge') : bridgeGLB, h: 50, building: b, maxW: aw, maxD: ad, rotY: br.rotY - Math.PI / 2, landmark: true });
     }
   } else if (L.bridges.length) {
     const L0 = 22, W0 = 15;
@@ -1120,77 +1249,124 @@ export function buildChicago(scene, world, opts, K) {
       scene.add(im);
     }
   };
-  const tiledRail = (tpl) => {
-    // One InstancedMesh per template mesh; each tile stretched to divide its
-    // straight run exactly and scaled so the deck top sits at the line height
+  const tiledRail = (tpl, curveTpl) => {
+    // Straight runs tile the 40 m segment (stretched to divide each run
+    // exactly); ~90-degree corners get the curve piece, with the straights
+    // trimmed back by its radius. Map scale in plan, stretched in height so
+    // the rail top sits at the (raised) line height.
     const def = CHICAGO_KIT_GLBS.l_track_segment;
+    const S = L.scale || 0.2;
     tpl.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(tpl);
     const size = box.getSize(new THREE.Vector3());
-    const alongX = def.axis !== 'z';
-    const rawLen = alongX ? size.x : size.z, rawW = alongX ? size.z : size.x;
-    const tiles = [];
+    const rawLen = size.x;
+    const R = (CHICAGO_KIT_GLBS.l_track_curve?.radius || 30) * S;
+    const tiles = [], curves = [];
     for (const r of L.rail) {
       const pts = railPts(r);
-      // Uniform: deck height from the layout, the girder keeps its proportions
-      const sy = r.height / size.y, sw = sy;
-      for (let i = 0; i + 1 < pts.length; i++) {
-        const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
-        const l = Math.hypot(bx - ax, bz - az);
+      const sy = r.height / size.y;
+      const n = pts.length;
+      const dir = (k) => {
+        const l = Math.hypot(pts[k + 1][0] - pts[k][0], pts[k + 1][1] - pts[k][1]) || 1;
+        return [(pts[k + 1][0] - pts[k][0]) / l, (pts[k + 1][1] - pts[k][1]) / l, l];
+      };
+      const trimA = new Float32Array(n), trimB = new Float32Array(n); // per segment start/end
+      if (curveTpl) {
+        for (let k = 1; k + 1 < n; k++) {
+          const d1 = dir(k - 1), d2 = dir(k);
+          const dot = d1[0] * d2[0] + d1[1] * d2[1];
+          if (Math.abs(dot) > 0.35 || d1[2] - trimA[k - 1] < R + 1 || d2[2] < R + 1) continue;
+          trimB[k - 1] = R; trimA[k] = R;
+          const P = pts[k];
+          const left = d1[0] * d2[1] - d1[1] * d2[0] < 0;
+          // A right turn is the left-turn piece run backwards from the exit
+          curves.push(left
+            ? { x: P[0] - d1[0] * R, z: P[1] - d1[1] * R, ry: Math.atan2(-d1[1], d1[0]), sy }
+            : { x: P[0] + d2[0] * R, z: P[1] + d2[1] * R, ry: Math.atan2(d2[1], -d2[0]), sy });
+        }
+      }
+      for (let k = 0; k + 1 < n; k++) {
+        const [dx, dz, l0] = dir(k);
+        const l = l0 - trimA[k] - trimB[k];
         if (l < 0.2) continue;
-        const n = Math.max(1, Math.round(l / (def.len * (L.scale || 0.2))));
-        const dx = (bx - ax) / l, dz = (bz - az) / l;
-        // Local length axis -> segment direction
-        const ry = alongX ? Math.atan2(-dz, dx) : Math.atan2(dx, dz);
-        for (let k = 0; k < n; k++) {
-          const t = (k + 0.5) * l / n;
-          tiles.push({ x: ax + dx * t, z: az + dz * t, ry, sl: l / n / rawLen, sy, sw });
+        const cnt = Math.max(1, Math.round(l / (def.len * S)));
+        const ry = Math.atan2(-dz, dx); // local X -> segment direction
+        for (let q = 0; q < cnt; q++) {
+          const t = trimA[k] + (q + 0.5) * l / cnt;
+          tiles.push({ x: pts[k][0] + dx * t, z: pts[k][1] + dz * t, ry, sl: l / cnt / rawLen, sy });
         }
       }
     }
-    const meshes = [];
-    tpl.traverse((o) => { if (o.isMesh) meshes.push(o); });
-    const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), m = new THREE.Matrix4(), off = new THREE.Matrix4();
-    // Template origin: bottom centre of its bbox
-    off.makeTranslation(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2);
     // Static clones folded by instanceStaticClones: per-120u-tile
     // InstancedMeshes (frustum culled) with the LOD1 twin far away
-    const locals = meshes.map((src) => new THREE.Matrix4().multiplyMatrices(off, src.matrixWorld));
-    for (const t of tiles) {
-      const sc = alongX ? new THREE.Vector3(t.sl, t.sy, t.sw) : new THREE.Vector3(t.sw, t.sy, t.sl);
-      m.compose(new THREE.Vector3(t.x, 0, t.z), q.setFromAxisAngle(up, t.ry), sc);
-      const g = new THREE.Group();
-      meshes.forEach((src, k) => {
-        const mesh = new THREE.Mesh(src.geometry, src.material);
-        mesh.applyMatrix4(new THREE.Matrix4().multiplyMatrices(m, locals[k]));
-        mesh.receiveShadow = true;
-        g.add(mesh);
-      });
-      g.userData.instance = true;
-      scene.add(g);
-    }
+    const place = (src, recentre, list, scaleOf) => {
+      src.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(src);
+      const off = new THREE.Matrix4();
+      if (recentre) off.makeTranslation(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
+      const meshes = [];
+      src.traverse((o) => { if (o.isMesh) meshes.push(o); });
+      const locals = meshes.map((o) => new THREE.Matrix4().multiplyMatrices(off, o.matrixWorld));
+      const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), m = new THREE.Matrix4();
+      for (const t of list) {
+        m.compose(new THREE.Vector3(t.x, 0, t.z), q.setFromAxisAngle(up, t.ry), scaleOf(t));
+        const g = new THREE.Group();
+        meshes.forEach((o, k) => {
+          const mesh = new THREE.Mesh(o.geometry, o.material);
+          mesh.applyMatrix4(new THREE.Matrix4().multiplyMatrices(m, locals[k]));
+          mesh.receiveShadow = true;
+          g.add(mesh);
+        });
+        g.userData.instance = true;
+        scene.add(g);
+      }
+    };
+    place(tpl, true, tiles, (t) => new THREE.Vector3(t.sl, t.sy, S));
+    // The curve piece is authored from its own origin (not recentred)
+    if (curveTpl && curves.length) place(curveTpl, false, curves, (t) => new THREE.Vector3(S, t.sy, S));
     K.instanceStaticClones(scene);
   };
   const trackGLB = glb ? _kit('l_track_segment') : null;
+  const curveGLB = glb ? _kit('l_track_curve') : null;
+  const trainGLB = glb ? _kit('l_train') : null;
   if (trackGLB) {
     K.onTemplatesReady((sc, get) => {
       const tpl = get(trackGLB);
-      if (tpl) tiledRail(tpl);
+      if (tpl) tiledRail(tpl, curveGLB ? get(curveGLB) : null);
       else { proceduralRail(); K.mergeStaticMeshes(scene); }
     });
   } else {
     proceduralRail();
   }
   {
-    // Trains on the longest lines (two on phones)
-    let trains = 0;
+    // Trains on the longest lines (two on phones): the l_train GLB once its
+    // template is parsed, else procedural cars right away
+    const lines = [];
     for (const r of L.rail) {
       const pts = railPts(r);
       const len = pts.reduce((a, p, k) => (k ? a + Math.hypot(p[0] - pts[k - 1][0], p[1] - pts[k - 1][1]) : 0), 0);
-      if (len > 60 && trains < (lite ? 2 : 5)) {
-        trains++;
-        animators.push(makeTrain(scene, world, pts, r.height + 0.05, M, r.width));
-      }
+      if (len > 60 && lines.length < (lite ? 2 : 5)) lines.push([pts, r]);
+    }
+    const startTrains = (car) => {
+      for (const [pts, r] of lines) animators.push(makeTrain(scene, world, pts, r.height + 0.05, M, r.width, car));
+    };
+    if (trainGLB) {
+      K.onTemplatesReady((sc, get) => {
+        const tpl = get(trainGLB);
+        if (!tpl) { startTrains(null); return; }
+        // Car runs along glTF X, base at rail top: turn X onto the travel
+        // direction (+Z in the fleet's local frame), map scale
+        const S = L.scale || 0.2;
+        tpl.updateMatrixWorld(true);
+        const b = new THREE.Box3().setFromObject(tpl);
+        const fix = new THREE.Matrix4().compose(new THREE.Vector3(), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2), new THREE.Vector3(S, S, S))
+          .multiply(new THREE.Matrix4().makeTranslation(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2));
+        const parts = [];
+        tpl.traverse((o) => { if (o.isMesh) parts.push({ geom: o.geometry, mat: o.material, m: new THREE.Matrix4().multiplyMatrices(fix, o.matrixWorld) }); });
+        startTrains({ parts, len: 14.9 * S, lane: 2.0 * S });
+      });
+    } else {
+      startTrains(null);
     }
     // Stations: platform slabs with a canopy either side of the deck
     if (L.stations.length) {
@@ -1214,7 +1390,9 @@ export function buildChicago(scene, world, opts, K) {
 
   // ---- street dressing: lamps, signals, trees, shelters, carts ----
   {
-    const hasLamp = K.hasProp('street_lamp');
+    // Washington-style acorn lamp GLB, else the Tokyo kit lamp, else procedural
+    const lampName = K.hasProp('chi_streetlamp') ? 'chi_streetlamp' : 'street_lamp';
+    const hasLamp = K.hasProp(lampName);
     // Lamps along the wider streets only (each GLB lamp is ~1k tris)
     const lampEvery = lite ? 56 : 34;
     const lampMinW = REAL ? 8 : 0;
@@ -1227,7 +1405,7 @@ export function buildChicago(scene, world, opts, K) {
         const off = s * (w / 2 + SIDEWALK_W * 0.25);
         const x = net.nodes[e.a].x + e.dx * t - e.dz * off, z = net.nodes[e.a].z + e.dz * t + e.dx * off;
         if (isWater(x, z)) continue;
-        const lamp = hasLamp ? K.cloneProp('street_lamp', 5.6 * PS) : makeChiLamp();
+        const lamp = hasLamp ? K.cloneProp(lampName, 5.6 * PS) : makeChiLamp();
         if (!hasLamp) lamp.scale.setScalar(PS);
         lamp.position.set(x, 0, z);
         lamp.rotation.y = Math.atan2(e.dx, e.dz) + (s > 0 ? -Math.PI / 2 : Math.PI / 2);
@@ -1242,7 +1420,8 @@ export function buildChicago(scene, world, opts, K) {
       }
     }
     // Traffic signals on one corner of every 4-way junction
-    if (K.hasProp('traffic_signal')) {
+    // Only a US-style signal (the Tokyo kit's is Japanese); none delivered yet
+    if (K.hasProp('chi_traffic_signal')) {
       // Major 4-way junctions, at least 30u apart, capped per tier
       const placed = [];
       const cap = lite ? 30 : 70;
@@ -1252,7 +1431,7 @@ export function buildChicago(scene, world, opts, K) {
         const w = e.laneOff * 4;
         if (w < lampMinW || placed.some(([x, z]) => Math.abs(x - node.x) < 30 && Math.abs(z - node.z) < 30)) continue;
         placed.push([node.x, node.z]);
-        const sig = K.cloneProp('traffic_signal', 6.4 * PS);
+        const sig = K.cloneProp('chi_traffic_signal', 6.4 * PS);
         const co = w / 2 + SIDEWALK_W * 0.7;
         sig.position.set(node.x + (e.dx - e.dz) * co, 0, node.z + (e.dz + e.dx) * co);
         sig.rotation.y = Math.atan2(e.dx, e.dz) + Math.PI;
@@ -1370,6 +1549,8 @@ export function buildChicago(scene, world, opts, K) {
     cityRadius: Math.max(B.maxX - B.minX, B.maxZ - B.minZ) / 2,
     level: 'chicago', bounds: { ...B }, center: { x: (B.minX + B.maxX) / 2, z: (B.minZ + B.maxZ) / 2 },
     spawn: { ...L.spawn }, isWater, barrier, landPoint: sidewalkPoint,
+    // Minimap: lake / river / pond outlines
+    mapWater: L.water.map((w) => ({ kind: w.kind, polygon: w.polygon, holes: w.holes })),
   };
 }
 
@@ -1423,22 +1604,25 @@ function pathSampler(pts) {
 
 // L train: 4 cars following the track, looping (or shuttling on an open
 // line); a stomp derails the whole train in a chain of explosions.
-function makeTrain(scene, world, pts, y, M, trackW = 6.4) {
+// car: { parts, len, lane } from the l_train GLB, or null for procedural cars
+function makeTrain(scene, world, pts, y, M, trackW = 6.4, car = null) {
   const path = pathSampler(pts);
   // Sized to the track: one car is ~0.4 track widths wide (two tracks)
   const k = trackW / 6.4;
-  const CARS = 4, CAR_L = 10 * k, GAP = 0.8 * k;
+  const CARS = 4, CAR_L = car ? car.len * 0.98 : 10 * k, GAP = car ? car.len * 0.02 : 0.8 * k;
   const P = propKit();
   P.trainBody = P.trainBody || new THREE.BoxGeometry(2.6, 2.6, 10);
   P.trainWin = P.trainWin || new THREE.BoxGeometry(2.66, 0.7, 8.6);
   P.trainStripe = P.trainStripe || new THREE.BoxGeometry(2.64, 0.25, 10);
   for (const g of [P.trainBody, P.trainWin, P.trainStripe]) g.userData.shared = true;
-  const lane = trackW * 0.25; // runs on the right-hand track
-  const fleet = makeFleet(scene, [
-    { geom: P.trainBody, mat: M.trainBody, m: _local(lane, 1.5 * k, 0, k, k, k) },
-    { geom: P.trainWin, mat: M.trainWin, m: _local(lane, 2.0 * k, 0, k, k, k) },
-    { geom: P.trainStripe, mat: M.trainStripe, m: _local(lane, 0.6 * k, 0, k, k, k) },
-  ], CARS);
+  const lane = car ? car.lane : trackW * 0.25; // runs on one of the two tracks
+  const fleet = makeFleet(scene, car
+    ? car.parts.map((p) => ({ geom: p.geom, mat: p.mat, m: new THREE.Matrix4().makeTranslation(lane, 0, 0).multiply(p.m) }))
+    : [
+      { geom: P.trainBody, mat: M.trainBody, m: _local(lane, 1.5 * k, 0, k, k, k) },
+      { geom: P.trainWin, mat: M.trainWin, m: _local(lane, 2.0 * k, 0, k, k, k) },
+      { geom: P.trainStripe, mat: M.trainStripe, m: _local(lane, 0.6 * k, 0, k, k, k) },
+    ], CARS);
   let head = Math.random() * path.total, dir = 1, dead = false;
   const pos = [];
   return {
