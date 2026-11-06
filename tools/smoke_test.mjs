@@ -24,7 +24,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'node:module';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CONFIGS = [['desktop', 'high', 'tokyo'], ['iphone', 'med', 'tokyo'], ['desktop', 'high', 'chicago'], ['iphone', 'med', 'chicago']];
+// (iphone low chicago: the procedural-only tier, where Chicago still loads its building GLBs)
+const CONFIGS = [['desktop', 'high', 'tokyo'], ['iphone', 'med', 'tokyo'], ['desktop', 'high', 'chicago'], ['iphone', 'med', 'chicago'], ['iphone', 'low', 'chicago']];
 
 const argv = process.argv.slice(2);
 if (argv[0] !== '--run') {
@@ -90,11 +91,13 @@ globalThis.createImageBitmap = async () => ({ width: 4, height: 4, close: noop }
 URL.createObjectURL = () => 'blob:stub';
 URL.revokeObjectURL = noop;
 const fetched = new Set();
+let fetchedBytes = 0; // GLBs + JSON through fetch (images via <img> not counted)
 globalThis.fetch = async (u) => {
   const url = typeof u === 'string' ? u : u.url;
   if (/^(blob|data):/.test(url)) return new Response(new Blob([new Uint8Array(4)]));
   const p = repoFile(url);
   if (!fs.existsSync(p)) return new Response(null, { status: 404 });
+  if (!fetched.has(url)) fetchedBytes += fs.statSync(p).size;
   fetched.add(url);
   return new Response(fs.readFileSync(p));
 };
@@ -138,6 +141,10 @@ const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q
 for (const key of ['godzilla', 'ghidorah', 'mecha']) await step(`kaiju ${key}`, () => loadKaijuModel(key));
 if (Q.GLB_CONTENT) {
   await step('building/debris/enemy templates', () => Promise.all([city.loadBuildingTemplates(undefined, level), city.loadDebrisTemplates(), enemies.loadEnemyTemplates()]));
+  await step('flushPendingGLBBuildings', () => city.flushPendingGLBBuildings(scene));
+} else if (level === 'chicago') {
+  // Chicago's buildings are GLB on every tier, the procedural-only phone LOW included (as game.js)
+  await step('chicago building templates', () => city.loadBuildingTemplates(undefined, level));
   await step('flushPendingGLBBuildings', () => city.flushPendingGLBBuildings(scene));
 }
 const spawned = {};
@@ -216,6 +223,16 @@ if (level === 'chicago' && res && res.bounds) {
   const leaks = new Set();
   scene.traverse((o) => { if (o.isMesh && tokyoOnly.test(o.material?.name || '')) leaks.add(o.material.name); });
   if (leaks.size) fail(`chicago: Tokyo-only meshes in the scene: ${[...leaks].join(', ')}`);
+  // Every Chicago building and landmark is a pipeline GLB once templates load:
+  // procedural massing or a box is only a load-failure fallback. Assets still
+  // marked pending in chicago.js (not delivered) are listed, not failed.
+  {
+    const proc = res.buildings.filter((b) => !b.isBridge && !b.glbUrl);
+    const pending = proc.filter((b) => b.pendingGLB);
+    const bad = proc.filter((b) => !b.pendingGLB);
+    if (bad.length) fail(`chicago: ${bad.length} buildings are procedural, not GLB: ${bad.slice(0, 6).map((b) => b.landmarkId || `(${b.x.toFixed(0)},${b.z.toFixed(0)} h${b.h.toFixed(1)})`).join(', ')}`);
+    summary += `${res.buildings.length - proc.length} GLB buildings${pending.length ? `, ${pending.length} pending GLB (${[...new Set(pending.map((b) => b.pendingGLB))].join(', ')})` : ''}; `;
+  }
   const lms = res.buildings.filter((b) => b.landmarkId);
   summary += `${lms.length} landmarks; `;
   if (!lms.length) fail('chicago: no landmarks built');
@@ -295,5 +312,5 @@ if (failures.length) {
   for (const f of failures) log('  - ' + f.split('\n').slice(0, 4).join('\n    '));
   process.exit(1);
 }
-log(`${label} ok: ${fetched.size} files fetched, no warnings; ${summary}`);
+log(`${label} ok: ${fetched.size} files fetched (${(fetchedBytes / 1e6).toFixed(1)} MB), no warnings; ${summary}`);
 process.exit(0);

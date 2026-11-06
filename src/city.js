@@ -2687,6 +2687,7 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
     b.items.push({ matrix: m.matrixWorld.clone(), building });
   });
   building.customMesh = root;
+  building.glbUrl = url; // what stands there (smoke_test: no procedural fallbacks)
 }
 
 // Pending GLB building instances, keyed geometry|material|tile (see above).

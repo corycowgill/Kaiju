@@ -1575,8 +1575,9 @@ function _showMobileDataWarning() {
     const sizeEl = document.getElementById('data-warn-size');
     // Measured first-load downloads per tier (GLBs + textures + flipbooks +
     // one audio format; the trailer video only streams if played). Re-measure
-    // with the headless tier harness when assets change.
-    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? '~52 MB' : '~9 MB') : '~150 MB';
+    // with the headless tier harness when assets change. LOW: Tokyo ~9 MB,
+    // Chicago ~40 MB (smoke test: its building GLBs load on every tier).
+    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? '~52 MB' : '~9-40 MB') : '~150 MB';
     warn.classList.remove('hidden');
     warn.style.display = 'flex';
     const okBtn = document.getElementById('data-warn-ok');
@@ -1916,7 +1917,9 @@ async function _startGameInner(key) {
       _worldTemplatesLoaded = true;
       _bldgLevelsLoaded.add(world.level);
     }
-    if (GLB_CONTENT && !_bldgLevelsLoaded.has(world.level)) {
+    // Chicago's buildings are GLB on every tier (phone LOW included)
+    const bldgGLB = GLB_CONTENT || world.level === 'chicago';
+    if (bldgGLB && !_bldgLevelsLoaded.has(world.level)) {
       // First run on this level (another level's templates are already parsed)
       await loadBuildingTemplates(onBldgProgress, world.level);
       _bldgLevelsLoaded.add(world.level);
@@ -1924,7 +1927,7 @@ async function _startGameInner(key) {
     _kaijuCache = { key, glb };
 
     // Clone + place every queued building now that templates are loaded
-    if (GLB_CONTENT) {
+    if (bldgGLB) {
       loadingStatus.textContent = 'BUILDING ' + LEVELS[world.level].name;
       flushPendingGLBBuildings(scene);
     }

@@ -33,6 +33,13 @@ const CHI_BASE = './assets/buildings/chicago/';
 // frontAxis). The layout rot comes from OSM outlines and is ambiguous by
 // quarter turns, so the placement picks rot + k*90deg facing that way.
 // pair: a second, mirrored copy this many units south facing the first.
+// Rear blocks behind a front-only landmark GLB (fitted to the rest of the
+// site, front = +Z toward the main model). pending until delivered: the
+// procedural rear builder stands in.
+const CHICAGO_REAR_GLBS = {
+  cbot_annex: { file: 'cbot_annex.glb', ready: true },
+  art_institute_rear: { file: 'art_institute_rear.glb', ready: true },
+};
 const CHICAGO_LANDMARK_GLBS = [
   { id: 'willis_tower', file: 'willis_tower.glb', trueHeightM: 527.3, face: 'east', ready: true },
   { id: 'tower_401_n_wabash', file: 'tower_401_n_wabash.glb', trueHeightM: 423, face: 'south', ready: true },
@@ -62,7 +69,7 @@ const CHICAGO_LANDMARK_GLBS = [
   // The Beaux-Arts front block only (lions, +Z on Michigan Ave): placed at the
   // Michigan edge of the 246 m site, the procedural galleries and Modern
   // Wing (rear) fill the rest
-  { id: 'art_institute', file: 'art_institute.glb', trueHeightM: 20, face: 'west', fit: 'footprint', maxH: 2.0, front: true, ready: true },
+  { id: 'art_institute', file: 'art_institute.glb', trueHeightM: 20, face: 'west', fit: 'footprint', maxH: 2.0, front: true, rearGLB: 'art_institute_rear', ready: true },
   // Scaled up to its site (the 180 x 146 m model vs the 348 x 208 m
   // layout outline, height up to 1.4x); colonnade sides (+Z) east and west,
   // open ends north-south
@@ -71,7 +78,7 @@ const CHICAGO_LANDMARK_GLBS = [
   { id: 'field_museum', file: 'field_museum.glb', trueHeightM: 30, face: 'north', ready: true },
   // Only the 1930 tower (57 x 60 m, statue at 184 m), clock face (+Z) north up
   // LaSalle; the layout outline includes the 1980 annex, built procedurally behind
-  { id: 'board_of_trade', file: 'board_of_trade.glb', trueHeightM: 184, face: 'north', front: true, maxH: 1.0, frontDepthM: 60, rear: 'cbot_annex', rearH: 0.55, ready: true },
+  { id: 'board_of_trade', file: 'board_of_trade.glb', trueHeightM: 184, face: 'north', front: true, maxH: 1.0, frontDepthM: 60, rear: 'cbot_annex', rearGLB: 'cbot_annex', rearH: 0.55, ready: true },
   // Fountain at true size; the level adds the 85 m pool and the jets
   { id: 'buckingham_fountain', file: 'buckingham_fountain.glb', trueHeightM: 7.6, fountain: true, ready: true },
   // Gable end (+Z) on State St (east); lattice windows get a dark glass core
@@ -82,6 +89,10 @@ const CHICAGO_LANDMARK_GLBS = [
   // State St facade (+Z); its marquee/blade are unlit, the CHICAGO sign overlay is fitted to it
   { id: 'chicago_theatre', file: 'chicago_theatre.glb', trueHeightM: 25, face: 'west', fit: 'footprint', maxH: 1.3, ready: true },
   // Entrance (+Z) on Michigan Ave
+  // 333 S Wabash, the red one: Wabash side (+Z) west, long side along X.
+  // (pending: true marks an entry whose GLB isn't delivered; smoke_test
+  // lists those instead of failing on their procedural stand-in)
+  { id: 'cna_center_333_s_wabash', file: 'cna_center_333_s_wabash.glb', trueHeightM: 183, face: 'west', ready: true },
   { id: 'tribune_tower', file: 'tribune_tower.glb', trueHeightM: 141, face: 'west', ready: true },
   // Long axis X fits the layout outline (E-W); +Z, both blocks and the
   // skybridge, faces the river
@@ -101,6 +112,13 @@ const CHICAGO_LANDMARK_GLBS = [
 // Buckets match the manifest's heightBucket: short < 18u (90 m), medium
 // 18-40u, tall above.
 const CHICAGO_GENERIC_GLBS = [
+  // gen_low2_*: the 'low' bucket (blocks under 7u), +Z street face
+  { file: 'gen_low2_brick_shop.glb', bucket: 'low', ready: true },
+  { file: 'gen_low2_greystone.glb', bucket: 'low', ready: true },
+  { file: 'gen_low2_courtyard_apts.glb', bucket: 'low', ready: true },
+  { file: 'gen_low2_terracotta_comm.glb', bucket: 'low', ready: true },
+  { file: 'gen_low2_warehouse.glb', bucket: 'low', share: 0.6, ready: true },
+  { file: 'gen_low2_modern_mid.glb', bucket: 'low', ready: true },
   { file: 'gen_low_brick_loft.glb', bucket: 'short', ready: true },
   { file: 'gen_low_limestone_block.glb', bucket: 'short', ready: true },
   { file: 'gen_low_terracotta_office.glb', bucket: 'short', ready: true },
@@ -171,18 +189,21 @@ const TOKYO_GENERIC = {
   tall: ['skyscraper_large_1', 'skyscraper_large_2', 'skyscraper_large_3'],
   medium: ['skyscraper_medium_1', 'skyscraper_medium_2', 'condo_1', 'condo_2'],
   short: [],
+  low: [],
 };
 
 // Front (+Z) direction of the procedural massing, where it matters
 const PROC_FACE = { chicago_theatre: 'west' }; // faces State St
 const _landmarkGLB = (id) => CHICAGO_LANDMARK_GLBS.find((g) => g.ready && (g.ids ? g.ids.includes(id) : g.id === id));
 function _pool(bucket) {
+  bucket = _ownBucket(bucket);
   const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket).map((g) => CHI_BASE + g.file);
   return own.length ? own : TOKYO_GENERIC[bucket].map((n) => `./assets/buildings/${n}.glb`);
 }
 /** One url from the bucket's pool, weighted by share (default 1), avoiding
  *  `avoid` (the models already standing in the neighbouring cells). */
 function _pickGeneric(bucket, avoid) {
+  bucket = _ownBucket(bucket);
   const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket);
   if (!own.length) { const p = _pool(bucket); return p[Math.floor(Math.random() * p.length)]; }
   const ok = avoid ? own.filter((g) => !avoid.has(CHI_BASE + g.file)) : own;
@@ -191,15 +212,10 @@ function _pickGeneric(bucket, avoid) {
   for (const g of list) { r -= g.share ?? 1; if (r < 0) return CHI_BASE + g.file; }
   return CHI_BASE + list[list.length - 1].file;
 }
-// Fraction of kit-eligible blocks kept as windowed boxes, for variety
-const BOX_SHARE = 0.15;
-const _bucket = (h) => (h >= 40 ? 'tall' : h >= 18 ? 'medium' : 'short');
-// Fraction of a bucket's blocks that get a GLB at all (a lone partial-share
-// model, e.g. only the parking deck, leaves the rest as boxes)
-const _share = (bucket) => {
-  const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket);
-  return own.length ? Math.min(1, own.reduce((a, g) => a + (g.share ?? 1), 0)) : 1;
-};
+// Every block gets a kit GLB: 'low' (< 7u, the gen_low2_* kit) borrows the
+// short kit until its own pieces are ready
+const _bucket = (h) => (h >= 40 ? 'tall' : h >= 18 ? 'medium' : h >= 7 ? 'short' : 'low');
+const _ownBucket = (bucket) => (bucket === 'low' && !CHICAGO_GENERIC_GLBS.some((g) => g.ready && g.bucket === 'low') ? 'short' : bucket);
 const DIRS = { east: [1, 0], west: [-1, 0], south: [0, 1], north: [0, -1] };
 /** rot + k*90deg whose local +Z (sin r, cos r) points closest to `face`
  *  (or whose local +X (cos r, -sin r) does, for faceX). */
@@ -221,7 +237,8 @@ export function chicagoBuildingGLBs() {
   return [
     ...CHICAGO_LANDMARK_GLBS.filter((g) => g.ready).map((g) => CHI_BASE + g.file),
     ...Object.keys(CHICAGO_KIT_GLBS).filter((id) => !(isMobile && CHICAGO_KIT_GLBS[id].desktopOnly)).map(_kit).filter(Boolean),
-    ..._pool('tall'), ..._pool('medium'), ..._pool('short'),
+    ...Object.values(CHICAGO_REAR_GLBS).filter((g) => g.ready).map((g) => CHI_BASE + g.file),
+    ..._pool('tall'), ..._pool('medium'), ..._pool('short'), ..._pool('low'),
   ];
 }
 /** GLB urls with a <name>_lod1.glb twin on disk (every ready landmark/kit file). */
@@ -271,7 +288,8 @@ function _rect(o) {
 
 // Landmark entries that are asset-kit pieces (tiled / instanced elsewhere), not
 // single placed landmarks: the L track and stations, generic bridges, riverwalk.
-const KIT_IDS = new Set(['bascule_bridge', 'l_track_segment', 'l_track_curve', 'l_station', 'riverwalk', 'dusable_bridge']);
+// art_institute_lions: the art_institute GLB carries its own lions on the steps
+const KIT_IDS = new Set(['bascule_bridge', 'l_track_segment', 'l_track_curve', 'l_station', 'riverwalk', 'dusable_bridge', 'art_institute_lions']);
 
 /** Accepts the cartographer's schema (meta, water[], roadGraph, cx/cz/rot
  *  buildings, spawn.player) and the older dev placeholder. */
@@ -1025,15 +1043,19 @@ export function buildChicago(scene, world, opts, K) {
   const buildings = [];
   const grid = new K.BuildingGrid(60);
   const lite = !!opts.lite;
+  // glb: the GLB kit pieces (track, boats, furniture); buildings are GLB on
+  // every tier, procedural massing / boxes only as a load-failure fallback
   const glb = opts.glb !== undefined ? !!opts.glb : !lite;
+  const bldgGLB = true;
   K.setBuildingLite(lite);
   // Static props/kit pieces: phones batch into 160u tiles (fewer draws) and
   // drop to LOD1 from 125u, just past a tile's half-diagonal so the tile
   // you stand in stays LOD0 (desktop: 120u tiles, LOD1 from 150u)
-  const instance = () => K.instanceStaticClones(scene, lite ? 160 : 120, lite ? 125 : 150);
+  // (phone LOW: procedural few-hundred-tri lamps/trees, so 320u tiles)
+  const instance = () => K.instanceStaticClones(scene, !glb ? 320 : lite ? 160 : 120, lite ? 125 : 150);
   // GLB buildings: the generic kit is a dozen tiny (<300 tri) templates, so
   // big batch tiles keep their draws down at almost no triangle cost
-  K.setBuildingTile(lite ? 440 : 300);
+  K.setBuildingTile(!glb ? 600 : lite ? 440 : 300); // phone LOW: one tile per quadrant
   const B = L.bounds;
   const animators = [];
   const STREET_TILE = K.TILE.STREET, SW_TILE = K.TILE.SIDEWALK;
@@ -1375,11 +1397,11 @@ export function buildChicago(scene, world, opts, K) {
     // AABB of the (possibly rotated) footprint: collision and AOE use axis-aligned w/d
     const c = Math.abs(Math.cos(o.rotY || 0)), s = Math.abs(Math.sin(o.rotY || 0));
     const aw = o.w * c + o.d * s, ad = o.w * s + o.d * c;
-    // Low-rise (and the procedural-only tier) stays a coloured box in the one
-    // global body InstancedMesh: a 12k-tri GLB on every 3-storey shop blew the
-    // triangle budget
+    // A windowed box only when no generic GLB exists at all (failure
+    // fallback; flushPendingGLBBuildings also boxes a block whose template
+    // failed to load)
     const pool = _pool(_bucket(o.h));
-    if (!glb || !pool.length || o.h < (REAL ? 7 : 0) || Math.random() > _share(_bucket(o.h)) || (REAL && Math.random() < BOX_SHARE)) {
+    if (!bldgGLB || !pool.length) {
       const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true, noRoofProps: REAL, windows: BOX_WIN });
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       scene.add(b.group); buildings.push(b); grid.add(b);
@@ -1461,7 +1483,7 @@ export function buildChicago(scene, world, opts, K) {
     b.landmarkId = lm.id;
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
-    const def = glb ? _landmarkGLB(lm.id) : null;
+    const def = bldgGLB ? _landmarkGLB(lm.id) : null;
     if (def) {
       // Layout height is the roof; the model's bbox includes spires/antennas
       const h = lm.heightM ? lm.h * def.trueHeightM / lm.heightM : lm.h;
@@ -1502,16 +1524,26 @@ export function buildChicago(scene, world, opts, K) {
         K.onTemplatesReady((sc, get) => {
           const tpl = get(url);
           if (!tpl || b.destroyed) return;
-          const root = tpl.clone(true);
-          root.rotation.y = rotY;
-          const box = new THREE.Box3().setFromObject(root);
-          root.scale.setScalar(h / Math.max(1e-3, box.max.y - box.min.y));
-          box.setFromObject(root);
-          root.position.set(lm.x - (box.min.x + box.max.x) / 2, -box.min.y, lm.z - (box.min.z + box.max.z) / 2);
-          scene.add(root);
-          b.customMesh = root;
+          // twin: two copies spread along the layout's w axis, the second mirrored
+          const copies = def.twin ? [-1, 1] : [0];
+          const holder = new THREE.Group();
+          const ax = Math.cos(lm.rotY || 0), az = -Math.sin(lm.rotY || 0);
+          for (const side of copies) {
+            const root = tpl.clone(true);
+            root.rotation.y = rotY;
+            const box = new THREE.Box3().setFromObject(root);
+            const k = h / Math.max(1e-3, box.max.y - box.min.y);
+            root.scale.set(side > 0 ? -k : k, k, k);
+            box.setFromObject(root);
+            const spread = side ? side * Math.max(0, lm.w / 2 - Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2) : 0;
+            root.position.set(lm.x + ax * spread - (box.min.x + box.max.x) / 2, -box.min.y, lm.z + az * spread - (box.min.z + box.max.z) / 2);
+            holder.add(root);
+          }
+          scene.add(holder);
+          b.customMesh = holder;
+          b.glbUrl = url;
           b.h = h;
-          const node = root.getObjectByName(def.clone);
+          const node = typeof def.clone === 'string' ? holder.getObjectByName(def.clone) : null;
           if (node) animators.push({ update(dt) { if (!b.destroyed) node.rotation.z += dt * 0.12; } });
         });
         b.customMesh = new THREE.Object3D(); // AABB hit-test marker until placed
@@ -1551,12 +1583,19 @@ export function buildChicago(scene, world, opts, K) {
         rb.landmarkId = lm.id + '_rear';
         rb.group.matrixAutoUpdate = false; rb.group.updateMatrix();
         scene.add(rb.group); buildings.push(rb); grid.add(rb);
-        const rear = LANDMARK_BUILDERS[def.rear || 'art_institute_rear'](rh, fw, rd, M);
-        rear.position.set(rx, 0, rz);
-        rear.rotation.y = rotY;
-        rear.matrixAutoUpdate = false; rear.updateMatrix();
-        scene.add(rear);
-        rb.customMesh = rear;
+        const rg = CHICAGO_REAR_GLBS[def.rearGLB];
+        if (rg && rg.ready) {
+          K.queueGLB({ url: CHI_BASE + rg.file, h: rh, building: rb, maxW: rw, maxD: rdd, rotY, landmark: true, stretch: 1.3 });
+        } else {
+          const rear = LANDMARK_BUILDERS[def.rear || 'art_institute_rear'](rh, fw, rd, M);
+          rear.position.set(rx, 0, rz);
+          rear.rotation.y = rotY;
+          rear.matrixAutoUpdate = false; rear.updateMatrix();
+          rear.userData.procedural = true;
+          scene.add(rear);
+          rb.customMesh = rear;
+          if (rg && rg.pending) rb.pendingGLB = rg.file;
+        }
       } else if (def.fit === 'footprint') {
         // Model's plan is undersized for the site (AI proportions run tall):
         // fill the layout outline instead, height capped at maxH x layout
@@ -1577,7 +1616,11 @@ export function buildChicago(scene, world, opts, K) {
       }
       continue;
     }
+    // Procedural massing: only a fallback (GLB not listed / not ready)
     const mesh = _builderFor(lm.id)(lm.h, lm.w, lm.d, M);
+    mesh.userData.procedural = true;
+    const pend = CHICAGO_LANDMARK_GLBS.find((g) => g.pending && (g.ids ? g.ids.includes(lm.id) : g.id === lm.id));
+    if (pend) b.pendingGLB = pend.file;
     mesh.position.set(lm.x, 0, lm.z);
     mesh.rotation.y = PROC_FACE[lm.id] ? _faceRot(lm.rotY || 0, PROC_FACE[lm.id]) : (lm.rotY || 0);
     if (/theat/.test(lm.id)) addTheatreSign(b, lm, mesh.rotation.y);
