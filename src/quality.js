@@ -3,7 +3,8 @@
 // read the same flags without introducing a circular dependency on the
 // main game module.
 //
-// Tier defaults: low on mobile, high on desktop. Override with ?q=low|med|high.
+// Tier defaults: med on mobile, high on desktop. Override with ?q=low|med|high
+// or the in-game Graphics toggle (saved in localStorage).
 //
 // Each tier carries a profile object that downstream systems can read to
 // scale particle counts, flipbook resolutions, etc. without having to
@@ -16,16 +17,35 @@ const isAndroid = /Android/i.test(ua);
 export const isMobile = isIOS || isAndroid ||
   (touch && Math.min(window.innerWidth, window.innerHeight) < 820);
 
+// Tier: ?q= wins, then the player's saved choice, then the default
+// (MED on mobile = the GLB city with mobile textures; HIGH on desktop).
+const QUALITY_KEY = 'kaijuQuality';
 function detect() {
   const m = location.search.match(/[?&]q=(low|med|high)\b/);
   if (m) return m[1];
-  return isMobile ? 'low' : 'high';
+  try {
+    const saved = localStorage.getItem(QUALITY_KEY);
+    if (saved === 'low' || saved === 'med' || saved === 'high') return saved;
+  } catch (e) { /* storage blocked (private mode): fall through */ }
+  return isMobile ? 'med' : 'high';
+}
+
+/** Persist a tier and reload with ?q=<tier> so every module re-reads it. */
+export function setQualityAndReload(tier) {
+  try { localStorage.setItem(QUALITY_KEY, tier); } catch (e) { /* not persisted */ }
+  const params = new URLSearchParams(location.search);
+  params.set('q', tier);
+  location.search = params.toString();
 }
 
 export const QUALITY = detect();
 export const Q_HIGH = QUALITY === 'high';
 export const Q_MED  = QUALITY === 'med';
 export const Q_LOW  = QUALITY === 'low';
+
+// GLB city/props/enemies/vehicles. Only a phone on LOW keeps the old
+// procedural-only path (for old devices); desktop LOW still loads GLBs.
+export const GLB_CONTENT = !(isMobile && Q_LOW);
 
 // Rollback escape hatch for the VFX upgrade. With ?vfx=legacy the new
 // shader/quark builders are skipped and every effect falls back to the

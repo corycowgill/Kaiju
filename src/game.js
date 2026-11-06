@@ -24,7 +24,7 @@ import {
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
 import { initAssetCache, getCacheStats, disposeInstance, markShared } from './assetCache.js';
-import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE } from './quality.js';
+import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
 import vfx, { listBuilders, resetPooledLights } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
@@ -54,6 +54,31 @@ console.info('[KAIJU HAVOC] quality tier =', QUALITY);
     pick.style.background = 'rgba(255,200,100,0.12)';
   }
 }
+// Persist the choice (localStorage) so it sticks across visits. The picker
+// is also cloned into a pause-screen overlay so phones (no title screen
+// mid-run) can switch tiers; tick() shows it only while paused.
+const _pausePicker = (() => {
+  const src = document.getElementById('quality-picker');
+  if (!src) return null;
+  const el = src.cloneNode(true);
+  el.id = 'quality-picker-pause';
+  el.style.cssText += ';position:fixed;left:50%;bottom:22%;transform:translateX(-50%);z-index:60;'
+    + 'background:rgba(20,0,30,0.75);padding:8px 12px;border-radius:4px;display:none;pointer-events:auto;';
+  document.body.appendChild(el);
+  return el;
+})();
+document.querySelectorAll('#quality-picker a, #quality-picker-pause a').forEach((a) => {
+  const pick = (e) => { e.preventDefault(); setQualityAndReload(a.getAttribute('href').replace('?q=', '')); };
+  a.addEventListener('click', pick);
+  a.addEventListener('touchend', pick);
+});
+let _pausePickerShown = false;
+function _syncPausePicker() {
+  const show = !!(state.paused && state.kaiju && !state.gameOver);
+  if (!_pausePicker || show === _pausePickerShown) return;
+  _pausePickerShown = show;
+  _pausePicker.style.display = show ? 'flex' : 'none';
+}
 
 function updateOrientationClass() {
   if (!isMobile) return;
@@ -66,10 +91,44 @@ window.addEventListener('orientationchange', updateOrientationClass);
 // ------------------------- Setup -------------------------
 const game = document.getElementById('game');
 // Phase 8: pixel ratio + shadow toggle keyed off the QUALITY tier.
+//
+// Render profile per platform x tier. Desktop values are unchanged from
+// before; mobile MED/HIGH now get post (bloom + vignette/grade, no CA /
+// grain / god rays), a single tight kaiju shadow map and a dynamic pixel
+// ratio instead of the old "no post, no shadows, PR 0.75" path.
+const RP = isMobile ? {
+  pr:        Q_HIGH ? 1.5  : (Q_MED ? 1.25 : 0.75),
+  prMin:     Q_HIGH ? 1.0  : (Q_MED ? 0.85 : 0.6),   // dynamic-res floor
+  post:      !Q_LOW,
+  bloomScale: Q_HIGH ? 1.0 : 0.5,                    // of CSS size
+  cine:      !Q_LOW,
+  cineCA: false, cineGrain: false, godRays: false,
+  shadows:   !Q_LOW,
+  shadowMap: Q_HIGH ? 1024 : 512,
+  shadowHalf: 48,                                    // tight frustum (u)
+  shadowType: THREE.PCFShadowMap,
+  neon:      Q_HIGH ? 3 : 2,
+  dynRes:    true,
+} : {
+  pr:        Q_HIGH ? 1.5 : (Q_MED ? 1.25 : 1.0),
+  prMin:     Q_HIGH ? 1.5 : (Q_MED ? 1.25 : 1.0),
+  post:      true,
+  bloomScale: 0.5,
+  cine:      !Q_LOW,
+  cineCA: true, cineGrain: true, godRays: true,
+  shadows:   Q_HIGH,
+  shadowMap: 1024,
+  shadowHalf: 112,
+  shadowType: THREE.PCFSoftShadowMap,
+  neon:      Q_HIGH ? 3 : (Q_MED ? 5 : 4),
+  dynRes:    false,
+};
 let renderer;
 try {
   renderer = new THREE.WebGLRenderer({
     antialias: !isMobile && Q_HIGH,
+    // Mobile keeps 'default': on iOS 'high-performance' only matters on
+    // dual-GPU Macs, and on Android it can pin the big cores / heat up.
     powerPreference: isMobile ? 'default' : 'high-performance',
     preserveDrawingBuffer: false,
   });
@@ -78,15 +137,35 @@ try {
     '<h2>WebGL Not Available</h2><p>This game requires WebGL support.</p></div>';
   throw e;
 }
-const QUALITY_PR = Q_HIGH ? 1.5 : (Q_MED ? 1.25 : (isMobile ? 0.75 : 1.0));
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY_PR));
+const QUALITY_PR = RP.pr;
+// Current (possibly dynamically lowered) pixel ratio; see _dynResTick.
+let _curPR = Math.min(window.devicePixelRatio, QUALITY_PR);
+renderer.setPixelRatio(_curPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = !isMobile && Q_HIGH;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = RP.shadows;
+renderer.shadowMap.type = RP.shadowType;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 game.appendChild(renderer.domElement);
+
+// iPhone Safari drops the WebGL context under memory pressure (unified
+// memory, ~1-1.5 GB per tab). Instead of a frozen black canvas: tell the
+// player, then reload -- on phones one tier lower (MED -> LOW = procedural
+// city), on desktop at the same tier (a GPU reset, not a budget problem).
+// A per-session counter stops a reload loop if it keeps happening.
+renderer.domElement.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  let losses = 0;
+  try {
+    losses = (+sessionStorage.getItem('kaijuCtxLost') || 0) + 1;
+    sessionStorage.setItem('kaijuCtxLost', String(losses));
+  } catch (err) { /* storage blocked */ }
+  if (losses > 2) { toast('GRAPHICS CRASHED · TRY GRAPHICS: LOW', 'bad'); return; }
+  const next = isMobile ? (Q_HIGH ? 'med' : 'low') : QUALITY;
+  toast(isMobile ? `OUT OF GRAPHICS MEMORY · RELOADING ON ${next.toUpperCase()}` : 'GRAPHICS RESET · RELOADING', 'bad');
+  setTimeout(() => setQualityAndReload(next), 1800);
+});
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x281a30);
@@ -112,12 +191,12 @@ const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerH
 // composer chain matches the colour pipeline regardless of pass order.
 let composer = null;
 let bloomPass = null;
-// Skip post-processing on mobile to save GPU memory (framebuffer allocations)
-if (!isMobile) {
+// Post on desktop and on mobile MED/HIGH (mobile LOW renders direct).
+if (RP.post) {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth * 0.5, window.innerHeight * 0.5),
+    new THREE.Vector2(window.innerWidth * RP.bloomScale, window.innerHeight * RP.bloomScale),
     Q_HIGH ? 0.85 : (Q_MED ? 0.65 : 0.45), // strength
     Q_HIGH ? 0.55 : (Q_MED ? 0.50 : 0.40), // radius
     0.85                                    // threshold (0.7 bloomed lit props/flipbook smoke)
@@ -129,7 +208,7 @@ if (!isMobile) {
   // linear-light space (before OutputPass) so grain blends with bloom
   // rather than being clamped post-tonemap. Strength tuned per quality
   // tier; LOW skips the pass entirely to keep the mobile budget.
-  if (!Q_LOW) {
+  if (RP.cine) {
     const cineUniforms = {
       tDiffuse: { value: null },
       time:     { value: 0 },
@@ -141,10 +220,19 @@ if (!isMobile) {
       // Sun screen position is fed each frame from a world-space sun dir.
       sunPos:   { value: new THREE.Vector2(0.85, 0.62) },
       // God-ray strength + sample density. HIGH does 12 samples; MED 6.
-      godStr:   { value: Q_HIGH ? 0.55 : 0.30 },
+      godStr:   { value: RP.godRays ? (Q_HIGH ? 0.55 : 0.30) : 0.0 },
       gradeMix: { value: Q_HIGH ? 0.35 : 0.25 },
     };
     const SAMPLES = Q_HIGH ? 12 : 6;
+    // Mobile variant compiles CA, god rays and grain out entirely (one
+    // texture tap per pixel instead of 3 + SAMPLES).
+    const CA_GLSL = RP.cineCA ? `
+          col.r = texture2D(tDiffuse, vUv + dir * ca).r;
+          col.g = texture2D(tDiffuse, vUv).g;
+          col.b = texture2D(tDiffuse, vUv - dir * ca).b;` : `
+          col = texture2D(tDiffuse, vUv).rgb;`;
+    const GOD_DEFINE = RP.godRays ? '#define USE_GODRAYS' : '';
+    const GRAIN_DEFINE = RP.cineGrain ? '#define USE_GRAIN' : '';
     const cinePass = new ShaderPass({
       uniforms: cineUniforms,
       vertexShader: `
@@ -152,6 +240,8 @@ if (!isMobile) {
         void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
       `,
       fragmentShader: `
+        ${GOD_DEFINE}
+        ${GRAIN_DEFINE}
         uniform sampler2D tDiffuse;
         uniform float time;
         uniform float vignette;
@@ -185,14 +275,12 @@ if (!isMobile) {
           vec2 c = vUv - 0.5;
           float r2 = dot(c, c);
           vec2 dir = c * (1.0 + r2 * 1.4);
-          vec3 col;
-          col.r = texture2D(tDiffuse, vUv + dir * ca).r;
-          col.g = texture2D(tDiffuse, vUv).g;
-          col.b = texture2D(tDiffuse, vUv - dir * ca).b;
+          vec3 col;${CA_GLSL}
 
           // God rays: radial blur from the sun's screen position. Each
           // sample steps toward the sun and we take a small contribution.
           // Cheap: only the bright pixels (luminance threshold) contribute.
+          #ifdef USE_GODRAYS
           if (godStr > 0.0) {
             vec2 toSun = sunPos - vUv;
             vec3 ray = vec3(0.0);
@@ -210,6 +298,7 @@ if (!isMobile) {
             ray *= vec3(1.10, 0.85, 0.55);
             col += ray * godStr;
           }
+          #endif
 
           // Colour grade
           col = mix(col, grade(col), gradeMix);
@@ -219,8 +308,10 @@ if (!isMobile) {
           col *= mix(1.0, vig, vignette);
 
           // Film grain
+          #ifdef USE_GRAIN
           float n = hash(gl_FragCoord.xy, time) - 0.5;
           col += n * grain;
+          #endif
 
           gl_FragColor = vec4(col, 1.0);
         }
@@ -231,7 +322,7 @@ if (!isMobile) {
   }
 
   composer.addPass(new OutputPass());
-} // end if (!isMobile) post-processing
+} // end if (RP.post) post-processing
 
 // Lighting: dramatic dusk
 // Phase 4 lighting: low-angle synthwave-dusk sun + reduced ambient (IBL
@@ -243,13 +334,16 @@ const hemi = new THREE.HemisphereLight(0xffb0a0, 0x2a2440, Q_HIGH ? 0.50 : (Q_ME
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffa070, 2.0);
 sun.position.set(-90, 60, 40); // low-angle sunset rake from the side
-if (Q_HIGH) {
+if (RP.shadows) {
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  // Tight frustum: kaiju + ~80u radius around it. We retarget per frame
-  // (see updateCamera) so distant buildings never enter the shadow camera.
-  sun.shadow.camera.left = -112; sun.shadow.camera.right = 112;
-  sun.shadow.camera.top = 112;   sun.shadow.camera.bottom = -112;
+  sun.shadow.mapSize.set(RP.shadowMap, RP.shadowMap);
+  // Tight frustum around the kaiju, retargeted per frame (see
+  // updateCamera) so distant buildings never enter the shadow camera.
+  // Desktop: +-112 u. Mobile: +-48 u, i.e. essentially the kaiju and
+  // its own cast shadow, so the shadow pass draws only a handful of meshes.
+  const H = RP.shadowHalf;
+  sun.shadow.camera.left = -H; sun.shadow.camera.right = H;
+  sun.shadow.camera.top = H;   sun.shadow.camera.bottom = -H;
   sun.shadow.camera.near = 1;   sun.shadow.camera.far = 290;
   sun.shadow.bias = -0.0005;
 }
@@ -269,7 +363,7 @@ scene.add(ambient);
 // slightly longer reach to cover the gaps. Short distance + decay so they
 // only colour the immediate street level.
 const NEON_PALETTE = [0xff3388, 0x33ddff, 0xffaa44, 0xff66ff, 0x66ff99, 0xffee44];
-const NEON_COUNT = Q_HIGH ? 3 : (Q_MED ? 5 : 4);
+const NEON_COUNT = RP.neon; // desktop 3/5/4, mobile 3 (HIGH) / 2
 const _neonLights = [];
 const _neonPhase = Math.random() * Math.PI * 2;
 for (let i = 0; i < NEON_COUNT; i++) {
@@ -650,9 +744,9 @@ const world = {
 };
 
 // Pre-load tree + pedestrian GLB templates so buildCity can use them.
-// On mobile: skip GLB preloading (saves ~36MB memory, uses procedural fallbacks).
-// On desktop: await templates before buildCity for GLB trees + pedestrians.
-if (!isMobile) {
+// Skipped only on the procedural-only path (phone on LOW); phones on MED/HIGH
+// load the same GLBs as desktop, with reduced textures (assetCache.assetURL).
+if (GLB_CONTENT) {
   try {
     window.__dbg && window.__dbg('DBG · loading tree + pedestrian templates…');
     await initAssetCache();
@@ -662,7 +756,7 @@ if (!isMobile) {
     console.warn('[PreLoad] Tree/pedestrian template loading failed, using procedural fallbacks:', e.message);
   }
 } else {
-  window.__dbg && window.__dbg('DBG · mobile: skipping tree/ped GLB preload');
+  window.__dbg && window.__dbg('DBG · LOW phone: skipping tree/ped GLB preload');
 }
 
 // Build city
@@ -671,7 +765,7 @@ window.__dbg && window.__dbg('DBG · buildCity starting…');
 // survives an in-place restart; everything added after is torn down.
 const _sceneBaseline = new Set(scene.children);
 function buildWorldCity() {
-  const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = buildCity(scene, world, { lite: isMobile });
+  const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT });
   world.buildings = buildings;
   world.buildingGrid = grid;
   world.bodiesIM = bodiesIM;
@@ -789,11 +883,12 @@ function fitRenderer() {
   const h = vv ? vv.height : window.innerHeight;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY_PR));
+  renderer.setPixelRatio(_curPR);
   renderer.setSize(w, h, true); // updateStyle=true: also sets canvas style.width/height
   if (composer) {
+    composer.setPixelRatio(_curPR);
     composer.setSize(w, h);
-    if (bloomPass) bloomPass.setSize(w * 0.5, h * 0.5);
+    if (bloomPass) bloomPass.setSize(w * RP.bloomScale, h * RP.bloomScale);
   }
   updateOrientationClass();
 }
@@ -1220,9 +1315,12 @@ function _showMobileDataWarning() {
     // Check if cache is already warm (assets previously downloaded)
     const cs = getCacheStats();
     if (cs.enabled && cs.hits > 0) { resolve(true); return; }
-    // Show correct size: mobile only downloads the kaiju (~150MB)
+    // Show the download size for this device/tier
     const sizeEl = document.getElementById('data-warn-size');
-    if (sizeEl) sizeEl.textContent = isMobile ? '~150 MB' : '~900 MB';
+    // Measured first-load downloads per tier (GLBs + textures + flipbooks +
+    // one audio format; the trailer video only streams if played). Re-measure
+    // with the headless tier harness when assets change.
+    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? '~52 MB' : '~9 MB') : '~150 MB';
     warn.classList.remove('hidden');
     warn.style.display = 'flex';
     const okBtn = document.getElementById('data-warn-ok');
@@ -1468,8 +1566,8 @@ async function _startGameInner(key) {
       progress.kaijuLoaded = progress.kaijuTotal = 1;
       progress.bldgTotal = 0; progress.enemyTotal = 0;
       updateLoadingUI();
-    } else if (isMobile || _worldTemplatesLoaded) {
-      // Mobile never loads world templates; on desktop restarts the
+    } else if (!GLB_CONTENT || _worldTemplatesLoaded) {
+      // The procedural-only path never loads world templates; on restarts the
       // building / debris / enemy templates are already parsed and only
       // the (possibly different) kaiju has to load.
       glb = await loadKaijuModel(key, (loaded, total, label) => {
@@ -1506,7 +1604,7 @@ async function _startGameInner(key) {
     _kaijuCache = { key, glb };
 
     // Clone + place every queued building now that templates are loaded
-    if (!isMobile) {
+    if (GLB_CONTENT) {
       loadingStatus.textContent = 'BUILDING TOKYO';
       flushPendingGLBBuildings(scene);
     }
@@ -1578,9 +1676,9 @@ async function _startGameInner(key) {
   // and ~100 civilians for a properly populated Tokyo. Mobile gets a
   // smaller cap (60 cars, 50 civilians) so the per-frame AI loop stays
   // under budget on weaker GPUs.
-  state.cars = spawnCars(scene, isMobile ? 60 : 200, 380, isMobile ? 48 : 40);
+  state.cars = spawnCars(scene, isMobile ? 40 : 200, 380, isMobile ? 48 : 40);
   // Spawn ambient pedestrians who panic + flee when the kaiju approaches
-  state.civilians = spawnCivilians(scene, isMobile ? 50 : 100, 350);
+  state.civilians = spawnCivilians(scene, isMobile ? 30 : 100, 350);
 
   // Kick off looping background music. Tries assets/music.{mp3,ogg,wav};
   // falls back to a procedural ambient drone if no asset is present.
@@ -3399,7 +3497,7 @@ function updateCamera() {
   if (!k) return;
   // Sun offset stays constant relative to the kaiju so shadows follow it
   // through the city without ever overflowing the 90u shadow camera.
-  if (sun && Q_HIGH) {
+  if (sun && sun.castShadow) {
     sun.position.set(k.root.position.x - 100, 100, k.root.position.z + 45);
   }
   k.head.getWorldPosition(_camHead);
@@ -3682,13 +3780,13 @@ function updateWorld(dt) {
   // Trickle-respawn -- target population caps. Spawn rate scales with
   // the deficit so a big rampage triggers a flood of fresh civilians/
   // cars rather than a slow trickle.
-  const civCap = isMobile ? 45 : 90;
+  const civCap = isMobile ? 28 : 90;
   const civDeficit = Math.max(0, civCap - state.civilians.length);
   if (civDeficit > 0 && Math.random() < dt * Math.min(8, civDeficit * 0.35)) {
     const news = spawnCivilians(scene, 1, 350);
     state.civilians.push(...news);
   }
-  const carCap = isMobile ? 55 : 180;
+  const carCap = isMobile ? 38 : 180;
   const carDeficit = Math.max(0, carCap - state.cars.length);
   if (carDeficit > 0 && Math.random() < dt * Math.min(10, carDeficit * 0.3)) {
     const news = spawnCars(scene, 1, 380, isMobile ? 48 : 40);
@@ -3914,6 +4012,31 @@ if (muteBtn) {
 
 // ------------------------- Main loop -------------------------
 let last = performance.now();
+// Dynamic resolution (mobile only): if the smoothed frame time stays over
+// 20 ms for 2 s, drop the pixel ratio by 0.1 (floor RP.prMin); if it stays
+// under 14 ms for 4 s, raise it by 0.05 back toward the tier's PR. Only
+// measured during gameplay frames (menus are throttled to ~15 fps).
+const _dyn = { ema: 16.7, slowT: 0, fastT: 0 };
+function _dynResTick(dtRaw) {
+  if (!RP.dynRes || dtRaw <= 0 || dtRaw > 0.25) return;
+  const ms = dtRaw * 1000;
+  _dyn.ema += (ms - _dyn.ema) * 0.1;
+  const maxPR = Math.min(window.devicePixelRatio, QUALITY_PR);
+  const minPR = Math.min(maxPR, RP.prMin);
+  if (_dyn.ema > 20) { _dyn.slowT += dtRaw; _dyn.fastT = 0; }
+  else if (_dyn.ema < 14) { _dyn.fastT += dtRaw; _dyn.slowT = 0; }
+  else { _dyn.slowT = 0; _dyn.fastT = 0; }
+  let next = _curPR;
+  if (_dyn.slowT > 2 && _curPR > minPR + 1e-3) next = Math.max(minPR, _curPR - 0.1);
+  else if (_dyn.fastT > 4 && _curPR < maxPR - 1e-3) next = Math.min(maxPR, _curPR + 0.05);
+  if (next !== _curPR) {
+    _curPR = next;
+    _dyn.slowT = 0; _dyn.fastT = 0;
+    fitRenderer();
+  }
+}
+window.__dynRes = () => ({ pr: _curPR, emaMs: +_dyn.ema.toFixed(1) });
+
 function tick(now) {
   const dtRaw = (now - last) / 1000;
   last = now;
@@ -3926,6 +4049,7 @@ function tick(now) {
     if (state.kaiju) {
       updatePlayer(dt);
       updateWorld(dt);
+      _dynResTick(dtRaw);
     }
     updateCamera();
     updateHUD();
@@ -3965,6 +4089,7 @@ function tick(now) {
   // city only needs ~15 fps (it cost ~6 ms GPU per frame at full rate).
   // Input, gamepad and menu logic above still run every frame.
   const idleScreen = !state.kaiju || state.paused;
+  _syncPausePicker();
   if (!idleScreen || now - _lastIdleRender >= IDLE_RENDER_MS) {
     _lastIdleRender = now;
     if (composer) composer.render();

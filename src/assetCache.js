@@ -12,8 +12,22 @@
  *   const url = await cachedBlobURL('./assets/tex.jpg');   // blob: URL for loaders
  */
 
+import { isMobile } from './quality.js';
+import { MOBILE_VARIANTS } from './mobileAssets.js';
+
+// On mobile, swap in the reduced-texture copies under assets/m/ (512px
+// textures, 1024px for the kaiju/mech; see tools/make_mobile_assets.mjs).
+// Keeps an iPhone's decoded textures in budget with the full GLB city.
+// ?mtex=full forces the originals (testing).
+const MOBILE_TEX = isMobile && !/[?&]mtex=full\b/.test(location.search);
+export function assetURL(url) {
+  if (!MOBILE_TEX) return url;
+  const m = url.match(/^(\.\/)?assets\/(.+)$/);
+  return m && MOBILE_VARIANTS.has(m[2]) ? `${m[1] || ''}assets/m/${m[2]}` : url;
+}
+
 // ---- Bump this when assets change to force a re-download ----
-const ASSET_VERSION = '1.7.2';
+const ASSET_VERSION = '1.7.3';
 
 const DB_NAME = 'KaijuAssetCache';
 const DB_VERSION = 1;
@@ -105,6 +119,7 @@ export async function initAssetCache() {
  * Serves from IndexedDB cache if available, otherwise fetches from network and caches.
  */
 export async function cachedFetch(url) {
+  url = assetURL(url);
   if (!_enabled || !_db) {
     _misses++;
     const res = await fetch(url);

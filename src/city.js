@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance } from './assetCache.js';
+import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL } from './assetCache.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
 // and loadPedestrianTemplates() run at module-load time via top-level await in game.js.
@@ -21,7 +21,7 @@ const _groundTexCache = new Map();
 function _loadTileTex(file, repeatX, repeatY) {
   const key = `${file}|${repeatX}|${repeatY}|srgb`;
   if (_groundTexCache.has(key)) return _groundTexCache.get(key);
-  const t = _texLoader.load(TEX_BASE + file);
+  const t = _texLoader.load(assetURL(TEX_BASE + file));
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(repeatX, repeatY);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -31,7 +31,7 @@ function _loadTileTex(file, repeatX, repeatY) {
 function _loadDataTex(file, repeatX, repeatY) {
   const key = `${file}|${repeatX}|${repeatY}`;
   if (_groundTexCache.has(key)) return _groundTexCache.get(key);
-  const t = _texLoader.load(TEX_BASE + file);
+  const t = _texLoader.load(assetURL(TEX_BASE + file));
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(repeatX, repeatY);
   _groundTexCache.set(key, t);
@@ -237,7 +237,7 @@ function _loadTreeList(list, onProgress) {
   return Promise.all(list.map((def, idx) =>
     new Promise((resolve) => {
       const url = def.url;
-      _glbLoader.load(url, (gltf) => {
+      _glbLoader.load(assetURL(url), (gltf) => {
         const s = gltf.scene;
         let meshCount = 0;
         s.traverse((o) => { if (o.isMesh) meshCount++; });
@@ -2407,6 +2407,9 @@ export function buildCity(scene, world, opts = {}) {
   const buildings = [];
   const grid = new BuildingGrid(60);
   const lite = !!opts.lite;
+  // GLB buildings/landmarks (placeholders filled by flushPendingGLBBuildings).
+  // Independent of `lite` (smaller, sparser city) so phones get the GLB city.
+  const glb = opts.glb !== undefined ? !!opts.glb : !lite;
   setBuildingLite(lite);
   const CITY_RADIUS = lite ? 250 : 320;
   const BLOCK = lite ? 48 : 40; // block size including streets
@@ -2759,8 +2762,8 @@ export function buildCity(scene, world, opts = {}) {
           offX = rand(-2, 2);
           offZ = rand(-2, 2);
         }
-        if (lite) {
-          // Mobile: use normal procedural buildings (visible via InstancedMesh body)
+        if (!glb) {
+          // Procedural-only city (phone on LOW): visible via InstancedMesh body
           const b = new Building(bx + offX, bz + offZ, w, d, h);
           b.group.matrixAutoUpdate = false;
           b.group.updateMatrix();
@@ -2784,8 +2787,8 @@ export function buildCity(scene, world, opts = {}) {
 
   // ---------- GLB Landmark helper ----------
   function addGLBLandmark(x, z, w, d, h, hp, url, rotY) {
-    if (lite) {
-      // Mobile: procedural building as landmark (no GLB download)
+    if (!glb) {
+      // Procedural-only city: procedural building as landmark (no GLB download)
       const b = new Building(x, z, w, d, h);
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       b.maxHp = hp; b.hp = hp;
