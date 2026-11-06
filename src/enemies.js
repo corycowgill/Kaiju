@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
-import { cachedFetch, normalizeGLTFMaterials, disposeInstance } from './assetCache.js';
+import { cachedFetch, normalizeGLTFMaterials, disposeInstance, withParseSlot } from './assetCache.js';
 
 // Module-level scratch vectors reused by every AI tick to avoid GC churn.
 const _aiVA = new THREE.Vector3();
@@ -57,9 +57,9 @@ function _padSkinnedBounds(root, clips = []) {
 }
 
 function _cachedGLB(url) {
-  return cachedFetch(url).then((buf) =>
+  return cachedFetch(url).then((buf) => withParseSlot(() =>
     new Promise((resolve, reject) => _glbLoader.parse(buf, '', resolve, reject))
-  ).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
+  )).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
 }
 
 // Animated biped model config: each biped is ONE merged GLB (skinned mesh +

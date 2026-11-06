@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { cachedFetch, normalizeGLTFMaterials } from './assetCache.js';
+import { cachedFetch, normalizeGLTFMaterials, withParseSlot } from './assetCache.js';
 
 /** Fetch a GLB via the asset cache, then parse it with GLTFLoader. */
 function _cachedGLB(loader, url) {
-  return cachedFetch(url).then((buf) =>
+  return cachedFetch(url).then((buf) => withParseSlot(() =>
     new Promise((resolve, reject) => loader.parse(buf, '', resolve, reject))
-  ).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
+  )).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
 }
 
 // ---- Godzilla (reptile kaiju) ----

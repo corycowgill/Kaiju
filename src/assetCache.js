@@ -96,13 +96,16 @@ function _idbClear(store) {
  */
 export async function initAssetCache() {
   if (_db) return true; // already initialized
+  if (!_enabled) return false;
   try {
-    _db = await _openDB();
-    const storedVersion = await _idbGet(META_STORE, 'version');
+    // iOS Safari can leave indexedDB.open / the first transaction pending
+    // forever; time out and play from the network instead of hanging the load.
+    _db = await _withTimeout(_openDB(), IDB_TIMEOUT_MS, 'IDB open');
+    const storedVersion = await _withTimeout(_idbGet(META_STORE, 'version'), IDB_TIMEOUT_MS, 'IDB get');
     if (storedVersion !== ASSET_VERSION) {
       console.log(`[AssetCache] Version mismatch (${storedVersion} → ${ASSET_VERSION}), clearing cache`);
-      await _idbClear(STORE_NAME);
-      await _idbPut(META_STORE, 'version', ASSET_VERSION);
+      await _withTimeout(_idbClear(STORE_NAME), IDB_TIMEOUT_MS, 'IDB clear');
+      await _withTimeout(_idbPut(META_STORE, 'version', ASSET_VERSION), IDB_TIMEOUT_MS, 'IDB put');
       return false;
     }
     console.log(`[AssetCache] Cache warm, version ${ASSET_VERSION}`);
@@ -110,8 +113,69 @@ export async function initAssetCache() {
   } catch (e) {
     console.warn('[AssetCache] IndexedDB unavailable, caching disabled:', e.message);
     _enabled = false;
+    _db = null;
     return false;
   }
+}
+
+// ---- Load hardening (mostly for iOS Safari) ----
+// - IndexedDB calls time out; a hung/closed DB disables the cache and every
+//   later asset comes straight from the network.
+// - Network fetches run at most MAX_FETCHES at a time (mobile Safari stalls
+//   or drops requests with ~40 GLBs in flight), time out, and retry once.
+// - GLB parses (which decode every texture) run at most MAX_PARSES at a time
+//   via withParseSlot(), so a phone never holds dozens of decoding images.
+const IDB_TIMEOUT_MS = 4000;
+const FETCH_TIMEOUT_MS = isMobile ? 45000 : 60000;
+const MAX_FETCHES = isMobile ? 6 : 12;
+const MAX_PARSES = isMobile ? 2 : 6;
+let _writes = true;
+
+function _withTimeout(p, ms, what) {
+  let t;
+  return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`${what} timed out`)), ms); })])
+    .finally(() => clearTimeout(t));
+}
+
+function _limiter(max) {
+  let active = 0;
+  const queue = [];
+  const next = () => {
+    if (active >= max || !queue.length) return;
+    active++;
+    const { fn, resolve, reject } = queue.shift();
+    Promise.resolve().then(fn).then(resolve, reject).finally(() => { active--; next(); });
+  };
+  return (fn) => new Promise((resolve, reject) => { queue.push({ fn, resolve, reject }); next(); });
+}
+const _fetchSlot = _limiter(MAX_FETCHES);
+const _parseSlot = _limiter(MAX_PARSES);
+/** Run fn (e.g. a GLTFLoader.parse) inside the global parse-concurrency limit. */
+export function withParseSlot(fn) { return _parseSlot(fn); }
+
+async function _networkFetch(url) {
+  for (let attempt = 0; ; attempt++) {
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const t = ctl ? setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS) : 0;
+    try {
+      const res = await fetch(url, ctl ? { signal: ctl.signal } : undefined);
+      if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${url}`);
+      return await res.arrayBuffer();
+    } catch (e) {
+      if (attempt >= 1) throw e;
+      console.warn('[AssetCache] retrying', url, e.message);
+      await new Promise((r) => setTimeout(r, 600));
+    } finally {
+      clearTimeout(t);
+    }
+  }
+}
+
+function _disableCache(why) {
+  if (!_enabled) return;
+  console.warn('[AssetCache] disabling IndexedDB cache:', why);
+  _enabled = false;
+  _db = null;
 }
 
 /**
@@ -122,9 +186,7 @@ export async function cachedFetch(url) {
   url = assetURL(url);
   if (!_enabled || !_db) {
     _misses++;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${url}`);
-    return res.arrayBuffer();
+    return _fetchSlot(() => _networkFetch(url));
   }
 
   // Normalize URL to a stable cache key
@@ -132,31 +194,33 @@ export async function cachedFetch(url) {
 
   // Try cache first
   try {
-    const cached = await _idbGet(STORE_NAME, key);
+    const cached = await _withTimeout(_idbGet(STORE_NAME, key), IDB_TIMEOUT_MS, 'IDB get');
     if (cached) {
       _hits++;
       return cached;
     }
   } catch (e) {
-    // Cache read failed, fall through to network
+    // Hung or closed DB (iOS drops IDB connections under memory pressure or
+    // when backgrounded): stop using it, fall through to the network.
+    _disableCache(e.message || e.name);
   }
 
   // Network fetch → store → return
   _misses++;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${url}`);
-  const buf = await res.arrayBuffer();
+  const buf = await _fetchSlot(() => _networkFetch(url));
 
-  // Store in background (don't block the return).
-  // On iOS Safari, IDB quota is ~1GB — large assets may exceed it.
-  _idbPut(STORE_NAME, key, buf).catch((e) => {
-    console.warn('[AssetCache] Failed to store:', key, e.message);
-    // If quota exceeded, disable caching to avoid repeated IDB errors
-    if (e.name === 'QuotaExceededError') {
-      console.warn('[AssetCache] Storage quota exceeded, disabling cache writes');
-      _enabled = false;
+  // Store in background (don't block the return). On iOS Safari the quota is
+  // limited and puts can fail or abort; any failure just stops cache writes.
+  if (_writes && _db) {
+    try {
+      _withTimeout(_idbPut(STORE_NAME, key, buf), IDB_TIMEOUT_MS * 2, 'IDB put').catch((e) => {
+        console.warn('[AssetCache] Failed to store:', key, e.message || e.name, '- disabling cache writes');
+        _writes = false;
+      });
+    } catch (e) {
+      _writes = false; // transaction() threw synchronously (closed DB)
     }
-  });
+  }
 
   return buf;
 }

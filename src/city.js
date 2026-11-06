@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL } from './assetCache.js';
+import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL, withParseSlot } from './assetCache.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
 // and loadPedestrianTemplates() run at module-load time via top-level await in game.js.
@@ -237,7 +237,8 @@ function _loadTreeList(list, onProgress) {
   return Promise.all(list.map((def, idx) =>
     new Promise((resolve) => {
       const url = def.url;
-      _glbLoader.load(assetURL(url), (gltf) => {
+      // Same cached, concurrency-limited, retried path as every other GLB.
+      _cachedGLB(url).then((gltf) => {
         const s = gltf.scene;
         let meshCount = 0;
         s.traverse((o) => { if (o.isMesh) meshCount++; });
@@ -255,7 +256,7 @@ function _loadTreeList(list, onProgress) {
         _treeTemplates.push({ scene: s, box, h: def.h });
         if (onProgress) onProgress(idx + 1, list.length, url.split('/').pop().replace('.glb', ''));
         resolve();
-      }, undefined, (err) => {
+      }, (err) => {
         console.warn('[TreeGLB] Failed to load', url, err.message || err);
         if (onProgress) onProgress(idx + 1, list.length, 'error');
         resolve();
@@ -2264,9 +2265,9 @@ const ALL_BUILDING_GLBS = [
 
 /** Fetch a GLB via the asset cache, then parse with GLTFLoader. */
 function _cachedGLB(url) {
-  return cachedFetch(url).then((buf) =>
+  return cachedFetch(url).then((buf) => withParseSlot(() =>
     new Promise((resolve, reject) => _glbLoader.parse(buf, '', resolve, reject))
-  ).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
+  )).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
 }
 
 /** Load all unique building GLB templates once. */
