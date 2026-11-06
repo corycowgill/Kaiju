@@ -28,31 +28,45 @@ const CHI_BASE = './assets/buildings/chicago/';
 // sites). trueHeightM is the model's bbox height incl. spires; the layout
 // height is the roof, so the model is scaled by layoutH / heightMetres.
 // clone: placed as its own scene graph (not instanced) so a node can animate.
+// face: the world direction of the model's front (+Z, from the manifest's
+// frontAxis). The layout rot comes from OSM outlines and is ambiguous by
+// quarter turns, so the placement picks rot + k*90deg facing that way.
+// pair: a second, mirrored copy this many units south facing the first.
 const CHICAGO_LANDMARK_GLBS = [
-  { id: 'willis_tower', file: 'willis_tower.glb', trueHeightM: 527.3, ready: true },
-  { id: 'tower_401_n_wabash', file: 'tower_401_n_wabash.glb', trueHeightM: 423, ready: true },
-  { id: 'st_regis', file: 'st_regis.glb', trueHeightM: 363, ready: true },
-  { id: 'aon_center', file: 'aon_center.glb', trueHeightM: 347, ready: true },
-  { id: 'two_prudential', file: 'two_prudential.glb', trueHeightM: 303, ready: true },
-  { id: 'chase_tower', file: 'chase_tower.glb', trueHeightM: 262.6, ready: true },
-  { id: 'aqua', file: 'aqua.glb', trueHeightM: 262, ready: true },
-  { id: 'crain_150_n_michigan', file: 'crain_150_n_michigan.glb', trueHeightM: 177.6, ready: true },
+  { id: 'willis_tower', file: 'willis_tower.glb', trueHeightM: 527.3, face: 'east', ready: true },
+  { id: 'tower_401_n_wabash', file: 'tower_401_n_wabash.glb', trueHeightM: 423, face: 'south', ready: true },
+  { id: 'st_regis', file: 'st_regis.glb', trueHeightM: 363, face: 'south', ready: true },
+  { id: 'aon_center', file: 'aon_center.glb', trueHeightM: 347, face: 'east', ready: true },
+  { id: 'two_prudential', file: 'two_prudential.glb', trueHeightM: 303, face: 'south', ready: true },
+  { id: 'chase_tower', file: 'chase_tower.glb', trueHeightM: 262.6, face: 'east', ready: true },
+  { id: 'aqua', file: 'aqua.glb', trueHeightM: 262, face: 'south', ready: true },
+  { id: 'crain_150_n_michigan', file: 'crain_150_n_michigan.glb', trueHeightM: 177.6, face: 'west', ready: true },
   { id: 'marina_city', ids: ['marina_city_1', 'marina_city_2'], file: 'marina_city.glb', trueHeightM: 179, ready: true },
   { id: 'navy_pier_wheel', file: 'navy_pier_wheel.glb', trueHeightM: 59.3, clone: 'wheel_rotor', ready: true },
-  { id: 'franklin_center', file: 'franklin_center.glb', trueHeightM: 307, ready: true },
-  { id: 'wacker_311_s', file: 'wacker_311_s.glb', trueHeightM: 293, ready: true },
-  { id: 'one_prudential', file: 'one_prudential.glb', trueHeightM: 278, ready: true },
+  { id: 'franklin_center', file: 'franklin_center.glb', trueHeightM: 307, face: 'south', ready: true },
+  { id: 'wacker_311_s', file: 'wacker_311_s.glb', trueHeightM: 293, face: 'east', ready: true },
+  { id: 'one_prudential', file: 'one_prudential.glb', trueHeightM: 278, face: 'south', ready: true },
+  // Footprint says its long side runs N-S, so no face override
   { id: 'ama_plaza_330_n_wabash', file: 'ama_plaza_330_n_wabash.glb', trueHeightM: 212, ready: true },
-  { id: 'daley_center', file: 'daley_center.glb', trueHeightM: 198, ready: true },
-  { id: 'lake_point_tower', file: 'lake_point_tower.glb', trueHeightM: 197, ready: true },
-  { id: 'carbide_carbon', file: 'carbide_carbon.glb', trueHeightM: 154, ready: true },
-  { id: 'merchandise_mart', file: 'merchandise_mart.glb', trueHeightM: 103, ready: true },
+  { id: 'daley_center', file: 'daley_center.glb', trueHeightM: 198, face: 'south', ready: true },
+  { id: 'lake_point_tower', file: 'lake_point_tower.glb', trueHeightM: 197, face: 'south', ready: true },
+  { id: 'carbide_carbon', file: 'carbide_carbon.glb', trueHeightM: 154, face: 'west', ready: true },
+  { id: 'merchandise_mart', file: 'merchandise_mart.glb', trueHeightM: 103, face: 'south', ready: true },
+  { id: 'union_station', file: 'union_station.glb', trueHeightM: 38.6, face: 'east', ready: true },
+  { id: 'cultural_center', file: 'cultural_center.glb', trueHeightM: 35.5, ready: true },
+  { id: 'rookery', file: 'rookery.glb', trueHeightM: 59, ready: true },
+  // The pier deck and halls run along glTF X, east end at +X
+  { id: 'navy_pier_festival_hall', file: 'navy_pier_festival_hall.glb', trueHeightM: 41, faceX: 'east', ready: true },
   // Chrome: needs scene.environment (desktop HIGH); duller steel elsewhere
   { id: 'mirrored_sculpture', file: 'mirrored_sculpture.glb', trueHeightM: 10.4, chrome: true, ready: true },
+  // One glass tower; its twin stands 70 m south, the two screens facing
+  { id: 'crown_fountain', file: 'crown_fountain.glb', trueHeightM: 15.2, face: 'south', pair: 14, ready: true },
 ];
 // Generic downtown blocks, picked by height bucket like Tokyo's pools.
+// share: fraction of that bucket's blocks that use it (the rest stay boxes),
+// so one model doesn't repeat on every block.
 const CHICAGO_GENERIC_GLBS = [
-  // { file: 'chi_limestone_mid_1.glb', bucket: 'medium', ready: false },
+  { file: 'parking_deck.glb', bucket: 'short', share: 0.3, ready: true },
 ];
 // Street props: name -> file (same folder as the buildings).
 const CHI_PROP_BASE = CHI_BASE;
@@ -76,6 +90,15 @@ const CHICAGO_KIT_GLBS = {
   l_train: { file: 'l_train.glb', ready: true },
   // Hero Michigan Ave bridge, same node scheme as bascule_bridge
   dusable_bridge: { file: 'dusable_bridge.glb', ready: true },
+  // Station: spans x = -60..60 m at the track's deck height (replaces 3 segments)
+  l_station: { file: 'l_station.glb', len: 120, ready: true },
+  // Riverwalk tile: 12 m along X, +Z = river side, y = 0 waterline, street at 6 m
+  riverwalk: { file: 'riverwalk.glb', len: 12, street: 6, ready: true },
+  // Street furniture placed in bulk (metres; scaled by FURNITURE_UPM)
+  sailboat_moored: { file: 'sailboat_moored.glb', ready: true },
+  planter_bollard: { file: 'planter_bollard.glb', ready: true },
+  lakefront_trail_bench: { file: 'lakefront_trail_bench.glb', ready: true },
+  newspaper_box_cluster: { file: 'newspaper_box_cluster.glb', ready: true },
 };
 const _kit = (id) => (CHICAGO_KIT_GLBS[id]?.ready ? CHI_BASE + CHICAGO_KIT_GLBS[id].file : null);
 
@@ -94,6 +117,25 @@ function _pool(bucket) {
   return own.length ? own : TOKYO_GENERIC[bucket].map((n) => `./assets/buildings/${n}.glb`);
 }
 const _bucket = (h) => (h >= 40 ? 'tall' : h >= 18 ? 'medium' : 'short');
+const _share = (bucket) => {
+  const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket);
+  return own.length ? Math.min(1, own.reduce((a, g) => a + (g.share ?? 1), 0)) : 1;
+};
+const DIRS = { east: [1, 0], west: [-1, 0], south: [0, 1], north: [0, -1] };
+/** rot + k*90deg whose local +Z (sin r, cos r) points closest to `face`
+ *  (or whose local +X (cos r, -sin r) does, for faceX). */
+function _faceRot(rot, face, alongX = false) {
+  const d = DIRS[face];
+  if (!d) return rot;
+  let best = rot, bd = -2;
+  for (let k = 0; k < 4; k++) {
+    const r = rot + k * Math.PI / 2;
+    const v = alongX ? [Math.cos(r), -Math.sin(r)] : [Math.sin(r), Math.cos(r)];
+    const dot = v[0] * d[0] + v[1] * d[1];
+    if (dot > bd) { bd = dot; best = r; }
+  }
+  return best;
+}
 
 /** Building GLB urls the Chicago level loads. */
 export function chicagoBuildingGLBs() {
@@ -912,7 +954,42 @@ export function buildChicago(scene, world, opts, K) {
     aoMap: K.loadDataTex('sidewalk_ao.jpg', rep, rep), aoMapIntensity: 0.8, roughness: 0.9, color: 0xc4bfb6,
   });
   const swMat = sidewalkMat(1);
-  if (L.riverwalk.length) {
+  const riverwalkGLB = glb ? _kit('riverwalk') : null;
+  if (L.riverwalk.length && riverwalkGLB) {
+    // Tiled promenade: river side (+Z) toward the water; vertically squashed
+    // so its street-level wall top sits a kerb above our flat ground
+    K.onTemplatesReady((sc, get) => {
+      const tpl = get(riverwalkGLB);
+      if (!tpl) {
+        for (const r of L.riverwalk) addBatch(ribbon(r.points, -r.width / 2, r.width / 2, 0.3, 1 / SW_TILE), swMat);
+        K.mergeStaticMeshes(scene);
+        return;
+      }
+      const def = CHICAGO_KIT_GLBS.riverwalk;
+      const S = L.scale || 0.2;
+      const sy = 0.55 / def.street; // 6 m street level -> 0.55u above the waterline
+      const tiles = [];
+      for (const r of L.riverwalk) {
+        for (let k = 0; k + 1 < r.points.length; k++) {
+          const [ax, az] = r.points[k], [bx, bz] = r.points[k + 1];
+          const l = Math.hypot(bx - ax, bz - az);
+          if (l < 0.5) continue;
+          const dx = (bx - ax) / l, dz = (bz - az) / l;
+          const n = Math.max(1, Math.round(l / (def.len * S)));
+          // Local +Z = right of travel for ry = atan2(-dz, dx); flip if the water is on the left
+          const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+          const right = isWater(mx - dz * 3, mz + dx * 3) ? 1 : isWater(mx + dz * 3, mz - dx * 3) ? -1 : 1;
+          const ry = Math.atan2(-dz, dx) + (right > 0 ? 0 : Math.PI);
+          for (let q = 0; q < n; q++) {
+            const t = (q + 0.5) * l / n;
+            tiles.push({ x: ax + dx * t, z: az + dz * t, ry, sl: l / n / (def.len * S) });
+          }
+        }
+      }
+      placeStatic(scene, tpl, true, tiles, (t) => new THREE.Vector3(S * t.sl, sy, S), 0.2);
+      K.instanceStaticClones(scene);
+    });
+  } else if (L.riverwalk.length) {
     for (const r of L.riverwalk) addBatch(ribbon(r.points, -r.width / 2, r.width / 2, 0.3, 1 / SW_TILE), swMat);
   } else {
     for (const r of rivers) {
@@ -1061,7 +1138,7 @@ export function buildChicago(scene, world, opts, K) {
     // global body InstancedMesh: a 12k-tri GLB on every 3-storey shop blew the
     // triangle budget
     const pool = _pool(_bucket(o.h));
-    if (!glb || !pool.length || o.h < (REAL ? (lite ? 16 : 7) : 0)) {
+    if (!glb || !pool.length || o.h < (REAL ? (lite ? 16 : 7) : 0) || Math.random() > _share(_bucket(o.h))) {
       const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true });
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       scene.add(b.group); buildings.push(b); grid.add(b);
@@ -1098,13 +1175,14 @@ export function buildChicago(scene, world, opts, K) {
       // Layout height is the roof; the model's bbox includes spires/antennas
       const h = lm.heightM ? lm.h * def.trueHeightM / lm.heightM : lm.h;
       const url = CHI_BASE + def.file;
+      const rotY = def.face ? _faceRot(lm.rotY || 0, def.face) : def.faceX ? _faceRot(lm.rotY || 0, def.faceX, true) : (lm.rotY || 0);
       if (def.clone) {
         // Own scene graph so its node can move (the wheel's rotor)
         K.onTemplatesReady((sc, get) => {
           const tpl = get(url);
           if (!tpl || b.destroyed) return;
           const root = tpl.clone(true);
-          root.rotation.y = lm.rotY || 0;
+          root.rotation.y = rotY;
           const box = new THREE.Box3().setFromObject(root);
           root.scale.setScalar(h / Math.max(1e-3, box.max.y - box.min.y));
           box.setFromObject(root);
@@ -1127,7 +1205,17 @@ export function buildChicago(scene, world, opts, K) {
         });
       }
       // Exact layout height: no footprint clamp (maxW/maxD 0)
-      K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY: lm.rotY || 0, landmark: true });
+      K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY, landmark: true });
+      if (def.pair) {
+        // The mirrored twin, turned to face the first across the plaza
+        const b2 = new K.Building(lm.x, lm.z + def.pair, aw, ad, lm.h, { skipWindows: true });
+        b2._skipBodyIM = true;
+        b2.maxHp = hp; b2.hp = hp;
+        b2.landmarkId = lm.id + '_twin';
+        b2.group.matrixAutoUpdate = false; b2.group.updateMatrix();
+        scene.add(b2.group); buildings.push(b2); grid.add(b2);
+        K.queueGLB({ url, h, building: b2, maxW: 0, maxD: 0, rotY: rotY + Math.PI, landmark: true });
+      }
       continue;
     }
     const mesh = _builderFor(lm.id)(lm.h, lm.w, lm.d, M);
@@ -1249,7 +1337,7 @@ export function buildChicago(scene, world, opts, K) {
       scene.add(im);
     }
   };
-  const tiledRail = (tpl, curveTpl) => {
+  const tiledRail = (tpl, curveTpl, stationTpl) => {
     // Straight runs tile the 40 m segment (stretched to divide each run
     // exactly); ~90-degree corners get the curve piece, with the straights
     // trimmed back by its radius. Map scale in plan, stretched in height so
@@ -1297,42 +1385,26 @@ export function buildChicago(scene, world, opts, K) {
         }
       }
     }
-    // Static clones folded by instanceStaticClones: per-120u-tile
-    // InstancedMeshes (frustum culled) with the LOD1 twin far away
-    const place = (src, recentre, list, scaleOf) => {
-      src.updateMatrixWorld(true);
-      const b = new THREE.Box3().setFromObject(src);
-      const off = new THREE.Matrix4();
-      if (recentre) off.makeTranslation(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
-      const meshes = [];
-      src.traverse((o) => { if (o.isMesh) meshes.push(o); });
-      const locals = meshes.map((o) => new THREE.Matrix4().multiplyMatrices(off, o.matrixWorld));
-      const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), m = new THREE.Matrix4();
-      for (const t of list) {
-        m.compose(new THREE.Vector3(t.x, 0, t.z), q.setFromAxisAngle(up, t.ry), scaleOf(t));
-        const g = new THREE.Group();
-        meshes.forEach((o, k) => {
-          const mesh = new THREE.Mesh(o.geometry, o.material);
-          mesh.applyMatrix4(new THREE.Matrix4().multiplyMatrices(m, locals[k]));
-          mesh.receiveShadow = true;
-          g.add(mesh);
-        });
-        g.userData.instance = true;
-        scene.add(g);
-      }
-    };
-    place(tpl, true, tiles, (t) => new THREE.Vector3(t.sl, t.sy, S));
+    // Stations replace the straight tiles they cover (120 m of deck)
+    const stHalf = (CHICAGO_KIT_GLBS.l_station.len * S) / 2;
+    const covered = (t) => stationTpl && L.stations.some((st) => Math.hypot(t.x - st.x, t.z - st.z) < stHalf - 1);
+    placeStatic(scene, tpl, true, tiles.filter((t) => !covered(t)), (t) => new THREE.Vector3(t.sl, t.sy, S));
     // The curve piece is authored from its own origin (not recentred)
-    if (curveTpl && curves.length) place(curveTpl, false, curves, (t) => new THREE.Vector3(S, t.sy, S));
+    if (curveTpl && curves.length) placeStatic(scene, curveTpl, false, curves, (t) => new THREE.Vector3(S, t.sy, S));
+    if (stationTpl) {
+      const sy = (L.rail[0]?.height || 3.2) / size.y;
+      placeStatic(scene, stationTpl, true, L.stations.map((st) => ({ x: st.x, z: st.z, ry: st.rotY, sy })), (t) => new THREE.Vector3(S, t.sy, S));
+    }
     K.instanceStaticClones(scene);
   };
   const trackGLB = glb ? _kit('l_track_segment') : null;
   const curveGLB = glb ? _kit('l_track_curve') : null;
   const trainGLB = glb ? _kit('l_train') : null;
+  const stationGLB = glb ? _kit('l_station') : null;
   if (trackGLB) {
     K.onTemplatesReady((sc, get) => {
       const tpl = get(trackGLB);
-      if (tpl) tiledRail(tpl, curveGLB ? get(curveGLB) : null);
+      if (tpl) tiledRail(tpl, curveGLB ? get(curveGLB) : null, stationGLB ? get(stationGLB) : null);
       else { proceduralRail(); K.mergeStaticMeshes(scene); }
     });
   } else {
@@ -1369,7 +1441,7 @@ export function buildChicago(scene, world, opts, K) {
       startTrains(null);
     }
     // Stations: platform slabs with a canopy either side of the deck
-    if (L.stations.length) {
+    if (L.stations.length && !stationGLB) {
       const sw = L.rail[0]?.width || 6.4, H = L.rail[0]?.height || 5.5;
       const g = new Massing();
       g.box(M.concrete, sw * 0.35, 0.12, 1, sw * 0.68, H - 0.05, 0);
@@ -1466,13 +1538,16 @@ export function buildChicago(scene, world, opts, K) {
 
   // ---- boats: tour boats cruising the river, sailboats on the lake ----
   for (const r of rivers) animators.push(makeRiverBoats(scene, r, lite ? 2 : 4, PS));
+  const sailGLB = glb ? _kit('sailboat_moored') : null;
+  const moorings = [];
   if (lakes.length) {
-    for (let i = 0; i < (lite ? 5 : 12); i++) {
+    for (let i = 0; i < (lite ? 5 : 12) * (sailGLB ? 2 : 1); i++) {
       for (let tries = 0; tries < 30; tries++) {
         const x = B.minX + Math.random() * (B.maxX - B.minX), z = B.minZ + Math.random() * (B.maxZ - B.minZ);
         // Open water at least 8u from any shore
         if (!isWater(x, z) || !isWater(x + 8, z) || !isWater(x - 8, z) || !isWater(x, z + 8) || !isWater(x, z - 8)) continue;
         if (!lakes.some((w) => pointInPoly(x, z, w.polygon))) continue;
+        if (sailGLB) { moorings.push({ x, z, ry: Math.random() * Math.PI * 2 }); break; }
         // Moored: static, folded into the prop InstancedMeshes
         const bt = makeBoat(false);
         bt.scale.setScalar(PS);
@@ -1483,6 +1558,71 @@ export function buildChicago(scene, world, opts, K) {
         scene.add(bt);
         break;
       }
+    }
+  }
+
+  // ---- GLB street furniture and moored sailboats (placed once parsed) ----
+  {
+    // Furniture reads at gameplay scale next to the Tokyo-scale cars and
+    // civilians, not at the map's 0.2 u/m
+    const FURNITURE_UPM = REAL ? 0.6 : 1.2;
+    const S = L.scale || 0.2;
+    const spots = { planter_bollard: [], newspaper_box_cluster: [], lakefront_trail_bench: [] };
+    // Planters in pairs and newspaper boxes on major-street corners
+    let corner = 0;
+    for (const node of net.nodes) {
+      if (node.edges.length < 4) continue;
+      const e = net.edges[node.edges[0]];
+      const w = e.laneOff * 4;
+      if (w < (REAL ? 8 : 0)) continue;
+      corner++;
+      const co = w / 2 + SIDEWALK_W * 0.5;
+      const ry = Math.atan2(e.dx, e.dz);
+      if (corner % 2 === 0 && spots.planter_bollard.length < (lite ? 40 : 120)) {
+        for (const sgn of [-1, 1]) {
+          spots.planter_bollard.push({ x: node.x + (-e.dx * sgn - e.dz) * co, z: node.z + (-e.dz * sgn + e.dx) * co, ry: 0 });
+        }
+      }
+      if (corner % 3 === 1 && spots.newspaper_box_cluster.length < (lite ? 15 : 45)) {
+        spots.newspaper_box_cluster.push({ x: node.x + (e.dx + e.dz) * co * 1.4, z: node.z + (e.dz - e.dx) * co * 1.4, ry: ry + Math.PI / 2 });
+      }
+    }
+    // Lakefront Trail benches: every ~25u along the shore, on the land side, facing the water
+    for (const w of lakes) {
+      const ring = w.polygon;
+      let carry = 0;
+      for (let i = 0; i < ring.length && spots.lakefront_trail_bench.length < (lite ? 20 : 60); i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length];
+        const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (l < 1e-3) continue;
+        const dx = (b[0] - a[0]) / l, dz = (b[1] - a[1]) / l;
+        let t = carry;
+        for (; t < l; t += 25) {
+          const x = a[0] + dx * t, z = a[1] + dz * t;
+          // Land side: the normal whose end is dry
+          const side = !isWater(x - dz * 3, z + dx * 3) ? 1 : !isWater(x + dz * 3, z - dx * 3) ? -1 : 0;
+          if (!side) continue;
+          const px = x - dz * 2.2 * side, pz = z + dx * 2.2 * side;
+          if (px < B.minX || px > B.maxX || pz < B.minZ || pz > B.maxZ) continue;
+          // Seat side (+Z) toward the water: (sin r, cos r) = -normal
+          spots.lakefront_trail_bench.push({ x: px, z: pz, ry: Math.atan2(dz * side, -dx * side) });
+        }
+        carry = t - l;
+      }
+    }
+    // Phones: planters only (each kind costs a draw per 120u tile it reaches)
+    const kinds = Object.keys(spots).filter((k) => glb && _kit(k) && spots[k].length && (!lite || k === 'planter_bollard'));
+    if (kinds.length || (sailGLB && moorings.length)) {
+      K.onTemplatesReady((sc, get) => {
+        for (const k of kinds) {
+          const tpl = get(_kit(k));
+          if (tpl) placeStatic(scene, tpl, true, spots[k], () => new THREE.Vector3(FURNITURE_UPM, FURNITURE_UPM, FURNITURE_UPM));
+        }
+        const boat = sailGLB && get(sailGLB);
+        // Hull bottom at y = 0: sunk ~0.6 m below the lake surface (0.2)
+        if (boat) placeStatic(scene, boat, true, moorings, () => new THREE.Vector3(S * 1.5, S * 1.5, S * 1.5), 0.2 - 0.6 * S * 1.5);
+        K.instanceStaticClones(scene);
+      });
     }
   }
 
@@ -1552,6 +1692,33 @@ export function buildChicago(scene, world, opts, K) {
     // Minimap: lake / river / pond outlines
     mapWater: L.water.map((w) => ({ kind: w.kind, polygon: w.polygon, holes: w.holes })),
   };
+}
+
+/** Static copies of a GLB template as plain meshes tagged userData.instance
+ *  (the caller runs instanceStaticClones: per-120u-tile InstancedMeshes,
+ *  frustum culled, LOD1 twin far away). list: [{ x, z, ry }]; scaleOf(t)
+ *  gives the scale; y lifts every copy. recentre: bottom-centre the bbox. */
+function placeStatic(scene, src, recentre, list, scaleOf, y = 0) {
+  src.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(src);
+  const off = new THREE.Matrix4();
+  if (recentre) off.makeTranslation(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
+  const meshes = [];
+  src.traverse((o) => { if (o.isMesh) meshes.push(o); });
+  const locals = meshes.map((o) => new THREE.Matrix4().multiplyMatrices(off, o.matrixWorld));
+  const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), m = new THREE.Matrix4();
+  for (const t of list) {
+    m.compose(new THREE.Vector3(t.x, (t.y ?? 0) + y, t.z), q.setFromAxisAngle(up, t.ry), scaleOf(t));
+    const g = new THREE.Group();
+    meshes.forEach((o, k) => {
+      const mesh = new THREE.Mesh(o.geometry, o.material);
+      mesh.applyMatrix4(new THREE.Matrix4().multiplyMatrices(m, locals[k]));
+      mesh.receiveShadow = true;
+      g.add(mesh);
+    });
+    g.userData.instance = true;
+    scene.add(g);
+  }
 }
 
 /** N moving copies of a multi-part prop as one InstancedMesh per part
