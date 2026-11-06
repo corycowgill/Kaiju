@@ -1972,8 +1972,11 @@ export class Building {
     // dome roofs, awnings) for other cities; tanks, vents, antennas and
     // windows stay.
     const decor = !opts.noDecor;
+    // noRoofProps: no per-building rooftop meshes (each is its own draw);
+    // a level that instances its own roof dressing sets it
+    const roofProps = !opts.noRoofProps;
     // Rooftop details (probabilities tuned down to keep mesh count manageable)
-    const wantTank = h > 14 && Math.random() < 0.4;
+    const wantTank = roofProps && h > 14 && Math.random() < 0.4;
     if (wantTank && _propTemplates.has('roof_water_tank')) {
       // v2 GLB water tank on its stand
       const tank = _cloneProp('roof_water_tank', Math.min(4.0, Math.min(w, d) * 0.45));
@@ -1996,7 +1999,7 @@ export class Building {
       this.group.add(lad);
     }
     // AC units / vents (only on tall buildings, fewer per building)
-    if (h > 18 && Math.random() < 0.5) {
+    if (roofProps && h > 18 && Math.random() < 0.5) {
       const ventCount = 1;
       for (let i = 0; i < ventCount; i++) {
         const ac = _cloneProp('roof_ac_cluster', 1.4);
@@ -2018,7 +2021,7 @@ export class Building {
       }
     }
     // Antenna with blinking light (rare; only tall buildings)
-    if (Math.random() < 0.3 && h > 30) {
+    if (roofProps && Math.random() < 0.3 && h > 30) {
       // GLB mast is a wide dish rig, so keep it human-scale; the cylinder can be a tall spike
       const antH = _propTemplates.has('roof_antenna')
         ? Math.min(7, h * (0.12 + Math.random() * 0.08))

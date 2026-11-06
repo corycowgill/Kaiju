@@ -1304,7 +1304,7 @@ export function buildChicago(scene, world, opts, K) {
     // triangle budget
     const pool = _pool(_bucket(o.h));
     if (!glb || !pool.length || o.h < (REAL ? 7 : 0) || Math.random() > _share(_bucket(o.h)) || (REAL && Math.random() < BOX_SHARE)) {
-      const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true, windows: BOX_WIN });
+      const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true, noRoofProps: REAL, windows: BOX_WIN });
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       scene.add(b.group); buildings.push(b); grid.add(b);
       boxes.push(b);
