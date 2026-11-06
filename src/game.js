@@ -1575,9 +1575,11 @@ function _showMobileDataWarning() {
     const sizeEl = document.getElementById('data-warn-size');
     // Measured first-load downloads per tier (GLBs + textures + flipbooks +
     // one audio format; the trailer video only streams if played). Re-measure
-    // with the headless tier harness when assets change. LOW: Tokyo ~9 MB,
-    // Chicago ~40 MB (smoke test: its building GLBs load on every tier).
-    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? '~52 MB' : '~9-40 MB') : '~150 MB';
+    // with the headless tier harness when assets change. Chicago swaps Tokyo's
+    // buildings for its own (~35 MB of mobile GLBs, loaded on every tier incl.
+    // LOW); smoke_test fetch totals: MED +8 MB, desktop -50 MB vs Tokyo.
+    const chi = selectedLevel === 'chicago';
+    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? (chi ? '~60 MB' : '~52 MB') : (chi ? '~45 MB' : '~9 MB')) : (chi ? '~100 MB' : '~150 MB');
     warn.classList.remove('hidden');
     warn.style.display = 'flex';
     const okBtn = document.getElementById('data-warn-ok');
