@@ -4380,7 +4380,7 @@ function _loadCarList(list, onProgress) {
         reportLoadError('CarGLB', def.url, new Error('no meshes found'));
         return;
       }
-      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1, levels: def.levels, lightBar: !!def.lightBar });
+      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1, levels: def.levels, lightBar: !!def.lightBar, flash: _flashMats(s) });
       if (onProgress) onProgress(idx + 1, list.length, def.url.split('/').pop().replace('.glb', ''));
       return _attachLod1(def.url, s);
     }).catch((err) => {
@@ -4417,6 +4417,13 @@ function _cloneCarScene(tpl) {
   return group;
 }
 
+/** A vehicle's own light-bar lens materials (lightbar_red / lightbar_blue), if any. */
+function _flashMats(scene) {
+  const f = {};
+  scene.traverse((o) => { if (o.isMesh) { const m = /lightbar_(red|blue)/.exec(o.material.name || ''); if (m) f[m[1]] = o.material; } });
+  return f.red && f.blue ? f : null;
+}
+
 // Police light bar: shared by every flashing car, toggled in Car.update
 let _lightBarGeom = null;
 const _lightBarMat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xff2020, emissiveIntensity: 2.2 });
@@ -4445,7 +4452,8 @@ export class Car {
       const cloneBox = new THREE.Box3().setFromObject(clone);
       clone.position.y = -cloneBox.min.y - 0.6; // sit on road surface
       root.add(clone);
-      if (tpl.lightBar) {
+      if (tpl.flash) this._flash = tpl.flash; // the model's own lenses: flash them
+      else if (tpl.lightBar) {
         // Roof light bar (the model's is unlit): one shared material flashed
         // red/blue for every police car, so it costs a draw per car only
         const cl = targetLen;
@@ -4588,6 +4596,11 @@ export class Car {
 
   _afterMove(world, kaijuPos) {
     if (this._lightBar) _lightBarMat.emissive.setHex(((performance.now() / 250) | 0) % 2 ? 0x2050ff : 0xff2020);
+    if (this._flash) {
+      const on = ((performance.now() / 250) | 0) % 2;
+      this._flash.red.emissiveIntensity = on ? 3.0 : 0.15;
+      this._flash.blue.emissiveIntensity = on ? 0.15 : 3.0;
+    }
     // Stomped by kaiju
     const dx = kaijuPos.x - this.root.position.x;
     const dz = kaijuPos.z - this.root.position.z;

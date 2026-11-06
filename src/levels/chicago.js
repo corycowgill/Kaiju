@@ -63,6 +63,12 @@ const CHICAGO_LANDMARK_GLBS = [
   // Michigan edge of the 246 m site, the procedural galleries and Modern
   // Wing (rear) fill the rest
   { id: 'art_institute', file: 'art_institute.glb', trueHeightM: 20, face: 'west', fit: 'footprint', maxH: 2.0, front: true, ready: true },
+  // Scaled up to its site (the 180 x 146 m model vs the 348 x 208 m
+  // layout outline, height up to 1.4x); colonnade sides (+Z) east and west,
+  // open ends north-south
+  { id: 'soldier_field', file: 'soldier_field.glb', trueHeightM: 50, face: 'east', fit: 'footprint', maxH: 1.4, ready: true },
+  // Portico (+Z) and grand steps face north
+  { id: 'field_museum', file: 'field_museum.glb', trueHeightM: 30, face: 'north', ready: true },
   // Only the 1930 tower (57 x 60 m, statue at 184 m), clock face (+Z) north up
   // LaSalle; the layout outline includes the 1980 annex, built procedurally behind
   { id: 'board_of_trade', file: 'board_of_trade.glb', trueHeightM: 184, face: 'north', front: true, maxH: 1.0, frontDepthM: 60, rear: 'cbot_annex', rearH: 0.55, ready: true },
@@ -121,7 +127,8 @@ const CHICAGO_VEHICLE_GLBS = [
   // cloud-3d: 12.05 m along Z, front +Z, wheels on y = 0
   { url: CHI_BASE + 'cta_bus.glb', len: 12.05, weight: 8, parked: false, ready: true },
   { url: CHI_BASE + 'chicago_taxi.glb', len: 4.92, weight: 18, ready: true },
-  // Its light bar is unlit in the model: Car adds a flashing bar
+  // v2 has its own lightbar_red/_blue lens materials, which Car flashes
+  // (lightBar adds a procedural bar only if a model has none)
   { url: CHI_BASE + 'police_suv.glb', len: 5.14, weight: 6, lightBar: true, ready: true },
   { url: CHI_BASE + 'sedan_red.glb', len: 4.82, weight: 14, ready: true },
   { url: CHI_BASE + 'sedan_blue.glb', len: 4.82, weight: 12, ready: true },
