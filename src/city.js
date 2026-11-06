@@ -4346,7 +4346,8 @@ const CAR_GLBS = [
   { url: './assets/vehicles/taxi_black.glb',  len: 4.7,  weight: 30 },
   { url: './assets/vehicles/police_car.glb',  len: 4.8,  weight: 10, levels: ['tokyo'] }, // Japanese livery
   { url: './assets/vehicles/small_truck.glb', len: 4.7,  weight: 20 },
-  { url: './assets/vehicles/city_bus.glb',    len: 11.0, weight: 6, parked: false },
+  // Tokyo-only until the CTA bus GLB lands (green Japanese livery)
+  { url: './assets/vehicles/city_bus.glb',    len: 11.0, weight: 6, parked: false, levels: ['tokyo'] },
 ];
 // Old Meshy cars, loaded only if none of the v2 vehicles load
 const CAR_GLBS_FALLBACK = [

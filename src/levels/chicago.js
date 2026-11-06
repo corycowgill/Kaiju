@@ -54,6 +54,11 @@ const CHICAGO_LANDMARK_GLBS = [
   { id: 'carbide_carbon', file: 'carbide_carbon.glb', trueHeightM: 154, face: 'west', ready: true },
   { id: 'merchandise_mart', file: 'merchandise_mart.glb', trueHeightM: 103, face: 'south', ready: true },
   { id: 'union_station', file: 'union_station.glb', trueHeightM: 38.6, face: 'east', ready: true },
+  // Entrance (+Z) on Michigan Ave
+  { id: 'tribune_tower', file: 'tribune_tower.glb', trueHeightM: 141, face: 'west', ready: true },
+  // Long axis X fits the layout outline (E-W); +Z, both blocks and the
+  // skybridge, faces the river
+  { id: 'wrigley_building', file: 'wrigley_building.glb', trueHeightM: 134, ready: true },
   { id: 'cultural_center', file: 'cultural_center.glb', trueHeightM: 35.5, ready: true },
   { id: 'rookery', file: 'rookery.glb', trueHeightM: 59, ready: true },
   // The pier deck and halls run along glTF X, east end at +X
