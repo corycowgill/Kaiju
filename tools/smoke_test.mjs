@@ -211,7 +211,8 @@ if (level === 'chicago' && res && res.bounds) {
   const tooTall = res.buildings.filter((b) => !(b.h > 0 && b.h < 140));
   if (tooTall.length) fail(`chicago: ${tooTall.length} buildings with height outside 0..140u`);
   // No Tokyo dressing: cherry blossom / black pine trees or Japanese street props
-  const tokyoOnly = /tree_sakura|tree_black_pine|koban|yatai|torii|vending|subway_entrance|street_sign|traffic_signal/;
+  // (Tokyo kit material names exactly; Chicago's own pieces, e.g. traffic_signal_palette, are fine)
+  const tokyoOnly = /^(tree_sakura|tree_black_pine|koban|yatai_stall|torii_gate|vending_machine|subway_entrance|street_sign|traffic_signal)$/;
   const leaks = new Set();
   scene.traverse((o) => { if (o.isMesh && tokyoOnly.test(o.material?.name || '')) leaks.add(o.material.name); });
   if (leaks.size) fail(`chicago: Tokyo-only meshes in the scene: ${[...leaks].join(', ')}`);

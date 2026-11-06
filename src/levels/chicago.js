@@ -66,14 +66,28 @@ const CHICAGO_LANDMARK_GLBS = [
 // Generic downtown blocks, picked by height bucket like Tokyo's pools.
 // share: fraction of that bucket's blocks that use it (the rest stay boxes),
 // so one model doesn't repeat on every block.
+// Buckets match the manifest's heightBucket: short < 18u (90 m), medium
+// 18-40u, tall above.
 const CHICAGO_GENERIC_GLBS = [
-  { file: 'parking_deck.glb', bucket: 'short', share: 0.3, ready: true },
+  { file: 'gen_low_brick_loft.glb', bucket: 'short', ready: true },
+  { file: 'gen_low_limestone_block.glb', bucket: 'short', ready: true },
+  { file: 'gen_low_terracotta_office.glb', bucket: 'short', ready: true },
+  { file: 'gen_short_brick_hotel.glb', bucket: 'short', ready: true },
+  { file: 'parking_deck.glb', bucket: 'short', share: 0.4, ready: true },
+  { file: 'gen_mid_deco_setback.glb', bucket: 'medium', ready: true },
+  { file: 'gen_mid_mies_box.glb', bucket: 'medium', ready: true },
+  { file: 'gen_mid_glass_condo.glb', bucket: 'medium', ready: true },
+  { file: 'gen_tall_pomo_granite.glb', bucket: 'tall', ready: true },
+  { file: 'gen_tall_glass_office.glb', bucket: 'tall', ready: true },
+  { file: 'gen_tall_concrete_resi.glb', bucket: 'tall', ready: true },
 ];
 // Street props: name -> file (same folder as the buildings).
 const CHI_PROP_BASE = CHI_BASE;
 const CHICAGO_PROP_GLBS = [
   { name: 'chi_streetlamp', file: 'chicago_streetlamp.glb', ready: true },
   { name: 'chi_bus_shelter', file: 'cta_bus_shelter.glb', ready: true },
+  // US mast-arm signal: origin at the pole base, lenses face +Z, arm along +X
+  { name: 'chi_traffic_signal', file: 'traffic_signal.glb', ready: true },
 ];
 // Extra traffic (front faces +Z, real-world metres like the Tokyo vehicles).
 const CHICAGO_VEHICLE_GLBS = [
@@ -120,7 +134,22 @@ function _pool(bucket) {
   const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket).map((g) => CHI_BASE + g.file);
   return own.length ? own : TOKYO_GENERIC[bucket].map((n) => `./assets/buildings/${n}.glb`);
 }
+/** One url from the bucket's pool, weighted by share (default 1), avoiding
+ *  `avoid` (the models already standing in the neighbouring cells). */
+function _pickGeneric(bucket, avoid) {
+  const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket);
+  if (!own.length) { const p = _pool(bucket); return p[Math.floor(Math.random() * p.length)]; }
+  const ok = avoid ? own.filter((g) => !avoid.has(CHI_BASE + g.file)) : own;
+  const list = ok.length ? ok : own;
+  let r = Math.random() * list.reduce((a, g) => a + (g.share ?? 1), 0);
+  for (const g of list) { r -= g.share ?? 1; if (r < 0) return CHI_BASE + g.file; }
+  return CHI_BASE + list[list.length - 1].file;
+}
+// Fraction of kit-eligible blocks kept as windowed boxes, for variety
+const BOX_SHARE = 0.15;
 const _bucket = (h) => (h >= 40 ? 'tall' : h >= 18 ? 'medium' : 'short');
+// Fraction of a bucket's blocks that get a GLB at all (a lone partial-share
+// model, e.g. only the parking deck, leaves the rest as boxes)
 const _share = (bucket) => {
   const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket);
   return own.length ? Math.min(1, own.reduce((a, g) => a + (g.share ?? 1), 0)) : 1;
@@ -153,7 +182,8 @@ export function chicagoBuildingGLBs() {
 export function chicagoLod1GLBs() {
   return [...CHICAGO_LANDMARK_GLBS.filter((g) => g.ready && g.lod1 !== false).map((g) => CHI_BASE + g.file),
     ...Object.keys(CHICAGO_KIT_GLBS).filter((id) => !(isMobile && CHICAGO_KIT_GLBS[id].desktopOnly)).map(_kit).filter(Boolean),
-    ...CHICAGO_PROP_GLBS.filter((p) => p.ready).map((p) => CHI_PROP_BASE + p.file)];
+    ...CHICAGO_PROP_GLBS.filter((p) => p.ready).map((p) => CHI_PROP_BASE + p.file),
+    ...CHICAGO_GENERIC_GLBS.filter((g) => g.ready).map((g) => CHI_BASE + g.file)];
 }
 
 /** Chicago-only street props as [{ name, url }]. */
@@ -931,6 +961,9 @@ export function buildChicago(scene, world, opts, K) {
   // drop to LOD1 from 125u, just past a tile's half-diagonal so the tile
   // you stand in stays LOD0 (desktop: 120u tiles, LOD1 from 150u)
   const instance = () => K.instanceStaticClones(scene, lite ? 160 : 120, lite ? 125 : 150);
+  // GLB buildings: the generic kit is a dozen tiny (<300 tri) templates, so
+  // big batch tiles keep their draws down at almost no triangle cost
+  K.setBuildingTile(lite ? 440 : 300);
   const B = L.bounds;
   const animators = [];
   const STREET_TILE = K.TILE.STREET, SW_TILE = K.TILE.SIDEWALK;
@@ -1260,6 +1293,7 @@ export function buildChicago(scene, world, opts, K) {
   // cornice band (instanced below, zeroed with the building on collapse)
   const boxes = [];
   const BOX_WIN = REAL ? { scale: 0.65, faces: lite ? 2 : 4, minH: 2.5 } : undefined;
+  const picked = new Map(); // 24u cell -> generic urls placed there
   const placeBlock = (o) => {
     const color = _facade();
     // AABB of the (possibly rotated) footprint: collision and AOE use axis-aligned w/d
@@ -1269,7 +1303,7 @@ export function buildChicago(scene, world, opts, K) {
     // global body InstancedMesh: a 12k-tri GLB on every 3-storey shop blew the
     // triangle budget
     const pool = _pool(_bucket(o.h));
-    if (!glb || !pool.length || o.h < (REAL ? (lite ? 16 : 7) : 0) || Math.random() > _share(_bucket(o.h))) {
+    if (!glb || !pool.length || o.h < (REAL ? 7 : 0) || Math.random() > _share(_bucket(o.h)) || (REAL && Math.random() < BOX_SHARE)) {
       const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true, windows: BOX_WIN });
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       scene.add(b.group); buildings.push(b); grid.add(b);
@@ -1280,7 +1314,16 @@ export function buildChicago(scene, world, opts, K) {
     b._skipBodyIM = true;
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
-    K.queueGLB({ url: pool[Math.floor(Math.random() * pool.length)], h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool });
+    // Neighbours differ: skip models already used in this or the adjacent 24u cells
+    const cx = Math.floor(o.x / 24), cz = Math.floor(o.z / 24);
+    const avoid = new Set();
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const u of picked.get((cx + i) + ':' + (cz + j)) || []) avoid.add(u);
+    const url = _pickGeneric(_bucket(o.h), avoid);
+    const k = cx + ':' + cz;
+    if (!picked.has(k)) picked.set(k, []);
+    picked.get(k).push(url);
+    // Kit pieces stretch up to 1.3x per axis to fill the footprint (artist-approved)
+    K.queueGLB({ url, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool, stretch: 1.3 });
   };
   {
     // Phones: keep every tower but thin out the low infill so the GLB city
@@ -1652,22 +1695,46 @@ export function buildChicago(scene, world, opts, K) {
     // Traffic signals on one corner of every 4-way junction
     // Only a US-style signal (the Tokyo kit's is Japanese); none delivered yet
     if (K.hasProp('chi_traffic_signal')) {
-      // Major 4-way junctions, at least 30u apart, capped per tier
+      // Major 4-way junctions, at least 30u apart, capped per tier. One mast
+      // per junction, on the approach of its first edge: pole on the kerb
+      // left of the incoming traffic, arm (+X) out over the lanes, lenses
+      // (+Z) facing the cars.
       const placed = [];
       const cap = lite ? 30 : 70;
       for (const node of net.nodes) {
         if (node.edges.length < 4 || placed.length >= cap) continue;
+        const ni = net.nodes.indexOf(node);
         const e = net.edges[node.edges[0]];
         const w = e.laneOff * 4;
         if (w < lampMinW || placed.some(([x, z]) => Math.abs(x - node.x) < 30 && Math.abs(z - node.z) < 30)) continue;
         placed.push([node.x, node.z]);
+        const ux = e.a === ni ? e.dx : -e.dx, uz = e.a === ni ? e.dz : -e.dz; // away from the junction
+        const ry = Math.atan2(ux, uz); // +Z -> u; +X -> (uz, -ux)
+        const back = w / 2 + SIDEWALK_W * 1.2, side = w / 2 + SIDEWALK_W * 0.5;
         const sig = K.cloneProp('chi_traffic_signal', 6.4 * PS);
-        const co = w / 2 + SIDEWALK_W * 0.7;
-        sig.position.set(node.x + (e.dx - e.dz) * co, 0, node.z + (e.dz + e.dx) * co);
-        sig.rotation.y = Math.atan2(e.dx, e.dz) + Math.PI;
+        sig.position.set(node.x + ux * back - uz * side, 0, node.z + uz * back + ux * side);
+        sig.rotation.y = ry;
         sig.matrixAutoUpdate = false; sig.updateMatrix();
         sig.userData.instance = true;
         scene.add(sig);
+      }
+      // One city-wide cycle on the shared lens materials: green 7 s, amber 2 s, red 7 s
+      const lens = {};
+      K.propScene('chi_traffic_signal')?.traverse((o) => {
+        if (o.isMesh && /lens_(red|yellow|green)/.test(o.material.name)) lens[o.material.name.match(/lens_(\w+)/)[1]] = o.material;
+      });
+      const col = { red: 0xff2a1a, yellow: 0xffaa22, green: 0x33ff88 };
+      for (const [k, m] of Object.entries(lens)) m.emissive.setHex(col[k]);
+      if (Object.keys(lens).length) {
+        let lit = '';
+        animators.push({
+          update(dt, time) {
+            const t = time % 16, on = t < 7 ? 'green' : t < 9 ? 'yellow' : 'red';
+            if (on === lit) return;
+            lit = on;
+            for (const [k, m] of Object.entries(lens)) m.emissiveIntensity = k === on ? 1.6 : 0.04;
+          },
+        });
       }
     }
     // Bus shelters and hot-dog carts on arterial sidewalks

@@ -2619,7 +2619,9 @@ function _placeRubbleInstanced(scene, targetSize, x, y, z, rx, ry, rz) {
 }
 
 /** Clone a loaded template, scale to targetHeight, wire onto Building. */
-function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY) {
+// stretch > 1: per-axis scale allowed up to stretch x the uniform fit, so a
+// generic block fills its footprint and reaches its height (Chicago kit)
+function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, stretch = 1) {
   const tpl = _glbTemplates.get(url);
   if (!tpl || building.destroyed) return;
 
@@ -2643,7 +2645,17 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY) 
     s = Math.min(s, sW, sD);
   }
 
-  root.scale.setScalar(s);
+  if (stretch > 1 && maxW > 0 && maxD > 0 && rawW > 0 && rawD > 0 && rawH > 0) {
+    const sx = Math.min(maxW / rawW, s * stretch);
+    const sz = Math.min(maxD / rawD, s * stretch);
+    const sy = Math.min(targetHeight / rawH, s * stretch);
+    // Scale is applied before the Y rotation: a quarter-turned model's
+    // local X lies along world Z
+    const quarter = Math.abs(Math.sin(rotY || 0)) > Math.SQRT1_2;
+    root.scale.set(quarter ? sz : sx, sy, quarter ? sx : sz);
+  } else {
+    root.scale.setScalar(s);
+  }
 
   const boxScaled = new THREE.Box3().setFromObject(root);
   building.w = boxScaled.max.x - boxScaled.min.x;
@@ -2666,7 +2678,7 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY) 
   root.traverse((m) => {
     if (!m.isMesh) return;
     const e = m.matrixWorld.elements;
-    const key = `${m.geometry.uuid}|${m.material.uuid}|${Math.floor(e[12] / BLDG_TILE)},${Math.floor(e[14] / BLDG_TILE)}`;
+    const key = `${m.geometry.uuid}|${m.material.uuid}|${Math.floor(e[12] / _bldgTile)},${Math.floor(e[14] / _bldgTile)}`;
     let b = _glbBuckets.get(key);
     if (!b) _glbBuckets.set(key, b = { geometry: m.geometry, material: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [] });
     b.items.push({ matrix: m.matrixWorld.clone(), building });
@@ -2683,6 +2695,10 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY) 
 //    60u: 336 IMs, shadow 0.45M,      in-view 1.37M
 //   per-building (~370 draws):        shadow ~0.50M, in-view ~1.38M
 const BLDG_TILE = 120;
+// A level with many low-poly generic GLBs (Chicago's kit, 56-272 tris each)
+// batches into bigger tiles: draws scale with templates x tiles, triangles
+// barely matter. buildCity resets it per level.
+let _bldgTile = BLDG_TILE;
 const _glbBuckets = new Map();
 function _buildGLBBuildingInstances(scene) {
   const lodPairs = [];
@@ -2753,7 +2769,7 @@ export function flushPendingGLBBuildings(scene) {
       if (url) swapped++;
     }
     if (url) {
-      placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0);
+      placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0, entry.stretch || 1);
     } else if (!entry.building.destroyed) {
       _revealProceduralBody(entry.building);
       boxed++;
@@ -2787,6 +2803,7 @@ export function buildCity(scene, world, opts = {}) {
   _carNet = null;
   _carLevel = opts.level === 'chicago' ? 'chicago' : 'tokyo';
   // Chicago: zelkova only (elm-like summer green; the ginkgo read neon yellow)
+  _bldgTile = BLDG_TILE;
   _treeTint = opts.level === 'chicago' ? new THREE.Color(0.62, 0.78, 0.55) : null;
   _treeExclude = new Set(opts.level === 'chicago' ? ['./assets/trees/tree_sakura.glb', './assets/trees/tree_black_pine.glb', './assets/trees/tree_ginkgo.glb'] : []);
   if (opts.level === 'chicago') return buildChicago(scene, world, opts, CITY_KIT);
@@ -4894,12 +4911,14 @@ const CITY_KIT = {
   instanceStaticClones: _instanceStaticClones, mergeStaticMeshes: _mergeStaticMeshes,
   makeTree, makePigeonFlock, lod1Of: (geom) => _lod1ByGeom.get(geom) || null, cloneProp: _cloneProp, hasProp: (n) => _propTemplates.has(n),
   propSize: (n) => _propTemplates.get(n)?.size || null,
+  propScene: (n) => _propTemplates.get(n)?.scene || null,
   loadTileTex: _loadTileTex, loadDataTex: _loadDataTex,
   groundMaps: () => ({ map: _groundColor, normalMap: _groundNorm, roughnessMap: _groundRough, aoMap: _groundAO }),
   signTex: makeNeonSignTexture,
   wornPaintTex: () => _wornPaintTex || (_wornPaintTex = _makeWornPaintTexture()),
   queueGLB: (entry) => _pendingGLBBuildings.push(entry),
   onTemplatesReady: (fn) => _flushHooks.push(fn),
+  setBuildingTile: (t) => { _bldgTile = t; },
   hasTemplate: (url) => _glbTemplates.has(url),
   pickTokyoBuildingGLB: pickBuildingGLB,
   buildRoadNet,
