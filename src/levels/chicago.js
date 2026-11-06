@@ -123,7 +123,7 @@ const CHICAGO_VEHICLE_GLBS = [
   { url: CHI_BASE + 'chicago_taxi.glb', len: 4.92, weight: 18, ready: true },
   // Its light bar is unlit in the model: Car adds a flashing bar
   { url: CHI_BASE + 'police_suv.glb', len: 5.14, weight: 6, lightBar: true, ready: true },
-  { url: CHI_BASE + 'sedan.glb', len: 4.82, weight: 14, ready: true },
+  { url: CHI_BASE + 'sedan_red.glb', len: 4.82, weight: 14, ready: true },
   { url: CHI_BASE + 'sedan_blue.glb', len: 4.82, weight: 12, ready: true },
   { url: CHI_BASE + 'sedan_silver.glb', len: 4.82, weight: 12, ready: true },
 ];
