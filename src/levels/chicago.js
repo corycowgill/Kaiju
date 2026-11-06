@@ -38,7 +38,8 @@ const CHI_BASE = './assets/buildings/chicago/';
 // procedural rear builder stands in.
 const CHICAGO_REAR_GLBS = {
   cbot_annex: { file: 'cbot_annex.glb', ready: true },
-  art_institute_rear: { file: 'art_institute_rear.glb', ready: true },
+  // TRELLIS: +Z is the Modern Wing glass face and bridge, toward Millennium Park (north)
+  art_institute_rear: { file: 'art_institute_rear.glb', face: 'north', ready: true },
 };
 const CHICAGO_LANDMARK_GLBS = [
   { id: 'willis_tower', file: 'willis_tower.glb', trueHeightM: 527.3, face: 'east', ready: true },
@@ -1591,7 +1592,9 @@ export function buildChicago(scene, world, opts, K) {
         scene.add(rb.group); buildings.push(rb); grid.add(rb);
         const rg = CHICAGO_REAR_GLBS[def.rearGLB];
         if (rg && rg.ready) {
-          K.queueGLB({ url: CHI_BASE + rg.file, h: rh, building: rb, maxW: rw, maxD: rdd, rotY, landmark: true, stretch: 1.3 });
+          // rg.face: the rear model's own front direction (else it faces the front block)
+          const rry = rg.face ? _faceRot(lm.rotY || 0, rg.face) : rotY;
+          K.queueGLB({ url: CHI_BASE + rg.file, h: rh, building: rb, maxW: rw, maxD: rdd, rotY: rry, landmark: true, stretch: 1.3 });
         } else {
           const rear = LANDMARK_BUILDERS[def.rear || 'art_institute_rear'](rh, fw, rd, M);
           rear.position.set(rx, 0, rz);
