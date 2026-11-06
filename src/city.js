@@ -2683,7 +2683,7 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
     const e = m.matrixWorld.elements;
     const key = `${m.geometry.uuid}|${m.material.uuid}|${Math.floor(e[12] / _bldgTile)},${Math.floor(e[14] / _bldgTile)}`;
     let b = _glbBuckets.get(key);
-    if (!b) _glbBuckets.set(key, b = { geometry: m.geometry, material: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [] });
+    if (!b) _glbBuckets.set(key, b = { geometry: m.geometry, material: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [], lod1Only: !!building.lod1Only });
     b.items.push({ matrix: m.matrixWorld.clone(), building });
   });
   building.customMesh = root;
@@ -2709,7 +2709,10 @@ function _buildGLBBuildingInstances(scene) {
   for (const b of _glbBuckets.values()) {
     // Templates with a registered LOD1 twin get a far copy of the bucket;
     // the LOD controller shows exactly one of the pair (Tokyo has none)
-    const ims = [b.geometry, _lod1ByGeom.get(b.geometry)].filter(Boolean).map((geom) => {
+    // lod1Only (a hero model on phones): draw just the LOD1 twin, near and far
+    const lod1 = _lod1ByGeom.get(b.geometry);
+    const geoms = b.lod1Only && lod1 ? [lod1] : [b.geometry, lod1].filter(Boolean);
+    const ims = geoms.map((geom) => {
       const im = new THREE.InstancedMesh(geom, b.material, b.items.length);
       b.items.forEach((it, i) => {
         im.setMatrixAt(i, it.building.destroyed ? _zeroMatrix : it.matrix);

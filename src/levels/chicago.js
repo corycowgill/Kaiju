@@ -37,7 +37,9 @@ const CHI_BASE = './assets/buildings/chicago/';
 // site, front = +Z toward the main model). pending until delivered: the
 // procedural rear builder stands in.
 const CHICAGO_REAR_GLBS = {
-  cbot_annex: { file: 'cbot_annex.glb', ready: true },
+  // TRELLIS: 34.6 x 34.5 x 101 m, +Z north (toward the tower); uniform:
+  // scaled to its height and centred in the annex site, no fit / stretch
+  cbot_annex: { file: 'cbot_annex.glb', uniform: true, ready: true },
   // TRELLIS: +Z is the Modern Wing glass face and bridge, toward Millennium Park (north)
   art_institute_rear: { file: 'art_institute_rear.glb', face: 'north', ready: true },
 };
@@ -1564,7 +1566,13 @@ export function buildChicago(scene, world, opts, K) {
           });
         });
       }
-      if (def.front) {
+      if (def.exact) {
+        // Hero model at exact map scale (uniform L.scale u/m, no fit or
+        // stretch); phones draw its LOD1 twin only (def.phoneLod1)
+        const sc = L.scale || 0.2;
+        if (def.phoneLod1 && isMobile) b.lod1Only = true;
+        K.queueGLB({ url, h: def.trueHeightM * sc, building: b, maxW: 0, maxD: 0, rotY, landmark: true });
+      } else if (def.front) {
         // Front block on the street edge (+Z side of the site), a separate
         // destructible landmark; the procedural rear fills the remainder
         const s = lm.h * def.maxH / def.trueHeightM;
@@ -1594,7 +1602,9 @@ export function buildChicago(scene, world, opts, K) {
         if (rg && rg.ready) {
           // rg.face: the rear model's own front direction (else it faces the front block)
           const rry = rg.face ? _faceRot(lm.rotY || 0, rg.face) : rotY;
-          K.queueGLB({ url: CHI_BASE + rg.file, h: rh, building: rb, maxW: rw, maxD: rdd, rotY: rry, landmark: true, stretch: 1.3 });
+          K.queueGLB(rg.uniform
+            ? { url: CHI_BASE + rg.file, h: rh, building: rb, maxW: 0, maxD: 0, rotY: rry, landmark: true }
+            : { url: CHI_BASE + rg.file, h: rh, building: rb, maxW: rw, maxD: rdd, rotY: rry, landmark: true, stretch: 1.3 });
         } else {
           const rear = LANDMARK_BUILDERS[def.rear || 'art_institute_rear'](rh, fw, rd, M);
           rear.position.set(rx, 0, rz);
