@@ -195,16 +195,19 @@ const TOKYO_GENERIC = {
 // Front (+Z) direction of the procedural massing, where it matters
 const PROC_FACE = { chicago_theatre: 'west' }; // faces State St
 const _landmarkGLB = (id) => CHICAGO_LANDMARK_GLBS.find((g) => g.ready && (g.ids ? g.ids.includes(id) : g.id === id));
+// desktopOnly on a generic entry: phones skip that template (the phone
+// draw budget caps how many kit types a bucket can use; never boxes)
+const _genericOK = (g) => g.ready && !(isMobile && g.desktopOnly);
 function _pool(bucket) {
   bucket = _ownBucket(bucket);
-  const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket).map((g) => CHI_BASE + g.file);
+  const own = CHICAGO_GENERIC_GLBS.filter((g) => _genericOK(g) && g.bucket === bucket).map((g) => CHI_BASE + g.file);
   return own.length ? own : TOKYO_GENERIC[bucket].map((n) => `./assets/buildings/${n}.glb`);
 }
 /** One url from the bucket's pool, weighted by share (default 1), avoiding
  *  `avoid` (the models already standing in the neighbouring cells). */
 function _pickGeneric(bucket, avoid) {
   bucket = _ownBucket(bucket);
-  const own = CHICAGO_GENERIC_GLBS.filter((g) => g.ready && g.bucket === bucket);
+  const own = CHICAGO_GENERIC_GLBS.filter((g) => _genericOK(g) && g.bucket === bucket);
   if (!own.length) { const p = _pool(bucket); return p[Math.floor(Math.random() * p.length)]; }
   const ok = avoid ? own.filter((g) => !avoid.has(CHI_BASE + g.file)) : own;
   const list = ok.length ? ok : own;
@@ -215,7 +218,7 @@ function _pickGeneric(bucket, avoid) {
 // Every block gets a kit GLB: 'low' (< 7u, the gen_low2_* kit) borrows the
 // short kit until its own pieces are ready
 const _bucket = (h) => (h >= 40 ? 'tall' : h >= 18 ? 'medium' : h >= 7 ? 'short' : 'low');
-const _ownBucket = (bucket) => (bucket === 'low' && !CHICAGO_GENERIC_GLBS.some((g) => g.ready && g.bucket === 'low') ? 'short' : bucket);
+const _ownBucket = (bucket) => (bucket === 'low' && !CHICAGO_GENERIC_GLBS.some((g) => _genericOK(g) && g.bucket === 'low') ? 'short' : bucket);
 const DIRS = { east: [1, 0], west: [-1, 0], south: [0, 1], north: [0, -1] };
 /** rot + k*90deg whose local +Z (sin r, cos r) points closest to `face`
  *  (or whose local +X (cos r, -sin r) does, for faceX). */
@@ -246,7 +249,7 @@ export function chicagoLod1GLBs() {
   return [...CHICAGO_LANDMARK_GLBS.filter((g) => g.ready && g.lod1 !== false).map((g) => CHI_BASE + g.file),
     ...Object.keys(CHICAGO_KIT_GLBS).filter((id) => !(isMobile && CHICAGO_KIT_GLBS[id].desktopOnly)).map(_kit).filter(Boolean),
     ...CHICAGO_PROP_GLBS.filter((p) => p.ready).map((p) => CHI_PROP_BASE + p.file),
-    ...CHICAGO_GENERIC_GLBS.filter((g) => g.ready).map((g) => CHI_BASE + g.file),
+    ...CHICAGO_GENERIC_GLBS.filter(_genericOK).map((g) => CHI_BASE + g.file),
     ...CHICAGO_VEHICLE_GLBS.filter((v) => v.ready).map((v) => v.url)];
 }
 
@@ -1051,8 +1054,9 @@ export function buildChicago(scene, world, opts, K) {
   // Static props/kit pieces: phones batch into 160u tiles (fewer draws) and
   // drop to LOD1 from 125u, just past a tile's half-diagonal so the tile
   // you stand in stays LOD0 (desktop: 120u tiles, LOD1 from 150u)
-  // (phone LOW: procedural few-hundred-tri lamps/trees, so 320u tiles)
-  const instance = () => K.instanceStaticClones(scene, !glb ? 320 : lite ? 160 : 120, lite ? 125 : 150);
+  // (phone LOW: its lamps/trees are procedural, a few dozen tris each, so one
+  // tile spans the whole map: one draw per part)
+  const instance = () => K.instanceStaticClones(scene, !glb ? 4000 : lite ? 160 : 120, lite ? 125 : 150);
   // GLB buildings: the generic kit is a dozen tiny (<300 tri) templates, so
   // big batch tiles keep their draws down at almost no triangle cost
   K.setBuildingTile(!glb ? 600 : lite ? 440 : 300); // phone LOW: one tile per quadrant
