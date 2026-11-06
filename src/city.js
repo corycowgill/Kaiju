@@ -363,7 +363,9 @@ export function loadLevelTemplates(level, onProgress) {
 //    lot pads, cables). Merged into one BufferGeometry per material.
 const BATCH_TILE = 120;
 
-function _instanceStaticClones(scene) {
+// tile / lodDist: a level may batch into bigger tiles and switch to LOD1
+// sooner (Chicago on phones); Tokyo uses the defaults.
+function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST) {
   scene.updateMatrixWorld(true);
   const clones = [];
   scene.traverse((o) => { if (o.userData.instance) clones.push(o); });
@@ -372,7 +374,7 @@ function _instanceStaticClones(scene) {
     c.traverse((m) => {
       if (!m.isMesh) return;
       const e = m.matrixWorld.elements;
-      const key = `${m.geometry.uuid}|${m.material.uuid}|${Math.floor(e[12] / BATCH_TILE)},${Math.floor(e[14] / BATCH_TILE)}`;
+      const key = `${m.geometry.uuid}|${m.material.uuid}|${Math.floor(e[12] / tile)},${Math.floor(e[14] / tile)}`;
       let b = buckets.get(key);
       if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, recv: m.receiveShadow, matrices: [] });
       b.matrices.push(m.matrixWorld.clone());
@@ -401,13 +403,13 @@ function _instanceStaticClones(scene) {
       lodPairs.push({ near: ims[0], far: ims[1], center: ims[0].boundingSphere.center });
     }
   }
-  if (lodPairs.length) scene.add(_makeLodController(lodPairs));
+  if (lodPairs.length) scene.add(_makeLodController(lodPairs, lodDist));
 }
 
 /** Invisible, zero-vertex mesh whose onBeforeRender (main camera only; it
  *  casts no shadow) flips each tile pair between LOD0 and LOD1. Its empty
  *  geometry means the renderer issues no draw call for it. */
-function _makeLodController(pairs) {
+function _makeLodController(pairs, dist = LOD1_DIST) {
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
   const ctl = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
@@ -415,7 +417,7 @@ function _makeLodController(pairs) {
   ctl.castShadow = false;
   ctl.receiveShadow = false;
   const camPos = new THREE.Vector3();
-  const d2 = LOD1_DIST * LOD1_DIST;
+  const d2 = dist * dist;
   ctl.onBeforeRender = (renderer, scene, camera) => {
     camera.getWorldPosition(camPos);
     for (const p of pairs) {
@@ -456,6 +458,24 @@ function _mergeStaticMeshes(scene) {
 // black pine); set by buildCity. Falls back to every template if that
 // would leave none.
 let _treeExclude = new Set();
+// Foliage tint a level multiplies into the tree materials (Chicago: deeper
+// summer green under its warm light); tinted clones are cached per source.
+let _treeTint = null;
+const _treeTintMats = new Map(); // `${uuid}|${hex}` -> tinted clone
+function _tintTree(group) {
+  if (!_treeTint) return;
+  group.traverse((m) => {
+    if (!m.isMesh) return;
+    const key = m.material.uuid + '|' + _treeTint.getHexString();
+    let t = _treeTintMats.get(key);
+    if (!t) {
+      t = m.material.clone();
+      t.color.multiply(_treeTint);
+      _treeTintMats.set(key, t);
+    }
+    m.material = t;
+  });
+}
 function _treePool() {
   const ok = _treeTemplates.filter((t) => !_treeExclude.has(t.url));
   return ok.length ? ok : _treeTemplates;
@@ -480,6 +500,7 @@ function makeTree(x = 0, z = 0, scale = 1) {
     clone.position.x = x;
     clone.position.z = z;
     clone.userData.instance = true; // folded into InstancedMeshes by _instanceStaticClones
+    _tintTree(clone);
     return clone;
   }
 
@@ -2163,21 +2184,26 @@ export class Building {
     // by (x,z) at queue time so the global IM lives in world space.
     // skipWindows opt: landmarks render their own custom mesh and don't
     // want generic procedural window dots painted onto them.
-    if (h >= 6 && !opts.skipWindows) {
+    // opts.windows { scale, faces, minH }: real-scale cities (Chicago) use
+    // smaller windows at tighter floor spacing on every face.
+    const wo = opts.windows;
+    const ws = wo ? wo.scale : 1;
+    if (h >= (wo ? wo.minH : 6) && !opts.skipWindows) {
       const lit = Math.random() < 0.6;
-      const facesToRender = h < 16 ? 1 : 2;
+      const facesToRender = wo ? wo.faces : (h < 16 ? 1 : 2);
       const faceOffset = Math.floor(Math.random() * 4);
-      const rows = Math.max(2, Math.floor(h / 4));
-      const cols = Math.max(2, Math.floor(Math.max(w, d) / 3.5));
+      const rows = Math.max(wo ? 1 : 2, Math.floor(h / (4 * ws)));
+      const colsAll = Math.max(2, Math.floor(Math.max(w, d) / 3.5));
       const dummy = new THREE.Object3D();
       for (let f = 0; f < facesToRender; f++) {
         const face = (f + faceOffset) % 4;
+        const cols = wo ? Math.max(2, Math.floor((face % 2 === 0 ? w : d) / (3.5 * ws))) : colsAll;
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             dummy.position.set(0, 0, 0);
             dummy.rotation.set(0, 0, 0);
-            const yy = 1.5 + r * (h - 2) / rows;
-            const span = (face % 2 === 0 ? w : d) - 1.0;
+            const yy = 1.5 * ws + r * (h - 2 * ws) / rows;
+            const span = (face % 2 === 0 ? w : d) - 1.0 * ws;
             const xx = -span / 2 + c * span / (cols - 1 || 1);
             if (face === 0)      dummy.position.set(xx, yy, d / 2 + 0.08);
             else if (face === 1) { dummy.position.set(w / 2 + 0.08, yy, xx); dummy.rotation.y = Math.PI / 2; }
@@ -2186,6 +2212,7 @@ export class Building {
             // bake building world position
             dummy.position.x += this.x;
             dummy.position.z += this.z;
+            if (wo) dummy.scale.setScalar(ws);
             dummy.updateMatrix();
             _windowQueue.push({ b: this, matrix: dummy.matrix.clone(), lit });
           }
@@ -2756,7 +2783,9 @@ export function buildCity(scene, world, opts = {}) {
   _pedCfg = null;
   _carNet = null;
   _carLevel = opts.level === 'chicago' ? 'chicago' : 'tokyo';
-  _treeExclude = new Set(opts.level === 'chicago' ? ['./assets/trees/tree_sakura.glb', './assets/trees/tree_black_pine.glb'] : []);
+  // Chicago: zelkova only (elm-like summer green; the ginkgo read neon yellow)
+  _treeTint = opts.level === 'chicago' ? new THREE.Color(0.62, 0.78, 0.55) : null;
+  _treeExclude = new Set(opts.level === 'chicago' ? ['./assets/trees/tree_sakura.glb', './assets/trees/tree_black_pine.glb', './assets/trees/tree_ginkgo.glb'] : []);
   if (opts.level === 'chicago') return buildChicago(scene, world, opts, CITY_KIT);
   return { ...buildTokyo(scene, world, opts), level: 'tokyo' };
 }

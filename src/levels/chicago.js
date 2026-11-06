@@ -6,6 +6,7 @@
 // bascule bridges, landmark massing, props) lives here.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { isMobile } from '../quality.js';
 
 const LAYOUT_URL = './assets/levels/chicago_layout.json';
 let _layout = null;
@@ -97,8 +98,9 @@ const CHICAGO_KIT_GLBS = {
   // Street furniture placed in bulk (metres; scaled by FURNITURE_UPM)
   sailboat_moored: { file: 'sailboat_moored.glb', ready: true },
   planter_bollard: { file: 'planter_bollard.glb', ready: true },
-  lakefront_trail_bench: { file: 'lakefront_trail_bench.glb', ready: true },
-  newspaper_box_cluster: { file: 'newspaper_box_cluster.glb', ready: true },
+  // desktopOnly: phones neither download nor place them (draw budget)
+  lakefront_trail_bench: { file: 'lakefront_trail_bench.glb', desktopOnly: true, ready: true },
+  newspaper_box_cluster: { file: 'newspaper_box_cluster.glb', desktopOnly: true, ready: true },
 };
 const _kit = (id) => (CHICAGO_KIT_GLBS[id]?.ready ? CHI_BASE + CHICAGO_KIT_GLBS[id].file : null);
 
@@ -141,14 +143,14 @@ function _faceRot(rot, face, alongX = false) {
 export function chicagoBuildingGLBs() {
   return [
     ...CHICAGO_LANDMARK_GLBS.filter((g) => g.ready).map((g) => CHI_BASE + g.file),
-    ...Object.keys(CHICAGO_KIT_GLBS).map(_kit).filter(Boolean),
+    ...Object.keys(CHICAGO_KIT_GLBS).filter((id) => !(isMobile && CHICAGO_KIT_GLBS[id].desktopOnly)).map(_kit).filter(Boolean),
     ..._pool('tall'), ..._pool('medium'), ..._pool('short'),
   ];
 }
 /** GLB urls with a <name>_lod1.glb twin on disk (every ready landmark/kit file). */
 export function chicagoLod1GLBs() {
   return [...CHICAGO_LANDMARK_GLBS.filter((g) => g.ready && g.lod1 !== false).map((g) => CHI_BASE + g.file),
-    ...Object.keys(CHICAGO_KIT_GLBS).map(_kit).filter(Boolean),
+    ...Object.keys(CHICAGO_KIT_GLBS).filter((id) => !(isMobile && CHICAGO_KIT_GLBS[id].desktopOnly)).map(_kit).filter(Boolean),
     ...CHICAGO_PROP_GLBS.filter((p) => p.ready).map((p) => CHI_PROP_BASE + p.file)];
 }
 
@@ -448,6 +450,33 @@ class Massing {
   }
 }
 
+// Mottled summer-lawn texture (canvas, built once): deep greens with mowing
+// stripes and darker clumps, tiled every 14u
+let _grass = null;
+function _grassTex() {
+  if (_grass) return _grass;
+  const S = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(S, S);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const stripe = ((x >> 4) & 1) ? 0.06 : -0.02;
+      const clump = 0.5 + 0.5 * Math.sin(x * 0.21 + Math.sin(y * 0.17) * 2.3) * Math.cos(y * 0.19 + x * 0.05);
+      const n = Math.random() * 0.18 + stripe - (clump < 0.25 ? 0.12 : 0);
+      const i = (y * S + x) * 4;
+      img.data[i] = (52 + n * 120) | 0; img.data[i + 1] = (96 + n * 150) | 0; img.data[i + 2] = (40 + n * 80) | 0; img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  _grass = new THREE.CanvasTexture(c);
+  _grass.wrapS = _grass.wrapT = THREE.RepeatWrapping;
+  _grass.colorSpace = THREE.SRGBColorSpace;
+  _grass.anisotropy = 4;
+  return _grass;
+}
+
 // --------------- materials (shared by every rebuilt Chicago city) ---------------
 let _M = null;
 function mats() {
@@ -464,7 +493,8 @@ function mats() {
     marquee: std(0xaa2222, 0.5, 0, { emissive: 0xff5533, emissiveIntensity: 1.8 }),
     water: new THREE.MeshStandardMaterial({ color: 0x1a5276, roughness: 0.08, metalness: 0.7, emissive: 0x0a2e42, emissiveIntensity: 0.25 }),
     lake: new THREE.MeshStandardMaterial({ color: 0x24607e, roughness: 0.1, metalness: 0.65, emissive: 0x0c3448, emissiveIntensity: 0.25 }),
-    wall: std(0x6a6862, 0.9), grass: std(0x4a7a33, 0.95), lawn: std(0x5b8a3c, 0.95), path: std(0xb8ad92, 0.95),
+    wall: std(0x6a6862, 0.9), path: std(0xb8ad92, 0.95),
+    grass: std(0x7f9a6a, 0.95, 0, { map: _grassTex() }), lawn: std(0x8aa676, 0.95, 0, { map: _grassTex() }),
     yellow: new THREE.MeshStandardMaterial({ color: 0xf2c230, emissive: 0xd9a820, emissiveIntensity: 0.3, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1 }),
     whiteLine: new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -1 }),
     curb: std(0x3a3a3c, 1.0), lot: std(0x6c6a66, 0.95),
@@ -476,16 +506,27 @@ function mats() {
     glassShelter: std(0x9fc2cc, 0.1, 0.4, { transparent: true, opacity: 0.45 }),
     cartYellow: std(0xf0b81e, 0.6), umbrella: std(0xd23a2a, 0.8),
     seawall: std(0x9a958a, 0.9), sand: std(0xd8c79a, 1.0),
+    roofCap: std(0x2e2c2a, 0.95), cornice: std(0xb8ae9c, 0.85),
   };
   for (const m of Object.values(_M)) m.userData.shared = true;
   return _M;
 }
 
 // Chicago facade palette for procedural blocks: limestone, brick, dark glass, art-deco
-const FACADE = [0xcbbd9f, 0xb9a98a, 0x8c4f3c, 0x7a4636, 0x2c333b, 0x3a4652, 0xb79b6c, 0xd9cdb4, 0x9a8f80];
+// Red brick, limestone, dark glass, terracotta and art-deco tan, with a
+// little per-block jitter so neighbours never match exactly
+const FACADE = [
+  0x8c4f3c, 0x7a4636, 0x9b5a40, 0x6e3b2e,  // red / brown brick
+  0xcbbd9f, 0xb9a98a, 0xd9cdb4,            // limestone
+  0x2c333b, 0x3a4652, 0x252b33,            // dark glass / steel
+  0xc98f6a, 0xd8a47f,                      // terracotta
+  0xb79b6c, 0x9a8f80,                      // deco tan, grey granite
+];
+const _facade = () => new THREE.Color(FACADE[Math.floor(Math.random() * FACADE.length)]).offsetHSL((Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.06, (Math.random() - 0.5) * 0.06).getHex();
 // Window palette (procedural blocks): warm office light, no synthwave neon
 const CHI_WINDOWS = [
-  { name: 'off',   color: 0x1a2028, emissive: 0x000000, intensity: 0.0, weight: 0.45 },
+  // Unlit glass reads as blue-grey sky reflection against brick and stone
+  { name: 'off',   color: 0x46576a, emissive: 0x0e141c, intensity: 1.0, weight: 0.40 },
   { name: 'warm',  color: 0x332818, emissive: 0xffc070, intensity: 1.6, weight: 0.22 },
   { name: 'white', color: 0x2a2a28, emissive: 0xfff2dd, intensity: 1.4, weight: 0.18 },
   { name: 'cool',  color: 0x1c2630, emissive: 0xbfd8ff, intensity: 1.2, weight: 0.10 },
@@ -845,6 +886,10 @@ export function buildChicago(scene, world, opts, K) {
   const lite = !!opts.lite;
   const glb = opts.glb !== undefined ? !!opts.glb : !lite;
   K.setBuildingLite(lite);
+  // Static props/kit pieces: phones batch into 160u tiles (fewer draws) and
+  // drop to LOD1 from 125u, just past a tile's half-diagonal so the tile
+  // you stand in stays LOD0 (desktop: 120u tiles, LOD1 from 150u)
+  const instance = () => K.instanceStaticClones(scene, lite ? 160 : 120, lite ? 125 : 150);
   const B = L.bounds;
   const animators = [];
   const STREET_TILE = K.TILE.STREET, SW_TILE = K.TILE.SIDEWALK;
@@ -987,7 +1032,7 @@ export function buildChicago(scene, world, opts, K) {
         }
       }
       placeStatic(scene, tpl, true, tiles, (t) => new THREE.Vector3(S * t.sl, sy, S), 0.2);
-      K.instanceStaticClones(scene);
+      instance();
     });
   } else if (L.riverwalk.length) {
     for (const r of L.riverwalk) addBatch(ribbon(r.points, -r.width / 2, r.width / 2, 0.3, 1 / SW_TILE), swMat);
@@ -1109,28 +1154,73 @@ export function buildChicago(scene, world, opts, K) {
   K.setCarNet(net);
 
   // ---- parks ----
+  // Lawns: mottled grass texture (world-unit UVs). Grant Park also gets its
+  // formal path grid lined with allees of trees; other parks a loose scatter.
+  const onRoad = (x, z, pad) => roads.some((r) => distToPolyline(x, z, r.points) < r.width / 2 + SIDEWALK_W + pad);
+  let alleeTrees = 0;
+  const ALLEE_CAP = lite ? 60 : 320;
   for (const p of L.parks) {
     // Under the road layer (0.05): streets crossing a park stay on top
-    addBatch(polygonGeom(p.polygon, 0.03), p.kind === 'plaza' ? M.lot : p.kind === 'beach' ? M.sand : p.kind === 'lawn' ? M.lawn : M.grass);
+    addBatch(polygonGeom(p.polygon, 0.03, 1 / 14), p.kind === 'plaza' ? M.lot : p.kind === 'beach' ? M.sand : p.kind === 'lawn' ? M.lawn : M.grass);
     for (const q of p.paths) addBatch(ribbon(q.points, -q.width / 2, q.width / 2, 0.04), M.path);
-    // Trees: jittered grid inside the polygon, away from paths and water
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const [x, z] of p.polygon) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
-    const step = (lite ? 16 : 11) * (REAL ? 0.7 : 1);
     if (p.kind === 'plaza' || p.kind === 'beach') continue;
+    const formal = REAL && /grant park/i.test(p.name) && (x1 - x0) * (z1 - z0) > 400;
+    if (formal) {
+      // Paths every 36u both ways, cut where they leave the lawn or meet a road
+      const runs = [];
+      const GRID = 36, STEP = 1.5;
+      for (let gx = Math.ceil(x0 / GRID) * GRID; gx < x1; gx += GRID) runs.push([[gx, z0], [gx, z1]]);
+      for (let gz = Math.ceil(z0 / GRID) * GRID; gz < z1; gz += GRID) runs.push([[x0, gz], [x1, gz]]);
+      for (const [[ax, az], [bx, bz]] of runs) {
+        const l = Math.hypot(bx - ax, bz - az), dx = (bx - ax) / l, dz = (bz - az) / l;
+        let run = [];
+        const flush = () => {
+          if (run.length >= 2 && Math.hypot(run[run.length - 1][0] - run[0][0], run[run.length - 1][1] - run[0][1]) > 6) {
+            const pts = [run[0], run[run.length - 1]];
+            addBatch(ribbon(pts, -0.8, 0.8, 0.04), M.path);
+            // Allee: a tree row each side of the path
+            const rl = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]);
+            for (let t = 3; t < rl - 2 && alleeTrees < ALLEE_CAP; t += 7) {
+              for (const sd of [-1, 1]) {
+                const tx = pts[0][0] + dx * t - dz * 2.4 * sd, tz = pts[0][1] + dz * t + dx * 2.4 * sd;
+                if (!pointInPoly(tx, tz, p.polygon) || isWater(tx, tz) || onRoad(tx, tz, 1)) continue;
+                scene.add(K.makeTree(tx, tz, (0.95 + Math.random() * 0.15) * PS));
+                alleeTrees++;
+              }
+            }
+          }
+          run = [];
+        };
+        for (let t = 0; t <= l; t += STEP) {
+          const x = ax + dx * t, z = az + dz * t;
+          if (pointInPoly(x, z, p.polygon) && !isWater(x, z) && !onRoad(x, z, 0.5)) run.push([x, z]);
+          else flush();
+        }
+        flush();
+      }
+      continue;
+    }
+    // Trees: jittered grid inside the polygon, away from paths and water
+    const step = (lite ? 16 : 11) * (REAL ? 0.7 : 1);
     for (let x = x0 + step / 2; x < x1; x += step) for (let z = z0 + step / 2; z < z1; z += step) {
       if (Math.random() < (p.kind === 'lawn' ? 0.8 : 0.55)) continue;
       const tx = x + (Math.random() - 0.5) * step * 0.7, tz = z + (Math.random() - 0.5) * step * 0.7;
       if (!pointInPoly(tx, tz, p.polygon) || isWater(tx, tz)) continue;
       if (p.paths.some((q) => distToPolyline(tx, tz, q.points) < q.width / 2 + 2)) continue;
-      if (roads.some((r) => distToPolyline(tx, tz, r.points) < r.width / 2 + SIDEWALK_W + 1.5)) continue;
+      if (onRoad(tx, tz, 1.5)) continue;
       scene.add(K.makeTree(tx, tz, (0.9 + Math.random() * 0.5) * PS));
     }
   }
 
   // ---- buildings ----
+  // Box buildings: real-scale window grid on two faces, plus a roof cap and
+  // cornice band (instanced below, zeroed with the building on collapse)
+  const boxes = [];
+  const BOX_WIN = REAL ? { scale: 0.65, faces: lite ? 2 : 4, minH: 2.5 } : undefined;
   const placeBlock = (o) => {
-    const color = FACADE[Math.floor(Math.random() * FACADE.length)];
+    const color = _facade();
     // AABB of the (possibly rotated) footprint: collision and AOE use axis-aligned w/d
     const c = Math.abs(Math.cos(o.rotY || 0)), s = Math.abs(Math.sin(o.rotY || 0));
     const aw = o.w * c + o.d * s, ad = o.w * s + o.d * c;
@@ -1139,9 +1229,10 @@ export function buildChicago(scene, world, opts, K) {
     // triangle budget
     const pool = _pool(_bucket(o.h));
     if (!glb || !pool.length || o.h < (REAL ? (lite ? 16 : 7) : 0) || Math.random() > _share(_bucket(o.h))) {
-      const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true });
+      const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true, windows: BOX_WIN });
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       scene.add(b.group); buildings.push(b); grid.add(b);
+      boxes.push(b);
       return;
     }
     const b = new K.Building(o.x, o.z, aw, ad, o.h, { skipWindows: true, color });
@@ -1292,6 +1383,23 @@ export function buildChicago(scene, world, opts, K) {
     for (const im of ims) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); scene.add(im); }
   }
 
+  if (boxes.length && REAL) {
+    // Dark roof cap (tar / gravel) and a lighter parapet cornice band: two
+    // InstancedMeshes for every box in the city
+    const capIM = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), M.roofCap, boxes.length);
+    const corIM = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), M.cornice, boxes.length);
+    const dm = new THREE.Object3D();
+    boxes.forEach((b, i) => {
+      dm.position.set(b.x, b.h + 0.03, b.z); dm.scale.set(b.w * 0.94, 0.08, b.d * 0.94); dm.updateMatrix();
+      capIM.setMatrixAt(i, dm.matrix);
+      const band = Math.min(0.35, b.h * 0.06);
+      dm.position.set(b.x, b.h - band / 2 + 0.05, b.z); dm.scale.set(b.w + 0.16, band, b.d + 0.16); dm.updateMatrix();
+      corIM.setMatrixAt(i, dm.matrix);
+      b._glbSlots = [{ im: capIM, idx: i }, { im: corIM, idx: i }];
+    });
+    for (const im of [capIM, corIM]) { im.receiveShadow = true; im.computeBoundingSphere(); scene.add(im); }
+  }
+
   const bodiesIM = K.buildGlobalBodies(scene, buildings);
   const windowPulse = K.buildGlobalWindows(scene, CHI_WINDOWS);
   if (windowPulse) animators.push(windowPulse);
@@ -1395,7 +1503,7 @@ export function buildChicago(scene, world, opts, K) {
       const sy = (L.rail[0]?.height || 3.2) / size.y;
       placeStatic(scene, stationTpl, true, L.stations.map((st) => ({ x: st.x, z: st.z, ry: st.rotY, sy })), (t) => new THREE.Vector3(S, t.sy, S));
     }
-    K.instanceStaticClones(scene);
+    instance();
   };
   const trackGLB = glb ? _kit('l_track_segment') : null;
   const curveGLB = glb ? _kit('l_track_curve') : null;
@@ -1611,7 +1719,7 @@ export function buildChicago(scene, world, opts, K) {
       }
     }
     // Phones: planters only (each kind costs a draw per 120u tile it reaches)
-    const kinds = Object.keys(spots).filter((k) => glb && _kit(k) && spots[k].length && (!lite || k === 'planter_bollard'));
+    const kinds = Object.keys(spots).filter((k) => glb && _kit(k) && spots[k].length && !(lite && CHICAGO_KIT_GLBS[k].desktopOnly));
     if (kinds.length || (sailGLB && moorings.length)) {
       K.onTemplatesReady((sc, get) => {
         for (const k of kinds) {
@@ -1621,7 +1729,7 @@ export function buildChicago(scene, world, opts, K) {
         const boat = sailGLB && get(sailGLB);
         // Hull bottom at y = 0: sunk ~0.6 m below the lake surface (0.2)
         if (boat) placeStatic(scene, boat, true, moorings, () => new THREE.Vector3(S * 1.5, S * 1.5, S * 1.5), 0.2 - 0.6 * S * 1.5);
-        K.instanceStaticClones(scene);
+        instance();
       });
     }
   }
@@ -1666,7 +1774,7 @@ export function buildChicago(scene, world, opts, K) {
 
   animators.push(K.makePigeonFlock(scene));
 
-  K.instanceStaticClones(scene);
+  instance();
   K.mergeStaticMeshes(scene);
 
   // Pedestrians: on land inside the bounds, spawned on sidewalks
