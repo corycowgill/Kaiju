@@ -11,7 +11,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, flushPendingGLBBuildings, enableKTX2 } from './city.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, loadLevelTemplates, loadLevelData, flushPendingGLBBuildings, enableKTX2 } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
@@ -40,6 +40,29 @@ function trySetHighScore(s) {
     if (s > cur) { localStorage.setItem(HIGH_SCORE_KEY, String(s)); return true; }
   } catch {}
   return false;
+}
+
+// ------------------------- Level select -------------------------
+// ?level= wins (testing), then the saved menu pick, then Tokyo.
+const LEVELS = {
+  tokyo:   { name: 'TOKYO',   jp: '東京', tag: 'NEON DUSK · SHINJUKU', h2: 'TOKYO DESTRUCTION', h2jp: '東京破壊' },
+  chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'LAKEFRONT GOLDEN HOUR · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊' },
+};
+const LEVEL_KEY = 'kaijuLevel';
+function _detectLevel() {
+  const m = location.search.match(/[?&]level=(\w+)/);
+  if (m && LEVELS[m[1]]) return m[1];
+  try {
+    const saved = localStorage.getItem(LEVEL_KEY);
+    if (saved && LEVELS[saved]) return saved;
+  } catch (e) { /* storage blocked: default */ }
+  return 'tokyo';
+}
+let selectedLevel = _detectLevel();
+function _setLevel(level) {
+  if (!LEVELS[level]) return;
+  selectedLevel = level;
+  try { localStorage.setItem(LEVEL_KEY, level); } catch (e) { /* not persisted */ }
 }
 
 // Mobile + quality flags now live in src/quality.js so the VFX manager and
@@ -449,36 +472,43 @@ for (let i = 0; i < NEON_COUNT; i++) {
 const skyGeom = new THREE.SphereGeometry(1500, 24, 16);
 const skyMat = new THREE.ShaderMaterial({
   side: THREE.BackSide,
-  uniforms: { time: { value: 0 } },
+  // Palette uniforms default to the Tokyo dusk; applyLevelLook() swaps them.
+  uniforms: {
+    time: { value: 0 },
+    horizon: { value: new THREE.Vector3(0.95, 0.32, 0.22) },
+    midCol:  { value: new THREE.Vector3(0.32, 0.10, 0.32) },
+    zenith:  { value: new THREE.Vector3(0.04, 0.02, 0.14) },
+    nebula:  { value: 1.0 },   // nebula tint, stars and moon (night sky)
+    sunRim:  { value: new THREE.Vector3(1.0, 0.5, 0.25) },
+  },
   vertexShader: `varying vec3 vP; void main() { vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
   fragmentShader: `
     varying vec3 vP;
     uniform float time;
+    uniform vec3 horizon, midCol, zenith, sunRim;
+    uniform float nebula;
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     void main() {
       vec3 d = normalize(vP);
       float h = d.y;
       // Three-tier gradient
-      vec3 horizon = vec3(0.95, 0.32, 0.22);
-      vec3 mid     = vec3(0.32, 0.10, 0.32);
-      vec3 zenith  = vec3(0.04, 0.02, 0.14);
-      vec3 col = mix(horizon, mid, smoothstep(-0.05, 0.35, h));
+      vec3 col = mix(horizon, midCol, smoothstep(-0.05, 0.35, h));
       col = mix(col, zenith, smoothstep(0.25, 0.85, h));
       // Cheap nebula tint -- single sin wave instead of fbm
-      col += vec3(0.12, 0.04, 0.22) * sin(d.x * 3.0 + d.z * 2.5 + time * 0.05) * smoothstep(0.1, 0.6, h) * 0.5;
+      col += nebula * vec3(0.12, 0.04, 0.22) * sin(d.x * 3.0 + d.z * 2.5 + time * 0.05) * smoothstep(0.1, 0.6, h) * 0.5;
       // Stars
       vec2 p = d.xz * 1200.0;
       float s = hash(floor(p));
-      if (h > 0.18 && s > 0.9965) col += vec3(0.9, 0.95, 1.0) * (s - 0.9965) * 280.0;
+      if (h > 0.18 && s > 0.9965) col += nebula * vec3(0.9, 0.95, 1.0) * (s - 0.9965) * 280.0;
       // Moon halo
       vec3 moonDir = normalize(vec3(0.4, 0.6, -0.5));
       float md = dot(d, moonDir);
-      col += vec3(1.0, 0.95, 0.82) * smoothstep(0.997, 1.0, md);
-      col += vec3(0.6, 0.5, 0.45) * smoothstep(0.985, 0.998, md) * 0.4;
+      col += nebula * vec3(1.0, 0.95, 0.82) * smoothstep(0.997, 1.0, md);
+      col += nebula * vec3(0.6, 0.5, 0.45) * smoothstep(0.985, 0.998, md) * 0.4;
       // Off-screen sun rim
       vec3 sunDir = normalize(vec3(-0.55, 0.12, 0.25));
       float sd = max(0.0, dot(d, sunDir));
-      col += vec3(1.0, 0.5, 0.25) * pow(sd, 16.0) * 0.6;
+      col += sunRim * pow(sd, 16.0) * 0.6;
       gl_FragColor = vec4(col, 1.0);
     }`
 });
@@ -493,8 +523,9 @@ scene.add(sky);
 // PMREM, and feed it as scene.environment. All MeshStandardMaterials get
 // reflections/ambient automatically. Skipped on mobile to keep the GPU
 // budget for bloom + emissive windows.
-if (Q_HIGH) {
+function _captureEnv() {
   try {
+    if (scene.environment) scene.environment.dispose();
     const pmrem = new THREE.PMREMGenerator(renderer);
     pmrem.compileEquirectangularShader();
     // Render the sky into a small cube render target by temporarily replacing
@@ -505,7 +536,12 @@ if (Q_HIGH) {
     // Update the sky shader once before capture
     skyMat.uniforms.time.value = 0;
     cubeCam.position.set(0, 50, 0);
+    // Sky (and lights) only: a recapture after a level switch must not bake
+    // the city into the environment map
+    const hidden = scene.children.filter((o) => o.visible && o !== sky && !o.isLight);
+    for (const o of hidden) o.visible = false;
     cubeCam.update(renderer, scene);
+    for (const o of hidden) o.visible = true;
     const env = pmrem.fromCubemap(cubeTarget.texture).texture;
     scene.environment = env;
     scene.environmentIntensity = 0.55;
@@ -513,7 +549,11 @@ if (Q_HIGH) {
     pmrem.dispose();
   } catch (e) { console.warn('PMREM env failed:', e); }
 }
+if (Q_HIGH) _captureEnv();
 
+// Tokyo's backdrop (skyline ring, mountains, barrier): hidden on levels that
+// bring their own (see applyLevelLook).
+const _horizon = [];
 // Distant horizon scenery: silhouette skyline + far mountains. Without
 // this, walking to the edge of the play area shows blank ground meeting
 // blank sky. This populates the 480-1300u radius zone with non-interactive
@@ -531,6 +571,7 @@ if (Q_HIGH) {
   const ringGeom = new THREE.BoxGeometry(1, 1, 1);
   const ringIM = new THREE.InstancedMesh(ringGeom, ringMat, RING_COUNT);
   ringIM.frustumCulled = false;
+  _horizon.push(ringIM);
   const ringDummy = new THREE.Object3D();
   for (let i = 0; i < RING_COUNT; i++) {
     const a = (i / RING_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.04;
@@ -555,6 +596,7 @@ if (Q_HIGH) {
   });
   const litIM = new THREE.InstancedMesh(ringGeom, litMat, 14);
   litIM.frustumCulled = false;
+  _horizon.push(litIM);
   for (let i = 0; i < 14; i++) {
     const a = Math.random() * Math.PI * 2;
     const r = 500 + Math.random() * 200;
@@ -589,6 +631,7 @@ if (Q_HIGH) {
     m.scale.set(baseR, h, baseR * (0.8 + Math.random() * 0.5));
     m.matrixAutoUpdate = false; m.updateMatrix();
     scene.add(m);
+    _horizon.push(m);
   }
 
   // ---- Soft barrier ring at the play limit ----
@@ -606,6 +649,7 @@ if (Q_HIGH) {
   // Animate barrier opacity each frame so it pulses faintly when the
   // kaiju gets close. Stash refs for the main update loop to read.
   window.__barrier = { mesh: barrier, mat: barrierMat };
+  _horizon.push(barrier);
 }
 
 // ------------------------- World object -------------------------
@@ -815,6 +859,14 @@ const world = {
   showMessage,
 };
 
+// Level layout data (Chicago's map JSON); a failed fetch falls back to Tokyo
+try {
+  await loadLevelData(selectedLevel);
+} catch (e) {
+  reportLoadError('PreLoad', 'level ' + selectedLevel, e);
+  selectedLevel = 'tokyo';
+}
+
 // Pre-load tree + pedestrian GLB templates so buildCity can use them.
 // Skipped only on the procedural-only path (phone on LOW); phones on MED/HIGH
 // load the same GLBs as desktop, with reduced textures (assetCache.assetURL).
@@ -822,7 +874,7 @@ if (GLB_CONTENT) {
   try {
     window.__dbg && window.__dbg('DBG · loading tree + pedestrian templates…');
     await initAssetCache();
-    await Promise.all([loadTreeTemplates(), loadPedestrianTemplates(), loadCarTemplates()]);
+    await Promise.all([loadTreeTemplates(undefined, selectedLevel), loadPedestrianTemplates(), loadCarTemplates(undefined, selectedLevel)]);
     window.__dbg && window.__dbg('DBG · tree + pedestrian templates loaded', '#9f9');
   } catch (e) {
     reportLoadError('PreLoad', 'tree/pedestrian/car templates', e); // procedural fallbacks
@@ -836,13 +888,66 @@ window.__dbg && window.__dbg('DBG · buildCity starting…');
 // Everything in the scene before the city is built (lights, sky, barrier)
 // survives an in-place restart; everything added after is torn down.
 const _sceneBaseline = new Set(scene.children);
+
+// Per-level light / sky / fog. Tokyo's values are whatever boot set up above
+// (captured here); other levels override them. All uniform/colour swaps, so
+// no new lights or passes on any tier.
+const _tokyoBarrier = window.__barrier;
+const _TOKYO_LOOK = {
+  bg: scene.background.getHex(), fog: scene.fog.color.getHex(), fogDensity: scene.fog.density,
+  hemiSky: hemi.color.getHex(), hemiGround: hemi.groundColor.getHex(), hemiI: hemi.intensity,
+  sun: sun.color.getHex(), sunI: sun.intensity, rim: rimLight.color.getHex(), rimI: rimLight.intensity,
+  amb: ambient.color.getHex(), ambI: ambient.intensity, neonI: _neonLights.map((l) => l.intensity),
+  sky: Object.fromEntries(['horizon', 'midCol', 'zenith', 'sunRim'].map((k) => [k, skyMat.uniforms[k].value.toArray()])),
+  nebula: skyMat.uniforms.nebula.value, env: scene.environmentIntensity,
+};
+// Chicago: late-afternoon lakefront. Warm low sun out of the west over the
+// prairie, clean blue sky, light warm haze, no stars or nebula; neon dimmed.
+const _CHICAGO_LOOK = {
+  bg: 0x9fb4c8, fog: 0xb9b2a4, fogDensity: 0.0024,
+  hemiSky: 0xd8e4f0, hemiGround: 0x5a5448, hemiI: Q_HIGH ? 0.55 : (Q_MED ? 0.70 : 0.75),
+  sun: 0xffc98a, sunI: 2.6, rim: 0x9cc4ff, rimI: Q_LOW ? 0.40 : 0.55,
+  amb: 0x667788, ambI: Q_HIGH ? 0.18 : (Q_MED ? 0.32 : 0.45), neonI: _neonLights.map(() => 1.2),
+  sky: { horizon: [1.0, 0.80, 0.55], midCol: [0.55, 0.68, 0.85], zenith: [0.20, 0.36, 0.66], sunRim: [1.0, 0.75, 0.45] },
+  nebula: 0.0, env: 0.75,
+};
+let _lookLevel = 'tokyo';
+function applyLevelLook(level) {
+  if (level === _lookLevel) return;
+  _lookLevel = level;
+  const L = level === 'chicago' ? _CHICAGO_LOOK : _TOKYO_LOOK;
+  scene.background.setHex(L.bg);
+  scene.fog.color.setHex(L.fog); scene.fog.density = L.fogDensity;
+  hemi.color.setHex(L.hemiSky); hemi.groundColor.setHex(L.hemiGround); hemi.intensity = L.hemiI;
+  sun.color.setHex(L.sun); sun.intensity = L.sunI;
+  rimLight.color.setHex(L.rim); rimLight.intensity = L.rimI;
+  ambient.color.setHex(L.amb); ambient.intensity = L.ambI;
+  _neonLights.forEach((l, i) => { l.intensity = L.neonI[i]; });
+  for (const k of Object.keys(L.sky)) skyMat.uniforms[k].value.fromArray(L.sky[k]);
+  skyMat.uniforms.nebula.value = L.nebula;
+  // The Tokyo backdrop ring/mountains/barrier would stand in Lake Michigan
+  for (const o of _horizon) o.visible = level === 'tokyo';
+  if (Q_HIGH) { _captureEnv(); scene.environmentIntensity = L.env; }
+}
+
 function buildWorldCity() {
-  const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT });
+  const res = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT, level: selectedLevel });
+  const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = res;
   world.buildings = buildings;
   world.buildingGrid = grid;
   world.bodiesIM = bodiesIM;
   world.cityAnimators = cityAnimators || [];
   world.cityRadius = cityRadius;
+  world.level = res.level;
+  // Play-area rectangle (Tokyo: the old +-330 square clamp) and, for levels
+  // with open water, a test ground units must not spawn on.
+  world.bounds = res.bounds || { minX: -330, maxX: 330, minZ: -330, maxZ: 330 };
+  world.center = res.center || { x: 0, z: 0 };
+  world.spawn = res.spawn || { x: 0, z: 0 };
+  world.isWater = res.isWater || null;
+  world.landPoint = res.landPoint || null;
+  window.__barrier = res.barrier || _tokyoBarrier;
+  applyLevelLook(res.level);
 }
 buildWorldCity();
 window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
@@ -1052,14 +1157,35 @@ function _setFocus(items, idx) {
     items[i].classList.toggle('pad-focus', i === idx);
   }
 }
+// Title menu rows, top to bottom: level cards, monster cards, START.
+function _menuRows() {
+  return [
+    Array.from(document.querySelectorAll('#levelCards .level-card')),
+    Array.from(document.querySelectorAll('#monsterCards .monster-card')),
+    [document.getElementById('startBtn')],
+  ].filter((r) => r.length && r[0]);
+}
 function _menuTargets() {
   if (_upgradeVisible()) return Array.from(document.querySelectorAll('#upgrade-cards .ucard'));
-  if (_menuVisible()) {
-    const cards = Array.from(document.querySelectorAll('#monsterCards .monster-card'));
-    cards.push(document.getElementById('startBtn'));
-    return cards;
-  }
+  if (_menuVisible()) return _menuRows().flat();
   return [];
+}
+/** Jump the menu focus one row down (+1) or up (-1): first item of that row,
+ *  or the selected card if the row has one. */
+function navigateMenuRow(dir) {
+  const rows = _menuRows();
+  const flat = rows.flat();
+  let r = 0;
+  for (let acc = 0; r < rows.length; r++) {
+    if (_menuPad.focused < acc + rows[r].length) break;
+    acc += rows[r].length;
+  }
+  if (_menuPad.focused < 0) r = dir > 0 ? -1 : rows.length;
+  const nr = Math.max(0, Math.min(rows.length - 1, r + dir));
+  const row = rows[nr];
+  const sel = row.find((el) => el.classList.contains('selected'));
+  _menuPad.focused = flat.indexOf(sel || row[0]);
+  _setFocus(flat, _menuPad.focused);
 }
 function navigateMenu(dir) {
   const items = _menuTargets();
@@ -1109,12 +1235,13 @@ function pollMenuGamepad(dt) {
     if (wantLeft)  { navigateMenu(-1); _menuPad.cool = 0.20; }
     else if (wantRight) { navigateMenu(+1); _menuPad.cool = 0.20; }
   }
-  // On the title menu only, vertical jump between card row + start btn
+  // On the title menu only, vertical jump between rows (levels, monsters, start)
   if (_menuVisible() && !_upgradeVisible()) {
-    if (_menuPad.cool === 0 && dpadD && _menuPad.focused < 3) {
-      _menuPad.focused = 3; _setFocus(_menuTargets(), 3); _menuPad.cool = 0.20;
-    } else if (_menuPad.cool === 0 && dpadU && _menuPad.focused === 3) {
-      _menuPad.focused = 0; _setFocus(_menuTargets(), 0); _menuPad.cool = 0.20;
+    const ay = pad.axes[1] || 0;
+    if (_menuPad.cool === 0 && (dpadD || ay > 0.6)) {
+      navigateMenuRow(+1); _menuPad.cool = 0.20;
+    } else if (_menuPad.cool === 0 && (dpadU || ay < -0.6)) {
+      navigateMenuRow(-1); _menuPad.cool = 0.20;
     }
   }
   if (aPressed) confirmMenu();
@@ -1136,12 +1263,10 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowRight') { e.preventDefault(); navigateMenu(+1); }
   else if (e.key === 'ArrowDown' && _menuVisible() && !_upgradeVisible()) {
     e.preventDefault();
-    _menuPad.focused = 3;
-    _setFocus(_menuTargets(), 3);
+    navigateMenuRow(+1);
   } else if (e.key === 'ArrowUp' && _menuVisible() && !_upgradeVisible()) {
     e.preventDefault();
-    _menuPad.focused = 0;
-    _setFocus(_menuTargets(), 0);
+    navigateMenuRow(-1);
   } else if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
     confirmMenu();
@@ -1280,6 +1405,31 @@ const endLook = (e) => {
 window.addEventListener('touchend', endLook);
 window.addEventListener('touchcancel', endLook);
 
+// ------------------------- Level select UI -------------------------
+// Two cards above the monsters. Picking one only records the choice; the
+// city is swapped when the run starts (_startGameInner -> _switchLevel),
+// behind the loading screen.
+{
+  const levelDiv = document.getElementById('levelCards');
+  const title = document.getElementById('levelTitle');
+  const showLevel = (lv) => {
+    if (levelDiv) levelDiv.querySelectorAll('.level-card').forEach((c) => c.classList.toggle('selected', c.dataset.level === lv));
+    if (title) title.innerHTML = `<span class="jp-line">${LEVELS[lv].h2jp}</span>${LEVELS[lv].h2}`;
+  };
+  if (levelDiv) {
+    for (const lv of Object.keys(LEVELS)) {
+      const L = LEVELS[lv];
+      const card = document.createElement('div');
+      card.className = 'level-card';
+      card.dataset.level = lv;
+      card.innerHTML = `<b><span class="jp">${L.jp}</span>${L.name}</b><span>${L.tag}</span>`;
+      card.addEventListener('click', () => { _setLevel(lv); showLevel(lv); });
+      levelDiv.appendChild(card);
+    }
+  }
+  showLevel(selectedLevel);
+}
+
 // ------------------------- Monster select UI -------------------------
 // Build cards immediately with the emoji visible, THEN swap in rendered 3D
 // portraits async so the title screen never appears blank if the preview
@@ -1413,6 +1563,7 @@ function _showMobileDataWarning() {
 // ------------------------- Start game -------------------------
 let _startingGame = false; // guard against double-start during async load
 let _worldTemplatesLoaded = false; // building/debris/enemy GLBs parsed (desktop)
+const _bldgLevelsLoaded = new Set(); // levels whose building GLB templates are parsed
 
 // The parsed kaiju GLB for the current/last run, keyed by monster. Picking
 // the same kaiju again after "UNLEASH AGAIN" reuses it (no re-parse, no
@@ -1545,6 +1696,32 @@ async function _preuploadTextures(roots) {
 // the city itself), rebuilds a fresh city from the cached templates,
 // resets per-run state and returns to the monster-select menu.
 function restartInPlace() {
+  _teardownScene();
+  if (state.kaiju && state.kaiju.mixer && !state.kaiju.glb) state.kaiju.mixer.stopAllAction();
+  world.effects.length = 0;
+  world.shells.length = 0;
+  world.debris.length = 0;
+  world.enemies.length = 0;
+  world._shakeMag = 0; world._shakeTime = 0;
+  for (const k of Object.keys(state)) {
+    if (!(k in _STATE_INIT)) { if (k[0] === '_') delete state[k]; continue; }
+    const v = _STATE_INIT[k];
+    if (v && v.isVector3) state[k].copy(v);
+    else state[k] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+  }
+  state.kaiju = null;
+  _hudLastScore = -1;
+  buildWorldCity();
+  if (_bldgLevelsLoaded.has(world.level)) flushPendingGLBBuildings(scene);
+  document.getElementById('gameover').classList.add('hidden');
+  document.getElementById('minimap').classList.add('hidden');
+  document.getElementById('boss-bar').style.display = 'none';
+  document.getElementById('menu').classList.remove('hidden');
+}
+
+/** Remove (and dispose) everything added to the scene since boot: the
+ *  city, and after a run the kaiju, enemies, effects, debris and traffic. */
+function _teardownScene() {
   // The kaiju GLB stays alive in _kaijuCache: reused if the same monster
   // is picked again, disposed by _startGameInner if a different one is.
   const keepRoot = state.kaiju && state.kaiju.glb ? state.kaiju.root : null;
@@ -1565,31 +1742,21 @@ function restartInPlace() {
       if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose();
     });
   }
-  if (state.kaiju && state.kaiju.mixer && !state.kaiju.glb) state.kaiju.mixer.stopAllAction();
-  world.effects.length = 0;
-  world.shells.length = 0;
-  world.debris.length = 0;
-  world.enemies.length = 0;
-  world._shakeMag = 0; world._shakeTime = 0;
-  for (const k of Object.keys(state)) {
-    if (!(k in _STATE_INIT)) { if (k[0] === '_') delete state[k]; continue; }
-    const v = _STATE_INIT[k];
-    if (v && v.isVector3) state[k].copy(v);
-    else state[k] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
-  }
-  state.kaiju = null;
-  _hudLastScore = -1;
+}
+
+/** The menu picked a different level than the one built: swap the city
+ *  (its boot-time props/vehicles and layout load first, only what's missing). */
+async function _switchLevel(loadingStatus) {
+  if (loadingStatus) loadingStatus.textContent = 'TRAVELLING TO ' + LEVELS[selectedLevel].name;
+  await loadLevelData(selectedLevel);
+  if (GLB_CONTENT) await loadLevelTemplates(selectedLevel);
+  _teardownScene();
   buildWorldCity();
-  if (_worldTemplatesLoaded) flushPendingGLBBuildings(scene);
-  document.getElementById('gameover').classList.add('hidden');
-  document.getElementById('minimap').classList.add('hidden');
-  document.getElementById('boss-bar').style.display = 'none';
-  document.getElementById('menu').classList.remove('hidden');
 }
 window.__restartInPlace = restartInPlace;
 // ?debug test hooks (QA scripts): inspect state and trigger abilities
 if (/[?&]debug\b/.test(location.search)) {
-  window.__qa = { state, world, camera, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n) };
+  window.__qa = { state, world, camera, renderer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n) };
 }
 async function startGame(key) {
   if (_startingGame) return;
@@ -1638,6 +1805,8 @@ async function _startGameInner(key) {
 
   let k;
   const hasGLB = key === 'godzilla' || key === 'ghidorah' || key === 'mecha';
+  const needSwitch = world.level !== selectedLevel;
+  if (!hasGLB && needSwitch) await _switchLevel(null);
   if (hasGLB) {
     // Show loading screen
     loadingScreen.classList.add('visible');
@@ -1648,10 +1817,17 @@ async function _startGameInner(key) {
     // Initialize asset cache (IndexedDB) before any loads
     const cacheWarm = await initAssetCache();
     loadingStatus.textContent = cacheWarm ? 'LOADING FROM CACHE' : 'DOWNLOADING ASSETS';
+    if (needSwitch) await _switchLevel(loadingStatus);
 
     // Track combined progress
     const progress = { kaijuLoaded: 0, kaijuTotal: 1, bldgLoaded: 0, bldgTotal: 1,
                        enemyLoaded: 0, enemyTotal: 1 };
+    const onBldgProgress = (loaded, total, label) => {
+      progress.bldgLoaded = loaded;
+      progress.bldgTotal = total;
+      loadingStatus.textContent = 'BUILDING: ' + label.toUpperCase();
+      updateLoadingUI();
+    };
     function updateLoadingUI() {
       const totalItems = progress.kaijuTotal + progress.bldgTotal + progress.enemyTotal;
       const loadedItems = progress.kaijuLoaded + progress.bldgLoaded + progress.enemyLoaded;
@@ -1694,12 +1870,7 @@ async function _startGameInner(key) {
           loadingStatus.textContent = label.toUpperCase();
           updateLoadingUI();
         }),
-        loadBuildingTemplates((loaded, total, label) => {
-          progress.bldgLoaded = loaded;
-          progress.bldgTotal = total;
-          loadingStatus.textContent = 'BUILDING: ' + label.toUpperCase();
-          updateLoadingUI();
-        }),
+        loadBuildingTemplates(onBldgProgress, world.level),
         loadDebrisTemplates(),
         loadEnemyTemplates((loaded, total, label) => {
           progress.enemyLoaded = loaded;
@@ -1709,12 +1880,18 @@ async function _startGameInner(key) {
         }),
       ]);
       _worldTemplatesLoaded = true;
+      _bldgLevelsLoaded.add(world.level);
+    }
+    if (GLB_CONTENT && !_bldgLevelsLoaded.has(world.level)) {
+      // First run on this level (another level's templates are already parsed)
+      await loadBuildingTemplates(onBldgProgress, world.level);
+      _bldgLevelsLoaded.add(world.level);
     }
     _kaijuCache = { key, glb };
 
     // Clone + place every queued building now that templates are loaded
     if (GLB_CONTENT) {
-      loadingStatus.textContent = 'BUILDING TOKYO';
+      loadingStatus.textContent = 'BUILDING ' + LEVELS[world.level].name;
       flushPendingGLBBuildings(scene);
     }
 
@@ -1734,7 +1911,8 @@ async function _startGameInner(key) {
   } else {
     k = buildKaiju(state.monsterCfg);
   }
-  k.root.position.set(0, 0, 0);
+  k.root.position.set(world.spawn.x, 0, world.spawn.z); // Tokyo: the open plaza at the origin
+  if (world.spawn.rot !== undefined) state.yaw = world.spawn.rot; // face the level's skyline
   k.root.rotation.set(0, 0, 0); // clear a previous run's death topple (cached GLB)
   // Yaw-invariant body bounds for the camera: a vertical cylinder of radius
   // camR (max horizontal half-extent, wings included) and height camH.
@@ -2040,13 +2218,25 @@ function startWave(n) {
   const cityRadius = world.cityRadius || 320;
   const spawnMargin = 25;
   const maxSpawnR = cityRadius - spawnMargin;
-  function spawnPos(radius) {
-    const maxR2 = maxSpawnR * maxSpawnR;
-    for (let attempt = 0; attempt < 8; attempt++) {
+  // Levels with explicit bounds (Chicago) spawn inside the play rectangle and
+  // off the water; ground units retry until both hold.
+  const bd = world.level !== 'tokyo' ? world.bounds : null;
+  const spawnOK = (x, z, air) => (bd
+    ? x > bd.minX + spawnMargin && x < bd.maxX - spawnMargin && z > bd.minZ + spawnMargin && z < bd.maxZ - spawnMargin
+      && (air || !world.isWater || !world.isWater(x, z))
+    : x * x + z * z <= maxSpawnR * maxSpawnR);
+  function spawnPos(radius, air) {
+    for (let attempt = 0; attempt < (bd ? 24 : 8); attempt++) {
       const a = Math.random() * Math.PI * 2;
-      const x = kpos.x + Math.cos(a) * radius;
-      const z = kpos.z + Math.sin(a) * radius;
-      if (x * x + z * z <= maxR2) return [x, z];
+      const x = kpos.x + Math.cos(a) * radius * (bd && attempt >= 8 ? 0.5 + Math.random() * 0.5 : 1);
+      const z = kpos.z + Math.sin(a) * radius * (bd && attempt >= 8 ? 0.5 + Math.random() * 0.5 : 1);
+      if (spawnOK(x, z, air)) return [x, z];
+    }
+    if (bd) {
+      // Kaiju out on the lake or hugging an edge: drop it at a random land
+      // spawn point of the level instead
+      const p = world.landPoint ? world.landPoint() : [world.center.x, world.center.z];
+      return p;
     }
     // Every angle landed outside (kaiju is hugging the edge). Drop the
     // enemy on a ring of radius `radius` biased back toward the city
@@ -2088,7 +2278,7 @@ function startWave(n) {
     const t = new Tank(x, z); scene.add(t.root); enemies.push(t);
   }
   for (let i = 0; i < heliCount; i++) {
-    const [x, z] = spawnPos(180 + Math.random() * 90);
+    const [x, z] = spawnPos(180 + Math.random() * 90, true);
     const h = new Helicopter(x, z); scene.add(h.root); enemies.push(h);
   }
   for (let i = 0; i < mechCount; i++) {
@@ -2096,7 +2286,7 @@ function startWave(n) {
     const m = new Mech(x, z); scene.add(m.root); enemies.push(m);
   }
   for (let i = 0; i < jetCount; i++) {
-    const [x, z] = spawnPos(220 + Math.random() * 60);
+    const [x, z] = spawnPos(220 + Math.random() * 60, true);
     const j = new Jet(x, z); scene.add(j.root); enemies.push(j);
   }
   for (let i = 0; i < artyCount; i++) {
@@ -2395,7 +2585,7 @@ function gameOver(victory) {
   const ce = document.getElementById('combo');
   if (ce) ce.style.opacity = '0';
   const goEl = document.getElementById('gameover');
-  document.getElementById('goTitle').textContent = victory ? 'TOKYO FALLS' : 'DEFEATED';
+  document.getElementById('goTitle').textContent = victory ? `${LEVELS[world.level || 'tokyo'].name} FALLS` : 'DEFEATED';
   document.getElementById('goSubtitle').textContent = victory
     ? 'The kaiju reigns supreme.'
     : 'The military has prevailed...';
@@ -3170,9 +3360,10 @@ function updatePlayer(dt) {
   // Clamp to play area. The visible distant scenery (silhouette skyline +
   // mountains) starts beyond ~480u so the boundary always reads as
   // "city extends into the distance" instead of "edge of the world".
-  const limit = 330;
-  k.root.position.x = THREE.MathUtils.clamp(k.root.position.x, -limit, limit);
-  k.root.position.z = THREE.MathUtils.clamp(k.root.position.z, -limit, limit);
+  // world.bounds: Tokyo's +-330 square, or the level's play rectangle.
+  const bd = world.bounds;
+  k.root.position.x = THREE.MathUtils.clamp(k.root.position.x, bd.minX, bd.maxX);
+  k.root.position.z = THREE.MathUtils.clamp(k.root.position.z, bd.minZ, bd.maxZ);
 
   // ============== Animation ==============
   const moving = move.lengthSq() > 0;
@@ -3856,6 +4047,7 @@ function updateWorld(dt) {
 
   // ----- City animators (pigeon flocks etc.) -----
   if (world.cityAnimators) {
+    world.kaijuPos = state.kaiju ? state.kaiju.root.position : null; // L train stomp test
     for (let i = 0; i < world.cityAnimators.length; i++) {
       world.cityAnimators[i].update(dt, world.time);
     }
@@ -3869,8 +4061,9 @@ function updateWorld(dt) {
   if (window.__barrier && state.kaiju) {
     const kx = state.kaiju.root.position.x;
     const kz = state.kaiju.root.position.z;
-    const maxDist = Math.max(Math.abs(kx), Math.abs(kz));
-    const closeness = Math.max(0, (maxDist - 270) / 60); // 0 below 270, 1 at limit
+    const bd = world.bounds;
+    const edgeDist = Math.min(kx - bd.minX, bd.maxX - kx, kz - bd.minZ, bd.maxZ - kz);
+    const closeness = Math.max(0, (60 - edgeDist) / 60); // 0 beyond 60u from the edge, 1 at limit
     const pulse = 0.5 + 0.5 * Math.sin(world.time * 6);
     window.__barrier.mat.opacity = closeness * (0.18 + 0.20 * pulse);
   }

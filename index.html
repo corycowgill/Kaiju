@@ -827,7 +827,39 @@
     z-index: 13; pointer-events: auto;
   }
 
+  /* Level select (Tokyo / Chicago) */
+  .levels { display: flex; gap: 12px; justify-content: center; margin: 2px 0 12px 0; }
+  .level-card {
+    min-width: 170px; padding: 7px 16px;
+    background: rgba(20, 2, 6, 0.85);
+    border: 2px solid #883344; border-radius: 4px;
+    cursor: pointer; text-align: center;
+    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    -webkit-tap-highlight-color: transparent; user-select: none;
+  }
+  .level-card:hover { border-color: #ffcc66; transform: translateY(-2px); }
+  .level-card.selected {
+    border-color: #ff3344; background: rgba(70, 8, 14, 0.92);
+    box-shadow: 0 0 18px rgba(255, 80, 100, 0.6);
+  }
+  .level-card b {
+    display: block; font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 18px; color: #ffcc66; letter-spacing: 3px; font-weight: 400;
+    text-shadow: 0 0 8px #ff8866, 2px 2px 0 #1a0006;
+  }
+  .level-card b .jp { color: #ff8866; font-size: 0.8em; margin-right: 6px; }
+  .level-card span {
+    display: block; font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    font-size: 11px; color: #aaccff; letter-spacing: 2px; margin-top: 2px;
+  }
+  body.mobile .levels { gap: 8px; margin: 0 0 4px 0; }
+  body.mobile .level-card { min-width: 0; padding: 3px 12px; }
+  body.mobile .level-card b { font-size: 12px; letter-spacing: 2px; }
+  body.mobile .level-card span { display: none; }
+
   /* Gamepad / keyboard menu navigation cursor */
+  .level-card.pad-focus,
   .monster-card.pad-focus,
   .ucard.pad-focus {
     border-color: #ffd166 !important;
@@ -998,7 +1030,8 @@
 <!-- Title / Monster Select -->
 <div id="menu" class="overlay">
   <h1><span class="kanji">怪獣</span><span>HAVOC</span></h1>
-  <h2><span class="jp-line">東京破壊</span>TOKYO DESTRUCTION</h2>
+  <h2 id="levelTitle"><span class="jp-line">東京破壊</span>TOKYO DESTRUCTION</h2>
+  <div class="levels" id="levelCards"></div>
   <div id="highscore-display" style="font-family:'Bebas Neue', sans-serif; font-size:14px; color:#ffcc66; letter-spacing:6px; margin-bottom:14px;"></div>
   <div class="starring">STARRING · 出演</div>
   <div class="monsters" id="monsterCards"></div>
@@ -1199,21 +1232,22 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.7.25",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.7.25",
-    "./src/audio.js": "./src/audio.js?v=1.7.25",
-    "./src/city.js": "./src/city.js?v=1.7.25",
-    "./src/effects.js": "./src/effects.js?v=1.7.25",
-    "./src/enemies.js": "./src/enemies.js?v=1.7.25",
-    "./src/game.js": "./src/game.js?v=1.7.25",
-    "./src/intro.js": "./src/intro.js?v=1.7.25",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.7.25",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.7.25",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.7.25",
-    "./src/monsters.js": "./src/monsters.js?v=1.7.25",
-    "./src/pickups.js": "./src/pickups.js?v=1.7.25",
-    "./src/quality.js": "./src/quality.js?v=1.7.25",
-    "./src/vfx.js": "./src/vfx.js?v=1.7.25"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.8.0",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.8.0",
+    "./src/audio.js": "./src/audio.js?v=1.8.0",
+    "./src/city.js": "./src/city.js?v=1.8.0",
+    "./src/effects.js": "./src/effects.js?v=1.8.0",
+    "./src/enemies.js": "./src/enemies.js?v=1.8.0",
+    "./src/game.js": "./src/game.js?v=1.8.0",
+    "./src/intro.js": "./src/intro.js?v=1.8.0",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.8.0",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.8.0",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.8.0",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.8.0",
+    "./src/monsters.js": "./src/monsters.js?v=1.8.0",
+    "./src/pickups.js": "./src/pickups.js?v=1.8.0",
+    "./src/quality.js": "./src/quality.js?v=1.8.0",
+    "./src/vfx.js": "./src/vfx.js?v=1.8.0"
   }
 }
 </script>
@@ -1227,7 +1261,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.7.25"></script>
-<script type="module" async src="./src/intro.js?v=1.7.25"></script>
+<script type="module" src="./src/game.js?v=1.8.0"></script>
+<script type="module" async src="./src/intro.js?v=1.8.0"></script>
 </body>
 </html>

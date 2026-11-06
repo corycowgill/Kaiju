@@ -10,7 +10,10 @@
 //   node tools/smoke_test.mjs        # or: npm run smoke
 // or, without installing into the repo, point it at any node_modules/three r160 checkout:
 //   THREE_DIR=/path/to/node_modules/three node tools/smoke_test.mjs
-// One config only: node tools/smoke_test.mjs --run desktop high   (or: --run iphone med)
+// One config only: node tools/smoke_test.mjs --run desktop high   (or: --run iphone med chicago)
+// Each config runs for both levels (Tokyo, Chicago); Chicago also checks its layout:
+// buildings and landmarks inside the bounds and off the water, and the scene's draw /
+// triangle totals against Tokyo's budget.
 //
 // No browser or GPU: the DOM, fetch, images and createImageBitmap are stubbed; fetch and
 // <img> loads read files from the repo, so a missing or misnamed asset fails like a 404.
@@ -21,21 +24,21 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'node:module';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CONFIGS = [['desktop', 'high'], ['iphone', 'med']];
+const CONFIGS = [['desktop', 'high', 'tokyo'], ['iphone', 'med', 'tokyo'], ['desktop', 'high', 'chicago'], ['iphone', 'med', 'chicago']];
 
 const argv = process.argv.slice(2);
 if (argv[0] !== '--run') {
   // Parent: one child process per config (quality tier is fixed at module load).
   let failed = 0;
-  for (const [device, tier] of CONFIGS) {
-    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--run', device, tier], { stdio: 'inherit' });
+  for (const [device, tier, level] of CONFIGS) {
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--run', device, tier, level], { stdio: 'inherit' });
     if (r.status !== 0) failed++;
   }
   console.log(failed ? `SMOKE TEST FAILED (${failed}/${CONFIGS.length} configs)` : 'SMOKE TEST PASSED');
   process.exit(failed ? 1 : 0);
 }
 
-const [, device, tier] = argv;
+const [, device, tier, level = 'tokyo'] = argv;
 const failures = [];
 const fail = (msg) => failures.push(msg);
 
@@ -77,7 +80,7 @@ const iphone = device === 'iphone';
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
   userAgent: iphone ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1' : 'Mozilla/5.0 Chrome/120',
   maxTouchPoints: iphone ? 5 : 0 } });
-globalThis.location = { search: `?q=${tier}` };
+globalThis.location = { search: `?q=${tier}&level=${level}` };
 globalThis.innerWidth = iphone ? 390 : 1600;
 globalThis.innerHeight = iphone ? 844 : 900;
 globalThis.devicePixelRatio = 1;
@@ -109,7 +112,7 @@ let finished = false;
 process.on('exit', () => {
   if (finished) return;
   finished = true;
-  log(`[${device} ${tier}] FAIL: run did not complete`);
+  log(`[${device} ${tier} ${level}] FAIL: run did not complete`);
   for (const f of failures) log('  - ' + f.split('\n').slice(0, 6).join('\n    '));
   process.exit(1);
 });
@@ -129,15 +132,21 @@ const scene = new THREE.Scene();
 const world = new Proxy({ scene, enemies: [], effects: [], shells: [], debris: [], time: 0 },
   { get: (t, k) => (k in t ? t[k] : noop) });
 await step('vfx.init', () => { vfx.init(scene); vfx.registerAllBuilders(effects); });
-if (Q.GLB_CONTENT) await step('tree/ped/car templates', () => Promise.all([city.loadTreeTemplates(), city.loadPedestrianTemplates(), city.loadCarTemplates()]));
-const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q.isMobile, glb: Q.GLB_CONTENT }));
+await step('level data', () => city.loadLevelData(level));
+if (Q.GLB_CONTENT) await step('tree/ped/car templates', () => Promise.all([city.loadTreeTemplates(undefined, level), city.loadPedestrianTemplates(), city.loadCarTemplates(undefined, level)]));
+const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q.isMobile, glb: Q.GLB_CONTENT, level }));
 for (const key of ['godzilla', 'ghidorah', 'mecha']) await step(`kaiju ${key}`, () => loadKaijuModel(key));
 if (Q.GLB_CONTENT) {
-  await step('building/debris/enemy templates', () => Promise.all([city.loadBuildingTemplates(), city.loadDebrisTemplates(), enemies.loadEnemyTemplates()]));
+  await step('building/debris/enemy templates', () => Promise.all([city.loadBuildingTemplates(undefined, level), city.loadDebrisTemplates(), enemies.loadEnemyTemplates()]));
   await step('flushPendingGLBBuildings', () => city.flushPendingGLBBuildings(scene));
 }
 const spawned = {};
-await step('spawn cars/civilians', () => { city.spawnCars(scene, 4, 380, 40); spawned.Civilian = city.spawnCivilians(scene, 4, 350)[0]; });
+let traffic = { cars: [], civs: [] };
+await step('spawn cars/civilians', () => {
+  traffic = { cars: city.spawnCars(scene, 8, 380, 40), civs: city.spawnCivilians(scene, 8, 350) };
+  spawned.Civilian = traffic.civs[0];
+  for (const c of traffic.cars) c.update(0.5, world, new THREE.Vector3(1e4, 0, 1e4), 380, 40); // drive (and turn) a little
+});
 for (const C of [enemies.Tank, enemies.Helicopter, enemies.Mech, enemies.Jet, enemies.Artillery, enemies.Soldier, enemies.BossMech]) {
   await step(`spawn ${C.name}`, () => { const e = new C(10, 10); scene.add(e.root); e.update(1 / 60, world, new THREE.Vector3()); spawned[C.name] = e; });
 }
@@ -148,8 +157,66 @@ await new Promise((r) => setTimeout(r, 300)); // flipbooks + ground textures (as
 for (const e of globalThis.__loadErrors || []) fail(`__loadErrors: ${e.bug ? 'CODE BUG ' : ''}${e.where} ${e.url}: ${e.message}`);
 if (!res || !res.buildings || !res.buildings.length) fail('buildCity returned no buildings');
 let summary = '';
+if (res && res.level !== level) fail(`buildCity built level '${res && res.level}', expected '${level}'`);
+
+// Scene totals, no frustum culling (an upper bound on what the renderer can draw):
+// one draw per visible mesh with geometry, triangles x instance count.
+const sceneTotals = () => {
+  let draws = 0, tris = 0, shadowDraws = 0;
+  scene.traverseVisible((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry;
+    const n = g.index ? g.index.count : (g.attributes.position ? g.attributes.position.count : 0);
+    const inst = o.isInstancedMesh ? o.count : 1;
+    if (!n || !inst) return;
+    draws++; tris += (n / 3) * inst;
+    if (o.castShadow) shadowDraws++;
+  });
+  return { draws, tris, shadowDraws };
+};
+const totals = sceneTotals();
+if (process.env.SMOKE_BREAKDOWN) {
+  // Top triangle contributors (debug aid): by geometry name / material
+  const by = new Map();
+  scene.traverseVisible((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry; const n = g.index ? g.index.count : (g.attributes.position ? g.attributes.position.count : 0);
+    const key = (o.isInstancedMesh ? 'IM ' : '') + (g.name || g.type) + ' / ' + (o.material.name || o.material.type) + ' ' + (o.material.color ? o.material.color.getHexString() : '');
+    const e = by.get(key) || { tris: 0, draws: 0 }; e.tris += n / 3 * (o.isInstancedMesh ? o.count : 1); e.draws++; by.set(key, e);
+  });
+  for (const [k, e] of [...by].sort((a, b) => b[1].tris - a[1].tris).slice(0, 25)) log(`${(e.tris / 1e3).toFixed(0)}k tris, ${e.draws} draws: ${k}`);
+}
+summary += `${res && res.buildings ? res.buildings.length : 0} buildings, scene ${totals.draws} meshes (${totals.shadowDraws} cast), ${(totals.tris / 1e6).toFixed(2)}M tris; `;
+// Chicago budget (desktop): Tokyo's own totals with this counter (desktop HIGH 708 meshes / 8.33M
+// tris) plus ~15%; phones: the MED target of ~450 draws and 4-5M tris (Tokyo MED: 369 / 3.49M)
+const BUDGET = Q.isMobile ? { draws: 450, tris: 4.5e6 } : { draws: 815, tris: 9.6e6 };
+if (level === 'chicago' && res && res.bounds) {
+  const B = res.bounds;
+  // Footprint centres (edge blocks may overhang the play limit a little)
+  const outside = res.buildings.filter((b) => b.x < B.minX || b.x > B.maxX || b.z < B.minZ || b.z > B.maxZ);
+  if (outside.length) fail(`chicago: ${outside.length} buildings outside bounds, e.g. (${outside[0].x.toFixed(1)}, ${outside[0].z.toFixed(1)})`);
+  const wet = res.buildings.filter((b) => b.h > 4 && res.isWater && res.isWater(b.x, b.z));
+  if (wet.length) fail(`chicago: ${wet.length} buildings stand on water, e.g. (${wet[0].x.toFixed(1)}, ${wet[0].z.toFixed(1)})`);
+  if (res.isWater && res.isWater(res.spawn.x, res.spawn.z)) fail(`chicago: kaiju spawn (${res.spawn.x}, ${res.spawn.z}) is on water`);
+  if (res.spawn.x < B.minX || res.spawn.x > B.maxX || res.spawn.z < B.minZ || res.spawn.z > B.maxZ) fail('chicago: kaiju spawn outside bounds');
+  const tooTall = res.buildings.filter((b) => !(b.h > 0 && b.h < 140));
+  if (tooTall.length) fail(`chicago: ${tooTall.length} buildings with height outside 0..140u`);
+  const lms = res.buildings.filter((b) => b.landmarkId);
+  summary += `${lms.length} landmarks; `;
+  if (!lms.length) fail('chicago: no landmarks built');
+  for (const [kind, list] of [['car', traffic.cars], ['civilian', traffic.civs]]) {
+    for (const a of list) {
+      const p = a.root.position;
+      if (!(p.y >= 0 && p.y < 2) || p.x < B.minX - 40 || p.x > B.maxX + 40 || p.z < B.minZ - 40 || p.z > B.maxZ + 40) {
+        fail(`chicago: ${kind} spawned at (${p.x.toFixed(1)}, ${p.y.toFixed(2)}, ${p.z.toFixed(1)})`);
+      } else if (kind === 'civilian' && res.isWater(p.x, p.z)) fail(`chicago: civilian spawned on water at (${p.x.toFixed(1)}, ${p.z.toFixed(1)})`);
+    }
+  }
+  if (BUDGET.draws && totals.draws > BUDGET.draws) fail(`chicago: ${totals.draws} meshes in the scene, budget ${BUDGET.draws}`);
+  if (BUDGET.tris && totals.tris > BUDGET.tris) fail(`chicago: ${(totals.tris / 1e6).toFixed(2)}M tris in the scene, budget ${(BUDGET.tris / 1e6).toFixed(2)}M`);
+}
 if (Q.GLB_CONTENT) {
-  const s = city.getTemplateStats();
+  const s = city.getTemplateStats(level);
   const count = (name, { loaded, expected }) => { if (loaded !== expected) fail(`${name}: ${loaded}/${expected} templates loaded`); };
   const set = (name, { loaded, expected }) => {
     const missing = expected.filter((x) => !loaded.includes(x));
@@ -206,7 +273,7 @@ if (Q.GLB_CONTENT) {
     + `soldier clips ${en.soldier.loaded.join('+')} (${trisOf(spawned.Soldier && spawned.Soldier.root)} tris), mech clips ${en.mech.loaded.length}/${en.mech.expected.length}`;
 }
 
-const label = `[${device} ${tier}]`;
+const label = `[${device} ${tier} ${level}]`;
 finished = true;
 if (failures.length) {
   log(`${label} FAIL (${failures.length}), ${fetched.size} files fetched; ${summary}`);

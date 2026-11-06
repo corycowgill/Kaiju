@@ -4,6 +4,7 @@ import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL, withParseSlot, reportLoadError, isCodeBug, setKTX2Enabled } from './assetCache.js';
+import { buildChicago, loadChicagoLayout, chicagoBuildingGLBs, chicagoPropGLBs, chicagoVehicleGLBs } from './levels/chicago.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
 // and loadPedestrianTemplates() run at module-load time via top-level await in game.js.
@@ -231,19 +232,41 @@ function _attachLod1(url, scene) {
   });
 }
 
-function loadPropTemplates() {
-  return Promise.all(PROP_GLBS.map((name) =>
-    _cachedGLB(PROP_GLB_BASE + name + '.glb').then((gltf) => {
-      const s = gltf.scene;
-      s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      s.updateMatrixWorld(true);
-      const size = new THREE.Box3().setFromObject(s).getSize(new THREE.Vector3());
-      _propTemplates.set(name, { scene: s, size });
-      return _attachLod1(PROP_GLB_BASE + name + '.glb', s);
-    }).catch((err) => {
-      reportLoadError('PropGLB', PROP_GLB_BASE + name + '.glb', err);
-    })
-  ));
+// Street props a non-Tokyo level uses from the Tokyo kit (no koban, yatai,
+// torii, subway kiosk, vending machines or Japanese street signs).
+const PROP_GLBS_GENERIC = ['street_lamp', 'traffic_signal', 'bench', 'roof_water_tank', 'roof_ac_cluster', 'roof_antenna'];
+const _propLoading = new Map(); // name -> Promise (each prop loads once)
+
+/** Load prop templates [{ name, url }] not loaded yet. */
+function _loadProps(list) {
+  return Promise.all(list.map(({ name, url }) => {
+    if (!_propLoading.has(name)) {
+      _propLoading.set(name, _cachedGLB(url).then((gltf) => {
+        const s = gltf.scene;
+        s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        s.updateMatrixWorld(true);
+        const size = new THREE.Box3().setFromObject(s).getSize(new THREE.Vector3());
+        _propTemplates.set(name, { scene: s, size });
+        return _attachLod1(url, s);
+      }).catch((err) => {
+        reportLoadError('PropGLB', url, err);
+      }));
+    }
+    return _propLoading.get(name);
+  }));
+}
+
+/** The level's prop list as [{ name, url }]. */
+function _levelProps(level) {
+  if (level === 'chicago') {
+    return [...PROP_GLBS_GENERIC.filter((n) => PROP_GLBS_READY.has(n)).map((name) => ({ name, url: PROP_GLB_BASE + name + '.glb' })),
+      ...chicagoPropGLBs()];
+  }
+  return PROP_GLBS.map((name) => ({ name, url: PROP_GLB_BASE + name + '.glb' }));
+}
+
+function loadPropTemplates(level = 'tokyo') {
+  return _loadProps(_levelProps(level));
 }
 
 /** Clone a prop scaled to `height` world units, sitting on y=0. Null if not loaded. */
@@ -314,11 +337,17 @@ function _loadTreeList(list, onProgress) {
   ));
 }
 
-/** Load tree GLB templates (and the v2 street props, which buildCity also
- *  needs before it runs). Call once at startup. */
-export async function loadTreeTemplates(onProgress) {
-  await Promise.all([_loadTreeList(TREE_GLBS, onProgress), loadPropTemplates()]);
+/** Load tree GLB templates (and the level's v2 street props, which buildCity
+ *  also needs before it runs). Call once at startup. */
+export async function loadTreeTemplates(onProgress, level = 'tokyo') {
+  await Promise.all([_loadTreeList(TREE_GLBS, onProgress), loadPropTemplates(level)]);
   if (_treeTemplates.length === 0) await _loadTreeList(TREE_GLBS_FALLBACK, onProgress);
+}
+
+/** Boot-time templates (props, vehicles) for a level picked after boot;
+ *  loads only what is missing. Trees and pedestrians are shared. */
+export function loadLevelTemplates(level, onProgress) {
+  return Promise.all([loadPropTemplates(level), loadCarTemplates(onProgress, level)]);
 }
 
 // --------------- Static batching (draw-call reduction) ---------------
@@ -1744,14 +1773,14 @@ function buildGlobalBodies(scene, buildings) {
 // Synthwave window palette. Each emissive bucket gets its own InstancedMesh so
 // per-window colour variation is essentially free (no per-instance shader
 // patching needed). 'off' is the dim/un-lit bucket.
-const WINDOW_BUCKETS = [
+const WINDOW_BUCKETS_DEFAULT = [
   { name: 'off',   color: 0x111822, emissive: 0x000000, intensity: 0.0, weight: 0.30 },
   { name: 'pink',  color: 0x331122, emissive: 0xff3388, intensity: 2.6, weight: 0.16 },
   { name: 'cyan',  color: 0x003344, emissive: 0x33ddff, intensity: 2.4, weight: 0.16 },
   { name: 'amber', color: 0x442211, emissive: 0xffaa44, intensity: 2.2, weight: 0.22 },
   { name: 'white', color: 0x332a22, emissive: 0xffeedd, intensity: 1.8, weight: 0.16 },
 ];
-function pickWindowBucket() {
+function pickWindowBucket(WINDOW_BUCKETS) {
   const r = Math.random();
   let acc = 0;
   for (let i = 0; i < WINDOW_BUCKETS.length; i++) {
@@ -1761,7 +1790,9 @@ function pickWindowBucket() {
   return WINDOW_BUCKETS.length - 1;
 }
 
-function buildGlobalWindows(scene) {
+// palette: the level's window palette (same shape as WINDOW_BUCKETS_DEFAULT, 'off' first)
+function buildGlobalWindows(scene, palette) {
+  const WINDOW_BUCKETS = palette || WINDOW_BUCKETS_DEFAULT;
   if (_windowQueue.length === 0) return null;
   const geom = new THREE.BoxGeometry(0.6, 1.2, 0.15);
   // Track the lit emissive materials so we can pulse their intensity
@@ -1778,7 +1809,7 @@ function buildGlobalWindows(scene) {
       // few stray glowing windows so the city never looks completely dead.
       bIdx = Math.random() < 0.8 ? 0 : (1 + Math.floor(Math.random() * 4));
     } else {
-      bIdx = pickWindowBucket();
+      bIdx = pickWindowBucket(WINDOW_BUCKETS);
     }
     buckets[bIdx].push(w);
   }
@@ -1901,6 +1932,10 @@ export class Building {
       return;
     }
 
+    // noDecor: no Tokyo street dressing (neon signs, billboards, pagoda /
+    // dome roofs, awnings) for other cities; tanks, vents, antennas and
+    // windows stay.
+    const decor = !opts.noDecor;
     // Rooftop details (probabilities tuned down to keep mesh count manageable)
     const wantTank = h > 14 && Math.random() < 0.4;
     if (wantTank && _propTemplates.has('roof_water_tank')) {
@@ -1970,7 +2005,7 @@ export class Building {
       this.group.add(blink);
     }
     // Rooftop billboard / neon panel (sparser)
-    if (h > 28 && Math.random() < 0.25) {
+    if (decor && h > 28 && Math.random() < 0.25) {
       const c = pick(NEON_COLORS);
       const billW = Math.min(w, d) * 0.7;
       const billH = Math.min(8, h * 0.18);
@@ -1995,7 +2030,7 @@ export class Building {
     // Roof variant for visual variety: pagoda / dome / stepped tile.
     // Layered on top of the existing IM cube body so it doesn't add to
     // building-grid complexity. Probability gated to keep mesh count sane.
-    if (Math.random() < 0.18) {
+    if (decor && Math.random() < 0.18) {
       const variant = Math.random();
       if (variant < 0.4) {
         // Pagoda: 4-sided pyramid roof, dark blue tiles, red ridge spine
@@ -2047,7 +2082,7 @@ export class Building {
     // Side neon sign(s) -- usually 0 or 1, rare 2. Each sign now bakes a
     // Japanese-text canvas as both map + emissiveMap so the glyphs actually
     // glow (and pump bloom) instead of being a featureless coloured slab.
-    const sideSignCount = h > 12 ? (Math.random() < 0.45 ? 1 : 0) : 0;
+    const sideSignCount = decor && h > 12 ? (Math.random() < 0.45 ? 1 : 0) : 0;
     for (let i = 0; i < sideSignCount; i++) {
       const c = pick(NEON_COLORS);
       const phrase = pick(NEON_PHRASES);
@@ -2097,7 +2132,7 @@ export class Building {
     }
 
     // Storefront awning at base (low buildings only, sparser)
-    if (h < 25 && Math.random() < 0.25) {
+    if (decor && h < 25 && Math.random() < 0.25) {
       const c = pick(NEON_COLORS);
       const aw = w * 0.85, ad = 1.6;
       const awning = new THREE.Mesh(
@@ -2388,9 +2423,14 @@ function _cachedGLB(url, original = false) {
   )).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
 }
 
-/** Load all unique building GLB templates once. */
-export function loadBuildingTemplates(onProgress) {
-  const unique = [...new Set(ALL_BUILDING_GLBS)];
+/** Building GLB urls a level loads (Tokyo: every Tokyo template). */
+function _levelBuildingGLBs(level) {
+  return level === 'chicago' ? chicagoBuildingGLBs() : ALL_BUILDING_GLBS;
+}
+
+/** Load the level's unique building GLB templates (already-loaded ones are skipped). */
+export function loadBuildingTemplates(onProgress, level = 'tokyo') {
+  const unique = [...new Set(_levelBuildingGLBs(level))].filter((u) => !_glbTemplates.has(u));
   let loaded = 0;
   const total = unique.length;
   // One retry per template: a flaky mobile fetch/decode shouldn't cost a building
@@ -2618,6 +2658,7 @@ function _buildGLBBuildingInstances(scene) {
 }
 
 const _pendingGLBBuildings = [];
+const _flushHooks = []; // run once by the next flushPendingGLBBuildings
 
 function pickBuildingGLB(h) {
   if (h >= 40) return BLDG_POOL_TALL[Math.floor(Math.random() * BLDG_POOL_TALL.length)];
@@ -2625,8 +2666,11 @@ function pickBuildingGLB(h) {
   return BLDG_POOL_SHORT[Math.floor(Math.random() * BLDG_POOL_SHORT.length)];
 }
 
-/** A loaded template for height h when the picked one failed (same pool first). */
-function _fallbackBuildingGLB(h) {
+/** A loaded template for height h when the picked one failed (same pool first).
+ *  levelPool: the level's own pool for that height (non-Tokyo levels). */
+function _fallbackBuildingGLB(h, levelPool) {
+  const lp = levelPool ? levelPool.filter((u) => _glbTemplates.has(u)) : [];
+  if (lp.length) return lp[Math.floor(Math.random() * lp.length)];
   const pool = h >= 40 ? BLDG_POOL_TALL : (h >= 18 ? BLDG_POOL_MEDIUM : BLDG_POOL_SHORT);
   const ok = pool.filter((u) => _glbTemplates.has(u));
   if (ok.length) return ok[Math.floor(Math.random() * ok.length)];
@@ -2651,7 +2695,7 @@ export function flushPendingGLBBuildings(scene) {
     let url = entry.url;
     if (!_glbTemplates.has(url)) {
       // Landmarks keep their silhouette as a box; generic blocks borrow another model
-      url = entry.landmark ? null : _fallbackBuildingGLB(entry.h);
+      url = entry.landmark ? null : _fallbackBuildingGLB(entry.h, entry.pool);
       if (url) swapped++;
     }
     if (url) {
@@ -2662,11 +2706,37 @@ export function flushPendingGLBBuildings(scene) {
     }
   }
   _buildGLBBuildingInstances(scene);
+  // Level code that needs a parsed template itself (e.g. Chicago tiling its L
+  // track GLB): called with a lookup that returns the template scene or null
+  for (const fn of _flushHooks.splice(0)) fn(scene, (url) => _glbTemplates.get(url)?.scene || null);
   if (swapped || boxed) console.warn('[BuildingGLB] missing templates:', swapped, 'buildings swapped,', boxed, 'shown as boxes');
   _pendingGLBBuildings.length = 0;
 }
 
+/** Fetch the level's map data before buildCity (Tokyo is procedural: none). */
+export function loadLevelData(level) {
+  return level === 'chicago' ? loadChicagoLayout() : Promise.resolve();
+}
+
+/** Build the selected level's city. opts.level: 'tokyo' (default) | 'chicago'.
+ *  Returns { buildings, grid, bodiesIM, cityAnimators, cityRadius, level,
+ *  bounds?, spawn?, roadNet?, isWater? } (Tokyo leaves the optional fields
+ *  unset, so game.js keeps its Tokyo defaults). */
 export function buildCity(scene, world, opts = {}) {
+  // A replaced city that was never flushed (level switched at the menu)
+  // must not leave its GLB placeholders or windows queued for the new one
+  _pendingGLBBuildings.length = 0;
+  _flushHooks.length = 0;
+  _glbBuckets.clear();
+  _windowQueue = [];
+  _pedCfg = null;
+  _carNet = null;
+  _carLevel = opts.level === 'chicago' ? 'chicago' : 'tokyo';
+  if (opts.level === 'chicago') return buildChicago(scene, world, opts, CITY_KIT);
+  return { ...buildTokyo(scene, world, opts), level: 'tokyo' };
+}
+
+function buildTokyo(scene, world, opts = {}) {
   const buildings = [];
   const grid = new BuildingGrid(60);
   const lite = !!opts.lite;
@@ -3701,7 +3771,7 @@ export function buildCity(scene, world, opts = {}) {
         if (Math.random() < 0.18) positions.push({ x: along, z: i - STREET_OFFSET_P, dir: -1 });
       }
     }
-    const parkable = _carTemplates.filter((t) => t.parked);
+    const parkable = _carTemplates.filter((t) => t.parked && _carFor(t));
     if (parkable.length > 0) {
       for (const p of positions) {
         const tpl = parkable[Math.floor(Math.random() * parkable.length)];
@@ -4193,8 +4263,9 @@ const CAR_COLORS = [0xff3344, 0x33aaff, 0xffcc33, 0xffffff, 0x222222, 0x44aa66, 
 // (len). Clones are scaled by CAR_UNITS_PER_M so a bus stays ~3x a kei van.
 // parked:false keeps long vehicles out of the 6u-spaced kerbside parking rows.
 // weight = relative share of moving traffic (bus ≈ 6%).
+// levels: the levels whose traffic uses it (default: every level).
 const CAR_GLBS = [
-  { url: './assets/vehicles/kei_van.glb',     len: 3.4,  weight: 34 },
+  { url: './assets/vehicles/kei_van.glb',     len: 3.4,  weight: 34, levels: ['tokyo'] },
   { url: './assets/vehicles/taxi_black.glb',  len: 4.7,  weight: 30 },
   { url: './assets/vehicles/police_car.glb',  len: 4.8,  weight: 10 },
   { url: './assets/vehicles/small_truck.glb', len: 4.7,  weight: 20 },
@@ -4213,7 +4284,15 @@ function _carTargetLen(tpl) {
   return tpl.len ? tpl.len * CAR_UNITS_PER_M : 3.6;
 }
 
+const _carLoading = new Set(); // urls requested (each vehicle loads once)
+// Level whose traffic is spawned (buildCity sets it); templates tagged with
+// other levels are skipped.
+let _carLevel = 'tokyo';
+const _carFor = (t) => !t.levels || t.levels.includes(_carLevel);
+
 function _loadCarList(list, onProgress) {
+  list = list.filter((d) => !_carLoading.has(d.url));
+  for (const d of list) _carLoading.add(d.url);
   return Promise.all(list.map((def, idx) =>
     _cachedGLB(def.url).then((gltf) => {
       const s = gltf.scene;
@@ -4223,7 +4302,7 @@ function _loadCarList(list, onProgress) {
         reportLoadError('CarGLB', def.url, new Error('no meshes found'));
         return;
       }
-      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1 });
+      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1, levels: def.levels });
       if (onProgress) onProgress(idx + 1, list.length, def.url.split('/').pop().replace('.glb', ''));
       return _attachLod1(def.url, s);
     }).catch((err) => {
@@ -4233,9 +4312,15 @@ function _loadCarList(list, onProgress) {
   ));
 }
 
-/** Load car GLB templates. Call once at startup. */
-export async function loadCarTemplates(onProgress) {
-  await _loadCarList(CAR_GLBS, onProgress);
+/** The level's vehicle defs (shared v2 vehicles plus the level's own). */
+function _levelCars(level) {
+  const own = level === 'chicago' ? chicagoVehicleGLBs() : [];
+  return [...CAR_GLBS.filter((d) => !d.levels || d.levels.includes(level)), ...own];
+}
+
+/** Load the level's car GLB templates. Call once at startup (and again for a level picked later). */
+export async function loadCarTemplates(onProgress, level = 'tokyo') {
+  await _loadCarList(_levelCars(level), onProgress);
   if (_carTemplates.length === 0) await _loadCarList(CAR_GLBS_FALLBACK, onProgress);
 }
 
@@ -4262,11 +4347,12 @@ export class Car {
     const root = new THREE.Group();
     root.position.set(x, 0.6, z);
 
-    if (_carTemplates.length > 0) {
+    const tpls = _carTemplates.filter(_carFor);
+    if (tpls.length > 0) {
       // GLB car: pick a template by traffic weight
-      let pick = Math.random() * _carTemplates.reduce((s, t) => s + t.weight, 0);
-      let tpl = _carTemplates[_carTemplates.length - 1];
-      for (const t of _carTemplates) { pick -= t.weight; if (pick < 0) { tpl = t; break; } }
+      let pick = Math.random() * tpls.reduce((s, t) => s + t.weight, 0);
+      let tpl = tpls[tpls.length - 1];
+      for (const t of tpls) { pick -= t.weight; if (pick < 0) { tpl = t; break; } }
       const clone = _cloneCarScene(tpl);
       const size = tpl.box.getSize(new THREE.Vector3());
       const targetLen = _carTargetLen(tpl); // old cars: ~3.6u to match procedural size
@@ -4313,8 +4399,56 @@ export class Car {
     this.root = root;
   }
 
+  /** Put the car on road-network edge ei (see buildRoadNet), heading away
+   *  from node `from`, t units along it. */
+  _placeOnNet(net, ei, from, t) {
+    this.net = net;
+    this.edge = ei;
+    this.from = from;
+    this.t = t;
+    this._netPose();
+  }
+
+  _netPose() {
+    const e = this.net.edges[this.edge];
+    const a = this.net.nodes[this.from];
+    const sgn = this.from === e.a ? 1 : -1;
+    const dx = e.dx * sgn, dz = e.dz * sgn;
+    // Right-hand traffic: the lane centre sits a quarter road width to the
+    // right of the centreline ((-dz, dx) is "right" of heading (dx, dz)).
+    const off = e.laneOff;
+    this.root.position.set(a.x + dx * this.t - dz * off, this.root.position.y, a.z + dz * this.t + dx * off);
+    this.root.rotation.y = Math.atan2(dx, dz);
+  }
+
+  _updateNet(dt) {
+    const net = this.net;
+    this.t += this.speed * dt;
+    let e = net.edges[this.edge];
+    let guard = 0;
+    while (this.t > e.len && guard++ < 4) {
+      this.t -= e.len;
+      const node = this.from === e.a ? e.b : e.a;
+      const out = net.nodes[node].edges;
+      // Any edge but the one we came along (U-turn only at dead ends)
+      let next = this.edge;
+      if (out.length > 1) {
+        do { next = out[Math.floor(Math.random() * out.length)]; } while (next === this.edge);
+      }
+      this.edge = next;
+      this.from = node;
+      e = net.edges[next];
+    }
+    this._netPose();
+  }
+
   update(dt, world, kaijuPos, cityRadius, blockSize) {
     if (this.dead) return;
+    if (this.net) {
+      this._updateNet(dt);
+      this._afterMove(world, kaijuPos);
+      return;
+    }
     const BLOCK = blockSize || 40;
     const root = this.root;
     // Move along the current axis
@@ -4356,7 +4490,10 @@ export class Car {
     if (root.position.x < -lim) root.position.x = lim;
     if (root.position.z > lim) root.position.z = -lim;
     if (root.position.z < -lim) root.position.z = lim;
+    this._afterMove(world, kaijuPos);
+  }
 
+  _afterMove(world, kaijuPos) {
     // Stomped by kaiju
     const dx = kaijuPos.x - this.root.position.x;
     const dz = kaijuPos.z - this.root.position.z;
@@ -4383,8 +4520,56 @@ export class Car {
   }
 }
 
+// Road network the cars follow on a non-Tokyo level (set by its builder via
+// CITY_KIT.setCarNet); null for Tokyo's block grid.
+let _carNet = null;
+
+/** Road graph from polylines [{ points: [[x, z], ...], width }]. Points
+ *  closer than `snap` are merged into one node, so roads that share
+ *  endpoints (or cross at a shared vertex) become intersections. */
+export function buildRoadNet(roads, snap = 1.5) {
+  const nodes = [], edges = [];
+  const key = (x, z) => Math.round(x / snap) + ':' + Math.round(z / snap);
+  const byKey = new Map();
+  const nodeAt = (x, z) => {
+    const k = key(x, z);
+    let i = byKey.get(k);
+    if (i === undefined) { i = nodes.length; nodes.push({ x, z, edges: [] }); byKey.set(k, i); }
+    return i;
+  };
+  for (const r of roads) {
+    const pts = r.points;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = nodeAt(pts[i][0], pts[i][1]), b = nodeAt(pts[i + 1][0], pts[i + 1][1]);
+      if (a === b) continue;
+      const A = nodes[a], B = nodes[b];
+      const len = Math.hypot(B.x - A.x, B.z - A.z);
+      const ei = edges.length;
+      edges.push({ a, b, len, dx: (B.x - A.x) / len, dz: (B.z - A.z) / len, laneOff: (r.width || 8) / 4 });
+      A.edges.push(ei); B.edges.push(ei);
+    }
+  }
+  let total = 0;
+  for (const e of edges) total += e.len;
+  return { nodes, edges, total };
+}
+
 export function spawnCars(scene, count, cityRadius = 380, blockSize = 36) {
   const cars = [];
+  if (_carNet && _carNet.edges.length) {
+    const net = _carNet;
+    for (let i = 0; i < count; i++) {
+      // Edge picked by length, so traffic density is even along the roads
+      let r = Math.random() * net.total, ei = 0;
+      while (ei < net.edges.length - 1 && r > net.edges[ei].len) { r -= net.edges[ei].len; ei++; }
+      const e = net.edges[ei];
+      const c = new Car(0, 0, 'z', 1);
+      c._placeOnNet(net, ei, Math.random() < 0.5 ? e.a : e.b, Math.random() * e.len);
+      scene.add(c.root);
+      cars.push(c);
+    }
+    return cars;
+  }
   for (let i = 0; i < count; i++) {
     const axis = Math.random() < 0.5 ? 'x' : 'z';
     const dir = Math.random() < 0.5 ? 1 : -1;
@@ -4550,7 +4735,20 @@ export class Civilian {
       this.heading = Math.PI - this.heading;
       this.headingChangeT = 1.5 + Math.random() * 2;
     }
-    const lim = cityRadius;
+    if (_pedCfg) {
+      // Level with its own water/bounds (Chicago): step back off the water
+      // and turn around; bounds clamp instead of wrapping (the lake edge).
+      if (_pedCfg.blocked(myPos.x, myPos.z)) {
+        myPos.x -= Math.sin(this.heading) * speed * dt;
+        myPos.z = prevZ;
+        this.heading += Math.PI * (0.75 + Math.random() * 0.5);
+        this.headingChangeT = 1.5 + Math.random() * 2;
+      }
+      const bd = _pedCfg.bounds;
+      myPos.x = THREE.MathUtils.clamp(myPos.x, bd.minX, bd.maxX);
+      myPos.z = THREE.MathUtils.clamp(myPos.z, bd.minZ, bd.maxZ);
+    }
+    const lim = _pedCfg ? Infinity : cityRadius;
     if (myPos.x > lim)  myPos.x = -lim;
     if (myPos.x < -lim) myPos.x =  lim;
     if (myPos.z > lim)  myPos.z = -lim;
@@ -4581,9 +4779,21 @@ export class Civilian {
 // River band (z) that pedestrians must stay out of. Written by buildCity()
 // so it tracks the lite/desktop RIVER_Z; NaN until then (no-op checks).
 let _pedRiverMin = NaN, _pedRiverMax = NaN;
+// Level-provided pedestrian rules ({ blocked(x, z), bounds, spawn() -> [x, z] }),
+// set by a non-Tokyo builder; null for Tokyo (the river band above applies).
+let _pedCfg = null;
 
 export function spawnCivilians(scene, count, cityRadius) {
   const arr = [];
+  if (_pedCfg) {
+    for (let i = 0; i < count; i++) {
+      const [x, z] = _pedCfg.spawn();
+      const c = new Civilian(x, z);
+      scene.add(c.root);
+      arr.push(c);
+    }
+    return arr;
+  }
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
     const r = 50 + Math.random() * (cityRadius - 80);
@@ -4600,15 +4810,41 @@ export function spawnCivilians(scene, count, cityRadius) {
   return arr;
 }
 
+/** Urls whose LOD1 twin a level loads (its trees, props and vehicles). */
+function _levelLod1Urls(level) {
+  return new Set([...TREE_GLBS.map((t) => t.url), ..._levelProps(level).map((p) => p.url), ..._levelCars(level).map((c) => c.url)]);
+}
+
 /** Loaded vs expected template sets, for tools/smoke_test.mjs (read-only). */
-export function getTemplateStats() {
+export function getTemplateStats(level = 'tokyo') {
   return {
     trees: { loaded: _treeTemplates.length, expected: TREE_GLBS.length },
-    buildings: { loaded: [..._glbTemplates.keys()], expected: [...new Set(ALL_BUILDING_GLBS)] },
+    buildings: { loaded: [..._glbTemplates.keys()], expected: [...new Set(_levelBuildingGLBs(level))] },
     debris: { loaded: _debrisTemplates.length, expected: DEBRIS_GLBS.length },
-    cars: { loaded: _carTemplates.length, expected: CAR_GLBS.length },
-    props: { loaded: [..._propTemplates.keys()], expected: [...PROP_GLBS_READY] },
+    cars: { loaded: _carTemplates.length, expected: _levelCars(level).length },
+    props: { loaded: [..._propTemplates.keys()], expected: _levelProps(level).map((p) => p.name) },
     pedestrian: { loaded: _pedTemplate ? Object.keys(_pedTemplate.animations) : [], expected: Object.keys(PED_ANIMS) },
-    lod1: { loaded: [..._lod1Attached], expected: [...LOD1_READY] },
+    lod1: { loaded: [..._lod1Attached], expected: [...LOD1_READY].filter((u) => _levelLod1Urls(level).has(u)) },
   };
 }
+
+// City-building internals handed to the non-Tokyo level builders
+// (src/levels/*.js) so they reuse the same building, instancing, LOD,
+// destruction and prop systems as Tokyo without a circular import.
+const CITY_KIT = {
+  Building, BuildingGrid, setBuildingLite, buildGlobalBodies, buildGlobalWindows,
+  instanceStaticClones: _instanceStaticClones, mergeStaticMeshes: _mergeStaticMeshes,
+  makeTree, makePigeonFlock, cloneProp: _cloneProp, hasProp: (n) => _propTemplates.has(n),
+  propSize: (n) => _propTemplates.get(n)?.size || null,
+  loadTileTex: _loadTileTex, loadDataTex: _loadDataTex,
+  groundMaps: () => ({ map: _groundColor, normalMap: _groundNorm, roughnessMap: _groundRough, aoMap: _groundAO }),
+  wornPaintTex: () => _wornPaintTex || (_wornPaintTex = _makeWornPaintTexture()),
+  queueGLB: (entry) => _pendingGLBBuildings.push(entry),
+  onTemplatesReady: (fn) => _flushHooks.push(fn),
+  hasTemplate: (url) => _glbTemplates.has(url),
+  pickTokyoBuildingGLB: pickBuildingGLB,
+  buildRoadNet,
+  setCarNet: (net) => { _carNet = net; },
+  setPedCfg: (cfg) => { _pedCfg = cfg; },
+  TILE: { LOT: LOT_TILE, STREET: STREET_TILE, SIDEWALK: SIDEWALK_TILE },
+};
