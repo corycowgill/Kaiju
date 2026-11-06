@@ -54,16 +54,18 @@ const CHICAGO_LANDMARK_GLBS = [
   { id: 'carbide_carbon', file: 'carbide_carbon.glb', trueHeightM: 154, face: 'west', ready: true },
   { id: 'merchandise_mart', file: 'merchandise_mart.glb', trueHeightM: 103, face: 'south', ready: true },
   { id: 'union_station', file: 'union_station.glb', trueHeightM: 38.6, face: 'east', ready: true },
-  // cloud-3d (manifest_cloud.json). Portico +Z west toward the Field
-  // Museum, oceanarium wing (-Z) on the lake; 62 x 74 m plan fitted to the
-  // 162 x 136 m site
-  { id: 'shedd_aquarium', file: 'shedd_aquarium.glb', trueHeightM: 32, face: 'west', fit: 'footprint', maxH: 1.6, ready: true },
-  // Entrance stair (+Z) west toward the city; 33 m drum fitted to the site
-  { id: 'adler_planetarium', file: 'adler_planetarium.glb', trueHeightM: 20, face: 'west', fit: 'footprint', maxH: 1.6, ready: true },
+  // v2 at true size (136 x 162 x 25 m, glass oceanarium roof): portico +Z
+  // west toward the Field Museum, oceanarium (-Z) on the lake
+  { id: 'shedd_aquarium', file: 'shedd_aquarium.glb', trueHeightM: 25, face: 'west', ready: true },
+  // v2 at true size (50 x 50 x 20 m): entrance stair (+Z) west toward the city
+  { id: 'adler_planetarium', file: 'adler_planetarium.glb', trueHeightM: 20, face: 'west', ready: true },
   // The Beaux-Arts front block only (lions, +Z on Michigan Ave): placed at the
   // Michigan edge of the 246 m site, the procedural galleries and Modern
   // Wing (rear) fill the rest
   { id: 'art_institute', file: 'art_institute.glb', trueHeightM: 20, face: 'west', fit: 'footprint', maxH: 2.0, front: true, ready: true },
+  // Only the 1930 tower (57 x 60 m, statue at 184 m), clock face (+Z) north up
+  // LaSalle; the layout outline includes the 1980 annex, built procedurally behind
+  { id: 'board_of_trade', file: 'board_of_trade.glb', trueHeightM: 184, face: 'north', front: true, maxH: 1.0, frontDepthM: 60, rear: 'cbot_annex', rearH: 0.55, ready: true },
   // Fountain at true size; the level adds the 85 m pool and the jets
   { id: 'buckingham_fountain', file: 'buckingham_fountain.glb', trueHeightM: 7.6, fountain: true, ready: true },
   // Gable end (+Z) on State St (east); lattice windows get a dark glass core
@@ -851,6 +853,16 @@ const LANDMARK_BUILDERS = {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) m.box(M.steel, 0.12, h * 0.23, 0.12, mx + sx * w * 0.2, h * 0.85, mz + sz * d * 0.27);
     return m.build();
   },
+  cbot_annex(h, w, d, M) {
+    // The 1980 Board of Trade annex: a glass-and-granite slab echoing the
+    // tower's setbacks, with a stepped pyramidal crown (front = +Z, the tower)
+    const m = new Massing();
+    m.box(M.limestone, w * 0.9, h * 0.14, d * 0.9);
+    m.box(M.blueGlass, w * 0.78, h * 0.62, d * 0.8, 0, h * 0.14, -d * 0.04);
+    m.box(M.limestone, w * 0.6, h * 0.1, d * 0.62, 0, h * 0.76, -d * 0.04);
+    m.add(M.blueGlass, new THREE.CylinderGeometry(0.2, w * 0.38, h * 0.14, 4), 0, h * 0.93, -d * 0.04, Math.PI / 4, 0, 0, 1, 1, d / w);
+    return m.build();
+  },
   art_institute_rear(h, w, d, M) {
     // What stands behind the GLB front block: the lower galleries and the
     // white Modern Wing under its floating canopy (front = +Z, toward the GLB)
@@ -1508,7 +1520,7 @@ export function buildChicago(scene, world, opts, K) {
         // Front block on the street edge (+Z side of the site), a separate
         // destructible landmark; the procedural rear fills the remainder
         const s = lm.h * def.maxH / def.trueHeightM;
-        const fd = Math.min(lm.d * 0.6, 42 * s * 1.15); // its depth, front to back (approx.)
+        const fd = Math.min(lm.d * 0.6, (def.frontDepthM || 42) * s * 1.15); // its depth, front to back (approx.)
         const fx = Math.sin(rotY), fz = Math.cos(rotY); // front direction
         // Depth of the site along the front direction
         const siteDepth = Math.abs(fx * Math.cos(lm.rotY || 0) - fz * Math.sin(lm.rotY || 0)) > Math.SQRT1_2 ? lm.w : lm.d;
@@ -1519,17 +1531,18 @@ export function buildChicago(scene, world, opts, K) {
         grid.add(b);
         const fw = siteDepth === lm.w ? lm.d : lm.w;
         K.queueGLB({ url, h: lm.h * def.maxH, building: b, maxW: Math.abs(fz) > Math.SQRT1_2 ? fw : fd, maxD: Math.abs(fz) > Math.SQRT1_2 ? fd : fw, rotY, landmark: true, stretch: 1.3 });
-        // Rear: the procedural galleries + Modern Wing behind it
+        // Rear: procedural massing behind it (def.rear builder, def.rearH x height)
         const rd = siteDepth - fd;
+        const rh = lm.h * (def.rearH || 1);
         const rx = lm.x - fx * (fd / 2), rz = lm.z - fz * (fd / 2);
         const rw = Math.abs(fz) > Math.SQRT1_2 ? fw : rd, rdd = Math.abs(fz) > Math.SQRT1_2 ? rd : fw;
-        const rb = new K.Building(rx, rz, rw, rdd, lm.h, { skipWindows: true });
+        const rb = new K.Building(rx, rz, rw, rdd, rh, { skipWindows: true });
         rb._skipBodyIM = true;
         rb.maxHp = rb.hp = Math.round(hp * 0.6);
         rb.landmarkId = lm.id + '_rear';
         rb.group.matrixAutoUpdate = false; rb.group.updateMatrix();
         scene.add(rb.group); buildings.push(rb); grid.add(rb);
-        const rear = LANDMARK_BUILDERS.art_institute_rear(lm.h, fw, rd, M);
+        const rear = LANDMARK_BUILDERS[def.rear || 'art_institute_rear'](rh, fw, rd, M);
         rear.position.set(rx, 0, rz);
         rear.rotation.y = rotY;
         rear.matrixAutoUpdate = false; rear.updateMatrix();
