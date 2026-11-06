@@ -119,6 +119,8 @@ const CHICAGO_GENERIC_GLBS = [
   { file: 'gen_low2_terracotta_comm.glb', bucket: 'low', ready: true },
   { file: 'gen_low2_warehouse.glb', bucket: 'low', share: 0.6, ready: true },
   { file: 'gen_low2_modern_mid.glb', bucket: 'low', ready: true },
+  // TRELLIS low-rise kit (cloud-3d): 3-storey brick walk-up, blank party walls
+  { file: 'gen_low2_brick_walkup.glb', bucket: 'low', ready: true },
   { file: 'gen_low_brick_loft.glb', bucket: 'short', ready: true },
   { file: 'gen_low_limestone_block.glb', bucket: 'short', ready: true },
   { file: 'gen_low_terracotta_office.glb', bucket: 'short', ready: true },
