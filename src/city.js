@@ -2624,7 +2624,9 @@ function _placeRubbleInstanced(scene, targetSize, x, y, z, rx, ry, rz) {
 /** Clone a loaded template, scale to targetHeight, wire onto Building. */
 // stretch > 1: per-axis scale allowed up to stretch x the uniform fit, so a
 // generic block fills its footprint and reaches its height (Chicago kit)
-function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, stretch = 1) {
+// atOrigin: put the model's own origin (not its bbox centre) on the
+// building position, for models authored around a meaningful centre
+function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, stretch = 1, atOrigin = false) {
   const tpl = _glbTemplates.get(url);
   if (!tpl || building.destroyed) return;
 
@@ -2668,7 +2670,8 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
   const yOffset = Math.abs(boxScaled.min.y) > 0.5 ? -boxScaled.min.y : 0;
   const centerX = (boxScaled.min.x + boxScaled.max.x) / 2;
   const centerZ = (boxScaled.min.z + boxScaled.max.z) / 2;
-  root.position.set(building.x - centerX, yOffset, building.z - centerZ);
+  if (atOrigin) root.position.set(building.x, yOffset, building.z);
+  else root.position.set(building.x - centerX, yOffset, building.z - centerZ);
   root.updateMatrixWorld(true);
 
   // Instanced, not added: every mesh of the placed clone becomes one
@@ -2776,7 +2779,7 @@ export function flushPendingGLBBuildings(scene) {
       if (url) swapped++;
     }
     if (url) {
-      placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0, entry.stretch || 1);
+      placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0, entry.stretch || 1, !!entry.atOrigin);
     } else if (!entry.building.destroyed) {
       _revealProceduralBody(entry.building);
       boxed++;

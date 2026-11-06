@@ -98,7 +98,9 @@ const CHICAGO_LANDMARK_GLBS = [
   // open ends north-south
   // Interim model: fitted to the corrected 296 x 207 x 60 m shell box
   // (geometry.md). The hero GLB replaces it with { exact: true, phoneLod1:
-  // true }: true scale, model X along the N-S long axis (= layout rot)
+  // true, atOrigin: true } and no face: model +X = south, +Z = west (= the
+  // layout rot), origin at the shell centre; trueHeightM = its bbox height
+  // (canopy truss ~68 m)
   { id: 'soldier_field', file: 'soldier_field.glb', trueHeightM: 50, face: 'east', fit: 'footprint', maxH: 1.0, ready: true },
   // Portico (+Z) and grand steps face north
   { id: 'field_museum', file: 'field_museum.glb', trueHeightM: 30, face: 'north', ready: true },
@@ -138,15 +140,12 @@ const CHICAGO_LANDMARK_GLBS = [
 // Buckets match the manifest's heightBucket: short < 18u (90 m), medium
 // 18-40u, tall above.
 const CHICAGO_GENERIC_GLBS = [
-  // gen_low2_*: the 'low' bucket (blocks under 7u), +Z street face
+  // gen_low2_*: the 'low' bucket (blocks under 7u), +Z street face. Downtown
+  // commercial types only: no greystones, walk-ups or courtyard flats in the Loop
   { file: 'gen_low2_brick_shop.glb', bucket: 'low', ready: true },
-  { file: 'gen_low2_greystone.glb', bucket: 'low', ready: true },
-  { file: 'gen_low2_courtyard_apts.glb', bucket: 'low', ready: true },
   { file: 'gen_low2_terracotta_comm.glb', bucket: 'low', ready: true },
   { file: 'gen_low2_warehouse.glb', bucket: 'low', share: 0.6, ready: true },
   { file: 'gen_low2_modern_mid.glb', bucket: 'low', ready: true },
-  // TRELLIS low-rise kit (cloud-3d): 3-storey brick walk-up, blank party walls
-  { file: 'gen_low2_brick_walkup.glb', bucket: 'low', ready: true },
   { file: 'gen_low_brick_loft.glb', bucket: 'short', ready: true },
   { file: 'gen_low_limestone_block.glb', bucket: 'short', ready: true },
   { file: 'gen_low_terracotta_office.glb', bucket: 'short', ready: true },
@@ -202,6 +201,8 @@ const CHICAGO_KIT_GLBS = {
   // Street furniture placed in bulk (metres; scaled by FURNITURE_UPM)
   sailboat_moored: { file: 'sailboat_moored.glb', ready: true },
   planter_bollard: { file: 'planter_bollard.glb', ready: true },
+  // Soldier Field north wing wall: 105 x 10 x 20 m limestone, length along X
+  soldier_field_wing: { file: 'soldier_field_wing.glb', ready: false },
   // desktopOnly: phones neither download nor place them (draw budget)
   lakefront_trail_bench: { file: 'lakefront_trail_bench.glb', desktopOnly: true, ready: true },
   newspaper_box_cluster: { file: 'newspaper_box_cluster.glb', desktopOnly: true, ready: true },
@@ -247,7 +248,12 @@ function _pickGeneric(bucket, avoid) {
 // grid of copies (each fitted to its cell, stretch <= 1.3) at the model's
 // true height. The Waldron Parking Deck (169 x 165 m) south of Soldier
 // Field from the 76 x 40 x 20 m parking deck.
-const GENERIC_TILES = { b507: { file: 'parking_deck.glb', nx: 2, nz: 4, hM: 20.3 } };
+const GENERIC_TILES = {
+  b507: { file: 'parking_deck.glb', nx: 2, nz: 4, hM: 20.3 },
+  // Soldier Field's north wing walls (one wall model, length along X)
+  b_soldier_field_wing_nw: { file: 'soldier_field_wing.glb', nx: 1, nz: 1, hM: 20 },
+  b_soldier_field_wing_ne: { file: 'soldier_field_wing.glb', nx: 1, nz: 1, hM: 20 },
+};
 // Every block gets a kit GLB: 'low' (< 7u, the gen_low2_* kit) borrows the
 // short kit until its own pieces are ready
 const _bucket = (h) => (h >= 40 ? 'tall' : h >= 18 ? 'medium' : h >= 7 ? 'short' : 'low');
@@ -1621,7 +1627,7 @@ export function buildChicago(scene, world, opts, K) {
         // stretch); phones draw its LOD1 twin only (def.phoneLod1)
         const sc = L.scale || 0.2;
         if (def.phoneLod1 && isMobile) b.lod1Only = true;
-        K.queueGLB({ url, h: def.trueHeightM * sc, building: b, maxW: 0, maxD: 0, rotY, landmark: true });
+        K.queueGLB({ url, h: def.trueHeightM * sc, building: b, maxW: 0, maxD: 0, rotY, landmark: true, atOrigin: !!def.atOrigin });
       } else if (def.front) {
         // Front block on the street edge (+Z side of the site), a separate
         // destructible landmark; the procedural rear fills the remainder
