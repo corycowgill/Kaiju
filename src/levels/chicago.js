@@ -538,7 +538,7 @@ function mats() {
   _M = {
     limestone: std(0xcbbd9f, 0.85), brick: std(0x8c4f3c, 0.9), terracotta: std(0xe2d6c2, 0.7),
     darkGlass: std(0x1d242c, 0.25, 0.75), blueGlass: std(0x5f7f99, 0.2, 0.8), silverGlass: std(0x9aa8b4, 0.22, 0.85),
-    blackSteel: std(0x17191c, 0.45, 0.6), steel: std(0x8a9096, 0.4, 0.7), white: std(0xe9e7e2, 0.6),
+    blackSteel: std(0x17191c, 0.45, 0.6), steel: std(0x8a9096, 0.4, 0.7), white: std(0xcfcdc7, 0.7), // kept under the noon bloom threshold
     concrete: std(0xb3ada3, 0.9), bronze: std(0x6e5432, 0.5, 0.6), copper: std(0x5f9c86, 0.6, 0.4),
     chrome: std(0xd8dde2, 0.05, 1.0), red: std(0xb3262a, 0.6), green: std(0x3d7a35, 0.95),
     beacon: std(0xff3344, 0.5, 0, { emissive: 0xff3344, emissiveIntensity: 2.4 }),

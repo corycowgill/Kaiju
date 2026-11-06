@@ -46,7 +46,7 @@ function trySetHighScore(s) {
 // ?level= wins (testing), then the saved menu pick, then Tokyo.
 const LEVELS = {
   tokyo:   { name: 'TOKYO',   jp: '東京', tag: 'NEON DUSK · SHINJUKU', h2: 'TOKYO DESTRUCTION', h2jp: '東京破壊' },
-  chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'LAKEFRONT GOLDEN HOUR · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊' },
+  chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'HIGH NOON · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊' },
 };
 const LEVEL_KEY = 'kaijuLevel';
 function _detectLevel() {
@@ -482,12 +482,13 @@ const skyMat = new THREE.ShaderMaterial({
     zenith:  { value: new THREE.Vector3(0.04, 0.02, 0.14) },
     nebula:  { value: 1.0 },   // nebula tint, stars and moon (night sky)
     sunRim:  { value: new THREE.Vector3(1.0, 0.5, 0.25) },
+    sunDir:  { value: new THREE.Vector3(-0.55, 0.12, 0.25).normalize() },
   },
   vertexShader: `varying vec3 vP; void main() { vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
   fragmentShader: `
     varying vec3 vP;
     uniform float time;
-    uniform vec3 horizon, midCol, zenith, sunRim;
+    uniform vec3 horizon, midCol, zenith, sunRim, sunDir;
     uniform float nebula;
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     void main() {
@@ -508,7 +509,6 @@ const skyMat = new THREE.ShaderMaterial({
       col += nebula * vec3(1.0, 0.95, 0.82) * smoothstep(0.997, 1.0, md);
       col += nebula * vec3(0.6, 0.5, 0.45) * smoothstep(0.985, 0.998, md) * 0.4;
       // Off-screen sun rim
-      vec3 sunDir = normalize(vec3(-0.55, 0.12, 0.25));
       float sd = max(0.0, dot(d, sunDir));
       col += sunRim * pow(sd, 16.0) * 0.6;
       gl_FragColor = vec4(col, 1.0);
@@ -902,24 +902,35 @@ const _TOKYO_LOOK = {
   amb: ambient.color.getHex(), ambI: ambient.intensity, neonI: _neonLights.map((l) => l.intensity),
   sky: Object.fromEntries(['horizon', 'midCol', 'zenith', 'sunRim'].map((k) => [k, skyMat.uniforms[k].value.toArray()])),
   nebula: skyMat.uniforms.nebula.value, env: scene.environmentIntensity,
+  bloom: bloomPass && { threshold: bloomPass.threshold, strength: bloomPass.strength },
   grade: window.__cinePass && {
     mix: window.__cinePass.uniforms.gradeMix.value,
     shadow: window.__cinePass.uniforms.shadowTint.value.toArray(), high: window.__cinePass.uniforms.highTint.value.toArray(),
   },
 };
-// Chicago: lakefront golden hour. Low amber sun out of the west over the
-// prairie raking the skyline, deep blue sky to the east over the lake, warm
-// honey haze, cool blue-teal shadows against gold highlights in the grade;
+// Chicago: clear high noon. The player looks west at the skyline from
+// Grant Park, so the sun stands ~70 degrees up and a little south (+Z): never
+// in that view, short readable shadows. Neutral-warm white light, clear blue
+// sky with a pale horizon, light haze pushed back, a near-neutral grade;
 // no stars, nebula or neon.
 const _CHICAGO_LOOK = {
-  bg: 0x8fa9c4, fog: 0xd9b48a, fogDensity: 0.0030,
-  hemiSky: 0xffd8b0, hemiGround: 0x3e4a5a, hemiI: Q_HIGH ? 0.50 : (Q_MED ? 0.62 : 0.70),
-  sun: 0xffa95a, sunI: 3.1, rim: 0x7fb0ff, rimI: Q_LOW ? 0.50 : 0.70,
-  amb: 0x556a88, ambI: Q_HIGH ? 0.16 : (Q_MED ? 0.28 : 0.40), neonI: _neonLights.map(() => 0),
-  sky: { horizon: [1.0, 0.62, 0.30], midCol: [0.62, 0.62, 0.78], zenith: [0.14, 0.30, 0.62], sunRim: [1.0, 0.60, 0.25] },
-  nebula: 0.0, env: 0.8,
-  grade: { mix: Q_HIGH ? 0.55 : 0.45, shadow: [0.74, 0.86, 1.02], high: [1.14, 0.95, 0.70] },
+  bg: 0x9ec3e6, fog: 0xcad8e6, fogDensity: 0.0016,
+  hemiSky: 0xdcecff, hemiGround: 0x6b6355, hemiI: Q_HIGH ? 0.55 : (Q_MED ? 0.68 : 0.75),
+  sun: 0xfff3e2, sunI: 2.35, rim: 0xb4cdf5, rimI: Q_LOW ? 0.30 : 0.40,
+  amb: 0x8a9bb0, ambI: Q_HIGH ? 0.18 : (Q_MED ? 0.30 : 0.42), neonI: _neonLights.map(() => 0),
+  sky: { horizon: [0.80, 0.88, 0.96], midCol: [0.50, 0.68, 0.92], zenith: [0.20, 0.42, 0.82], sunRim: [1.0, 0.97, 0.88] },
+  // Direction to the sun: elevation ~70 deg, azimuth just south of overhead
+  sunOffset: [6, 140, 50],
+  nebula: 0.0, env: 0.85,
+  grade: { mix: Q_HIGH ? 0.25 : 0.2, shadow: [0.96, 0.98, 1.02], high: [1.04, 1.0, 0.95] },
+  // Sunlit white roofs (buses, the Modern Wing) sit near 1.0 at noon: raise
+  // the threshold so only real light sources bloom
+  bloom: bloomPass && { threshold: 1.05, strength: bloomPass.strength * 0.7 },
 };
+// Sun position relative to the kaiju (shadow camera follows it). Tokyo's
+// low west rake; levels may override (see sunOffset in the looks above)
+const _TOKYO_SUN = [-100, 100, 45];
+const _sunOffset = new THREE.Vector3(..._TOKYO_SUN);
 let _lookLevel = 'tokyo';
 function applyLevelLook(level) {
   if (level === _lookLevel) return;
@@ -934,6 +945,13 @@ function applyLevelLook(level) {
   _neonLights.forEach((l, i) => { l.intensity = L.neonI[i]; });
   for (const k of Object.keys(L.sky)) skyMat.uniforms[k].value.fromArray(L.sky[k]);
   skyMat.uniforms.nebula.value = L.nebula;
+  _sunOffset.fromArray(L.sunOffset || _TOKYO_SUN);
+  // The sky's sun rim sits where the light comes from (Tokyo: its old fixed direction)
+  if (L.sunOffset) skyMat.uniforms.sunDir.value.fromArray(L.sunOffset).normalize();
+  else skyMat.uniforms.sunDir.value.set(-0.55, 0.12, 0.25).normalize();
+  // Until a kaiju exists to follow; Tokyo's boot position otherwise
+  if (level !== 'tokyo') sun.position.copy(_sunOffset); else sun.position.set(-90, 60, 40);
+  if (bloomPass && L.bloom) { bloomPass.threshold = L.bloom.threshold; bloomPass.strength = L.bloom.strength; }
   const cine = window.__cinePass;
   if (cine && L.grade) {
     cine.uniforms.gradeMix.value = L.grade.mix;
@@ -3813,8 +3831,8 @@ function updateCamera() {
   if (!k) return;
   // Sun offset stays constant relative to the kaiju so shadows follow it
   // through the city without ever overflowing the 90u shadow camera.
-  if (sun && sun.castShadow) {
-    sun.position.set(k.root.position.x - 100, 100, k.root.position.z + 45);
+  if (sun && (sun.castShadow || _lookLevel !== 'tokyo')) {
+    sun.position.copy(k.root.position).add(_sunOffset);
   }
   k.head.getWorldPosition(_camHead);
   const desiredDist = 51;
