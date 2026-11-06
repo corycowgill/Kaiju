@@ -688,8 +688,9 @@ export class Artillery {
       const v2 = _templates.artillery.v2;
       const box = new THREE.Box3().setFromObject(tpl);
       const size = box.getSize(new THREE.Vector3());
-      // v2 is its own armoured gun truck (11m); the fallback is the tank GLB, larger and darkened
-      const targetLen = v2 ? 10.0 : 6.5;
+      // v2 is its own armoured gun truck (11m body + 3.4m barrel overhang, 14.4m overall,
+      // so 13u keeps the body ~10u); the fallback is the tank GLB, larger and darkened
+      const targetLen = v2 ? 13.0 : 6.5;
       const s = targetLen / Math.max(size.x, size.y, size.z);
       tpl.scale.setScalar(s);
       if (!v2) {
@@ -707,7 +708,8 @@ export class Artillery {
       // Old model faces -Z; the v2 model already faces +Z
       if (!v2) tpl.rotation.y = Math.PI;
       root.add(tpl);
-      if (v2) { muzzleY = size.y * s * 0.8; muzzleZ = size.z * s * 0.3; }
+      // v2 muzzle brake is the front-most point (+Z), at ~80% of the model height
+      if (v2) { muzzleY = (box.max.y - box.min.y) * 0.8; muzzleZ = box.max.z * 0.97; }
     } else {
       const baseMat = new THREE.MeshStandardMaterial({ color: 0x383830, roughness: 0.85 });
       const base = new THREE.Mesh(new THREE.BoxGeometry(4.4, 1.2, 4.4), baseMat);
