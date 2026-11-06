@@ -256,7 +256,9 @@ function _loadTreeList(list, onProgress) {
         _treeTemplates.push({ scene: s, box, h: def.h });
         if (onProgress) onProgress(idx + 1, list.length, url.split('/').pop().replace('.glb', ''));
         resolve();
-      }, (err) => {
+      }).catch((err) => {
+        // .catch (not a then() rejection handler) so a throw in the success
+        // path still resolves; otherwise the top-level await in game.js hangs
         console.warn('[TreeGLB] Failed to load', url, err.message || err);
         if (onProgress) onProgress(idx + 1, list.length, 'error');
         resolve();
