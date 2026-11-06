@@ -159,6 +159,8 @@ const CHICAGO_KIT_GLBS = {
   // desktopOnly: phones neither download nor place them (draw budget)
   lakefront_trail_bench: { file: 'lakefront_trail_bench.glb', desktopOnly: true, ready: true },
   newspaper_box_cluster: { file: 'newspaper_box_cluster.glb', desktopOnly: true, ready: true },
+  // Divvy-style dock: 12.5 m row along X, bikes face +Z, kiosk at +X
+  bike_share_rack: { file: 'bike_share_rack.glb', ready: true },
 };
 const _kit = (id) => (CHICAGO_KIT_GLBS[id]?.ready ? CHI_BASE + CHICAGO_KIT_GLBS[id].file : null);
 
@@ -1991,7 +1993,30 @@ export function buildChicago(scene, world, opts, K) {
     // civilians, not at the map's 0.2 u/m
     const FURNITURE_UPM = REAL ? 0.6 : 1.2;
     const S = L.scale || 0.2;
-    const spots = { planter_bollard: [], newspaper_box_cluster: [], lakefront_trail_bench: [] };
+    const spots = { planter_bollard: [], newspaper_box_cluster: [], lakefront_trail_bench: [], bike_share_rack: [] };
+    // Bike-share docks along major-street kerbs, the ones near L stations
+    // first: row along the kerb (+X along the street), bikes (+Z) facing it
+    {
+      const cap = lite ? 10 : 30;
+      const major = net.edges.filter((e) => e.laneOff * 4 >= (REAL ? 8 : 0) && e.len > 14);
+      const mid = (e) => [net.nodes[e.a].x + e.dx * e.len / 2, net.nodes[e.a].z + e.dz * e.len / 2];
+      const nearSt = (e) => { const [x, z] = mid(e); return L.stations.some((st) => Math.hypot(st.x - x, st.z - z) < 30); };
+      const order = [...major.filter(nearSt), ...major.filter((e) => !nearSt(e)).sort(() => Math.random() - 0.5)];
+      const used = [];
+      for (const e of order) {
+        if (spots.bike_share_rack.length >= cap) break;
+        const [mx, mz] = mid(e);
+        if (used.some(([x, z]) => Math.abs(x - mx) < 40 && Math.abs(z - mz) < 40)) continue;
+        const side = Math.random() < 0.5 ? 1 : -1;
+        const off = side * (e.laneOff * 2 + SIDEWALK_W * 0.55);
+        const x = mx - e.dz * off, z = mz + e.dx * off;
+        if (isWater(x, z) || onLandmark(x, z)) continue;
+        used.push([mx, mz]);
+        // Local X along the street; +Z (sin r, cos r) points back toward the road
+        const ry = Math.atan2(-e.dz, e.dx) + (side > 0 ? Math.PI : 0);
+        spots.bike_share_rack.push({ x, z, ry });
+      }
+    }
     // Planters in pairs and newspaper boxes on major-street corners
     let corner = 0;
     for (const node of net.nodes) {
