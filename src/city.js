@@ -248,7 +248,7 @@ function _loadTreeList(list, onProgress) {
           return;
         }
         s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-        stripBakedEmissive(s);
+        normalizeGLTFMaterials(s);
         const box = new THREE.Box3().setFromObject(s);
         const size = box.getSize(new THREE.Vector3());
         console.log(`[TreeGLB] Bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
