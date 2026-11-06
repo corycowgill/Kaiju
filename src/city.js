@@ -2271,8 +2271,13 @@ export function loadBuildingTemplates(onProgress) {
   const unique = [...new Set(ALL_BUILDING_GLBS)];
   let loaded = 0;
   const total = unique.length;
+  // One retry per template: a flaky mobile fetch/decode shouldn't cost a building
+  const loadOnce = (url) => _cachedGLB(url).catch((err) => {
+    console.warn('[BuildingGLB] retrying', url, err.message);
+    return new Promise((r) => setTimeout(r, 400)).then(() => _cachedGLB(url));
+  });
   return Promise.all(unique.map((url) =>
-    _cachedGLB(url).then((gltf) => {
+    loadOnce(url).then((gltf) => {
       const s = gltf.scene;
       s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       _glbTemplates.set(url, { scene: s, box: new THREE.Box3().setFromObject(s) });
@@ -2397,11 +2402,43 @@ function pickBuildingGLB(h) {
   return BLDG_POOL_SHORT[Math.floor(Math.random() * BLDG_POOL_SHORT.length)];
 }
 
+/** A loaded template for height h when the picked one failed (same pool first). */
+function _fallbackBuildingGLB(h) {
+  const pool = h >= 40 ? BLDG_POOL_TALL : (h >= 18 ? BLDG_POOL_MEDIUM : BLDG_POOL_SHORT);
+  const ok = pool.filter((u) => _glbTemplates.has(u));
+  if (ok.length) return ok[Math.floor(Math.random() * ok.length)];
+  const any = [...BLDG_POOL_TALL, ...BLDG_POOL_MEDIUM, ...BLDG_POOL_SHORT].filter((u) => _glbTemplates.has(u));
+  return any.length ? any[Math.floor(Math.random() * any.length)] : null;
+}
+
+/** Last resort: show the placeholder's procedural box so it never stays invisible. */
+function _revealProceduralBody(b) {
+  b._skipBodyIM = false;
+  if (!b._bodyIM || b._bodyIndex < 0) return;
+  const m = new THREE.Matrix4().compose(
+    new THREE.Vector3(b.x, b.h / 2, b.z), new THREE.Quaternion(), new THREE.Vector3(b.w, b.h, b.d));
+  b._bodyIM.setMatrixAt(b._bodyIndex, m);
+  b._bodyIM._matrixDirty = true;
+}
+
 /** Called after templates load to clone + place every queued building. */
 export function flushPendingGLBBuildings(scene) {
+  let swapped = 0, boxed = 0;
   for (const entry of _pendingGLBBuildings) {
-    placeBuildingGLB(entry.url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0);
+    let url = entry.url;
+    if (!_glbTemplates.has(url)) {
+      // Landmarks keep their silhouette as a box; generic blocks borrow another model
+      url = entry.landmark ? null : _fallbackBuildingGLB(entry.h);
+      if (url) swapped++;
+    }
+    if (url) {
+      placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0);
+    } else if (!entry.building.destroyed) {
+      _revealProceduralBody(entry.building);
+      boxed++;
+    }
   }
+  if (swapped || boxed) console.warn('[BuildingGLB] missing templates:', swapped, 'buildings swapped,', boxed, 'shown as boxes');
   _pendingGLBBuildings.length = 0;
 }
 
@@ -2737,7 +2774,8 @@ export function buildCity(scene, world, opts = {}) {
       const distFromCenter = Math.sqrt(bx*bx + bz*bz);
 
       // skip some blocks entirely on lite mode (lower than before for fuller city)
-      if (lite && Math.random() < 0.18) continue;
+      // (procedural-only LOW tier; the GLB city shares templates, so phones get every block)
+      if (lite && !glb && Math.random() < 0.18) continue;
       // Available buildable area within this block
       const buildableW = BLOCK - STREET;
       const buildableD = BLOCK - STREET;
@@ -2806,7 +2844,7 @@ export function buildCity(scene, world, opts = {}) {
     scene.add(b.group);
     buildings.push(b);
     grid.add(b);
-    _pendingGLBBuildings.push({ url, h, building: b, maxW: w * 2, maxD: d * 2, rotY: rotY || 0 });
+    _pendingGLBBuildings.push({ url, h, building: b, maxW: w * 2, maxD: d * 2, rotY: rotY || 0, landmark: true });
     return b;
   }
 
