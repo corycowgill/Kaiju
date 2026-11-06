@@ -180,6 +180,7 @@ const PROP_GLBS_PLANNED = [
 const PROP_GLBS_READY = new Set([
   'vending_machine', 'street_lamp', 'traffic_signal', 'street_sign', 'bench',
   'torii_gate', 'koban', 'yatai_stall', 'subway_entrance',
+  'roof_water_tank', 'roof_ac_cluster', 'roof_antenna',
 ]);
 const PROP_GLBS = PROP_GLBS_PLANNED.filter((n) => PROP_GLBS_READY.has(n));
 const _propTemplates = new Map(); // name -> { scene, size }
@@ -1863,7 +1864,10 @@ export class Building {
     }
     // Antenna with blinking light (rare; only tall buildings)
     if (Math.random() < 0.3 && h > 30) {
-      const antH = h * (0.25 + Math.random() * 0.25);
+      // GLB mast is a wide dish rig, so keep it human-scale; the cylinder can be a tall spike
+      const antH = _propTemplates.has('roof_antenna')
+        ? Math.min(7, h * (0.12 + Math.random() * 0.08))
+        : h * (0.25 + Math.random() * 0.25);
       const antGLB = _cloneProp('roof_antenna', antH);
       const ant = antGLB || new THREE.Mesh(
         new THREE.CylinderGeometry(0.06, 0.12, antH, 4),
