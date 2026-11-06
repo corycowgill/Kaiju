@@ -191,6 +191,12 @@ function _cloneTemplate(tpl) {
 function _cloneBiped(tpl) {
   if (!tpl) return null;
   const clone = skinnedClone(tpl.scene);
+  // A cloned Skeleton starts with all-zero bone matrices, so measuring it
+  // (Box3.setFromObject -> computeBoundingBox) collapsed the mesh to ~0 height
+  // and the spawn code scaled soldiers ~100x and mechs ~500x into the sky.
+  // Pose the bones and drop any stale cached box before anyone measures it.
+  clone.updateMatrixWorld(true);
+  clone.traverse((o) => { if (o.isSkinnedMesh) { o.skeleton.update(); o.boundingBox = null; } });
   const mixer = new THREE.AnimationMixer(clone);
   const actions = {};
   for (const [name, clip] of Object.entries(tpl.animations)) {

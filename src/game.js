@@ -1587,6 +1587,10 @@ function restartInPlace() {
   document.getElementById('menu').classList.remove('hidden');
 }
 window.__restartInPlace = restartInPlace;
+// ?debug test hooks (QA scripts): inspect state and trigger abilities
+if (/[?&]debug\b/.test(location.search)) {
+  window.__qa = { state, world, camera, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n) };
+}
 async function startGame(key) {
   if (_startingGame) return;
 
