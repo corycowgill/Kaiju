@@ -9,6 +9,21 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { isMobile } from '../quality.js';
 
 const LAYOUT_URL = './assets/levels/chicago_layout.json';
+const SF_SITE_URL = './assets/levels/chicago_soldier_field_site.json';
+
+/** site_dressing.json -> { lawns, gardens, plazas, northPlaza: [[x, z]...] polygons,
+ *  parking [{ polygon, surface }], paths [{ points, width }], water } */
+function _normalizeSite(S) {
+  const polys = (a) => (a || []).map((p) => (p.polygon || []).map(_pt)).filter((p) => p.length >= 3);
+  return {
+    lawns: polys(S.lawns), gardens: polys(S.gardens), plazas: polys(S.plazas), water: polys(S.water),
+    northPlaza: S.northPlaza ? S.northPlaza.polygon.map(_pt) : null,
+    // Underground (layer -1) garages and multi-storey decks get no surface
+    parking: (S.parking || []).map((p) => ({ polygon: p.polygon.map(_pt), surface: p.parking !== 'underground' && p.parking !== 'multi-storey' && String(p.layer) !== '-1' }))
+      .filter((p) => p.polygon.length >= 3),
+    paths: (S.paths || []).map((q) => ({ points: q.points.map(_pt), width: +(q.width || 1) })).filter((q) => q.points.length >= 2),
+  };
+}
 let _layout = null;
 
 /** Fetch the layout once (revalidated, so an updated JSON is picked up). */
@@ -17,6 +32,11 @@ export async function loadChicagoLayout() {
   const r = await fetch(LAYOUT_URL, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`chicago layout: HTTP ${r.status}`);
   _layout = _normalizeLayout(await r.json());
+  // Optional Soldier Field site polygons (cartographer); the level builds without them
+  try {
+    const sr = await fetch(SF_SITE_URL, { cache: 'no-cache' });
+    if (sr.ok) _layout.sfSite = _normalizeSite(await sr.json());
+  } catch (e) { /* no site dressing */ }
   return _layout;
 }
 
@@ -76,7 +96,10 @@ const CHICAGO_LANDMARK_GLBS = [
   // Scaled up to its site (the 180 x 146 m model vs the 348 x 208 m
   // layout outline, height up to 1.4x); colonnade sides (+Z) east and west,
   // open ends north-south
-  { id: 'soldier_field', file: 'soldier_field.glb', trueHeightM: 50, face: 'east', fit: 'footprint', maxH: 1.4, ready: true },
+  // Interim model: fitted to the corrected 296 x 207 x 60 m shell box
+  // (geometry.md). The hero GLB replaces it with { exact: true, phoneLod1:
+  // true }: true scale, model X along the N-S long axis (= layout rot)
+  { id: 'soldier_field', file: 'soldier_field.glb', trueHeightM: 50, face: 'east', fit: 'footprint', maxH: 1.0, ready: true },
   // Portico (+Z) and grand steps face north
   { id: 'field_museum', file: 'field_museum.glb', trueHeightM: 30, face: 'north', ready: true },
   // Only the 1930 tower (57 x 60 m, statue at 184 m), clock face (+Z) north up
@@ -220,6 +243,11 @@ function _pickGeneric(bucket, avoid) {
   for (const g of list) { r -= g.share ?? 1; if (r < 0) return CHI_BASE + g.file; }
   return CHI_BASE + list[list.length - 1].file;
 }
+// Layout buildings tiled with a specific kit model: a uniform-scale nx x nz
+// grid of copies (each fitted to its cell, stretch <= 1.3) at the model's
+// true height. The Waldron Parking Deck (169 x 165 m) south of Soldier
+// Field from the 76 x 40 x 20 m parking deck.
+const GENERIC_TILES = { b507: { file: 'parking_deck.glb', nx: 2, nz: 4, hM: 20.3 } };
 // Every block gets a kit GLB: 'low' (< 7u, the gen_low2_* kit) borrows the
 // short kit until its own pieces are ready
 const _bucket = (h) => (h >= 40 ? 'tall' : h >= 18 ? 'medium' : h >= 7 ? 'short' : 'low');
@@ -366,8 +394,11 @@ function _normalizeLayout(L) {
     .filter((o) => !(o.landmark && lmIds.has(o.landmark))) // the landmark itself stands there
     .map((o) => {
       const r = o.cx !== undefined ? { x: +o.cx, z: +o.cz, w: +o.w, d: +o.d, rotY: +(o.rot || 0) } : _rect(o);
-      return { ...r, h: +(o.h ?? o.height ?? 12), style: o.style || null };
+      return { ...r, id: o.id, podiumOf: o.podiumOf || null, h: +(o.h ?? o.height ?? 12), style: o.style || null };
     })
+    // Soldier Field's north wing walls need their own wall GLB (requested);
+    // a generic block kit piece can't stand in for a 105 m x 10 m wall
+    .filter((o) => !(o.podiumOf === 'soldier_field' && !_kit('soldier_field_wing')))
     .filter((o) => o.w > 0.5 && o.d > 0.5 && o.h > 0.5);
   if (out.real) _clearRoads(out.buildings, out.roads, 1.2 + 0.3);
   const dus = (L.landmarks || []).find((o) => o.id === 'dusable_bridge');
@@ -1227,6 +1258,7 @@ export function buildChicago(scene, world, opts, K) {
   }
 
   // ---- roads ----
+  let roadMat = null; // the asphalt, shared with the Soldier Field lots
   const roads = L.roads.filter((r) => !(lite && r.kind === 'alley'));
   // Traffic stays inside the play area (+ a margin): polylines are cut where
   // they leave it
@@ -1242,7 +1274,7 @@ export function buildChicago(scene, world, opts, K) {
   }
   const net = K.buildRoadNet(netRoads, REAL ? 0.3 : 1.5);
   {
-    const asphalt = new THREE.MeshStandardMaterial({
+    const asphalt = roadMat = new THREE.MeshStandardMaterial({
       map: K.loadTileTex('asphalt_color.jpg', 1, 1), normalMap: K.loadDataTex('asphalt_normal.jpg', 1, 1),
       normalScale: new THREE.Vector2(1.4, 1.4), roughnessMap: K.loadDataTex('asphalt_roughness.jpg', 1, 1),
       aoMap: K.loadDataTex('asphalt_ao.jpg', 1, 1), aoMapIntensity: 0.7, roughness: 0.82, metalness: 0.08, color: 0x9a9a9a,
@@ -1337,7 +1369,10 @@ export function buildChicago(scene, world, opts, K) {
     const c = Math.abs(Math.cos(lm.rotY || 0)), s = Math.abs(Math.sin(lm.rotY || 0));
     return [lm.x, lm.z, (lm.w * c + lm.d * s) / 2 + 2, (lm.w * s + lm.d * c) / 2 + 2];
   });
-  const onLandmark = (x, z) => lmBoxes.some(([lx, lz, hw, hd]) => Math.abs(x - lx) < hw && Math.abs(z - lz) < hd);
+  // ...and off the Soldier Field site's paving and parking
+  const noTree = L.sfSite ? [L.sfSite.northPlaza, ...L.sfSite.plazas, ...L.sfSite.parking.map((p) => p.polygon)].filter(Boolean) : [];
+  const onLandmark = (x, z) => lmBoxes.some(([lx, lz, hw, hd]) => Math.abs(x - lx) < hw && Math.abs(z - lz) < hd)
+    || noTree.some((poly) => pointInPoly(x, z, poly));
   let alleeTrees = 0;
   const ALLEE_CAP = lite ? 60 : 320;
   for (const p of L.parks) {
@@ -1415,6 +1450,21 @@ export function buildChicago(scene, world, opts, K) {
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       scene.add(b.group); buildings.push(b); grid.add(b);
       boxes.push(b);
+      return;
+    }
+    const tile = GENERIC_TILES[o.id];
+    if (tile) {
+      const cw = o.w / tile.nx, cd = o.d / tile.nz;
+      const ax = [Math.cos(o.rotY || 0), -Math.sin(o.rotY || 0)], az = [Math.sin(o.rotY || 0), Math.cos(o.rotY || 0)];
+      for (let i = 0; i < tile.nx; i++) for (let j = 0; j < tile.nz; j++) {
+        const u = (i + 0.5) * cw - o.w / 2, v = (j + 0.5) * cd - o.d / 2;
+        const tx = o.x + ax[0] * u + az[0] * v, tz = o.z + ax[1] * u + az[1] * v;
+        const tb = new K.Building(tx, tz, cw * c + cd * s, cw * s + cd * c, tile.hM * (L.scale || 0.2), { skipWindows: true, color });
+        tb._skipBodyIM = true;
+        tb.group.matrixAutoUpdate = false; tb.group.updateMatrix();
+        scene.add(tb.group); buildings.push(tb); grid.add(tb);
+        K.queueGLB({ url: CHI_BASE + tile.file, h: tile.hM * (L.scale || 0.2), building: tb, maxW: tb.w, maxD: tb.d, rotY: o.rotY || 0, pool, stretch: 1.3 });
+      }
       return;
     }
     const b = new K.Building(o.x, o.z, aw, ad, o.h, { skipWindows: true, color });
@@ -2134,6 +2184,47 @@ export function buildChicago(scene, world, opts, K) {
         if (boat) placeStatic(scene, boat, true, moorings, () => new THREE.Vector3(S * 1.5, S * 1.5, S * 1.5), 0.2 - 0.6 * S * 1.5);
         instance();
       });
+    }
+  }
+
+  // ---- Soldier Field site (cartographer's site_dressing.json, OSM polygons) ----
+  // Drawn over the layout parks, under the road layer: lawns, gardens,
+  // plazas (the North Plaza is the North Garage roof), surface parking with
+  // stall rows of parked cars, footpaths and the memorial fountain. The
+  // underground garage and the Waldron multi-storey deck (a GLB building)
+  // get no surface.
+  if (REAL && L.sfSite) {
+    const S = L.sfSite;
+    const flat = (polys, y, mat, uvTile) => {
+      for (const poly of polys) {
+        if (poly.length < 3) continue;
+        addBatch(polygonGeom(poly, y, 1 / uvTile), mat);
+      }
+    };
+    flat(S.lawns, 0.031, M.lawn, 14);
+    flat(S.gardens, 0.032, M.grass, 14);
+    flat([S.northPlaza, ...S.plazas].filter(Boolean), 0.033, swMat, SW_TILE);
+    const lots = S.parking.filter((p) => p.surface);
+    flat(lots.map((p) => p.polygon), 0.034, roadMat, STREET_TILE);
+    for (const q of S.paths) addBatch(ribbon(q.points, -Math.max(0.3, q.width / 2), Math.max(0.3, q.width / 2), 0.036), M.path);
+    flat(S.water, 0.04, M.water, 14);
+    // Parked cars: E-W stall rows on a 2.3 x 6u grid inside each lot,
+    // keeping a car's corners inside the polygon (phones: fewer, LOW: none)
+    let cars = 0;
+    const cap = !glb ? 0 : lite ? 60 : 200;
+    for (const p of lots) {
+      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (const [x, z] of p.polygon) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+      const along = x1 - x0 >= z1 - z0; // stall rows along the lot's long side
+      for (let u = (along ? x0 : z0) + 1.2; u < (along ? x1 : z1) - 1.2 && cars < cap; u += 2.3) {
+        for (let v = (along ? z0 : x0) + 2.5; v < (along ? z1 : x1) - 2.5 && cars < cap; v += 6) {
+          const x = along ? u : v, z = along ? v : u;
+          const ok = [[-1, -2], [1, -2], [-1, 2], [1, 2]].every(([a, b]) => pointInPoly(along ? x + a : x + b, along ? z + b : z + a, p.polygon));
+          if (!ok || Math.random() < 0.3) continue;
+          const car = K.makeParkedCar(x, z, (along ? 0 : Math.PI / 2) + (Math.random() < 0.5 ? 0 : Math.PI) + (Math.random() - 0.5) * 0.08);
+          if (car) { scene.add(car); cars++; }
+        }
+      }
     }
   }
 

@@ -4959,6 +4959,22 @@ const CITY_KIT = {
   hasTemplate: (url) => _glbTemplates.has(url),
   pickTokyoBuildingGLB: pickBuildingGLB,
   buildRoadNet,
+  /** A parked car (random level-appropriate template) at x, z facing yaw, tagged for instancing; null if none loaded. */
+  makeParkedCar: (x, z, yaw) => {
+    const parkable = _carTemplates.filter((t) => t.parked && _carFor(t));
+    if (!parkable.length) return null;
+    const tpl = parkable[Math.floor(Math.random() * parkable.length)];
+    const clone = _cloneCarScene(tpl);
+    const size = tpl.box.getSize(new THREE.Vector3());
+    clone.scale.setScalar(_carTargetLen(tpl) / Math.max(size.x, size.y, size.z));
+    clone.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(clone);
+    clone.position.set(x, -box.min.y, z);
+    clone.rotation.y = yaw;
+    clone.matrixAutoUpdate = false; clone.updateMatrix();
+    clone.userData.instance = true;
+    return clone;
+  },
   setCarNet: (net) => { _carNet = net; },
   setPedCfg: (cfg) => { _pedCfg = cfg; },
   TILE: { LOT: LOT_TILE, STREET: STREET_TILE, SIDEWALK: SIDEWALK_TILE },
