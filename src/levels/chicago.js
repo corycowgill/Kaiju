@@ -54,6 +54,10 @@ const CHICAGO_LANDMARK_GLBS = [
   { id: 'carbide_carbon', file: 'carbide_carbon.glb', trueHeightM: 154, face: 'west', ready: true },
   { id: 'merchandise_mart', file: 'merchandise_mart.glb', trueHeightM: 103, face: 'south', ready: true },
   { id: 'union_station', file: 'union_station.glb', trueHeightM: 38.6, face: 'east', ready: true },
+  // cloud-3d (manifest_cloud.json). Portico +Z west toward the Field
+  // Museum, oceanarium wing (-Z) on the lake; 62 x 74 m plan fitted to the
+  // 162 x 136 m site
+  { id: 'shedd_aquarium', file: 'shedd_aquarium.glb', trueHeightM: 32, face: 'west', fit: 'footprint', maxH: 1.6, ready: true },
   // Entrance (+Z) on Michigan Ave
   { id: 'tribune_tower', file: 'tribune_tower.glb', trueHeightM: 141, face: 'west', ready: true },
   // Long axis X fits the layout outline (E-W); +Z, both blocks and the
@@ -1392,8 +1396,14 @@ export function buildChicago(scene, world, opts, K) {
           });
         });
       }
-      // Exact layout height: no footprint clamp (maxW/maxD 0)
-      K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY, landmark: true });
+      if (def.fit === 'footprint') {
+        // Model's plan is undersized for the site (AI proportions run tall):
+        // fill the layout outline instead, height capped at maxH x layout
+        K.queueGLB({ url, h: lm.h * (def.maxH || 1.6), building: b, maxW: aw, maxD: ad, rotY, landmark: true, stretch: 1.3 });
+      } else {
+        // Exact layout height: no footprint clamp (maxW/maxD 0)
+        K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY, landmark: true });
+      }
       if (def.pair) {
         // The mirrored twin, turned to face the first across the plaza
         const b2 = new K.Building(lm.x, lm.z + def.pair, aw, ad, lm.h, { skipWindows: true });
