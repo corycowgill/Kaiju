@@ -66,6 +66,11 @@ const CHICAGO_LANDMARK_GLBS = [
   { id: 'art_institute', file: 'art_institute.glb', trueHeightM: 20, face: 'west', fit: 'footprint', maxH: 2.0, front: true, ready: true },
   // Fountain at true size; the level adds the 85 m pool and the jets
   { id: 'buckingham_fountain', file: 'buckingham_fountain.glb', trueHeightM: 7.6, fountain: true, ready: true },
+  // Gable end (+Z) on State St (east); lattice windows get a dark glass core
+  { id: 'harold_washington_library', file: 'harold_washington_library.glb', trueHeightM: 70, face: 'east', fit: 'footprint', maxH: 1.0, core: true, ready: true },
+  // Blender fallback: shell + trellis (+Z) over the Great Lawn (east). The
+  // layout spot is the shell, so the model shifts that many metres along +Z
+  { id: 'pritzker_pavilion', file: 'pritzker_pavilion.glb', trueHeightM: 41, face: 'east', shiftM: 24, ready: true },
   // State St facade (+Z); its marquee/blade are unlit, the CHICAGO sign overlay is fitted to it
   { id: 'chicago_theatre', file: 'chicago_theatre.glb', trueHeightM: 25, face: 'west', fit: 'footprint', maxH: 1.3, ready: true },
   // Entrance (+Z) on Michigan Ave
@@ -107,11 +112,18 @@ const CHICAGO_PROP_GLBS = [
   { name: 'chi_bus_shelter', file: 'cta_bus_shelter.glb', ready: true },
   // US mast-arm signal: origin at the pole base, lenses face +Z, arm along +X
   { name: 'chi_traffic_signal', file: 'traffic_signal.glb', ready: true },
+  { name: 'chi_hot_dog_cart', file: 'hot_dog_cart.glb', ready: true },
 ];
 // Extra traffic (front faces +Z, real-world metres like the Tokyo vehicles).
 const CHICAGO_VEHICLE_GLBS = [
   // cloud-3d: 12.05 m along Z, front +Z, wheels on y = 0
   { url: CHI_BASE + 'cta_bus.glb', len: 12.05, weight: 8, parked: false, ready: true },
+  { url: CHI_BASE + 'chicago_taxi.glb', len: 4.92, weight: 18, ready: true },
+  // Its light bar is unlit in the model: Car adds a flashing bar
+  { url: CHI_BASE + 'police_suv.glb', len: 5.14, weight: 6, lightBar: true, ready: true },
+  { url: CHI_BASE + 'sedan.glb', len: 4.82, weight: 14, ready: true },
+  { url: CHI_BASE + 'sedan_blue.glb', len: 4.82, weight: 12, ready: true },
+  { url: CHI_BASE + 'sedan_silver.glb', len: 4.82, weight: 12, ready: true },
 ];
 // Kit pieces placed many times: the generic bascule bridge (scaled to each
 // bridges[] entry, spans along its local X) and the L track segment (tiled
@@ -123,6 +135,9 @@ const CHICAGO_KIT_GLBS = {
   l_track_curve: { file: 'l_track_curve.glb', radius: 30, ready: true },
   // One car along glTF X, base at rail top; coupled every 14.9 m
   l_train: { file: 'l_train.glb', ready: true },
+  // River boats (cloud-3d): bow +Z, y = 0 at the keel (sink ~1.1 m)
+  tour_boat: { file: 'tour_boat.glb', len: 25, sinkM: 1.0, ready: true },
+  water_taxi: { file: 'water_taxi.glb', len: 15, sinkM: 1.1, ready: true },
   // Hero Michigan Ave bridge, same node scheme as bascule_bridge
   dusable_bridge: { file: 'dusable_bridge.glb', ready: true },
   // Station: spans x = -60..60 m at the track's deck height (replaces 3 segments)
@@ -1443,6 +1458,24 @@ export function buildChicago(scene, world, opts, K) {
         });
       }
       if (def.fountain) addFountainPool(b, lm);
+      if (def.shiftM) {
+        // Move the site centre along the model's front so its anchor part
+        // (Pritzker's shell) stands on the layout spot
+        const sm = def.shiftM * (lm.heightM ? lm.h / lm.heightM : (L.scale || 0.2));
+        grid.remove(b);
+        b.x += Math.sin(rotY) * sm; b.z += Math.cos(rotY) * sm;
+        b.group.position.set(b.x, 0, b.z); b.group.updateMatrix();
+        grid.add(b);
+      }
+      if (def.core) {
+        // Dark glass box inside open lattice windows, sized to the placed model
+        K.onTemplatesReady(() => {
+          if (b.destroyed) return;
+          const core = new THREE.Mesh(new THREE.BoxGeometry(b.w * 0.86, b.h * 0.82, b.d * 0.86), M.darkGlass);
+          core.position.set(0, b.h * 0.41, 0);
+          b.group.add(core);
+        });
+      }
       if (def.clone) {
         // Own scene graph so its node can move (the wheel's rotor)
         K.onTemplatesReady((sc, get) => {
@@ -1871,7 +1904,8 @@ export function buildChicago(scene, world, opts, K) {
       if (isWater(x, z)) continue;
       const shelter = i < shelterN;
       const glbName = shelter ? 'chi_bus_shelter' : 'chi_hot_dog_cart';
-      const p = K.hasProp(glbName) ? K.cloneProp(glbName, (shelter ? 2.6 : 3.4) * PS) : (shelter ? makeBusShelter() : makeHotDogCart());
+      // GLBs at street-furniture scale (~0.8u/m): 2.6 m shelter, 2.2 m cart
+      const p = K.hasProp(glbName) ? K.cloneProp(glbName, (shelter ? 2.6 : 2.2) * PS) : (shelter ? makeBusShelter() : makeHotDogCart());
       if (!K.hasProp(glbName)) p.scale.setScalar(PS);
       p.position.set(x, 0, z);
       // Face the street
@@ -1883,7 +1917,31 @@ export function buildChicago(scene, world, opts, K) {
   }
 
   // ---- boats: tour boats cruising the river, sailboats on the lake ----
-  for (const r of rivers) animators.push(makeRiverBoats(scene, r, lite ? 2 : 4, PS));
+  const boatGLBs = glb ? ['tour_boat', 'water_taxi'].filter((k) => _kit(k)) : [];
+  if (boatGLBs.length) {
+    // Tour boats and water taxis from the GLBs once parsed (procedural if not)
+    K.onTemplatesReady((sc, get) => {
+      const BOAT_UPM = 0.3; // a 25 m tour boat ~7.5u on the ~13u river
+      const kinds = boatGLBs.map((k) => {
+        const tpl = get(_kit(k));
+        if (!tpl) return null;
+        tpl.updateMatrixWorld(true);
+        const b = new THREE.Box3().setFromObject(tpl);
+        const fix = new THREE.Matrix4().makeScale(BOAT_UPM, BOAT_UPM, BOAT_UPM)
+          .multiply(new THREE.Matrix4().makeTranslation(-(b.min.x + b.max.x) / 2, -b.min.y - CHICAGO_KIT_GLBS[k].sinkM, -(b.min.z + b.max.z) / 2));
+        const parts = [];
+        tpl.traverse((o) => { if (o.isMesh) parts.push({ geom: o.geometry, mat: o.material, m: new THREE.Matrix4().multiplyMatrices(fix, o.matrixWorld) }); });
+        return parts;
+      }).filter(Boolean);
+      for (const r of rivers) {
+        const n = lite ? 2 : 4;
+        if (!kinds.length) { animators.push(makeRiverBoats(scene, r, n, PS)); continue; }
+        kinds.forEach((parts, ki) => animators.push(makeRiverBoats(scene, r, Math.max(1, Math.round(n / kinds.length)), PS, parts, ki * 0.37)));
+      }
+    });
+  } else {
+    for (const r of rivers) animators.push(makeRiverBoats(scene, r, lite ? 2 : 4, PS));
+  }
   const sailGLB = glb ? _kit('sailboat_moored') : null;
   const moorings = [];
   if (lakes.length) {
@@ -2164,18 +2222,20 @@ function makeTrain(scene, world, pts, y, M, trackW = 6.4, car = null) {
 }
 
 // River tour boats cruising the river on either side of the centreline
-function makeRiverBoats(scene, r, n, ps = 1) {
+// parts: GLB boat parts ({ geom, mat, m }, bow +Z) or null for procedural;
+// phase0 staggers fleets sharing a river
+function makeRiverBoats(scene, r, n, ps = 1, parts = null, phase0 = 0) {
   const P = propKit();
   const M = P.M;
   const s = 1.8 * ps;
-  const fleet = makeFleet(scene, [
+  const fleet = makeFleet(scene, parts || [
     { geom: P.hull, mat: M.hullDark, m: _local(0, 0.4 * s, 0, s, s, s) },
     { geom: P.bow, mat: M.hullDark, m: _local(0, 0.4 * s, 5 * s, s, s, s * 0.5, Math.PI / 2, Math.PI / 4) },
     { geom: P.canopy, mat: M.canvas, m: _local(0, 2.6 * s / 1.8, 0, s, s, s) },
   ], n);
   const path = pathSampler(r.points);
   const boats = [];
-  for (let i = 0; i < n; i++) boats.push({ d: (i + 0.5) / n * path.total, dir: i % 2 ? 1 : -1, ph: i * 2.3 });
+  for (let i = 0; i < n; i++) boats.push({ d: ((i + 0.5) / n + phase0) % 1 * path.total, dir: i % 2 ? 1 : -1, ph: i * 2.3 + phase0 * 5 });
   return {
     update(dt, time) {
       if (!fleet.ims[0].parent) return;

@@ -4343,7 +4343,7 @@ const CAR_COLORS = [0xff3344, 0x33aaff, 0xffcc33, 0xffffff, 0x222222, 0x44aa66, 
 // levels: the levels whose traffic uses it (default: every level).
 const CAR_GLBS = [
   { url: './assets/vehicles/kei_van.glb',     len: 3.4,  weight: 34, levels: ['tokyo'] },
-  { url: './assets/vehicles/taxi_black.glb',  len: 4.7,  weight: 30 },
+  { url: './assets/vehicles/taxi_black.glb',  len: 4.7,  weight: 30, levels: ['tokyo'] }, // Chicago: yellow cab
   { url: './assets/vehicles/police_car.glb',  len: 4.8,  weight: 10, levels: ['tokyo'] }, // Japanese livery
   { url: './assets/vehicles/small_truck.glb', len: 4.7,  weight: 20 },
   // Tokyo-only until the CTA bus GLB lands (green Japanese livery)
@@ -4380,7 +4380,7 @@ function _loadCarList(list, onProgress) {
         reportLoadError('CarGLB', def.url, new Error('no meshes found'));
         return;
       }
-      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1, levels: def.levels });
+      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1, levels: def.levels, lightBar: !!def.lightBar });
       if (onProgress) onProgress(idx + 1, list.length, def.url.split('/').pop().replace('.glb', ''));
       return _attachLod1(def.url, s);
     }).catch((err) => {
@@ -4417,6 +4417,11 @@ function _cloneCarScene(tpl) {
   return group;
 }
 
+// Police light bar: shared by every flashing car, toggled in Car.update
+let _lightBarGeom = null;
+const _lightBarMat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xff2020, emissiveIntensity: 2.2 });
+const markSharedGeom = (g) => { g.userData.shared = true; return g; };
+
 export class Car {
   constructor(x, z, axis /* 'x' or 'z' */, dir /* +1/-1 */) {
     this.dead = false;
@@ -4440,6 +4445,16 @@ export class Car {
       const cloneBox = new THREE.Box3().setFromObject(clone);
       clone.position.y = -cloneBox.min.y - 0.6; // sit on road surface
       root.add(clone);
+      if (tpl.lightBar) {
+        // Roof light bar (the model's is unlit): one shared material flashed
+        // red/blue for every police car, so it costs a draw per car only
+        const cl = targetLen;
+        const lb = new THREE.Mesh(_lightBarGeom || (_lightBarGeom = markSharedGeom(new THREE.BoxGeometry(1, 1, 1))), _lightBarMat);
+        lb.scale.set(cl * 0.28, cl * 0.035, cl * 0.07);
+        lb.position.set(0, cloneBox.max.y - cloneBox.min.y - 0.6 + cl * 0.015, -cl * 0.04);
+        root.add(lb);
+        this._lightBar = true;
+      }
       // LOD1 swap targets (geometry only; the material is shared)
       this._lodMeshes = clone.children
         .filter((m) => _lod1ByGeom.has(m.geometry))
@@ -4572,6 +4587,7 @@ export class Car {
   }
 
   _afterMove(world, kaijuPos) {
+    if (this._lightBar) _lightBarMat.emissive.setHex(((performance.now() / 250) | 0) % 2 ? 0x2050ff : 0xff2020);
     // Stomped by kaiju
     const dx = kaijuPos.x - this.root.position.x;
     const dz = kaijuPos.z - this.root.position.z;
