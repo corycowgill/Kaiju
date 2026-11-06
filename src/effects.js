@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import vfx, { acquirePooledLight } from './vfx.js';
 import { LEGACY_VFX } from './quality.js';
-import { disposeInstance, markShared } from './assetCache.js';
+import { disposeInstance, markShared, warnOnce } from './assetCache.js';
 
 // Shared geometries / materials so high-rate effect spawns (sparks, smoke,
 // hit pulses, muzzle flashes) don't churn through GC.
@@ -46,7 +46,11 @@ export class Effect {
       // entry alive forever.
       if (!this._cleaned) {
         this._cleaned = true;
-        try { this.update(0, 1, this); } catch (e) {}
+        try { this.update(0, 1, this); } catch (e) {
+          // Once per effect type (keyed by the throwing callback's frame)
+          const where = ((e && e.stack) || '').split('\n')[1] || '';
+          warnOnce('fx-cleanup|' + where + (e && e.message), '[Effect] final cleanup threw (meshes may leak):', e);
+        }
       }
       // Free the per-spawn geometry (module-level G_* stay; see markShared).
       disposeInstance(this.mesh);

@@ -1,0 +1,12 @@
+{
+  "name": "kaiju-havoc",
+  "private": true,
+  "type": "module",
+  "description": "Browser game; no build step. This file only serves the dev tools in tools/.",
+  "scripts": {
+    "smoke": "node tools/smoke_test.mjs"
+  },
+  "devDependencies": {
+    "three": "0.160.0"
+  }
+}

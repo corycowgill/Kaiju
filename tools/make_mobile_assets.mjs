@@ -20,7 +20,7 @@ function walk(dir, rel = '') {
   const out = [];
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const r = rel ? `${rel}/${e.name}` : e.name;
-    if (e.isDirectory()) { if (r !== 'm') out.push(...walk(`${dir}/${e.name}`, r)); }
+    if (e.isDirectory()) { if (r !== 'm' && r !== 'ktx2') out.push(...walk(`${dir}/${e.name}`, r)); }
     else out.push(r);
   }
   return out;

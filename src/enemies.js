@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
-import { cachedFetch, normalizeGLTFMaterials, disposeInstance, withParseSlot } from './assetCache.js';
+import { cachedFetch, normalizeGLTFMaterials, disposeInstance, withParseSlot, reportLoadError, isCodeBug } from './assetCache.js';
 
 // Module-level scratch vectors reused by every AI tick to avoid GC churn.
 const _aiVA = new THREE.Vector3();
@@ -99,10 +99,10 @@ async function _loadBipedSet(file, animFiles, label, onProgress, startIdx, total
     for (const [name, animFile] of Object.entries(animFiles)) {
       const clip = clips.get(animFile.replace(/\.glb$/, ''));
       if (clip) animations[name] = clip;
-      else console.warn(`[EnemyGLB] ${label} missing clip ${animFile}`);
+      else reportLoadError('EnemyGLB', file, new Error(`${label} missing clip ${animFile}`));
     }
   } catch (e) {
-    console.warn(`[EnemyGLB] Failed to load ${label}:`, e.message);
+    reportLoadError('EnemyGLB', file, e);
   }
   const idx = startIdx + Object.keys(animFiles).length;
   if (onProgress) onProgress(idx, total, label);
@@ -138,8 +138,9 @@ export async function loadEnemyTemplates(onProgress) {
       try {
         gltf = await _cachedGLB(url);
       } catch (e) {
-        if (!fallback) throw e;
-        console.warn(`[EnemyGLB] ${key}: ${url} failed (${e.message}), using ${fallback}`);
+        if (!fallback || isCodeBug(e)) throw e;
+        reportLoadError('EnemyGLB', url, e); // recorded, then the old model stands in
+        console.warn(`[EnemyGLB] ${key}: using fallback ${fallback}`);
         gltf = await _cachedGLB(fallback);
         v2 = false;
       }
@@ -158,7 +159,7 @@ export async function loadEnemyTemplates(onProgress) {
         _templates.jet = { scene: s, animations: gltf.animations };
       }
     } catch (e) {
-      console.warn(`[EnemyGLB] Failed to load ${key}:`, e.message);
+      reportLoadError('EnemyGLB', url, e);
     }
     loaded++;
     if (onProgress) onProgress(loaded, total, key);
@@ -1067,3 +1068,16 @@ export class BossMech {
   }
 }
 
+
+/** Loaded enemy templates, for tools/smoke_test.mjs (read-only). */
+export function getTemplateStats() {
+  const anims = (t) => (t ? Object.keys(t.animations) : []);
+  return {
+    tank: !!_templates.tank && _templates.tank.v2, tankAnims: _templates.tankAnims.length,
+    helicopter: !!_templates.helicopter && _templates.helicopter.v2,
+    artillery: !!_templates.artillery && _templates.artillery.v2,
+    jet: !!_templates.jet,
+    soldier: { loaded: anims(_templates.soldier), expected: Object.keys(SOLDIER_ANIMS) },
+    mech: { loaded: anims(_templates.mech), expected: Object.keys(MECH_ANIMS) },
+  };
+}

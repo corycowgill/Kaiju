@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { cachedFetch, normalizeGLTFMaterials, withParseSlot } from './assetCache.js';
+import { cachedFetch, normalizeGLTFMaterials, withParseSlot, reportLoadError } from './assetCache.js';
 
 /** Fetch a GLB via the asset cache, then parse it with GLTFLoader. */
 function _cachedGLB(loader, url) {
@@ -151,7 +151,7 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   const clipsByName = new Map(gltf.animations.map((c) => [c.name, c]));
   for (const [name, animFile] of Object.entries(anims)) {
     const clip = clipsByName.get(animFile.replace(/\.glb$/, ''));
-    if (!clip) { console.warn(`[KaijuLoader] Missing clip "${animFile}" for "${name}"`); continue; }
+    if (!clip) { reportLoadError('KaijuLoader', file, new Error(`missing clip "${animFile}" for "${name}"`)); continue; }
     animations[name] = clip;
     actions[name] = mixer.clipAction(clip);
   }

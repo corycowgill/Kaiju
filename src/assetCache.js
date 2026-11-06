@@ -14,20 +14,29 @@
 
 import { isMobile } from './quality.js';
 import { MOBILE_VARIANTS } from './mobileAssets.js';
+import { KTX2_VARIANTS } from './ktx2Assets.js';
+import { ASSET_HASHES } from './assetManifest.js';
 
 // On mobile, swap in the reduced-texture copies under assets/m/ (512px
 // textures, 1024px for the kaiju/mech; see tools/make_mobile_assets.mjs).
 // Keeps an iPhone's decoded textures in budget with the full GLB city.
 // ?mtex=full forces the originals (testing).
 const MOBILE_TEX = isMobile && !/[?&]mtex=full\b/.test(location.search);
+// Desktop: GPU-compressed KTX2 copies under assets/ktx2/ (see
+// tools/make_ktx2_assets.mjs), enabled by city.enableKTX2() once a
+// KTX2Loader is attached to the GLTFLoader. ?ktx2=0 disables (testing).
+let _ktx2On = false;
+export function setKTX2Enabled(v) { _ktx2On = !!v && !/[?&]ktx2=0\b/.test(location.search); }
 export function assetURL(url) {
-  if (!MOBILE_TEX) return url;
   const m = url.match(/^(\.\/)?assets\/(.+)$/);
-  return m && MOBILE_VARIANTS.has(m[2]) ? `${m[1] || ''}assets/m/${m[2]}` : url;
+  if (!m) return url;
+  if (MOBILE_TEX) return MOBILE_VARIANTS.has(m[2]) ? `${m[1] || ''}assets/m/${m[2]}` : url;
+  if (_ktx2On && KTX2_VARIANTS.has(m[2])) return `${m[1] || ''}assets/ktx2/${m[2]}`;
+  return url;
 }
 
 // ---- Bump this when assets change to force a re-download ----
-const ASSET_VERSION = '1.7.4';
+const ASSET_VERSION = '1.8.0';
 
 const DB_NAME = 'KaijuAssetCache';
 const DB_VERSION = 1;
@@ -101,10 +110,13 @@ export async function initAssetCache() {
     // iOS Safari can leave indexedDB.open / the first transaction pending
     // forever; time out and play from the network instead of hanging the load.
     _db = await _withTimeout(_openDB(), IDB_TIMEOUT_MS, 'IDB open');
+    // Entries are versioned per file (see _tagFor), so a changed asset only
+    // re-downloads itself. A new ASSET_VERSION no longer wipes everything; it
+    // just prunes entries that are stale or no longer in the manifest.
     const storedVersion = await _withTimeout(_idbGet(META_STORE, 'version'), IDB_TIMEOUT_MS, 'IDB get');
     if (storedVersion !== ASSET_VERSION) {
-      console.log(`[AssetCache] Version mismatch (${storedVersion} → ${ASSET_VERSION}), clearing cache`);
-      await _withTimeout(_idbClear(STORE_NAME), IDB_TIMEOUT_MS, 'IDB clear');
+      console.log(`[AssetCache] Version ${storedVersion} → ${ASSET_VERSION}: pruning stale entries`);
+      _pruneStale().catch((e) => console.warn('[AssetCache] prune failed:', e.message || e.name));
       await _withTimeout(_idbPut(META_STORE, 'version', ASSET_VERSION), IDB_TIMEOUT_MS, 'IDB put');
       return false;
     }
@@ -162,13 +174,41 @@ async function _networkFetch(url) {
       if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${url}`);
       return await res.arrayBuffer();
     } catch (e) {
-      if (attempt >= 1) throw e;
+      // fetch() rejects with a TypeError on network errors: tag it so
+      // reportLoadError() doesn't mistake it for a code bug.
+      if (attempt >= 1) { e.loadFailure = true; throw e; }
       console.warn('[AssetCache] retrying', url, e.message);
       await new Promise((r) => setTimeout(r, 600));
     } finally {
       clearTimeout(t);
     }
   }
+}
+
+// Per-file cache tag: the content hash from the generated manifest, else
+// ASSET_VERSION (files not in the manifest still refresh on a version bump).
+function _tagFor(key) { return ASSET_HASHES[key] || `v${ASSET_VERSION}`; }
+
+// Drop entries whose stored tag no longer matches (or old-format raw buffers,
+// or files gone from the manifest), so the quota isn't held by dead assets.
+async function _pruneStale() {
+  const keys = await _withTimeout(new Promise((resolve, reject) => {
+    const req = _tx(STORE_NAME).getAllKeys();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }), IDB_TIMEOUT_MS, 'IDB keys');
+  let dropped = 0;
+  for (const key of keys) {
+    const v = await _withTimeout(_idbGet(STORE_NAME, key), IDB_TIMEOUT_MS, 'IDB get');
+    if (v && v.tag === _tagFor(key)) continue;
+    await _withTimeout(new Promise((resolve, reject) => {
+      const req = _tx(STORE_NAME, 'readwrite').delete(key);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    }), IDB_TIMEOUT_MS, 'IDB delete');
+    dropped++;
+  }
+  if (dropped) console.log(`[AssetCache] pruned ${dropped} stale entries`);
 }
 
 function _disableCache(why) {
@@ -182,22 +222,26 @@ function _disableCache(why) {
  * Fetch an asset, returning an ArrayBuffer.
  * Serves from IndexedDB cache if available, otherwise fetches from network and caches.
  */
-export async function cachedFetch(url) {
-  url = assetURL(url);
+export async function cachedFetch(url, opts = {}) {
+  // opts.original: skip the mobile/KTX2 variant swap (fallback after a failure)
+  if (!opts.original) url = assetURL(url);
+  // Normalize URL to a stable cache key; the per-file tag (content hash)
+  // also busts the browser's HTTP cache when a file changes.
+  const key = _normKey(url);
+  const tag = _tagFor(key);
+  const netURL = `${url}${url.includes('?') ? '&' : '?'}h=${tag}`;
   if (!_enabled || !_db) {
     _misses++;
-    return _fetchSlot(() => _networkFetch(url));
+    return _fetchSlot(() => _networkFetch(netURL));
   }
 
-  // Normalize URL to a stable cache key
-  const key = _normKey(url);
-
-  // Try cache first
+  // Try cache first: entries are { tag, buf }; a different tag (file changed)
+  // or an old-format raw buffer is a miss and gets overwritten below.
   try {
     const cached = await _withTimeout(_idbGet(STORE_NAME, key), IDB_TIMEOUT_MS, 'IDB get');
-    if (cached) {
+    if (cached && cached.tag === tag && cached.buf) {
       _hits++;
-      return cached;
+      return cached.buf;
     }
   } catch (e) {
     // Hung or closed DB (iOS drops IDB connections under memory pressure or
@@ -207,13 +251,13 @@ export async function cachedFetch(url) {
 
   // Network fetch → store → return
   _misses++;
-  const buf = await _fetchSlot(() => _networkFetch(url));
+  const buf = await _fetchSlot(() => _networkFetch(netURL));
 
   // Store in background (don't block the return). On iOS Safari the quota is
   // limited and puts can fail or abort; any failure just stops cache writes.
   if (_writes && _db) {
     try {
-      _withTimeout(_idbPut(STORE_NAME, key, buf), IDB_TIMEOUT_MS * 2, 'IDB put').catch((e) => {
+      _withTimeout(_idbPut(STORE_NAME, key, { tag, buf }), IDB_TIMEOUT_MS * 2, 'IDB put').catch((e) => {
         console.warn('[AssetCache] Failed to store:', key, e.message || e.name, '- disabling cache writes');
         _writes = false;
       });
@@ -240,6 +284,83 @@ export async function cachedBlobURL(url, mimeType) {
  */
 export function getCacheStats() {
   return { hits: _hits, misses: _misses, enabled: _enabled, version: ASSET_VERSION };
+}
+
+// ---- Load-error reporting ----
+// Every loader fallback is recorded in window.__loadErrors as
+// { where, url, message, bug }. A ReferenceError / TypeError / SyntaxError
+// thrown by our own code in a loader's success path (e.g. a renamed helper)
+// used to look exactly like a failed download and silently swap in fallback
+// content. Those are flagged bug: true and rethrown on a fresh task so they
+// reach the console and window.onerror with their stack, while the loader's
+// own promise still settles (boot never waits on it). A corrupt GLB that
+// GLTFLoader chokes on can also land here as a SyntaxError; that is worth
+// surfacing too. Network failures are tagged loadFailure in _networkFetch.
+const _DEBUG_LOADS = /[?&]debug\b/.test(location.search);
+const _loadErrors = (window.__loadErrors = window.__loadErrors || []);
+
+export function isCodeBug(err) {
+  return !!err && !err.loadFailure &&
+    (err instanceof ReferenceError || err instanceof TypeError || err instanceof SyntaxError);
+}
+
+/** Record a loader failure / fallback; surface code bugs (see above). */
+export function reportLoadError(where, url, err) {
+  const bug = isCodeBug(err);
+  const message = (err && (err.message || err.name)) || String(err);
+  _loadErrors.push({ where, url: url || '', message, bug });
+  if (bug) {
+    console.error(`[${where}] code bug while loading ${url || ''}:`, err);
+    setTimeout(() => { throw err; }, 0);
+  } else {
+    console.warn(`[${where}] failed to load ${url || ''}:`, message);
+  }
+  _updateLoadErrorBanner();
+}
+
+/** console.warn the first time `key` is seen (errors in per-frame or per-spawn
+ *  paths that must not stop the game but shouldn't vanish silently either). */
+const _warnedKeys = new Set();
+export function warnOnce(key, ...args) {
+  if (_warnedKeys.has(key)) return;
+  _warnedKeys.add(key);
+  console.warn(...args);
+}
+
+// Small dismissible banner (fixed, so it shows over the loading screen and
+// the title menu): with ?debug always, otherwise only after a code bug.
+let _banner = null, _bannerText = null, _bannerDismissed = false;
+function _updateLoadErrorBanner() {
+  if (_bannerDismissed || typeof document === 'undefined' || !document.body) return;
+  if (!_DEBUG_LOADS && !_loadErrors.some((e) => e.bug)) return;
+  if (!_banner) {
+    _banner = document.createElement('div');
+    _banner.id = 'load-error-banner';
+    // Bottom-left: index.html's ?debug log (#debug-banner) owns the top edge
+    _banner.style.cssText = 'position:fixed;bottom:8px;left:8px;z-index:10001;max-width:min(560px,92vw);'
+      + 'max-height:40vh;overflow:auto;padding:6px 28px 6px 10px;background:rgba(70,0,10,0.92);'
+      + 'color:#ffd6d6;font:12px/1.4 monospace;border:1px solid #ff5566;border-radius:4px;'
+      + 'pointer-events:auto;white-space:pre-wrap;';
+    _bannerText = document.createElement('div');
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '✕';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.style.cssText = 'position:absolute;top:2px;right:4px;background:none;border:0;color:#ffd6d6;'
+      + 'font:14px monospace;cursor:pointer;';
+    close.addEventListener('click', () => { _bannerDismissed = true; _banner.remove(); });
+    _banner.append(_bannerText, close);
+    document.body.appendChild(_banner);
+  }
+  const bugs = _loadErrors.filter((e) => e.bug).length;
+  const lines = _loadErrors.slice(-8).map((e) =>
+    `${e.bug ? 'BUG ' : ''}${e.where}: ${e.url.split('/').pop()} ${e.message}`);
+  _bannerText.textContent = `ASSET LOAD ERRORS: ${_loadErrors.length}` + (bugs ? ` (${bugs} code bug${bugs > 1 ? 's' : ''})` : '')
+    + (lines.length ? '\n' + lines.join('\n') : '');
+}
+if (_DEBUG_LOADS) {
+  if (typeof document !== 'undefined' && document.body) _updateLoadErrorBanner();
+  else if (typeof window.addEventListener === 'function') window.addEventListener('DOMContentLoaded', _updateLoadErrorBanner);
 }
 
 /**

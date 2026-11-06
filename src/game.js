@@ -8,9 +8,10 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, flushPendingGLBBuildings } from './city.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, flushPendingGLBBuildings, enableKTX2 } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
@@ -23,7 +24,7 @@ import {
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
-import { initAssetCache, getCacheStats, disposeInstance, markShared } from './assetCache.js';
+import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
 import vfx, { listBuilders, resetPooledLights } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
@@ -111,7 +112,7 @@ const RP = isMobile ? {
   dynRes:    true,
 } : {
   pr:        Q_HIGH ? 1.5 : (Q_MED ? 1.25 : 1.0),
-  prMin:     Q_HIGH ? 1.5 : (Q_MED ? 1.25 : 1.0),
+  prMin:     1.0,                                 // dynamic-res floor
   post:      true,
   bloomScale: 0.5,
   cine:      !Q_LOW,
@@ -120,13 +121,17 @@ const RP = isMobile ? {
   shadowMap: 1024,
   shadowHalf: 112,
   shadowType: THREE.PCFSoftShadowMap,
-  neon:      Q_HIGH ? 3 : (Q_MED ? 5 : 4),
-  dynRes:    false,
+  neon:      Q_HIGH ? 3 : (Q_MED ? 3 : 4),   // MED was 5 (+3 pool = 10 lights > HIGH's 8)
+  dynRes:    true,
 };
 let renderer;
 try {
   renderer = new THREE.WebGLRenderer({
-    antialias: !isMobile && Q_HIGH,
+    // Off on every tier: every tier that could afford MSAA renders through
+    // the post composer, whose render targets are not multisampled, so
+    // the default-framebuffer MSAA only antialiased the final full-screen
+    // blit (no visual gain) while costing ~100-150 MB + a resolve/frame.
+    antialias: false,
     // Mobile keeps 'default': on iOS 'high-performance' only matters on
     // dual-GPU Macs, and on Android it can pin the big cores / heat up.
     powerPreference: isMobile ? 'default' : 'high-performance',
@@ -154,6 +159,10 @@ game.appendChild(renderer.domElement);
 // player, then reload -- on phones one tier lower (MED -> LOW = procedural
 // city), on desktop at the same tier (a GPU reset, not a budget problem).
 // A per-session counter stops a reload loop if it keeps happening.
+// Desktop: GPU-compressed (KTX2/Basis) building textures, ~1/4 the VRAM of
+// the JPEG copies. Phones keep their 512px JPEG copies (assets/m/).
+if (!isMobile) enableKTX2(renderer);
+
 renderer.domElement.addEventListener('webglcontextlost', (e) => {
   e.preventDefault();
   let losses = 0;
@@ -191,6 +200,64 @@ const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerH
 // composer chain matches the colour pipeline regardless of pass order.
 let composer = null;
 let bloomPass = null;
+
+// God rays at reduced resolution: the 12-tap radial blur toward the sun
+// used to run per full-res pixel inside the cine pass. This pass renders
+// it into a half-res target (it is a soft blur, so the upsample is not
+// visible); the cine pass adds it back with one bilinear tap. No swap:
+// the colour buffer passes through untouched.
+class GodRayPass extends Pass {
+  constructor(samples, scale) {
+    super();
+    this.needsSwap = false;
+    this.scale = scale;
+    this.rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+    this.uniforms = {
+      tDiffuse: { value: null },
+      sunPos:   { value: new THREE.Vector2(0.85, 0.62) },
+      godStr:   { value: 0 },
+    };
+    this.material = new THREE.ShaderMaterial({
+      uniforms: this.uniforms,
+      vertexShader: `
+        varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform vec2 sunPos;
+        uniform float godStr;
+        varying vec2 vUv;
+        void main() {
+          if (godStr <= 0.0) { gl_FragColor = vec4(0.0); return; }
+          vec2 toSun = sunPos - vUv;
+          vec3 ray = vec3(0.0);
+          float decay = 1.0;
+          for (int i = 0; i < ${samples}; i++) {
+            float t = float(i) / float(${samples});
+            vec3 s = texture2D(tDiffuse, vUv + toSun * (t * 0.45)).rgb;
+            float lum = dot(s, vec3(0.299, 0.587, 0.114));
+            ray += s * smoothstep(0.55, 1.4, lum) * decay;
+            decay *= 0.92;
+          }
+          ray /= float(${samples});
+          gl_FragColor = vec4(ray * vec3(1.10, 0.85, 0.55) * godStr, 1.0);
+        }
+      `,
+      depthTest: false, depthWrite: false,
+    });
+    this.fsQuad = new FullScreenQuad(this.material);
+  }
+  setSize(w, h) {
+    this.rt.setSize(Math.max(1, Math.round(w * this.scale)), Math.max(1, Math.round(h * this.scale)));
+  }
+  render(renderer, writeBuffer, readBuffer) {
+    this.uniforms.tDiffuse.value = readBuffer.texture;
+    renderer.setRenderTarget(this.rt);
+    this.fsQuad.render(renderer);
+  }
+  dispose() { this.rt.dispose(); this.material.dispose(); this.fsQuad.dispose(); }
+}
 // Post on desktop and on mobile MED/HIGH (mobile LOW renders direct).
 if (RP.post) {
   composer = new EffectComposer(renderer);
@@ -222,6 +289,7 @@ if (RP.post) {
       // God-ray strength + sample density. HIGH does 12 samples; MED 6.
       godStr:   { value: RP.godRays ? (Q_HIGH ? 0.55 : 0.30) : 0.0 },
       gradeMix: { value: Q_HIGH ? 0.35 : 0.25 },
+      tGod:     { value: null },
     };
     const SAMPLES = Q_HIGH ? 12 : 6;
     // Mobile variant compiles CA, god rays and grain out entirely (one
@@ -249,6 +317,7 @@ if (RP.post) {
         uniform float ca;
         uniform vec2  sunPos;
         uniform float godStr;
+        uniform sampler2D tGod;
         uniform float gradeMix;
         varying vec2 vUv;
         float hash(vec2 p, float t) {
@@ -281,23 +350,7 @@ if (RP.post) {
           // sample steps toward the sun and we take a small contribution.
           // Cheap: only the bright pixels (luminance threshold) contribute.
           #ifdef USE_GODRAYS
-          if (godStr > 0.0) {
-            vec2 toSun = sunPos - vUv;
-            vec3 ray = vec3(0.0);
-            float decay = 1.0;
-            for (int i = 0; i < ${SAMPLES}; i++) {
-              float t = float(i) / float(${SAMPLES});
-              vec2 sUV = vUv + toSun * (t * 0.45);
-              vec3 s = texture2D(tDiffuse, sUV).rgb;
-              float lum = dot(s, vec3(0.299, 0.587, 0.114));
-              ray += s * smoothstep(0.55, 1.4, lum) * decay;
-              decay *= 0.92;
-            }
-            ray /= float(${SAMPLES});
-            // Sun-direction tint: warm orange streaks
-            ray *= vec3(1.10, 0.85, 0.55);
-            col += ray * godStr;
-          }
+          col += texture2D(tGod, vUv).rgb; // half-res GodRayPass (pre-scaled by godStr)
           #endif
 
           // Colour grade
@@ -314,14 +367,30 @@ if (RP.post) {
           #endif
 
           gl_FragColor = vec4(col, 1.0);
+          // Output transform folded in (was a separate OutputPass: one
+          // fewer full-screen pass). three injects the tone-mapping +
+          // sRGB functions for a ShaderMaterial drawn to the screen, which
+          // the cine pass is as the composer's last pass; exposure comes
+          // from renderer.toneMappingExposure, as with OutputPass.
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
         }
       `,
     });
+    if (RP.godRays) {
+      const godPass = new GodRayPass(SAMPLES, 0.5);
+      // Share the uniform objects the per-frame sun update writes into.
+      godPass.uniforms.sunPos = cinePass.uniforms.sunPos;
+      godPass.uniforms.godStr = cinePass.uniforms.godStr;
+      godPass.material.uniforms = godPass.uniforms;
+      cinePass.uniforms.tGod.value = godPass.rt.texture;
+      composer.addPass(godPass);
+    }
     composer.addPass(cinePass);
     window.__cinePass = cinePass;
+  } else {
+    composer.addPass(new OutputPass());
   }
-
-  composer.addPass(new OutputPass());
 } // end if (RP.post) post-processing
 
 // Lighting: dramatic dusk
@@ -363,7 +432,7 @@ scene.add(ambient);
 // slightly longer reach to cover the gaps. Short distance + decay so they
 // only colour the immediate street level.
 const NEON_PALETTE = [0xff3388, 0x33ddff, 0xffaa44, 0xff66ff, 0x66ff99, 0xffee44];
-const NEON_COUNT = RP.neon; // desktop 3/5/4, mobile 3 (HIGH) / 2
+const NEON_COUNT = RP.neon; // desktop 3/3/4, mobile 3 (HIGH) / 2
 const _neonLights = [];
 const _neonPhase = Math.random() * Math.PI * 2;
 for (let i = 0; i < NEON_COUNT; i++) {
@@ -414,6 +483,9 @@ const skyMat = new THREE.ShaderMaterial({
     }`
 });
 const sky = new THREE.Mesh(skyGeom, skyMat);
+// Sky dome last among opaques: it is behind everything (r=1500), so drawn
+// after the city the depth test skips it wherever buildings/ground cover it.
+sky.renderOrder = 2;
 scene.add(sky);
 
 // Phase 3 of graphics plan: image-based lighting via PMREMGenerator. Render
@@ -753,7 +825,7 @@ if (GLB_CONTENT) {
     await Promise.all([loadTreeTemplates(), loadPedestrianTemplates(), loadCarTemplates()]);
     window.__dbg && window.__dbg('DBG · tree + pedestrian templates loaded', '#9f9');
   } catch (e) {
-    console.warn('[PreLoad] Tree/pedestrian template loading failed, using procedural fallbacks:', e.message);
+    reportLoadError('PreLoad', 'tree/pedestrian/car templates', e); // procedural fallbacks
   }
 } else {
   window.__dbg && window.__dbg('DBG · LOW phone: skipping tree/ped GLB preload');
@@ -1401,8 +1473,8 @@ function _compileStaged(stage, label) {
 
 function _prewarmBackground() {
   const stage = new THREE.Group();
-  try { spawnCars(stage, 1, 10, 40); } catch (e) { /* ignore */ }
-  try { spawnCivilians(stage, 1, 10); } catch (e) { /* ignore */ }
+  try { spawnCars(stage, 1, 10, 40); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
+  try { spawnCivilians(stage, 1, 10); } catch (e) { warnOnce('prewarm|civs', '[prewarm] civilian spawn failed:', e); }
   const stubWorld = Object.create(world);
   stubWorld.scene = stage; stubWorld.effects = []; stubWorld.shells = []; stubWorld.debris = [];
   const P = new THREE.Vector3(0, 2, 0), D = new THREE.Vector3(0, 0, 1), B = new THREE.Vector3(0, 2, 10);
@@ -1411,7 +1483,10 @@ function _prewarmBackground() {
       vfx.spawn(name, { world: stubWorld, pos: P.clone(), origin: P.clone(), dir: D.clone(), length: 20,
         color: 0xffaa33, glowColor: 0xffffff, a: P.clone(), b: B.clone(), life: 0.5, segs: 6, radius: 10,
         count: 2, fromPos: P.clone(), toPos: B.clone(), args: [] });
-    } catch (e) { /* builder needs a fuller world: it compiles on first use instead */ }
+    } catch (e) {
+      // Builder needs a fuller world: its shaders compile on first use instead
+      warnOnce('prewarm|' + name, `[prewarm] vfx '${name}' not prewarmed (compiles on first use):`, e.message);
+    }
   }
   resetPooledLights();
   return _compileStaged(stage, 'menu');
@@ -1421,17 +1496,47 @@ async function _prewarmShaders(kaijuRoot) {
   const stage = new THREE.Group();
   if (kaijuRoot) stage.add(kaijuRoot);
   for (const C of [Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech]) {
-    try { stage.add(new C(0, 0).root); } catch (e) { /* template missing: nothing to warm */ }
+    try { stage.add(new C(0, 0).root); } catch (e) {
+      warnOnce('prewarm|' + C.name, `[prewarm] ${C.name} not prewarmed (template missing?):`, e.message);
+    }
   }
   const run = _compileStaged(stage, 'run');
   // compile() has already built the programs synchronously; the kaiju can
   // leave the stage now (and must not have its skeleton disposed later).
   if (kaijuRoot) stage.remove(kaijuRoot);
   if (!_prewarmBg) _prewarmBg = _prewarmBackground();
+  const upload = _preuploadTextures([scene, stage, kaijuRoot]);
   await Promise.race([
-    Promise.all([_prewarmBg, run]),
+    Promise.all([_prewarmBg, run, upload]),
     new Promise((r) => setTimeout(r, PREWARM_BLOCK_MS)),
   ]);
+}
+
+// Upload every texture the run samples (city, kaiju, staged enemies, and
+// ShaderMaterial uniforms) during the loading screen; otherwise the first
+// gameplay frame uploads them all at once (a 200-600 ms stall). Chunked with
+// yields so the loading screen keeps painting; idempotent across restarts
+// (initTexture skips textures that are already on the GPU).
+const _TEX_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap', 'envMap'];
+async function _preuploadTextures(roots) {
+  const t0 = performance.now();
+  const texs = new Set();
+  const add = (t) => { if (t && t.isTexture) texs.add(t); };
+  for (const r of roots) {
+    if (!r) continue;
+    r.traverse((o) => {
+      for (const m of [].concat(o.material || [])) {
+        for (const k of _TEX_KEYS) add(m[k]);
+        if (m.uniforms) for (const u of Object.values(m.uniforms)) add(u && u.value);
+      }
+    });
+  }
+  let i = 0;
+  for (const t of texs) {
+    try { renderer.initTexture(t); } catch (e) { /* uploads on first use instead */ }
+    if (++i % 6 === 0) await new Promise((r) => setTimeout(r, 0));
+  }
+  console.log(`[prewarm:textures] ${texs.size} textures uploaded in ${(performance.now() - t0).toFixed(0)} ms`);
 }
 
 // "UNLEASH AGAIN": reset the run without reloading the page, so the parsed
@@ -1495,7 +1600,7 @@ async function startGame(key) {
   try {
     await _startGameInner(key);
   } catch (e) {
-    console.error('[startGame] failed', e);
+    reportLoadError('startGame', key, e);
     document.getElementById('loading-screen')?.classList.remove('visible');
     toast('LOADING FAILED · TAP START TO RETRY', 'bad');
   } finally {
@@ -3591,6 +3696,8 @@ function _disposeDebris(d) {
 }
 
 function updateWorld(dt) {
+  // Shared instanced sparks/shrapnel/embers (one draw for all of them).
+  vfx.tickParticles(dt);
   // Effects
   for (let i = world.effects.length - 1; i >= 0; i--) {
     world.effects[i].tick(dt);
@@ -4012,23 +4119,32 @@ if (muteBtn) {
 
 // ------------------------- Main loop -------------------------
 let last = performance.now();
-// Dynamic resolution (mobile only): if the smoothed frame time stays over
-// 20 ms for 2 s, drop the pixel ratio by 0.1 (floor RP.prMin); if it stays
-// under 14 ms for 4 s, raise it by 0.05 back toward the tier's PR. Only
-// measured during gameplay frames (menus are throttled to ~15 fps).
-const _dyn = { ema: 16.7, slowT: 0, fastT: 0 };
+// Dynamic resolution (desktop floor 1.0, mobile RP.prMin): if the
+// smoothed frame time stays over 20 ms for 2 s, drop the pixel ratio by 0.1.
+// Raise by 0.05 after 5 s at <= 17.5 ms, i.e. holding vsync: on a 60 Hz
+// display the frame time never goes below 16.7 ms, so the old "< 14 ms"
+// rule could never recover a lowered PR. A PR that proved too slow becomes
+// a ceiling for 30 s so it doesn't oscillate. Only measured during
+// gameplay frames (menus are throttled to ~15 fps).
+const _dyn = { ema: 16.7, slowT: 0, fastT: 0, ceil: Infinity, ceilUntil: 0 };
 function _dynResTick(dtRaw) {
   if (!RP.dynRes || dtRaw <= 0 || dtRaw > 0.25) return;
   const ms = dtRaw * 1000;
   _dyn.ema += (ms - _dyn.ema) * 0.1;
-  const maxPR = Math.min(window.devicePixelRatio, QUALITY_PR);
-  const minPR = Math.min(maxPR, RP.prMin);
+  const now = performance.now();
+  if (now > _dyn.ceilUntil) _dyn.ceil = Infinity;
+  const maxPR = Math.min(window.devicePixelRatio, QUALITY_PR, _dyn.ceil);
+  const minPR = Math.min(Math.min(window.devicePixelRatio, QUALITY_PR), RP.prMin);
   if (_dyn.ema > 20) { _dyn.slowT += dtRaw; _dyn.fastT = 0; }
-  else if (_dyn.ema < 14) { _dyn.fastT += dtRaw; _dyn.slowT = 0; }
+  else if (_dyn.ema <= 17.5) { _dyn.fastT += dtRaw; _dyn.slowT = 0; }
   else { _dyn.slowT = 0; _dyn.fastT = 0; }
   let next = _curPR;
-  if (_dyn.slowT > 2 && _curPR > minPR + 1e-3) next = Math.max(minPR, _curPR - 0.1);
-  else if (_dyn.fastT > 4 && _curPR < maxPR - 1e-3) next = Math.min(maxPR, _curPR + 0.05);
+  if (_dyn.slowT > 2 && _curPR > minPR + 1e-3) {
+    _dyn.ceil = _curPR - 0.01; _dyn.ceilUntil = now + 30000;
+    next = Math.max(minPR, _curPR - 0.1);
+  } else if (_dyn.fastT > 5 && _curPR < maxPR - 1e-3) {
+    next = Math.min(maxPR, _curPR + 0.05);
+  }
   if (next !== _curPR) {
     _curPR = next;
     _dyn.slowT = 0; _dyn.fastT = 0;

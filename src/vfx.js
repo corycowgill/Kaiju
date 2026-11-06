@@ -12,8 +12,8 @@
 // degrades gracefully on failure.
 
 import * as THREE from 'three';
-import { QUALITY_PROFILE, LEGACY_VFX } from './quality.js';
-import { disposeInstance, markShared } from './assetCache.js';
+import { QUALITY_PROFILE, LEGACY_VFX, Q_HIGH, isMobile } from './quality.js';
+import { disposeInstance, markShared, warnOnce, reportLoadError } from './assetCache.js';
 
 let initialized = false;
 
@@ -32,7 +32,9 @@ const _flipbookCache = new Map();
 const _loader = new THREE.TextureLoader();
 
 function _resolveFlipbookURL(baseName) {
-  const res = QUALITY_PROFILE.flipbookRes;
+  // The 'med' profile is shared by desktop and phones; phones below HIGH
+  // take the @512 sheets (64 px frames, ~4x less VRAM/bandwidth).
+  const res = (isMobile && !Q_HIGH) ? Math.min(512, QUALITY_PROFILE.flipbookRes) : QUALITY_PROFILE.flipbookRes;
   const suffix = res >= 2048 ? '@2k' : res >= 1024 ? '@1k' : '@512';
   return `assets/vfx/${baseName}${suffix}.webp`;
 }
@@ -72,7 +74,7 @@ export function init(_scene) {
   if (LEGACY_VFX) return;
   for (const name of FLIPBOOKS) {
     loadFlipbook(name).then((tex) => { _flipTex[name] = tex; })
-      .catch(() => { /* keep procedural fallback */ });
+      .catch((e) => reportLoadError('Flipbook', name, e instanceof Error ? e : new Error('image load failed'))); // procedural fallback
   }
 }
 
@@ -130,7 +132,11 @@ class VFXEffect {
     if (this.life <= 0) {
       if (!this._cleaned) {
         this._cleaned = true;
-        try { this.update(0, 1, this); } catch (e) {}
+        try { this.update(0, 1, this); } catch (e) {
+          // Once per effect type (keyed by the throwing callback's frame)
+          const where = ((e && e.stack) || '').split('\n')[1] || '';
+          warnOnce('vfx-cleanup|' + where + (e && e.message), '[vfx] final cleanup threw (meshes may leak):', e);
+        }
         // Free the per-spawn geometry (module-level _G_* stay; see markShared).
         disposeInstance(this.mesh);
       }
@@ -141,6 +147,126 @@ class VFXEffect {
     this.update(dt, t, this);
   }
 }
+
+// ----- Shared instanced particle pool (sparks, shrapnel, embers) -----
+//
+// Every spark/shrapnel/ember in the game is an instance of ONE additive
+// InstancedMesh, so a stomp that collapses 10 buildings costs 1 draw for
+// all its particles instead of 22 meshes per explosion. CPU-side SoA
+// arrays; live particles are kept packed in [0, _pCount) (swap-remove).
+// Colours are HDR (>1) so bloom carries them; fade = colour -> black,
+// which under additive blending is invisible.
+const PMUL = QUALITY_PROFILE.particleMul;
+const _PCAP = PMUL >= 1 ? 768 : (PMUL >= 0.5 ? 384 : 192);
+const _G_PART = new THREE.OctahedronGeometry(1, 0);
+const _pMat = new THREE.MeshBasicMaterial({
+  color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const _pPos = new Float32Array(_PCAP * 3);
+const _pVel = new Float32Array(_PCAP * 3);
+const _pCol = new Float32Array(_PCAP * 3);
+const _pAge = new Float32Array(_PCAP);
+const _pLife = new Float32Array(_PCAP);
+const _pSize = new Float32Array(_PCAP);
+const _pGrav = new Float32Array(_PCAP);
+let _pCount = 0;
+let _pIM = null;
+const _pTmpCol = new THREE.Color();
+function _ensurePool(scene) {
+  if (!_pIM) {
+    _pIM = new THREE.InstancedMesh(_G_PART, _pMat, _PCAP);
+    _pIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    _pIM.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(_PCAP * 3), 3);
+    _pIM.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    _pIM.frustumCulled = false;
+    _pIM.renderOrder = 4;
+    _pIM.count = 0;
+    _pIM.userData.vfxPool = true;
+  }
+  if (_pIM.parent !== scene) {
+    // New scene / after an in-place restart swept it: drop stale particles.
+    _pCount = 0; _pIM.count = 0;
+    scene.add(_pIM);
+  }
+}
+// o: { speed:[min,max], up:[min,max] (vertical speed), spread (0..1 of
+//      horizontal speed), gravity, life:[min,max], size, color (hex),
+//      hdr (colour multiplier) }
+export function emitParticles(world, pos, n, o) {
+  if (!world || !world.scene || n <= 0) return;
+  _ensurePool(world.scene);
+  _pTmpCol.set(o.color !== undefined ? o.color : 0xffcc66).multiplyScalar(o.hdr || 2.0);
+  const sp = o.speed || [2, 6], up = o.up || [2, 8], life = o.life || [0.5, 0.8];
+  for (let k = 0; k < n; k++) {
+    if (_pCount >= _PCAP) return; // pool full: drop the rest
+    const i = _pCount++;
+    const a = Math.random() * Math.PI * 2;
+    const v = sp[0] + Math.random() * (sp[1] - sp[0]);
+    _pPos[i * 3] = pos.x; _pPos[i * 3 + 1] = pos.y; _pPos[i * 3 + 2] = pos.z;
+    _pVel[i * 3] = Math.cos(a) * v;
+    _pVel[i * 3 + 1] = up[0] + Math.random() * (up[1] - up[0]);
+    _pVel[i * 3 + 2] = Math.sin(a) * v;
+    _pCol[i * 3] = _pTmpCol.r; _pCol[i * 3 + 1] = _pTmpCol.g; _pCol[i * 3 + 2] = _pTmpCol.b;
+    _pAge[i] = 0;
+    _pLife[i] = life[0] + Math.random() * (life[1] - life[0]);
+    _pSize[i] = (o.size || 0.15) * (0.75 + Math.random() * 0.5);
+    _pGrav[i] = o.gravity !== undefined ? o.gravity : 18;
+  }
+}
+export function tickParticles(dt) {
+  if (!_pIM || _pCount === 0) { if (_pIM) _pIM.count = 0; return; }
+  const m = _pIM.instanceMatrix.array, c = _pIM.instanceColor.array;
+  let i = 0;
+  while (i < _pCount) {
+    _pAge[i] += dt;
+    if (_pAge[i] >= _pLife[i]) {
+      // swap-remove with the last live particle
+      const j = --_pCount;
+      if (i !== j) {
+        for (let q = 0; q < 3; q++) {
+          _pPos[i * 3 + q] = _pPos[j * 3 + q]; _pVel[i * 3 + q] = _pVel[j * 3 + q]; _pCol[i * 3 + q] = _pCol[j * 3 + q];
+        }
+        _pAge[i] = _pAge[j]; _pLife[i] = _pLife[j]; _pSize[i] = _pSize[j]; _pGrav[i] = _pGrav[j];
+      }
+      continue;
+    }
+    const i3 = i * 3;
+    _pVel[i3 + 1] -= _pGrav[i] * dt;
+    _pPos[i3] += _pVel[i3] * dt; _pPos[i3 + 1] += _pVel[i3 + 1] * dt; _pPos[i3 + 2] += _pVel[i3 + 2] * dt;
+    if (_pPos[i3 + 1] < 0.1 && _pVel[i3 + 1] < 0) { // skid on the street
+      _pPos[i3 + 1] = 0.1; _pVel[i3 + 1] *= -0.25; _pVel[i3] *= 0.55; _pVel[i3 + 2] *= 0.55;
+    }
+    const f = 1 - _pAge[i] / _pLife[i];
+    const sc = _pSize[i] * (0.5 + 0.5 * f);
+    const o16 = i * 16;
+    m[o16] = sc; m[o16 + 1] = 0; m[o16 + 2] = 0; m[o16 + 3] = 0;
+    m[o16 + 4] = 0; m[o16 + 5] = sc; m[o16 + 6] = 0; m[o16 + 7] = 0;
+    m[o16 + 8] = 0; m[o16 + 9] = 0; m[o16 + 10] = sc; m[o16 + 11] = 0;
+    m[o16 + 12] = _pPos[i3]; m[o16 + 13] = _pPos[i3 + 1]; m[o16 + 14] = _pPos[i3 + 2]; m[o16 + 15] = 1;
+    c[i3] = _pCol[i3] * f; c[i3 + 1] = _pCol[i3 + 1] * f; c[i3 + 2] = _pCol[i3 + 2] * f;
+    i++;
+  }
+  _pIM.count = _pCount;
+  _pIM.instanceMatrix.needsUpdate = true;
+  _pIM.instanceColor.needsUpdate = true;
+}
+
+// Concurrency limiters (timestamp-based so dropped effects can't leak).
+function _slotLimiter(cap) {
+  const ends = [];
+  return (lifeSec) => {
+    const now = performance.now();
+    for (let i = ends.length - 1; i >= 0; i--) if (ends[i] <= now) ends.splice(i, 1);
+    if (ends.length >= cap) return false;
+    ends.push(now + lifeSec * 1000);
+    return true;
+  };
+}
+// Full explosions (ring + secondary bursts + smoke plume + scorch) beyond
+// this many in flight spawn "lite": the main fireball sprite only.
+const _fullExplosionSlot = _slotLimiter(PMUL >= 1 ? 8 : (PMUL >= 0.5 ? 6 : 4));
+// Standalone smoke puffs (damage thresholds, collapse dust plumes).
+const _smokePuffSlot = _slotLimiter(PMUL >= 1 ? 24 : (PMUL >= 0.5 ? 14 : 8));
 
 // ----- Flipbook billboards -----
 const FLIP_MAX_SIZE = 30;    // world units
@@ -514,7 +640,10 @@ const _FIREBALL_FS = `
 // init() so the scene's light count never changes during play: each change
 // would recompile every lit material's shader (the first-run hitch). Users
 // tag the light with _seq and only touch it while the tag is still theirs.
-const _MAX_LIGHTS = 5;
+// Sized per tier (every lit fragment evaluates every point light, even at
+// intensity 0): desktop HIGH 5, desktop MED/LOW 3, mobile 2. Constant
+// within a tier, so no runtime shader recompiles.
+const _MAX_LIGHTS = isMobile ? 2 : (Q_HIGH ? 5 : 3);
 const _vfxLightPool = [];
 let   _vfxLightCursor = 0;
 export function acquirePooledLight(scene) { return _acquireLight(scene); }
@@ -571,9 +700,11 @@ function _spawnExplosionShader(opts) {
   // Times are in seconds. Smoke renders first so the fire sits on top.
   const flips = [];
   const mainFb = _flipSprite('explosion_fireball_8x8', 1, { glow: 1.8 });
+  // Lite explosion: too many full ones already in flight (stomp collapses).
+  const lite = !!mainFb && !_fullExplosionSlot(2.9);
   if (mainFb) {
     let fbSize = 15 * scale;
-    const crowded = fbSize >= 10 && !_bigFireballSlot(1.3);
+    const crowded = lite || (fbSize >= 10 && !_bigFireballSlot(1.3));
     if (crowded) fbSize *= 0.55;
     flips.push({ m: mainFb, delay: 0, dur: 1.3, size: fbSize, y: 2.0 * scale, rise: 2.5 * scale });
     for (let i = 0; i < (crowded ? 0 : 2); i++) {
@@ -582,7 +713,7 @@ function _spawnExplosionShader(opts) {
       flips.push({ m: m2, delay: 0.05 + Math.random() * 0.15, dur: 0.9, size: (7 + Math.random() * 4) * scale,
                    y: (1 + Math.random() * 4) * scale, rise: 2 * scale });
     }
-    const sm = _flipSprite('smoke_plume_8x8', 1, { tint: 0x8c8680 });
+    const sm = lite ? null : _flipSprite('smoke_plume_8x8', 1, { tint: 0x8c8680 });
     if (sm) {
       sm.material.uniforms.opacity.value = crowded ? 0.55 : 0.85;
       flips.push({ m: sm, delay: 0.25, dur: 2.6, size: 17 * scale * (crowded ? 0.6 : 1), y: 4 * scale, rise: 9 * scale, smoke: true });
@@ -592,7 +723,7 @@ function _spawnExplosionShader(opts) {
       f.m.renderOrder = f.smoke ? 0 : 1;
       group.add(f.m);
     }
-    if (scale >= 0.4) _placeScorch(world, pos, 4.5 * scale);
+    if (scale >= 0.4 && !lite) _placeScorch(world, pos, 4.5 * scale);
   } else {
     group.add(ball);
   }
@@ -606,14 +737,16 @@ function _spawnExplosionShader(opts) {
   const ring = new THREE.Mesh(_G_RING_E, ringMat);
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = -pos.y + 0.15;
-  group.add(ring);
+  if (!lite) group.add(ring);
 
   // Drifting smoke sphere - lifts off and lingers after the fireball fades.
   const smokeMat = new THREE.MeshBasicMaterial({
     color: 0x444444, transparent: true, opacity: 0.0, depthWrite: false,
   });
   const smoke = new THREE.Mesh(_G_FIRE_LO, smokeMat);
-  group.add(smoke);
+  // The flipbook path has its own smoke plume; an opacity-0 sphere still
+  // costs a draw, so only the fallback path adds it.
+  if (!flips.length) group.add(smoke);
 
   // Pooled point light (intensity-keyed sequencer matches legacy logic).
   const light = _acquireLight(world.scene);
@@ -623,29 +756,14 @@ function _spawnExplosionShader(opts) {
   light.distance = 70;
   const seq = (light._seq = (light._seq || 0) + 1);
 
-  // Shrapnel chunks with ballistic + tumble physics (ported from legacy).
-  const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffeeaa });
-  const emberMat = new THREE.MeshBasicMaterial({ color: 0xff5522, transparent: true, opacity: 1.0 });
-  const sparks = [];
-  for (let i = 0; i < 22; i++) {
-    const useEmber = i < 10;
-    const s = new THREE.Mesh(_G_SHRAPNEL, useEmber ? emberMat : sparkMat);
-    const speed = (8 + Math.random() * 16) * scale;
-    const yaw = Math.random() * Math.PI * 2;
-    const pitch = Math.PI * 0.18 + Math.random() * Math.PI * 0.45;
-    s.userData.vel = new THREE.Vector3(
-      Math.cos(yaw) * Math.cos(pitch) * speed,
-      Math.sin(pitch) * speed * 1.4,
-      Math.sin(yaw) * Math.cos(pitch) * speed,
-    );
-    s.userData.spin = new THREE.Vector3(
-      (Math.random() - 0.5) * 10,
-      (Math.random() - 0.5) * 10,
-      (Math.random() - 0.5) * 10,
-    );
-    s.userData.ember = useEmber;
-    group.add(s);
-    sparks.push(s);
+  // Shrapnel: 10 embers + 12 hot sparks (x particleMul) thrown out
+  // ballistically through the shared instanced particle pool.
+  {
+    const nE = Math.max(2, Math.round(10 * PMUL * (lite ? 0.4 : 1)));
+    const nS = Math.max(2, Math.round(12 * PMUL * (lite ? 0.4 : 1)));
+    const spd = [8 * scale, 20 * scale], upv = [6 * scale, 26 * scale];
+    emitParticles(world, pos, nE, { speed: spd, up: upv, gravity: 32, life: [0.5, 0.9], size: 0.26, color: 0xff5522, hdr: 2.2 });
+    emitParticles(world, pos, nS, { speed: spd, up: upv, gravity: 32, life: [0.9, 1.4], size: 0.2, color: 0xffeeaa, hdr: 1.8 });
   }
 
   const totalLife = flips.length ? 2.9 : 1.4;
@@ -677,18 +795,6 @@ function _spawnExplosionShader(opts) {
     smokeMat.opacity = flips.length ? 0 : (t < 0.4 ? 0.0 : Math.min(0.7, (t - 0.4) * 1.4) * (1.4 - t));
     // Light fades unless a newer explosion grabbed our slot.
     if (light._seq === seq) light.intensity = (1 - t) * 7 * scale;
-    // Shrapnel ballistics + tumble.
-    for (const sp of sparks) {
-      sp.position.addScaledVector(sp.userData.vel, dt);
-      sp.userData.vel.y -= 32 * dt;
-      sp.rotation.x += sp.userData.spin.x * dt;
-      sp.rotation.y += sp.userData.spin.y * dt;
-      sp.rotation.z += sp.userData.spin.z * dt;
-      if (sp.userData.ember) {
-        sp.material.opacity = Math.max(0, 1 - t * 1.6);
-      }
-      sp.visible = t < 1;
-    }
     if (tTotal >= 1) {
       if (light._seq === seq) light.intensity = 0;
       world.scene.remove(group);
@@ -696,8 +802,6 @@ function _spawnExplosionShader(opts) {
       ballMat.dispose();
       ringMat.dispose();
       smokeMat.dispose();
-      sparkMat.dispose();
-      emberMat.dispose();
     }
   });
 }
@@ -838,6 +942,11 @@ function _spawnSmokePuffShader(opts) {
   const { world, pos, args = [] } = opts;
   const scale = args[0] !== undefined ? args[0] : 1.0;
 
+  // Concurrency cap: a collapse spawns 8 dust puffs; 10 collapses were 80
+  // sprites. Over the cap the puff is skipped (no-op effect).
+  if (_flipTex.smoke_plume_8x8 && !_smokePuffSlot(2.5)) {
+    return new VFXEffect(new THREE.Object3D(), 1e-3, () => {});
+  }
   const fb = _flipSprite('smoke_plume_8x8', 1, { tint: 0xa8a4a0 });
   if (fb) {
     fb.position.copy(pos);
@@ -874,9 +983,19 @@ function _spawnSmokePuffShader(opts) {
 // destroyed buildings keep visibly burning for 8s. Each emitted puff is
 // itself a VFXEffect pushed onto world.effects[] so the existing tick
 // loop drives its lifetime.
+// Concurrent burning columns (each = 2-3 looping fire sprites + a stream
+// of smoke puffs). When a new one starts over the cap, the oldest is told
+// to burn out (fires fade, emission stops) over ~1 s.
+const _SMOKE_COL_CAP = PMUL >= 1 ? 5 : (PMUL >= 0.5 ? 3 : 2);
+const _activeColumns = [];
 function _spawnSmokeColumnShader(opts) {
   const { world, pos, args = [] } = opts;
   const height = args[0] !== undefined ? args[0] : 30;
+  const ctl = { kill: -1 }; // kill >= 0: seconds left of the burn-out
+  for (let i = _activeColumns.length - 1; i >= 0; i--) if (_activeColumns[i].done) _activeColumns.splice(i, 1);
+  const live = _activeColumns.filter((c) => c.kill < 0);
+  if (live.length >= _SMOKE_COL_CAP) live[0].kill = 1.0;
+  _activeColumns.push(ctl);
   const baseY = pos.y;
   const proxy = new THREE.Object3D();
   proxy.position.copy(pos);
@@ -888,7 +1007,7 @@ function _spawnSmokeColumnShader(opts) {
   // over the first ~70% of the column's life.
   const fires = [];
   if (_flipTex.fire_loop_8x8) {
-    const n = height > 20 ? 3 : 2;
+    const n = PMUL < 0.5 ? 1 : (height > 20 ? 3 : 2);
     for (let i = 0; i < n; i++) {
       const sz = (height > 20 ? 11 : 8) * (0.75 + Math.random() * 0.4);
       const f = _flipSprite('fire_loop_8x8', sz, { rot: 0, glow: 1.4 });
@@ -901,7 +1020,16 @@ function _spawnSmokeColumnShader(opts) {
     }
   }
 
-  return new VFXEffect(proxy, totalLife, (dt, t) => {
+  const eff = new VFXEffect(proxy, totalLife, (dt, t) => {
+    // Burn-out requested by the column cap: fade fires, stop emitting,
+    // then end the effect.
+    let killK = 1;
+    if (ctl.kill >= 0) {
+      ctl.kill -= dt;
+      killK = Math.max(0, ctl.kill);
+      if (ctl.kill <= 0 && t < 1) { eff.life = 0; }
+    }
+    if (t >= 1) ctl.done = true;
     for (const f of fires) {
       const u = f.material.uniforms;
       f.userData.phase = (f.userData.phase + dt * 30) % 64; // 30 fps loop
@@ -909,13 +1037,15 @@ function _spawnSmokeColumnShader(opts) {
       // the last frame into an out-of-range index.
       u.frame.value = Math.min(f.userData.phase, 62.999);
       const k = 1 - Math.min(1, t / 0.7);
-      u.opacity.value = Math.min(1, k * 1.6);
+      u.opacity.value = Math.min(1, k * 1.6) * killK;
       f.scale.setScalar(f.userData.sz * (0.55 + 0.45 * k));
       if (t >= 1) _disposeFlip(f);
     }
     nextEmit -= dt;
+    if (ctl.kill >= 0) nextEmit = Infinity;
     if (nextEmit <= 0 && t < 1 && _flipTex.smoke_plume_8x8) {
-      nextEmit = 0.5 + Math.random() * 0.35;
+      // Puff rate scales with the tier (HIGH ~1.5/s, MED ~1/s, LOW ~0.75/s).
+      nextEmit = (0.5 + Math.random() * 0.35) / Math.max(0.4, Math.sqrt(PMUL));
       const intensity = (1 - t);
       const m = _flipSprite('smoke_plume_8x8', 1, { tint: t < 0.4 ? 0x7a746e : 0xb4aea8 });
       const sz = (height > 20 ? 9 : 6) * (0.8 + Math.random() * 0.5);
@@ -974,15 +1104,14 @@ function _spawnSmokeColumnShader(opts) {
     }
     if (t >= 1) world.scene.remove(proxy);
   });
+  return eff;
 }
 
 // ----- Shader-based sparks (replaces makeSparks from effects.js:186) -----
 //
-// Eight small spheres ejected with random velocity + gravity, but with
-// the flat MeshBasicMaterial swapped for a hot-point shader that bright
-// the center and dims the rim, giving each spark the visual punch of an
-// ember instead of a yellow ball. Additive blending so multiple sparks
-// stack into a glow at their cluster origin.
+// Sparks are emitted into the shared instanced particle pool (see
+// emitParticles): HDR additive points with gravity that skid on the
+// street. _SPARK_FS below is still used by other builders.
 const _SPARK_FS = `
   uniform vec3 sparkColor;
   uniform float fade;
@@ -1000,47 +1129,13 @@ const _G_SPARK_S = new THREE.SphereGeometry(0.12, 6, 5);
 function _spawnSparksShader(opts) {
   const { world, pos, args = [] } = opts;
   const count = args[0] !== undefined ? args[0] : 8;
-
-  const group = new THREE.Group();
-  group.position.copy(pos);
-  world.scene.add(group);
-
-  const uniforms = {
-    sparkColor: { value: new THREE.Color(0xffcc66) },
-    fade:       { value: 1.0 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
-    vertexShader: _FIREBALL_VS,
-    fragmentShader: _SPARK_FS,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
+  // Through the shared particle pool (was one sphere mesh per spark).
+  emitParticles(world, pos, Math.max(1, Math.round(count * PMUL)), {
+    speed: [1, 7], up: [2, 8], gravity: 18, life: [0.45, 0.7], size: 0.16, color: 0xffcc66, hdr: 2.4,
   });
-
-  const sparks = [];
-  for (let i = 0; i < count; i++) {
-    const s = new THREE.Mesh(_G_SPARK_S, mat);
-    s.userData.vel = new THREE.Vector3(
-      (Math.random() - 0.5) * 10,
-      Math.random() * 6 + 2,
-      (Math.random() - 0.5) * 10,
-    );
-    group.add(s);
-    sparks.push(s);
-  }
-
-  return new VFXEffect(group, 0.6, (dt, t) => {
-    uniforms.fade.value = 1 - t;
-    for (const sp of sparks) {
-      sp.position.addScaledVector(sp.userData.vel, dt);
-      sp.userData.vel.y -= 18 * dt;
-    }
-    if (t >= 1) {
-      world.scene.remove(group);
-      mat.dispose();
-    }
-  });
+  // Callers push the return value onto world.effects; hand back a no-op
+  // effect (no scene object, finishes on its first tick).
+  return new VFXEffect(new THREE.Object3D(), 1e-3, () => {});
 }
 
 // ----- Shader-based ring/arc (wingSlash, tailSweep, wingFlap) -----
@@ -1332,7 +1427,7 @@ function _spawnDustBurstShader(opts) {
   const count = args[1] !== undefined ? args[1] : 8;
 
   if (_flipTex.dust_burst_8x8) {
-    const n = Math.max(4, Math.min(10, count));
+    const n = Math.max(3, Math.round(Math.min(10, count) * Math.max(0.5, PMUL)));
     const fl = [];
     const proxy = new THREE.Object3D();
     world.scene.add(proxy);
@@ -1896,7 +1991,7 @@ function _spawnHitPulseShader(opts) {
 // sheet isn't loaded.
 const _G_IMPACT = new THREE.PlaneGeometry(1, 1);
 // Every module-level _G_* is shared across spawns: disposeInstance() must not free them.
-markShared(_G_FLIP, _G_SCORCH, _G_FIREBALL, _G_FIRE_LO, _G_RING_E, _G_SHRAPNEL, _G_DOME, _G_SMOKE_PUFF_S, _G_SPARK_S, _G_DUST_PUFF, _G_MISSILE, _G_AD_FLASH, _G_AD_FIREBALL, _G_AD_STEM, _G_AD_STEMCORE, _G_AD_CAP, _G_AD_CAPCORE, _G_SHOCK, _G_SOUND_SPHERE, _G_IMPACT);
+markShared(_G_PART, _G_FLIP, _G_SCORCH, _G_FIREBALL, _G_FIRE_LO, _G_RING_E, _G_SHRAPNEL, _G_DOME, _G_SMOKE_PUFF_S, _G_SPARK_S, _G_DUST_PUFF, _G_MISSILE, _G_AD_FLASH, _G_AD_FIREBALL, _G_AD_STEM, _G_AD_STEMCORE, _G_AD_CAP, _G_AD_CAPCORE, _G_SHOCK, _G_SOUND_SPHERE, _G_IMPACT);
 _G_IMPACT.rotateX(-Math.PI / 2);
 function _smoothstepJS(a, b, x) {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -2304,5 +2399,7 @@ const vfx = {
   registerAllBuilders,
   loadFlipbook,
   getBatchedRenderer,
+  emitParticles,
+  tickParticles,
 };
 export default vfx;

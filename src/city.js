@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL, withParseSlot } from './assetCache.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL, withParseSlot, reportLoadError, isCodeBug, setKTX2Enabled } from './assetCache.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
 // and loadPedestrianTemplates() run at module-load time via top-level await in game.js.
@@ -15,28 +16,35 @@ const _glbLoader = new GLTFLoader();
 const _texLoader = new THREE.TextureLoader();
 const TEX_BASE = './assets/textures/';
 
-// Cached per (file, repeat) so a rebuilt city (restartInPlace) reuses the
-// already-uploaded textures instead of decoding + uploading new copies.
-const _groundTexCache = new Map();
-function _loadTileTex(file, repeatX, repeatY) {
-  const key = `${file}|${repeatX}|${repeatY}|srgb`;
+// One decode + one GPU upload per file: every (repeat, colour space) variant
+// is a clone sharing the loaded image (three keys GPU textures by Source, and
+// repeat is a uniform, not a texture parameter). Variants are cached too, so
+// a rebuilt city (restartInPlace) reuses them.
+const _groundBase = new Map();     // file -> { tex, loaded, clones }
+const _groundTexCache = new Map(); // file|repeat|colourspace -> clone
+function _groundTex(file, repeatX, repeatY, srgb) {
+  const key = `${file}|${repeatX}|${repeatY}|${srgb ? 'srgb' : 'lin'}`;
   if (_groundTexCache.has(key)) return _groundTexCache.get(key);
-  const t = _texLoader.load(assetURL(TEX_BASE + file));
+  let base = _groundBase.get(file);
+  if (!base) {
+    base = { tex: null, loaded: false, clones: [] };
+    base.tex = _texLoader.load(assetURL(TEX_BASE + file),
+      () => { base.loaded = true; for (const c of base.clones) c.needsUpdate = true; },
+      undefined,
+      () => reportLoadError('GroundTex', TEX_BASE + file, new Error('image load failed')));
+    _groundBase.set(file, base);
+  }
+  const t = base.tex.clone();
+  if (!base.loaded) t.version = 0; // nothing to upload until the shared image arrives
+  base.clones.push(t);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(repeatX, repeatY);
-  t.colorSpace = THREE.SRGBColorSpace;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   _groundTexCache.set(key, t);
   return t;
 }
-function _loadDataTex(file, repeatX, repeatY) {
-  const key = `${file}|${repeatX}|${repeatY}`;
-  if (_groundTexCache.has(key)) return _groundTexCache.get(key);
-  const t = _texLoader.load(assetURL(TEX_BASE + file));
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(repeatX, repeatY);
-  _groundTexCache.set(key, t);
-  return t;
-}
+function _loadTileTex(file, repeatX, repeatY) { return _groundTex(file, repeatX, repeatY, true); }
+function _loadDataTex(file, repeatX, repeatY) { return _groundTex(file, repeatX, repeatY, false); }
 
 // Ground plane (large area, coarse tiling)
 const GROUND_TILE = 80; // world units per texture repeat
@@ -185,6 +193,44 @@ const PROP_GLBS_READY = new Set([
 const PROP_GLBS = PROP_GLBS_PLANNED.filter((n) => PROP_GLBS_READY.has(n));
 const _propTemplates = new Map(); // name -> { scene, size }
 
+// --------------- LOD1 (far) geometry ---------------
+// Decimated (~28% tris) geometry-only twins of the small, many-instance props
+// (<name>_lod1.glb next to the LOD0 file, no materials or textures). They reuse
+// the LOD0 materials, which is safe because decimation keeps the UVs, and are
+// matched to the LOD0 meshes by traversal order. List a URL only once its
+// _lod1 file is on disk.
+const LOD1_READY = new Set([
+  './assets/vehicles/kei_van.glb', './assets/vehicles/taxi_black.glb', './assets/vehicles/police_car.glb',
+  './assets/vehicles/small_truck.glb', './assets/vehicles/city_bus.glb',
+  './assets/trees/tree_zelkova.glb', './assets/trees/tree_sakura.glb', './assets/trees/tree_black_pine.glb',
+  './assets/trees/tree_ginkgo.glb',
+  './assets/props/traffic_signal.glb', './assets/props/street_lamp.glb', './assets/props/vending_machine.glb',
+]);
+const _lod1ByGeom = new Map(); // LOD0 BufferGeometry -> LOD1 BufferGeometry
+const _lod1Attached = new Set(); // LOD0 urls whose twin registered (smoke test)
+// Beyond this distance (camera to a 120u instancing tile's centre, or kaiju to
+// a moving car) the LOD1 geometry is drawn instead
+const LOD1_DIST = 150;
+
+/** Load url's _lod1 twin (if listed) and register its geometries against scene's meshes. */
+function _attachLod1(url, scene) {
+  if (!LOD1_READY.has(url)) return Promise.resolve();
+  return _cachedGLB(url.replace(/\.glb$/, '_lod1.glb')).then((gltf) => {
+    const m0 = [], m1 = [];
+    scene.traverse((o) => { if (o.isMesh) m0.push(o); });
+    gltf.scene.traverse((o) => { if (o.isMesh) m1.push(o); });
+    if (m0.length !== m1.length) {
+      reportLoadError('LOD', url, new Error(`LOD1 mesh count mismatch (${m1.length} vs ${m0.length}), skipped`));
+      return;
+    }
+    m0.forEach((m, i) => _lod1ByGeom.set(m.geometry, m1[i].geometry));
+    _lod1Attached.add(url);
+  }).catch((err) => {
+    // LOD0 still works; the tile just keeps drawing full detail
+    reportLoadError('LOD', url.replace(/\.glb$/, '_lod1.glb'), err);
+  });
+}
+
 function loadPropTemplates() {
   return Promise.all(PROP_GLBS.map((name) =>
     _cachedGLB(PROP_GLB_BASE + name + '.glb').then((gltf) => {
@@ -193,8 +239,9 @@ function loadPropTemplates() {
       s.updateMatrixWorld(true);
       const size = new THREE.Box3().setFromObject(s).getSize(new THREE.Vector3());
       _propTemplates.set(name, { scene: s, size });
+      return _attachLod1(PROP_GLB_BASE + name + '.glb', s);
     }).catch((err) => {
-      console.warn('[PropGLB] Failed to load', name, err.message);
+      reportLoadError('PropGLB', PROP_GLB_BASE + name + '.glb', err);
     })
   ));
 }
@@ -244,7 +291,7 @@ function _loadTreeList(list, onProgress) {
         s.traverse((o) => { if (o.isMesh) meshCount++; });
         console.log(`[TreeGLB] Loaded ${url} — ${meshCount} meshes`);
         if (meshCount === 0) {
-          console.warn('[TreeGLB] No meshes found in', url);
+          reportLoadError('TreeGLB', url, new Error('no meshes found'));
           resolve();
           return;
         }
@@ -255,11 +302,11 @@ function _loadTreeList(list, onProgress) {
         console.log(`[TreeGLB] Bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
         _treeTemplates.push({ scene: s, box, h: def.h });
         if (onProgress) onProgress(idx + 1, list.length, url.split('/').pop().replace('.glb', ''));
-        resolve();
+        _attachLod1(url, s).then(resolve);
       }).catch((err) => {
         // .catch (not a then() rejection handler) so a throw in the success
         // path still resolves; otherwise the top-level await in game.js hangs
-        console.warn('[TreeGLB] Failed to load', url, err.message || err);
+        reportLoadError('TreeGLB', url, err);
         if (onProgress) onProgress(idx + 1, list.length, 'error');
         resolve();
       });
@@ -301,18 +348,52 @@ function _instanceStaticClones(scene) {
     });
     c.parent.remove(c);
   }
+  const lodPairs = [];
   for (const b of buckets.values()) {
-    const im = new THREE.InstancedMesh(b.geometry, b.material, b.matrices.length);
-    b.matrices.forEach((mat, i) => im.setMatrixAt(i, mat));
-    // Small static props (trees, parked cars, street props) don't cast: the
-    // tiles inside the shadow frustum were redrawing ~millions of triangles
-    // in the shadow pass. They still receive the kaiju/building shadows.
-    im.castShadow = false;
-    im.receiveShadow = b.recv;
-    im.computeBoundingSphere();
-    im.matrixAutoUpdate = false;
-    scene.add(im);
+    const ims = [b.geometry, _lod1ByGeom.get(b.geometry)].filter(Boolean).map((geom) => {
+      const im = new THREE.InstancedMesh(geom, b.material, b.matrices.length);
+      b.matrices.forEach((mat, i) => im.setMatrixAt(i, mat));
+      // Small static props (trees, parked cars, street props) don't cast: the
+      // tiles inside the shadow frustum were redrawing ~millions of triangles
+      // in the shadow pass. They still receive the kaiju/building shadows.
+      im.castShadow = false;
+      im.receiveShadow = b.recv;
+      im.computeBoundingSphere();
+      im.matrixAutoUpdate = false;
+      scene.add(im);
+      return im;
+    });
+    // Same tile, same instances: exactly one of the pair is visible, so the
+    // draw-call count doesn't change
+    if (ims.length === 2) {
+      ims[1].visible = false;
+      lodPairs.push({ near: ims[0], far: ims[1], center: ims[0].boundingSphere.center });
+    }
   }
+  if (lodPairs.length) scene.add(_makeLodController(lodPairs));
+}
+
+/** Invisible, zero-vertex mesh whose onBeforeRender (main camera only; it
+ *  casts no shadow) flips each tile pair between LOD0 and LOD1. Its empty
+ *  geometry means the renderer issues no draw call for it. */
+function _makeLodController(pairs) {
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+  const ctl = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+  ctl.frustumCulled = false;
+  ctl.castShadow = false;
+  ctl.receiveShadow = false;
+  const camPos = new THREE.Vector3();
+  const d2 = LOD1_DIST * LOD1_DIST;
+  ctl.onBeforeRender = (renderer, scene, camera) => {
+    camera.getWorldPosition(camPos);
+    for (const p of pairs) {
+      const far = p.center.distanceToSquared(camPos) > d2;
+      p.near.visible = !far;
+      p.far.visible = far;
+    }
+  };
+  return ctl;
 }
 
 function _mergeStaticMeshes(scene) {
@@ -2082,7 +2163,11 @@ export class Building {
       this._bodyIM.setColorAt(this._bodyIndex, this.bodyColor);
       this._bodyIM._colorDirty = true;
     }
-    if (hitPoint && world) {
+    // Hit effects at most every 0.15 s per building: pushing into a
+    // building calls damage() every frame, which spawned ~217 extra draws.
+    const fxNow = world ? (world.time || 0) : 0;
+    if (hitPoint && world && (this._fxT === undefined || fxNow - this._fxT >= 0.15 || fxNow < this._fxT)) {
+      this._fxT = fxNow;
       world.spawnSparks(hitPoint, 6);
       world.spawnHitPulse?.(hitPoint, 0xffaa44);
     }
@@ -2116,6 +2201,13 @@ export class Building {
     // Custom landmark mesh -- remove it on destruction.
     if (this.customMesh && this.customMesh.parent) {
       this.customMesh.parent.remove(this.customMesh);
+    }
+    // Instanced GLB building: zero its slots in the shared InstancedMeshes.
+    if (this._glbSlots) {
+      for (const sl of this._glbSlots) {
+        sl.im.setMatrixAt(sl.idx, _zeroMatrix);
+        sl.im.instanceMatrix.needsUpdate = true;
+      }
     }
     // Hide our slots in the global window InstancedMesh(es)
     if (this.windowEntries && this.windowEntries.length) {
@@ -2171,6 +2263,10 @@ export class Building {
       m.userData.vel = new THREE.Vector3(rand(-12, 12), rand(10, 22), rand(-12, 12));
       m.userData.angVel = new THREE.Vector3(rand(-5, 5), rand(-5, 5), rand(-5, 5));
       m.userData.life = 6.5;
+      // Flying chunks are small and fast: skip the shadow pass (it doubled
+      // their draw calls in multi-collapse storms). Ground rubble below
+      // still casts.
+      m.traverse((o) => { if (o.isMesh) o.castShadow = false; });
       world.scene.add(m);
       world.debris.push(m);
     }
@@ -2179,26 +2275,29 @@ export class Building {
     const rubbleCount = 3 + Math.floor(Math.random() * 2);
     for (let i = 0; i < rubbleCount; i++) {
       const rubSize = THREE.MathUtils.clamp(Math.max(this.w, this.d) * rand(0.15, 0.3), 2.5, 8);
-      let rub;
-      if (useGLBDebris) {
-        rub = _cloneDebris(rubSize);
+      if (useGLBDebris && _placeRubbleInstanced(world.scene, rubSize,
+          this.group.position.x + rand(-this.w / 4, this.w / 4),
+          rubSize * 0.15,
+          this.group.position.z + rand(-this.d / 4, this.d / 4),
+          rand(-0.2, 0.2), rand(0, Math.PI), rand(-0.2, 0.2))) {
+        continue;
       }
-      if (!rub) {
-        const rw = this.w * rand(0.3, 0.7);
-        const rd = this.d * rand(0.3, 0.7);
-        const rh = rand(1.2, 2.6);
-        rub = new THREE.Mesh(
-          new THREE.BoxGeometry(rw, rh, rd),
-          new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 1.0 })
-        );
-      }
+      // Fallback (no debris GLBs, e.g. mobile LOW): procedural box.
+      const rw = this.w * rand(0.3, 0.7);
+      const rd = this.d * rand(0.3, 0.7);
+      const rh = rand(1.2, 2.6);
+      const rub = new THREE.Mesh(
+        new THREE.BoxGeometry(rw, rh, rd),
+        new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 1.0 })
+      );
       rub.position.set(
         this.group.position.x + rand(-this.w / 4, this.w / 4),
         rubSize * 0.15,
         this.group.position.z + rand(-this.d / 4, this.d / 4),
       );
       rub.rotation.set(rand(-0.2, 0.2), rand(0, Math.PI), rand(-0.2, 0.2));
-      rub.castShadow = true; rub.receiveShadow = true;
+      // Permanent + low: receive shadows only (no shadow-pass draw).
+      rub.castShadow = false; rub.receiveShadow = true;
       world.scene.add(rub);
     }
 
@@ -2266,8 +2365,25 @@ const ALL_BUILDING_GLBS = [
 ];
 
 /** Fetch a GLB via the asset cache, then parse with GLTFLoader. */
-function _cachedGLB(url) {
-  return cachedFetch(url).then((buf) => withParseSlot(() =>
+// GPU-compressed building textures (desktop). The transcoder comes from the
+// same three r160 CDN as the rest of three; a building whose KTX2 copy fails
+// to fetch/transcode falls back to its JPEG original (loadBuildingTemplates).
+const KTX2_TRANSCODER = 'https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/';
+export function enableKTX2(renderer) {
+  try {
+    const k = new KTX2Loader().setTranscoderPath(KTX2_TRANSCODER).detectSupport(renderer);
+    _glbLoader.setKTX2Loader(k);
+    setKTX2Enabled(true);
+    return k;
+  } catch (e) {
+    console.warn('[KTX2] unavailable, using JPEG textures:', e.message);
+    return null;
+  }
+}
+
+// original=true skips the mobile/KTX2 variant (fallback retry).
+function _cachedGLB(url, original = false) {
+  return cachedFetch(url, { original }).then((buf) => withParseSlot(() =>
     new Promise((resolve, reject) => _glbLoader.parse(buf, '', resolve, reject))
   )).then((gltf) => { normalizeGLTFMaterials(gltf.scene); return gltf; });
 }
@@ -2279,8 +2395,10 @@ export function loadBuildingTemplates(onProgress) {
   const total = unique.length;
   // One retry per template: a flaky mobile fetch/decode shouldn't cost a building
   const loadOnce = (url) => _cachedGLB(url).catch((err) => {
+    if (isCodeBug(err)) throw err; // a retry can't fix our own code
     console.warn('[BuildingGLB] retrying', url, err.message);
-    return new Promise((r) => setTimeout(r, 400)).then(() => _cachedGLB(url));
+    // Retry with the JPEG original: covers a failed KTX2 copy/transcode too
+    return new Promise((r) => setTimeout(r, 400)).then(() => _cachedGLB(url, true));
   });
   return Promise.all(unique.map((url) =>
     loadOnce(url).then((gltf) => {
@@ -2290,7 +2408,7 @@ export function loadBuildingTemplates(onProgress) {
       loaded++;
       if (onProgress) onProgress(loaded, total, url.split('/').pop().replace('.glb', ''));
     }).catch((err) => {
-      console.warn('[BuildingGLB] Failed to load template', url, err.message);
+      reportLoadError('BuildingGLB', url, err);
       loaded++;
       if (onProgress) onProgress(loaded, total, 'error');
     })
@@ -2330,7 +2448,7 @@ function _loadDebrisList(list) {
       s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       _debrisTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s) });
     }).catch((err) => {
-      console.warn('[DebrisGLB] Failed to load', url, err.message);
+      reportLoadError('DebrisGLB', url, err);
     })
   ));
 }
@@ -2352,6 +2470,69 @@ function _cloneDebris(targetSize) {
   const s = rawSize > 0 ? targetSize / rawSize : 1;
   root.scale.setScalar(s);
   return root;
+}
+
+// Permanent ground rubble, instanced per debris template: one
+// InstancedMesh per template sub-mesh (shared geometry + material, so the
+// template stays the owner). Rubble used to be 3-4 cloned meshes per
+// collapse that never went away (and cast shadows). Each instance matrix
+// is rubbleTransform x the sub-mesh's transform inside the template.
+// After an in-place restart sweeps the IMs out of the scene, the next
+// placement re-adds them with count reset to 0.
+const RUBBLE_CAP = 160; // instances per template (oldest overwritten)
+const _rubblePools = new Map(); // tpl -> { parts: [{ im, local }], next, count }
+const _rubM = new THREE.Matrix4();
+const _rubQ = new THREE.Quaternion();
+const _rubE = new THREE.Euler();
+const _rubP = new THREE.Vector3();
+const _rubS = new THREE.Vector3();
+function _rubblePool(tpl, scene) {
+  let pool = _rubblePools.get(tpl);
+  if (!pool) {
+    tpl.scene.updateMatrixWorld(true);
+    const parts = [];
+    tpl.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      const im = new THREE.InstancedMesh(o.geometry, o.material, RUBBLE_CAP);
+      im.count = 0;
+      im.castShadow = false;   // permanent, low and static: receive only
+      im.receiveShadow = true;
+      im.frustumCulled = false; // instances span the whole city
+      im.userData.rubblePool = true;
+      parts.push({ im, local: o.matrixWorld.clone() });
+    });
+    pool = { parts, next: 0, count: 0 };
+    _rubblePools.set(tpl, pool);
+  }
+  if (pool.parts.length && pool.parts[0].im.parent !== scene) {
+    pool.next = 0; pool.count = 0;
+    for (const pt of pool.parts) { pt.im.count = 0; scene.add(pt.im); }
+  }
+  return pool;
+}
+/** Place one rubble piece (instanced). Returns false if no template. */
+function _placeRubbleInstanced(scene, targetSize, x, y, z, rx, ry, rz) {
+  const tpl = _pickDebrisTemplate();
+  if (!tpl) return false;
+  const rawSize = Math.max(
+    tpl.box.max.x - tpl.box.min.x,
+    tpl.box.max.y - tpl.box.min.y,
+    tpl.box.max.z - tpl.box.min.z,
+  );
+  const sc = rawSize > 0 ? targetSize / rawSize : 1;
+  const pool = _rubblePool(tpl, scene);
+  _rubQ.setFromEuler(_rubE.set(rx, ry, rz));
+  _rubM.compose(_rubP.set(x, y, z), _rubQ, _rubS.setScalar(sc));
+  const idx = pool.next;
+  pool.next = (pool.next + 1) % RUBBLE_CAP;
+  pool.count = Math.min(RUBBLE_CAP, pool.count + 1);
+  for (const pt of pool.parts) {
+    const m = new THREE.Matrix4().multiplyMatrices(_rubM, pt.local);
+    pt.im.setMatrixAt(idx, m);
+    pt.im.count = pool.count;
+    pt.im.instanceMatrix.needsUpdate = true;
+  }
+  return true;
 }
 
 /** Clone a loaded template, scale to targetHeight, wire onto Building. */
@@ -2390,14 +2571,50 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY) 
   const centerX = (boxScaled.min.x + boxScaled.max.x) / 2;
   const centerZ = (boxScaled.min.z + boxScaled.max.z) / 2;
   root.position.set(building.x - centerX, yOffset, building.z - centerZ);
-  root.matrixAutoUpdate = false;
-  root.updateMatrix();
+  root.updateMatrixWorld(true);
 
-  if (building.customMesh && building.customMesh.parent) {
-    building.customMesh.parent.remove(building.customMesh);
-  }
+  // Instanced, not added: every mesh of the placed clone becomes one
+  // instance of a per-(geometry, material, tile) InstancedMesh built by
+  // _buildGLBBuildingInstances (~1 draw per template per tile instead of
+  // one per building). collapse() zeroes the building's instance slots.
+  // customMesh stays a (scene-less) marker: game.js only tests it for
+  // "this is a GLB building" and uses b.w/d/h for its footprint AABB.
+  building._glbSlots = [];
+  root.traverse((m) => {
+    if (!m.isMesh) return;
+    const e = m.matrixWorld.elements;
+    const key = `${m.geometry.uuid}|${m.material.uuid}|${Math.floor(e[12] / BLDG_TILE)},${Math.floor(e[14] / BLDG_TILE)}`;
+    let b = _glbBuckets.get(key);
+    if (!b) _glbBuckets.set(key, b = { geometry: m.geometry, material: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [] });
+    b.items.push({ matrix: m.matrixWorld.clone(), building });
+  });
   building.customMesh = root;
-  scene.add(root);
+}
+
+// Pending GLB building instances, keyed geometry|material|tile (see above).
+// Tile size trades draws against wasted triangles: every instance in a tile
+// is drawn (and shadow-cast) if any part of the tile is visible. Measured
+// headless (desktop HIGH, 5 kaiju positions, +-112u shadow frustum):
+//   240u: 154 IMs, shadow 1.23M tris, in-view 1.82M   (big shadow regression)
+//   120u: 247 IMs, shadow 0.56M,      in-view 1.45M   <- chosen
+//    60u: 336 IMs, shadow 0.45M,      in-view 1.37M
+//   per-building (~370 draws):        shadow ~0.50M, in-view ~1.38M
+const BLDG_TILE = 120;
+const _glbBuckets = new Map();
+function _buildGLBBuildingInstances(scene) {
+  for (const b of _glbBuckets.values()) {
+    const im = new THREE.InstancedMesh(b.geometry, b.material, b.items.length);
+    b.items.forEach((it, i) => {
+      im.setMatrixAt(i, it.building.destroyed ? _zeroMatrix : it.matrix);
+      it.building._glbSlots.push({ im, idx: i });
+    });
+    im.castShadow = b.cast;
+    im.receiveShadow = b.recv;
+    im.computeBoundingSphere();
+    im.matrixAutoUpdate = false;
+    scene.add(im);
+  }
+  _glbBuckets.clear();
 }
 
 const _pendingGLBBuildings = [];
@@ -2444,6 +2661,7 @@ export function flushPendingGLBBuildings(scene) {
       boxed++;
     }
   }
+  _buildGLBBuildingInstances(scene);
   if (swapped || boxed) console.warn('[BuildingGLB] missing templates:', swapped, 'buildings swapped,', boxed, 'shown as boxes');
   _pendingGLBBuildings.length = 0;
 }
@@ -2472,6 +2690,10 @@ export function buildCity(scene, world, opts = {}) {
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
+  // Draw the 1600 u ground plane after the rest of the opaque city: it
+  // sits below every street/sidewalk/lot layer and building, so the depth
+  // test rejects most of its pixels before its (PBR, 4-map) shading runs.
+  ground.renderOrder = 1;
   ground.matrixAutoUpdate = false; ground.updateMatrix();
   scene.add(ground);
 
@@ -3998,13 +4220,14 @@ function _loadCarList(list, onProgress) {
       let meshCount = 0;
       s.traverse((o) => { if (o.isMesh) { meshCount++; o.castShadow = true; o.receiveShadow = true; } });
       if (meshCount === 0) {
-        console.warn('[CarGLB] No meshes found in', def.url);
+        reportLoadError('CarGLB', def.url, new Error('no meshes found'));
         return;
       }
       _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1 });
       if (onProgress) onProgress(idx + 1, list.length, def.url.split('/').pop().replace('.glb', ''));
+      return _attachLod1(def.url, s);
     }).catch((err) => {
-      console.warn('[CarGLB] Failed to load', def.url, err.message);
+      reportLoadError('CarGLB', def.url, err);
       if (onProgress) onProgress(idx + 1, list.length, 'error');
     })
   ));
@@ -4053,6 +4276,11 @@ export class Car {
       const cloneBox = new THREE.Box3().setFromObject(clone);
       clone.position.y = -cloneBox.min.y - 0.6; // sit on road surface
       root.add(clone);
+      // LOD1 swap targets (geometry only; the material is shared)
+      this._lodMeshes = clone.children
+        .filter((m) => _lod1ByGeom.has(m.geometry))
+        .map((m) => ({ mesh: m, g0: m.geometry, g1: _lod1ByGeom.get(m.geometry) }));
+      this._far = false;
     } else {
       // Procedural fallback
       const color = CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)];
@@ -4132,6 +4360,14 @@ export class Car {
     // Stomped by kaiju
     const dx = kaijuPos.x - this.root.position.x;
     const dz = kaijuPos.z - this.root.position.z;
+    // Far from the kaiju (and so from the chase camera): draw the LOD1 geometry
+    if (this._lodMeshes && this._lodMeshes.length) {
+      const far = dx * dx + dz * dz > LOD1_DIST * LOD1_DIST;
+      if (far !== this._far) {
+        this._far = far;
+        for (const l of this._lodMeshes) l.mesh.geometry = far ? l.g1 : l.g0;
+      }
+    }
     if (dx * dx + dz * dz < 5 * 5) {
       this.explode(world);
     }
@@ -4195,10 +4431,10 @@ export async function loadPedestrianTemplates(onProgress) {
     for (const name of animNames) {
       const clip = clips.get(PED_ANIMS[name].replace(/\.glb$/, ''));
       if (clip) animations[name] = clip;
-      else console.warn(`[PedGLB] Missing clip ${PED_ANIMS[name]}`);
+      else reportLoadError('PedGLB', PED_FILE, new Error(`missing clip ${PED_ANIMS[name]}`));
     }
   } catch (e) {
-    console.warn('[PedGLB] Failed to load:', e.message);
+    reportLoadError('PedGLB', PED_FILE, e);
   }
   if (onProgress) onProgress(animNames.length, animNames.length, 'pedestrian');
 
@@ -4357,4 +4593,17 @@ export function spawnCivilians(scene, count, cityRadius) {
     arr.push(c);
   }
   return arr;
+}
+
+/** Loaded vs expected template sets, for tools/smoke_test.mjs (read-only). */
+export function getTemplateStats() {
+  return {
+    trees: { loaded: _treeTemplates.length, expected: TREE_GLBS.length },
+    buildings: { loaded: [..._glbTemplates.keys()], expected: [...new Set(ALL_BUILDING_GLBS)] },
+    debris: { loaded: _debrisTemplates.length, expected: DEBRIS_GLBS.length },
+    cars: { loaded: _carTemplates.length, expected: CAR_GLBS.length },
+    props: { loaded: [..._propTemplates.keys()], expected: [...PROP_GLBS_READY] },
+    pedestrian: { loaded: _pedTemplate ? Object.keys(_pedTemplate.animations) : [], expected: Object.keys(PED_ANIMS) },
+    lod1: { loaded: [..._lod1Attached], expected: [...LOD1_READY] },
+  };
 }
