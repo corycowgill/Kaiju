@@ -9,7 +9,7 @@ Studio intro, one battle video per kaiju, a trailer, and muted card previews. Pl
 | `battle_gorrak.mp4` / `_480p.mp4` | 40.0 s | Gorrak battle (trailer modal) |
 | `battle_tridon.mp4` / `_480p.mp4` | 40.0 s | Tridon battle |
 | `battle_mechra.mp4` / `_480p.mp4` | 40.0 s | Mechra battle |
-| `kaiju_havoc_trailer.mp4` / `_480p.mp4` | 34.2 s | Intro plus highlights of all three |
+| `kaiju_havoc_trailer.mp4` / `_480p.mp4` | 34.2 s | Studio card, intro and highlights of all three; plays on first load each session and in the trailer modal |
 | `preview_<kaiju>.mp4` | 6 s, muted | Looping monster-card hover/selected preview (`preload="none"`) |
 | `shots.json` | | Every cloud prompt, its model, its cost and Kimi's review score |
 

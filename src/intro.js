@@ -1,4 +1,5 @@
-// Cinematic video layer: the Hallucinated Games studio intro on first load,
+// Cinematic video layer: the KAIJU HAVOC trailer (which opens on the
+// Hallucinated Games studio card) on first load,
 // muted battle-clip previews on the monster-select cards, and the WATCH
 // TRAILER modal. Everything here is optional sugar: any video failure falls
 // straight through to the normal menu, and nothing loads until it is needed
@@ -51,7 +52,8 @@ function playIntro() {
   const wrap = document.createElement('div');
   wrap.id = 'intro-video';
   const v = makeVideo('', { muted: false });
-  const lastSource = addSources(v, 'intro_hallucinated_games');
+  // The trailer opens on the studio card, so it doubles as the intro.
+  const lastSource = addSources(v, 'kaiju_havoc_trailer', false);
   const skip = document.createElement('div');
   skip.className = 'iv-skip'; skip.textContent = 'SKIP ▸';
   const snd = document.createElement('button');
