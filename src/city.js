@@ -2909,6 +2909,7 @@ export function buildCity(scene, world, opts = {}) {
     }
   }
 
+  let signalAnimator = null; // cycles the GLB signals' lamps (set below when the GLB is loaded)
   // ---- Stoplights at major intersections ----
   // 4 InstancedMeshes per stoplight component (pole, head box, red, yellow,
   // green) shared by every intersection. Placed every 3rd block so we don't
@@ -2926,15 +2927,67 @@ export function buildCity(scene, world, opts = {}) {
     }
     if (intersections.length && _propTemplates.has('traffic_signal')) {
       // v2 GLB signals on the SE corner (same spot as the procedural poles),
-      // folded into InstancedMeshes by _instanceStaticClones
-      for (const [ix, iz] of intersections) {
+      // folded into InstancedMeshes by _instanceStaticClones. The head faces +X:
+      // the near lane at this corner (z = iz + 2) carries -X traffic arriving
+      // from the east, so the lamps face that oncoming lane.
+      // Lamp lens centres in the GLB, as fractions of its height (measured from
+      // the baked texture, checked in a Blender render): red top, amber, green
+      // bottom, just in front of the +Z face.
+      const tplH = _propTemplates.get('traffic_signal').size.y;
+      const LAMPS = [
+        { color: new THREE.Color(0xff2a1a), off: [0.007, 0.889, 0.06] },
+        { color: new THREE.Color(0xffaa22), off: [0.0, 0.775, 0.06] },
+        { color: new THREE.Color(0x33ff88), off: [0.0, 0.665, 0.06] },
+      ];
+      const N = intersections.length;
+      const bulbGeom = new THREE.SphereGeometry(0.038 * tplH, 8, 6);
+      const lampIMs = LAMPS.map((l) => {
+        // One unlit material per colour; on/off is the per-instance colour
+        const im = new THREE.InstancedMesh(bulbGeom, new THREE.MeshBasicMaterial({ color: 0xffffff }), N);
+        im.frustumCulled = false;
+        return im;
+      });
+      const v = new THREE.Vector3();
+      const dummy = new THREE.Object3D();
+      const phase = new Float32Array(N);
+      for (let k = 0; k < N; k++) {
+        const [ix, iz] = intersections[k];
         const sig = _cloneProp('traffic_signal', 6.4);
         sig.position.set(ix + STREET / 2 + SIDEWALK_W * 0.6, 0, iz + STREET / 2 + SIDEWALK_W * 0.6);
-        sig.rotation.y = Math.random() < 0.5 ? 0 : -Math.PI / 2; // face one of the two approaches
+        sig.rotation.y = Math.PI / 2; // GLB front (+Z) -> +X, toward the oncoming lane
         sig.matrixAutoUpdate = false; sig.updateMatrix();
         sig.userData.instance = true;
         scene.add(sig);
+        LAMPS.forEach((l, li) => {
+          v.set(l.off[0] * tplH, l.off[1] * tplH, l.off[2] * tplH).applyMatrix4(sig.matrix);
+          dummy.position.copy(v); dummy.updateMatrix();
+          lampIMs[li].setMatrixAt(k, dummy.matrix);
+        });
+        // Deterministic per-intersection offset so neighbouring signals are out of step
+        phase[k] = ((ix * 73856093) ^ (iz * 19349663)) >>> 0;
       }
+      lampIMs.forEach((im) => { im.instanceMatrix.needsUpdate = true; scene.add(im); });
+      // Cycle: green 7s -> amber 2s -> red 7s. Lit lamps get a modest >1 colour
+      // so bloom picks them up without a halo; unlit lamps stay dark lenses.
+      const CYCLE = 16, ON = 1.6, OFF = 0.07;
+      const lit = new Int8Array(N).fill(-1);
+      const tmp = new THREE.Color();
+      const stateAt = (t) => (t < 7 ? 2 : t < 9 ? 1 : 0); // index into LAMPS
+      signalAnimator = {
+        update(dt, time) {
+          let changed = false;
+          for (let k = 0; k < N; k++) {
+            const st = stateAt((time + (phase[k] % 1600) / 100) % CYCLE);
+            if (st === lit[k]) continue;
+            lit[k] = st; changed = true;
+            LAMPS.forEach((l, li) => {
+              lampIMs[li].setColorAt(k, tmp.copy(l.color).multiplyScalar(li === st ? ON : OFF));
+            });
+          }
+          if (changed) lampIMs.forEach((im) => { im.instanceColor.needsUpdate = true; });
+        },
+      };
+      signalAnimator.update(0, 0);
     } else if (intersections.length) {
       const poleMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.85, metalness: 0.4 });
       const headMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.5 });
@@ -3581,6 +3634,7 @@ export function buildCity(scene, world, opts = {}) {
   _mergeStaticMeshes(scene);
 
   const animators = [flock];
+  if (signalAnimator) animators.push(signalAnimator);
   if (windowPulse) animators.push(windowPulse);
   return { buildings, grid, bodiesIM, cityAnimators: animators, cityRadius: CITY_RADIUS };
 }
