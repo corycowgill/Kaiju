@@ -36,7 +36,7 @@ function makeVideo(src, { muted = true, loop = false, preload = 'auto', controls
 // ?intro=1 forces it.
 function addSources(v, base, webm = true) {
   const list = [[SUFFIX + '.mp4', 'video/mp4']];
-  if (webm) list.push(['.webm', 'video/webm']);       // only the intro ships a WebM fallback (keeps the repo small)
+  if (webm) list.push(['.webm', 'video/webm']);       // only the trailer (= intro) ships a WebM fallback (keeps the repo small)
   for (const [ext, type] of list) {
     const s = document.createElement('source');
     s.src = VID + base + ext; s.type = type;
@@ -53,7 +53,7 @@ function playIntro() {
   wrap.id = 'intro-video';
   const v = makeVideo('', { muted: false });
   // The trailer opens on the studio card, so it doubles as the intro.
-  const lastSource = addSources(v, 'kaiju_havoc_trailer', false);
+  const lastSource = addSources(v, 'kaiju_havoc_trailer');
   const skip = document.createElement('div');
   skip.className = 'iv-skip'; skip.textContent = 'SKIP ▸';
   const snd = document.createElement('button');

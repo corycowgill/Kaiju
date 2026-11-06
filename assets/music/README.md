@@ -31,3 +31,24 @@ below -1.3 dBFS. Files are stereo, 44.1 kHz, as OGG Vorbis q5 and MP3 LAME V2.
 
 The tempo and key in the table are what the prompts asked for. Autocorrelation found no reliable beat grid, so cut to
 the hit timestamps rather than to bars.
+
+## trailer_score (44.2 s)
+
+A monster-movie trailer cue cut to the trailer edit, with transients placed within 5 ms of each timestamp.
+Ships as `trailer_score.mp3`, `.ogg`, and a 16-bit stereo WAV master. Loudness is -14.0 LUFS integrated, with peaks at
+-1.9 dBFS.
+
+It is assembled entirely from material generated earlier with the same model; no new generation was used. It is
+original and quotes no film themes.
+
+| Time | Content |
+|---|---|
+| 0–3.2 s | near-silent glitch shimmer (intro riser source at -20 dB) and a tiny chime at **0.60** |
+| 3.2–9.2 s | cold open: Gorrak score's eerie opening, low-passed at 900 Hz, plus a distant air-raid siren (SFX model, low-passed); soft taiko title hits at **5.20** and **7.90**; the Gorrak score's string build, ramped up 10 dB, rises into 9.2 |
+| **9.20** | big hit (D-minor taiko/brass) → Gorrak action (score_gorrak 16–26 s) |
+| **19.20** | big hit (E-minor taiko/brass/synth) → Tridon action (score_tridon 18–28 s) |
+| **29.20** | big hit (C-minor taiko/anvil/brass) → Mechra action (score_mechra 17–26.6 s) |
+| 38.80–39.20 | digital silence |
+| **39.20** | final slam (D-minor taiko/brass layered with the C-minor anvil hit), reverb tail, fade to silence by 44.2 |
+
+Section boundaries are hard cuts hidden under the hits. Tempo is free: each section keeps its source score's tempo.

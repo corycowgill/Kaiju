@@ -1,366 +1,422 @@
 {
- "note": "Prompts and costs for every cloud generation behind assets/video (see README.md).",
- "shots": [
+ "note": "Trailer v2 (2026-11-05): every cloud generation behind assets/video, with prompts, cost and Kimi K3 review. Rejected/test clips are listed too.",
+ "kimi_k3_calls": 33,
+ "kimi_k3_usd": 0.532,
+ "total_usd": 5.59,
+ "generations": [
   {
-   "clip": "gorrak_01_stomp",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "A colossal horned kaiju monster stomps forward down a Tokyo avenue at dusk toward the camera, heavy footsteps shake the street, dust and debris burst up from each footfall, glass shards rain from the skyscrapers, the creature opens its jaws and roars, green glow along its back spines, low-angle cinematic shot, slow camera push in, dramatic film lighting, epic scale",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Clean cinematic beat: the kaiju advances down the avenue from full-body wide to a looming over-camera roar, with consistent green dorsal spines, skin texture, and city geometry throughout. Clear forward motion, no melting, no garbled artifacts. The head silhouette widens noticeably in the close frames, but it reads as the creature rearing and opening its jaws over the lens rather than an identity swap. Seconds 2-5 give the full approach-to-roar escalation, peaking on the toothy close-up."
-   }
-  },
-  {
-   "clip": "gorrak_03_beam",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "a colossal horned reptilian kaiju with jagged back spines fires a blazing green atomic breath beam from its mouth into a skyscraper, the tower explodes in a huge fireball, sparks and debris fly, intense green light floods the street, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Gorrak holds identity across all six frames with no melting or morphing; city geometry stays stable while the green atomic breath builds from charge-up to full blast, giving clear cause-and-effect motion. Final frames are heavily overexposed and the kaiju reads mostly as silhouette, but that plays as intentional energy-blast spectacle for a trailer. Window starting at second 2 captures the beam eruption, the expanding atomic blast, and the kaiju silhouetted against it — the strongest 3-second action beat."
-   }
-  },
-  {
-   "clip": "gorrak_04_military",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "military tanks on a Tokyo street fire their cannons at a colossal horned reptilian kaiju with jagged back spines advancing toward them, muzzle flashes and explosions burst on its body, attack helicopters circle and launch missiles, smoke and fire, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 6,
-    "verdict": "keep",
-    "reason": "The kaiju (Gorrak-type spiky reptilian silhouette) stays consistent in identity across all six frames, tank and building geometry hold up, and there's clear motion escalation: advancing armor, helicopters, muzzle flash, and building dust clouds. No melting anatomy, morphing, or garbled artifacts. It loses points because the kaiju stays small and murky in the mid-ground and its head shape wobbles slightly between frames, but that's trailer-tolerable. The back half (seconds 3-5) has the strongest action beats: tank cannon fire, the low-angle armor close-up with the kaiju looming through smoke, and the dusty climax."
-   }
-  },
-  {
-   "clip": "gorrak_05_collapse",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "a colossal horned reptilian kaiju with jagged back spines smashes through a leaning skyscraper which collapses and crumbles in a huge cloud of dust and fire, the monster raises its arms and roars triumphantly amid burning ruins, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Clear narrative beat: building collapse -> explosion -> kaiju revealed roaring through fire and smoke. Motion reads well across all six frames, warm orange grade is consistent, and the reptilian kaiju identity holds (head-on angle in later frames hides the dorsal spikes but no true morphing/melting). Slight head-shape drift and heavy haze keep it from scoring higher, but no clear failure criteria are met. Best window starts at second 2: fireball -> monster emerging from flames -> rearing roar, a perfect trailer crescendo."
-   }
-  },
-  {
-   "clip": "gorrak_02_roar",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "close-up of a colossal horned reptilian kaiju with jagged back spines throwing its head back and roaring furiously at the sky, jaws wide, green glow flickering, debris and dust swirling, camera slowly orbits, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 6,
-    "verdict": "keep",
-    "reason": "Spiky reptilian kaiju (Gorrak-type) keeps a consistent identity across all six frames with a clear cinematic arc: roar, green atomic-breath charge glow, rear-up, and orange blast payoff. Real motion throughout, no frozen frames, buildings and geometry hold up. Frame 3 has a smoky/blurred head and frame 4 reads slightly hunched, but both pass as motion blur, dust, and pose shift rather than clear melting or morphing. Final frame is heavily washed in orange but reads as an explosion, not an artifact. Best 3-second window starts at second 3: breath charge, rearing roar, and blast give the edit a clean build-and-payoff beat."
-   }
-  },
-  {
-   "clip": "tridon_01_stomp",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "a colossal golden three-headed winged dragon kaiju stomps forward down a Tokyo avenue at dusk toward the camera, the street shakes, dust and debris burst from each footfall, glass rains from skyscrapers, slow camera push in, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 6,
-    "verdict": "keep",
-    "reason": "Golden winged dragon (Tridon-consistent) holds identity across all frames with a clear lunge-toward-camera arc, dust impact, and aggressive close-up — good trailer energy. Frames 5-6 get soft and hard to parse, but read as extreme-close-up impact/motion blur rather than melting or identity swap. Window 1-4s captures the lunge, dust burst, and roaring close-up while trimming the most abstract final frame."
-   }
-  },
-  {
-   "clip": "tridon_02_roar",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "close-up of a colossal golden three-headed winged dragon kaiju throwing its head back and roaring furiously at the sky, jaws wide, golden electric glow flickering, debris and dust swirling, camera slowly orbits, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Golden winged kaiju stays consistent in identity and anatomy across all six frames, with clear motion: a head-turn, camera push-in, and escalating roar culminating in an extreme close-up. Warm orange creature against the purple city skyline reads cinematic and trailer-ready. Final frame is slightly soft but not garbled; no melting, morphing, broken geometry, or frozen frames. The 2-5s window captures the full dramatic arc from turn to roar close-up."
-   }
-  },
-  {
-   "clip": "tridon_03_beam",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "a colossal golden three-headed winged dragon kaiju fires a crackling golden-yellow electric lightning beam from its mouth into a skyscraper, the tower explodes in a huge fireball, sparks and debris fly, intense golden electric light floods the street, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Strong cause-and-effect beat: Tridon fires a golden volt beam that blooms into a screen-filling explosion with clear escalation across frames. Dragon identity and anatomy stay consistent (wings, tail, stance all stable), and there's real motion. Minor issues: a floating white bar artifact in the opening frame and slightly soft head anatomy, but no melting, identity swap, or broken geometry. Starting at second 1 skips the artifact frame and captures the full fire-impact-detonation arc."
-   }
-  },
-  {
-   "clip": "tridon_05_collapse",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "a colossal golden three-headed winged dragon kaiju smashes through a leaning skyscraper which collapses and crumbles in a huge cloud of dust and fire, the monster raises its arms and roars triumphantly amid burning ruins, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Consistent golden three-headed winged kaiju (Tridon) throughout: it topples a skyscraper, triggers a massive fireball, then its necks and heads rise roaring through the smoke. Clear cause-and-effect motion, coherent anatomy, no melting or garbled artifacts. The necks read slightly thin/swan-like in the smoke frames, which caps the score, but it's not a failure. The final 3 seconds (frames 4-6) give the strongest trailer beat: heads emerging from fire, rising through smoke, and ending on the screaming head-and-wing reveal."
-   }
-  },
-  {
-   "clip": "tridon_04_military",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "military tanks on a Tokyo street fire their cannons at a colossal golden three-headed winged dragon kaiju advancing toward them, muzzle flashes and explosions burst on its body, attack helicopters circle and launch missiles, smoke and fire, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 6,
-    "verdict": "keep",
-    "reason": "Tridon keeps a consistent golden winged-dragon identity across all six frames with no melting, identity swaps, or broken geometry; the city, tanks, and helicopters stay coherent. There is real motion: wings flap and raise, the chest/base glow builds, and the bottom row delivers tank muzzle flashes and smoke. Detail is soft and the head/neck silhouette is a bit muddy, which caps the score, but it clears the failure bar. The 2s-5s window carries the best beat: wing flare into the armored volley, ideal trailer escalation."
-   }
-  },
-  {
-   "clip": "mechra_01_stomp",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "a colossal chrome cybernetic war machine kaiju with glowing red core lights stomps forward down a Tokyo avenue at dusk toward the camera, the street shakes, dust and debris burst from each footfall, glass rains from skyscrapers, slow camera push in, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Mechra stays consistent across all six frames — chrome armor, red chest core, and red optic read clearly throughout, with no identity swap or melting anatomy. Clear forward advance with a low-angle push-in, escalating dust and debris, and growing scale give it real trailer energy. Frame 5's dark foreground mass is slightly ambiguous but reads as collapsing rubble rather than a morphing artifact. The back half (seconds 2-5) carries the best escalation: dust burst, debris-strewn advance, and the looming close-up."
-   }
-  },
-  {
-   "clip": "tridon_crosswalk_kf",
+   "clip": "g_military_kf",
    "model": "fal-ai/flux-2/edit",
    "provider": "fal-ai",
-   "resolution": "1280x720",
-   "est_usd": 0.04,
-   "prompt": "Using the attached kaiju as exact reference, preserve Tridon's golden scales, three horned heads, orange wings and cream underbelly. Photoreal cinematic 16:9 still: dusk scramble crosswalk in a glass skyscraper canyon, Tridon lands with thunderous impact, asphalt cracking, golden electricity crackling across its body, lightning bolt striking the street, sparks flying, terrified crowd scattering in every direction, motion blur, warm dusk haze, dramatic rim light, volumetric glow, shallow depth of field."
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.0,
+   "status": "error: result 422 {\"detail\":[{\"loc\":[\"body\",\"image_urls\"],\"msg\":\"The content cou",
+   "prompt": "Photoreal cinematic still, 16:9, night Tokyo avenue slick with rain, neon reflections. Low street-level angle: line of Type-10 battle tanks firing cannons, bright muzzle flashes, tracer streaks; attack helicopters strafing with rockets; jets streaking overhead through smoke and searchlight beams. Towering at avenue's end: Gorrak, the horned grey-brown reptilian kaiju from the reference render, exact design and colours, jagged dorsal spines glowing green, shells bursting on its hide. Immense scale, atmospheric haze, subtle film grain. No text, no logos."
   },
   {
-   "clip": "mechra_highway_kf",
+   "clip": "co_crosswalk_kf",
    "model": "fal-ai/flux-2/edit",
    "provider": "fal-ai",
-   "resolution": "1280x720",
-   "est_usd": 0.04,
-   "prompt": "Photoreal cinematic 16:9 still, golden-hour dusk. Keep the attached kaiju's exact design and colours: colossal chrome cybernetic war-machine, glowing red core lights, shoulder missile pods. Cutaway to elevated highway jammed with abandoned cars, doors open, panicked drivers fleeing toward camera. Mechra towers behind the skyline, launching missiles that streak overhead with smoke trails and explode against glass towers, fireballs and debris. Low angle, motion blur, volumetric haze, dramatic rim light, film grain."
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "Photoreal cinematic still, 16:9 anamorphic, 1990s Japanese giant-monster film homage: low angle on a packed Shibuya-style scramble crosswalk at night in heavy rain, neon signs reflecting on wet asphalt, dozens of umbrellas tilting upward as the terrified crowd looks up; a police officer in a reflective vest blows a whistle, arm raised waving people back; puddles rippling from tremors. Far down the avenue between skyscrapers looms the reference kaiju, exact design and colours preserved: hulking horned reptilian tyrant with dorsal spikes. Searchlights, drifting smoke, light film grain, no text."
   },
   {
-   "clip": "gorrak_platform_kf",
+   "clip": "g_evac_kf",
    "model": "fal-ai/flux-2/edit",
    "provider": "fal-ai",
-   "resolution": "1280x720",
-   "est_usd": 0.04,
-   "prompt": "Using the attached kaiju render as strict reference, preserve Gorrak's exact design and colours: grey-brown armored reptilian hide, massive curved horns, jagged dorsal spines glowing green. Cutaway keyframe: elevated train platform shakes violently, steel girders rattling, commuters scatter and flee in panic, dropped briefcases, motion blur. Gorrak looms colossal through dusty haze beyond the tracks, backlit by sunset. Photoreal cinematic still, 16:9, shallow depth of field, film grain, dramatic volumetric light."
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "Transform into a photoreal cinematic film still, 16:9, low-angle night shot on a rain-slick Tokyo scramble crosswalk. Crowds of civilians flee toward camera mid-stride, police officers direct them with glowing light batons, abandoned cars with headlights on. Behind them towers Gorrak exactly as in reference: grey-brown horned reptilian kaiju, muscular build, fanged open jaws, jagged dorsal spines glowing green, dwarfing neon-lit skyscrapers. Searchlights cut through smoke and rain haze, wet asphalt reflections, anamorphic lens flare, subtle film grain, immense scale, no text or signage lettering."
   },
   {
-   "clip": "gorrak_platform",
+   "clip": "co_sirens_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "Photoreal cinematic film still, 16:9 anamorphic frame, vintage giant-monster movie homage. Wide low-angle night skyline of rain-soaked Tokyo: glowing neon signs, slick reflective streets, air-raid sirens on poles, military searchlights sweeping low storm clouds, drifting smoke. A lightning flash backlights an immense dark horned silhouette — the reference kaiju's exact hulking reptilian build and crown of horns, faint green rim-light on wet hide — looming behind distant skyscrapers, otherwise no surface detail. Ominous stillness, deep purple-teal palette, light film grain, immense scale. No text."
+  },
+  {
+   "clip": "t_military_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.0,
+   "status": "error: result 422 {\"detail\":[{\"loc\":[\"body\",\"image_urls\"],\"msg\":\"The content cou",
+   "prompt": "Photoreal cinematic 16:9 still, homage to classic Japanese giant-monster movie trailers: night thunderstorm over rain-slick Tokyo, neon glow, searchlights sweeping smoke. Tridon — golden three-headed winged dragon kaiju, orange wings spread wide, cream segmented underbelly, exactly matching reference render — towers between skyscrapers, heads rearing skyward. Attack helicopters circle in from frame edges, rocket pods armed; tanks on elevated expressway below aim upward, first tracer rounds streaking. Lightning splits clouds behind him. Immense scale, low anamorphic-style angle, light film grain. No text."
+  },
+  {
+   "clip": "g_attack_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "Photoreal 16:9 cinematic still, classic Japanese giant-monster movie homage: the horned grey-brown reptilian kaiju from the reference rears back between rain-slick Tokyo skyscrapers at night, jaws parting, jagged dorsal spines igniting with a building green glow (#66ff66) a heartbeat before its atomic breath fires. Neon signage, sweeping searchlights, drifting smoke, wet reflective streets, immense low-angle scale, anamorphic composition with headroom for the coming beam, light film grain. Keep the kaiju's exact design and colours. No text."
+  },
+  {
+   "clip": "t_evac_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "Photoreal cinematic film still, 16:9, night. Rain-lashed Tokyo avenue: commuters in business attire surge from a subway station entrance toward camera, umbrellas scattering, red emergency sirens strobing across wet asphalt and neon glow. Above, Tridon — golden three-headed dragon kaiju, orange bat wings spread wide, cream segmented underbelly, exactly matching the reference render — descends from storm clouds beside the red-and-white Tokyo Tower, lightning forking behind him. Searchlights sweep the smoke-filled sky. Low angle, immense scale, light film grain, motion-ready composition. No text."
+  },
+  {
+   "clip": "t_attack_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "Photoreal cinematic film still, 16:9 anamorphic, night Tokyo in heavy rain. The golden three-headed winged dragon kaiju from the reference—exact design and colours: golden scales, orange wings spread wide, cream segmented underbelly—rears all three necks back between skyscrapers, jaws opening as crackling golden volt energy (#ffee66) charges in their throats. Lightning storm arcs across Tokyo Tower, the lattice glowing and sparking. Neon signs, sweeping searchlights, drifting smoke, rain-slick street reflections, immense scale, light film grain. No text."
+  },
+  {
+   "clip": "m_military_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.0,
+   "status": "error: result 422 {\"detail\":[{\"loc\":[\"body\",\"image_urls\"],\"msg\":\"The content cou",
+   "prompt": "Photoreal cinematic still, 16:9 anamorphic, homage to classic Japanese giant-monster films: rain-slick Tokyo intersection at night, neon signs, sweeping searchlights, drifting smoke. The exact kaiju from the reference render—towering chrome cybernetic war machine, glowing red chest core, shoulder missile pods—advances between skyscrapers. Camouflaged Type-10 tanks hold the glistening foreground, barrels raised; fighter jets dive from above with lit afterburners, missiles moments from launch. Low camera angle, immense scale, wet-street reflections, light film grain. No text."
+  },
+  {
+   "clip": "m_evac_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "Photoreal cinematic still, 16:9, rain-slick Tokyo avenue at night. Foreground: a police officer in rain cape, back to camera, arm raised directing a column of fleeing cars with glaring headlights and panicked civilians. Behind the neon-lit towers, the exact chrome cybernetic kaiju from the reference image strides between skyscrapers — silver armor, glowing red chest cores, shoulder missile pods — searchlights raking its wet chrome, smoke drifting, reflections on wet asphalt. Abstract glowing signage, no readable text. Anamorphic depth, film grain."
+  },
+  {
+   "clip": "m_attack_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "Transform into a photoreal cinematic still, 16:9, classic Japanese giant-monster movie homage: Mechra, the chrome cybernetic war-machine kaiju exactly as in the reference render—mirror-polished silver armor, glowing red chest core, twin shoulder missile pods—towering between Tokyo skyscrapers at night, low heroic angle. Rain-slick streets reflect neon signs and sweeping searchlights; drifting smoke, haze, immense scale. First frame: shoulder pods angled skyward, hatch covers open, first missiles igniting with bright orange flashes and fresh white smoke trails beginning to arc. Anamorphic lens flare, light film grain, moody teal-amber grade. No text."
+  },
+  {
+   "clip": "g_military_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "DESIGN LOCK: the kaiju is exactly the reference creature: a hulking horned brute with two massive curved bull horns, a bony horned skull, gorilla-like hunched shoulders, huge long forearms with knuckles near the ground, grey-brown armoured hide, a mane of long grey-green quills; NOT a dinosaur, no upright reptile silhouette. Photoreal cinematic still, 16:9, night Tokyo avenue slick with rain, neon reflections. Low street-level angle: line of Type-10 battle tanks firing cannons, bright muzzle flashes, tracer streaks; attack helicopters strafing with rockets; jets streaking overhead through smoke and searchlight beams. Towering at avenue's end: Gorrak, the horned grey-brown reptilian kaiju from the reference render, exact design and colours, jagged dorsal spines glowing green, shells bursting on its hide. Immense scale, atmospheric haze, subtle film grain. No text, no logos."
+  },
+  {
+   "clip": "t_military_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "DESIGN LOCK: exactly the reference creature: golden scaled three-headed dragon, three long necks with horned heads, broad orange bat wings, cream segmented belly, thick tail. Photoreal cinematic 16:9 still, homage to classic Japanese giant-monster movie trailers: night thunderstorm over rain-slick Tokyo, neon glow, searchlights sweeping smoke. Tridon — golden three-headed winged dragon kaiju, orange wings spread wide, cream segmented underbelly, exactly matching reference render — towers between skyscrapers, heads rearing skyward. Attack helicopters circle in from frame edges, rocket pods armed; tanks on elevated expressway below aim upward, first tracer rounds streaking. Lightning splits clouds behind him. Immense scale, low anamorphic-style angle, light film grain. No text."
+  },
+  {
+   "clip": "g_attack_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "DESIGN LOCK: the kaiju is exactly the reference creature: a hulking horned brute with two massive curved bull horns, a bony horned skull, gorilla-like hunched shoulders, huge long forearms with knuckles near the ground, grey-brown armoured hide, a mane of long grey-green quills; NOT a dinosaur, no upright reptile silhouette. Photoreal 16:9 cinematic still, classic Japanese giant-monster movie homage: the horned grey-brown reptilian kaiju from the reference rears back between rain-slick Tokyo skyscrapers at night, jaws parting, jagged dorsal spines igniting with a building green glow (#66ff66) a heartbeat before its atomic breath fires. Neon signage, sweeping searchlights, drifting smoke, wet reflective streets, immense low-angle scale, anamorphic composition with headroom for the coming beam, light film grain. Keep the kaiju's exact design and colours. No text."
+  },
+  {
+   "clip": "g_evac_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "DESIGN LOCK: the kaiju is exactly the reference creature: a hulking horned brute with two massive curved bull horns, a bony horned skull, gorilla-like hunched shoulders, huge long forearms with knuckles near the ground, grey-brown armoured hide, a mane of long grey-green quills; NOT a dinosaur, no upright reptile silhouette. Transform into a photoreal cinematic film still, 16:9, low-angle night shot on a rain-slick Tokyo scramble crosswalk. Crowds of civilians flee toward camera mid-stride, police officers direct them with glowing light batons, abandoned cars with headlights on. Behind them towers Gorrak exactly as in reference: grey-brown horned reptilian kaiju, muscular build, fanged open jaws, jagged dorsal spines glowing green, dwarfing neon-lit skyscrapers. Searchlights cut through smoke and rain haze, wet asphalt reflections, anamorphic lens flare, subtle film grain, immense scale, no text or signage lettering."
+  },
+  {
+   "clip": "m_military_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "DESIGN LOCK: exactly the reference machine: chrome and gunmetal armour plates, long crested chrome head, glowing red gem in the chest, shoulder missile pods, clawed mechanical feet, long segmented tail. Photoreal cinematic still, 16:9 anamorphic, homage to classic Japanese giant-monster films: rain-slick Tokyo intersection at night, neon signs, sweeping searchlights, drifting smoke. The exact kaiju from the reference render—towering chrome cybernetic war machine, glowing red chest core, shoulder missile pods—advances between skyscrapers. Camouflaged Type-10 tanks hold the glistening foreground, barrels raised; fighter jets dive from above with lit afterburners, missiles moments from launch. Low camera angle, immense scale, wet-street reflections, light film grain. No text."
+  },
+  {
+   "clip": "t_evac_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "DESIGN LOCK: exactly the reference creature: golden scaled three-headed dragon, three long necks with horned heads, broad orange bat wings, cream segmented belly, thick tail. Photoreal cinematic film still, 16:9, night. Rain-lashed Tokyo avenue: commuters in business attire surge from a subway station entrance toward camera, umbrellas scattering, red emergency sirens strobing across wet asphalt and neon glow. Above, Tridon — golden three-headed dragon kaiju, orange bat wings spread wide, cream segmented underbelly, exactly matching the reference render — descends from storm clouds beside the red-and-white Tokyo Tower, lightning forking behind him. Searchlights sweep the smoke-filled sky. Low angle, immense scale, light film grain, motion-ready composition. No text. The dragon is colossal, filling the upper half of the frame, photoreal scales, not cartoonish, low camera angle looking up past the fleeing commuters."
+  },
+  {
+   "clip": "g_attack_ltx",
+   "model": "fal-ai/ltx-2-19b/distilled/image-to-video",
+   "provider": "fal-ai",
+   "resolution": "1248x704",
+   "seconds": "6",
+   "est_usd": 0.111,
+   "status": "ok",
+   "prompt": "Slow push-in at low angle. Gorrak, exactly as framed—horned grey-brown reptilian kaiju—rears back, jagged dorsal spines flaring #66ff66, then unleashes a torrent of green atomic breath that sweeps through a row of skyscrapers; towers explode in sequence, concrete debris and glass cascading, dust clouds billowing, a shockwave rippling across rain-slick streets. Climax: a towering green-tinged mushroom cloud rises over the neon skyline. Lighting: green beam glow bouncing off wet asphalt, sweeping searchlights, flickering neon through rain and smoke; anamorphic 2.39:1, light film grain. Sound: air-raid sirens, distant screams, tank cannon booms, helicopter rotors, jet roar, deep guttural monster roar, rumbling footsteps, massive sequential explosions. No dialogue, no music, no on-screen text."
+  },
+  {
+   "clip": "g_attack",
    "model": "minimax/h3/image-to-video",
    "provider": "fal-ai",
    "resolution": "768P",
-   "est_usd": 0.3,
-   "prompt": "Handheld shake camera holding the start frame composition at platform level. Hazy golden backlight silhouettes Gorrak beyond the tracks; thick dust, drifting embers, and debris fill the air. Beat 1: the elevated platform shakes violently, panicked crowds fleeing along both platforms, briefcases and luggage tumbling onto the tracks. Beat 2: Gorrak stomps closer through the haze, green glow pulsing along his jagged spines, a twisted canopy beam tears loose and crashes down. Beat 3: Gorrak lowers his horned head and roars, dust blasting outward. Sound: rumbling footsteps, screams, shattering glass, grinding steel, distant sirens, deep kaiju roar. No dialogue, no music, no on-screen text.",
+   "seconds": "6",
+   "est_usd": 0.36,
+   "status": "ok",
+   "prompt": "Slow push-in at low angle. Gorrak, exactly as framed—horned grey-brown reptilian kaiju—rears back, jagged dorsal spines flaring #66ff66, then unleashes a torrent of green atomic breath that sweeps through a row of skyscrapers; towers explode in sequence, concrete debris and glass cascading, dust clouds billowing, a shockwave rippling across rain-slick streets. Climax: a towering green-tinged mushroom cloud rises over the neon skyline. Lighting: green beam glow bouncing off wet asphalt, sweeping searchlights, flickering neon through rain and smoke; anamorphic 2.39:1, light film grain. Sound: air-raid sirens, distant screams, tank cannon booms, helicopter rotors, jet roar, deep guttural monster roar, rumbling footsteps, massive sequential explosions. No dialogue, no music, no on-screen text.",
+   "end_frame": "g_attack_end",
    "kimi_review": {
     "score": 7,
     "verdict": "keep",
-    "reason": "Kaiju identity stays consistent across all six frames: green crystalline dorsal spines, horned silhouette, hunched reptilian mass. Strong cinematic language throughout — backlit dust, fleeing crowds, helicopter, collapsing station canopy. Clear motion escalation from advance to lunge to full roar with green breath-charge glow. Minor scale drift in frame 3 (reads smaller/farther) and slight head-shape variation in frame 6, but both are explainable by perspective and the roar pose, not melting or identity swap. No broken geometry or garbled artifacts; the flying train car in frames 4-5 reads as intentional destruction. Best window is seconds 3-5: close lunge, train-toss roar, and breath-charge money shot."
+    "reason": "Gorrak stays on-model across all six frames: spiky dorsal plates, nasal horn, hulking reptilian bulk, and signature green atomic breath. Clear action progression (beam fire -> impact bloom -> sweeping beam -> turn -> advance through the blast cloud) with moody night-city searchlights giving strong classic kaiju-trailer homage energy. Minor head/snout silhouette drift in frame 6 and slightly soft anatomy in the quadruped frames, but no identity change, melting, broken geometry, or frozen motion that would justify a reroll."
    }
   },
   {
-   "clip": "tridon_crowd",
+   "clip": "g_evac",
    "model": "minimax/h3/image-to-video",
    "provider": "fal-ai",
    "resolution": "768P",
+   "seconds": "5",
    "est_usd": 0.3,
-   "prompt": "Low-angle dolly push-in down the avenue, keeping Tridon centered between the glass towers. Golden dusk light, thick dust and smoke haze, drifting embers, distant searchlights sweeping. Beat 1: panicked crowds fleeing toward camera, stumbling, arms flailing. Beat 2: Tridon's colossal foot slams down behind them, asphalt cracking, golden electricity crackling across its three necks and wings. Beat 3: all three heads rear up and roar as tower windows shatter. Sound: layered screams, rumbling footsteps, booming impact, sirens, glass shattering, electric crackle. No dialogue, no music, no on-screen text.",
+   "status": "ok",
+   "prompt": "The kaiju keeps EXACTLY its first-frame shape for the whole shot: a hulking horned brute with two huge curved bull horns, gorilla-like hunched shoulders and long knuckle-dragging forearms, short stubby tail, grey-green quill mane; it never becomes a dinosaur or grows a long tail. 5-second shot, exact start frame: Gorrak, horned grey-brown kaiju with quill mane glowing green, towering between neon skyscrapers over rain-soaked Tokyo scramble crosswalk, unchanged. Camera: slow low-angle dolly forward through fleeing crowd. Lighting: cold neon reflections on wet asphalt, sweeping searchlights, green spine glow, smoke haze. Atmosphere: heavy rain, mist, film grain, anamorphic 2.39:1. Motion beats: (1) civilians sprint toward camera as police wave glowing batons; (2) Gorrak stomps down, asphalt cracks, shockwave ripples puddles, abandoned cars bounce and shed debris; (3) it exhales a low roar, dust and glass shards burst from a nearby facade. Sound: air-raid sirens, screams, rumbling footsteps, tank cannon booms, helicopter rotors, distant jet roar, deep monster roar, explosion. No dialogue, no music, no text.",
    "kimi_review": {
     "score": 7,
     "verdict": "keep",
-    "reason": "Tridon stays consistent as a golden three-headed dragon across all six frames, the flooded-city geometry holds up, and there's a clear action arc: wide reveal, civilian flee, stomp, beam blast, hero front shot, volt-charge climax. Frame 4's beam close-up is mushy and anatomically vague but reads as an attack beat, not a failure. The final three frames (beam -> hero reveal -> lightning charge) form the strongest trailer crescendo, so cut the 3s window starting at second 3."
+    "reason": "Gorrak reads as the same horned reptilian tyrant with the green dorsal glow across the sequence; scale, night-city spotlights, wet-street reflections, fleeing civilians and military lights sell the classic trailer homage, and the dust/crowd shift shows real motion rather than a frozen loop. The final black frame plays like a trailer fade. Minor AI softness in the crowds and slight horn-angle drift keep it from an 8+, but no identity swap, melting anatomy, or broken geometry."
    }
   },
   {
-   "clip": "gorrak_crowd",
+   "clip": "g_military",
    "model": "minimax/h3/image-to-video",
    "provider": "fal-ai",
    "resolution": "768P",
+   "seconds": "5",
    "est_usd": 0.3,
-   "prompt": "Low-angle dolly-in down the avenue, keeping the exact start-frame composition: panicked crowds fleeing toward camera as Gorrak, the colossal horned reptilian kaiju with jagged back spines and a green glow, advances between the glass towers. Warm dusk light, hazy amber sky, dust and smoke drifting through the street, distant embers. Beat 1: crowd surges forward screaming, stumbling. Beat 2: Gorrak's first massive footstep slams down, a dust shockwave rippling across the pavement as windows tremble. Beat 3: Gorrak roars, green glow flaring in his chest. Sound: screams, deep rumbling footsteps, shattering glass, wailing sirens, a distant explosion. No dialogue, no music, no on-screen text.",
+   "status": "ok",
+   "prompt": "The kaiju keeps EXACTLY its first-frame shape for the whole shot: a hulking horned brute with two huge curved bull horns, gorilla-like hunched shoulders and long knuckle-dragging forearms, short stubby tail, grey-green quill mane; it never becomes a dinosaur or grows a long tail. Image-to-video, 5s, anamorphic 2.39:1, photoreal, light film grain. Camera: slow low-angle dolly push-in toward Gorrak, the horned grey-brown kaiju with green-glowing quill mane, exactly as in frame. Lighting: neon signs, sweeping searchlights, muzzle flashes, rain-slick reflections. Atmosphere: night rain, smoke, haze. Beats: (1) tank line fires, shells burst on Gorrak's hide in sparks and dust, shockwaves ripple puddles; (2) helicopters strafe, rocket tracers streak past, debris and asphalt chunks scatter; (3) Gorrak steps forward, ground trembles, unleashes a deep roar as jets streak overhead. Sound: air-raid sirens, distant screams, cannon booms, rotor chop, jet roar, rumbling footsteps, explosions, monster roar. No dialogue, no music, no text.",
    "kimi_review": {
-    "score": 5,
+    "score": 7,
     "verdict": "keep",
-    "reason": "Noticeable color/model drift across frames (brownish to gold to teal to green), but no melting anatomy, broken geometry, or frozen motion; the silhouette stays a consistent bipedal reptilian kaiju and the shifts can read as explosion lighting plus an atomic charge-up. Final two frames land on-model for Gorrak (horned, green chest glow) with fleeing crowds and dust. The 3-6s window gives a clean power-up beat: dorsal glow igniting into full green atomic charge with strong scale and panic in the foreground. Usable with a tight cut; avoid the gold/teal middle frames."
+    "reason": "Creature identity holds across the sequence: a bulky, green-spiked reptilian kaiju consistent with Gorrak, with the large curved horns in frame 5 reading as the same horned design revealed by the closer angle rather than a morph. Strong trailer language throughout — rain-slicked neon streets, searchlights, tank volleys, muzzle flashes, and a clear forward-lunging motion arc from distant silhouette to close-up. Frame 3's running pose is slightly rubbery and frame 6 fades to black, but the fade works as a trailer beat and no melting anatomy, broken geometry, or frozen motion is present."
    }
   },
   {
-   "clip": "mechra_02_roar",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
+   "clip": "co_crosswalk",
+   "model": "minimax/h3/image-to-video",
    "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "close-up of a colossal chrome cybernetic war machine kaiju with glowing red core lights throwing its head back and roaring furiously at the sky, jaws wide, pink-red plasma glow flickering, debris and dust swirling, camera slowly orbits, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
+   "resolution": "768P",
+   "seconds": "5",
+   "est_usd": 0.3,
+   "status": "ok",
+   "prompt": "The kaiju keeps EXACTLY its first-frame shape for the whole shot: a hulking horned brute with two huge curved bull horns, gorilla-like hunched shoulders and long knuckle-dragging forearms, short stubby tail, grey-green quill mane; it never becomes a dinosaur or grows a long tail. Low-angle dolly pushes forward through the panicked crowd, the horned kaiju Gorrak held center-frame between neon towers, unchanged. Lighting: cold night rain, neon reflections on wet asphalt, searchlight beams slicing smoke. Atmosphere: heavy rain, drifting smoke, trembling haze. Beats: (1) ground trembles—puddles ripple, umbrellas tilt up, the officer blows his whistle, waving people back; (2) Gorrak's foot slams down, a shockwave ripples the street, debris and dust burst from a crumbling storefront, neon signs shatter; (3) the crowd scatters as Gorrak steps closer, jaws opening. Sound: wailing air-raid sirens, screams, tank cannon booms, helicopter rotors, jet roar overhead, rumbling footsteps, deep guttural monster roar, explosions. No dialogue, no music, no text.",
+   "kimi_review": {
+    "score": 7,
+    "verdict": "keep",
+    "reason": "The horned kaiju silhouette stays consistent across all frames—no identity morphing, melting anatomy, or broken geometry. Strong classic-kaiju trailer mood: rain, neon signage, umbrella crowd, spotlight beams, and the monster visibly advancing through rising dust. Deductions for very subtle motion in the first three frames and an abrupt cut to black on the final frame, though that works as a trailer punctuation beat."
+   }
+  },
+  {
+   "clip": "co_sirens",
+   "model": "minimax/h3/image-to-video",
+   "provider": "fal-ai",
+   "resolution": "768P",
+   "seconds": "6",
+   "est_usd": 0.36,
+   "status": "ok",
+   "prompt": "The kaiju keeps EXACTLY its first-frame shape for the whole shot: a hulking horned brute with two huge curved bull horns, gorilla-like hunched shoulders and long knuckle-dragging forearms, short stubby tail, grey-green quill mane; it never becomes a dinosaur or grows a long tail. Slow push-in from rain-slick street level. Night storm over a neon-lit Tokyo skyline; military searchlights sweep low clouds, lightning flickers, light film grain, anamorphic 2.39:1. Beat 1: searchlight beams converge on the immense horned silhouette as it shifts weight behind the towers, dislodging debris and dust from rooftops. Beat 2: a lightning flash reveals the dark shape advancing; a rumbling footstep sends a shockwave rippling across wet asphalt, shaking neon signs and scattering sparks. Beat 3: smoke billows as explosions bloom at its feet. Sound: wailing air-raid sirens, distant screams, tank cannon booms, helicopter rotors, jet roar overhead, deep monster roar, thunderous footsteps, explosions. No dialogue, no music, no text. Keep the kaiju exactly as framed, dark and undefined.",
+   "kimi_review": {
+    "score": 7,
+    "verdict": "keep",
+    "reason": "Gorrak holds identity across all six frames — same twin curved horns, bulky bipedal silhouette, green chest glow — with no melting, morphing, or broken geometry. Clear temporal progression as the kaiju advances through the rain-soaked neon city, searchlights and lightning shifting naturally, wet-street reflections and foreground traffic adding trailer-grade depth. Minor pose jitter and a slight position jump between frames 3-4, but it reads as camera/monster movement rather than a failure. Atmospheric, coherent, and cuttable."
+   }
+  },
+  {
+   "clip": "t_evac",
+   "model": "minimax/h3/image-to-video",
+   "provider": "fal-ai",
+   "resolution": "768P",
+   "seconds": "5",
+   "est_usd": 0.3,
+   "status": "ok",
+   "prompt": "The dragon keeps EXACTLY its first-frame design for the whole shot: three long necks and three horned golden heads, orange bat wings, cream belly. Slow push-in, low angle. Night rain, neon reflections on wet asphalt, red siren strobes, sweeping searchlights, drifting smoke, lightning flicker. Beat 1: commuters surge from the station, umbrellas tumbling, splashing through puddles. Beat 2: Tridon's orange wings slam downward, gust blasting umbrellas and debris across the street; all three golden heads rear and roar as lightning strikes Tokyo Tower beside him. Beat 3: shockwave rattles windows, dust and paper whirl, a sedan tips onto its side. Sound: wailing air-raid sirens, screaming crowd, helicopter rotors, jet roar overhead, deep triple-throated monster roar, thunder cracks, distant tank cannon booms, rumbling explosion. No dialogue, no music, no on-screen text. Photoreal, anamorphic 2.39:1, light film grain.",
+   "kimi_review": {
+    "score": 7,
+    "verdict": "keep",
+    "reason": "Tridon holds identity across all six frames: golden scales, three necks/heads, and wings remain consistent with no melting or morphing into another creature. Pose progression reads as intentional trailer motion — rearing up, wings spreading, then lunging forward over the building. Environment stays coherent (Tokyo Tower, spotlights, military vehicles with red beacons, civilian silhouettes), and the lighting is genuinely cinematic. Frame 3's wide-spread flying silhouette is slightly ambiguous and a couple of heads blur together in motion, but nothing crosses into broken geometry or frozen frames. Solid homage shot."
+   }
+  },
+  {
+   "clip": "t_military",
+   "model": "minimax/h3/image-to-video",
+   "provider": "fal-ai",
+   "resolution": "768P",
+   "seconds": "5",
+   "est_usd": 0.3,
+   "status": "ok",
+   "prompt": "The dragon keeps EXACTLY its first-frame design for the whole shot: three long necks and three horned golden heads, orange bat wings, cream belly. Low-angle dolly pushes slowly toward Tridon, the golden three-headed winged dragon, exactly as framed, towering over Tokyo in a thunderstorm. Lighting: strobing lightning, sweeping helicopter searchlights, orange muzzle flashes, neon reflections on rain-slick streets; atmosphere of smoke, rain haze, light film grain. Beats: 1) tanks on the elevated expressway fire upward—cannon booms, tracer rounds streak, shockwaves ripple puddles; 2) helicopters bank and launch rockets, detonations bursting across Tridon's scales, debris and dust cascading onto the expressway; 3) all three heads rear back and unleash a deep triple roar, wings flaring, lightning cracking behind. Sound: air-raid sirens, distant screams, rotor chop, jet roar, tank booms, explosions, rumbling footsteps. No dialogue, no music, no text.",
+   "kimi_review": {
+    "score": 7,
+    "verdict": "keep",
+    "reason": "Tridon stays a consistent golden three-headed winged dragon across all six frames, with coherent night-city geography, searchlight-wielding helicopters, and escalating fires. Frame 3's intense orange glow reads as a volt-beam charge-up beat rather than an identity morph, and the head/wing silhouette wobble there is minor. No melting anatomy, broken geometry, or frozen motion — the sequence has clear cinematic progression (wide attack, charge-up, close menace). Trailer-usable."
+   }
+  },
+  {
+   "clip": "m_evac",
+   "model": "minimax/h3/image-to-video",
+   "provider": "fal-ai",
+   "resolution": "768P",
+   "seconds": "5",
+   "est_usd": 0.3,
+   "status": "ok",
+   "prompt": "The machine keeps EXACTLY its first-frame design for the whole shot: chrome armour, long crested head, glowing red chest gem, shoulder missile pods. Slow push-in from behind the rain-caped police officer as he waves fleeing civilians and cars down the neon avenue. Beat 1: crowd sprints past, headlights jitter on wet asphalt. Beat 2: Mechra's chrome foot slams down behind the skyline—shockwave ripples puddles, neon signs burst sparks, concrete debris and dust billow into the street. Beat 3: searchlights sweep its chrome hull, red chest core flares brighter, shoulder missile pods glow. Lighting: neon reflections, searchlight shafts cutting rain and smoke, red core underglow. Atmosphere: heavy rain, haze, film grain, anamorphic 2.39:1. Sound: air-raid sirens, screams, rumbling footsteps, tank cannon booms, helicopter rotors, jet roar, deep mechanical monster roar, explosion. No dialogue, no music, no text. Kaiju unchanged.",
    "kimi_review": {
     "score": 6,
     "verdict": "keep",
-    "reason": "Mechra charges and fires its pink-red plasma cannon with a dramatic head-whip; the energy buildup and beam payoff read clearly against a consistent dusk city backdrop. The neck/head anatomy gets muddy during the fast swing (frames 4-5), but it reads as motion blur at speed rather than a clear melt—no identity change, no broken geometry, strong motion throughout. Starting at second 2 captures the charge peak through the beam discharge for maximum trailer impact."
+    "reason": "Strong trailer atmosphere: rain-slick neon street, silhouetted officer pointing, fleeing civilians, wet asphalt reflections, and a towering war machine backlit by spotlights. The chrome mecha keeps a consistent silhouette across frames 1-4, and its shift to a blinding pink-red bloom in frame 5 reads as Mechra's plasma cannon discharge rather than an identity morph. Civilians and traffic advance between frames, so motion isn't frozen. Deductions: the monster becomes an unreadable red blob at the discharge peak, and frame 6 cuts to pure black, which only works if treated as an intentional trailer beat. No melting anatomy or broken geometry, so it clears the reroll bar."
    }
   },
   {
-   "clip": "mechra_03_beam",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "a colossal chrome cybernetic war machine kaiju with glowing red core lights fires a searing pink-red plasma cannon beam from its mouth into a skyscraper, the tower explodes in a huge fireball, sparks and debris fly, intense pink-red plasma light floods the street, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 6,
-    "verdict": "keep",
-    "reason": "Mechra stays consistent firing its pink-red plasma cannon with clear escalation from beam to impact bloom; no melting anatomy, identity swap, or broken geometry. The back half overexposes into a detail-less pink wash, so cut the first 3 seconds where the kaiju is readable and the blast builds."
-   }
-  },
-  {
-   "clip": "gorrak_debris",
+   "clip": "m_military",
    "model": "minimax/h3/image-to-video",
    "provider": "fal-ai",
    "resolution": "768P",
+   "seconds": "5",
    "est_usd": 0.3,
-   "prompt": "Handheld shake camera at street level, low-angle, holding the start frame composition. Dusk amber light cuts through thick dust and smoke; embers drift as glass rains down. Beat 1: the leaning skyscraper left of frame topples further, windows bursting, debris cascading onto the street. Beat 2: panicked crowds fleeing sprint toward and past the camera, arms flailing, stumbling. Beat 3: Gorrak, the colossal horned reptilian kaiju with jagged back spines, smashes through the tower behind, jaws roaring, green atomic glow flaring in its throat. Sound: deafening rumbling footsteps, screams, glass shattering, explosions, distant sirens, crashing steel. No dialogue, no music, no text.",
+   "status": "ok",
+   "prompt": "The machine keeps EXACTLY its first-frame design for the whole shot: chrome armour, long crested head, glowing red chest gem, shoulder missile pods. Low-angle dolly forward through rain-slick intersection toward Mechra, chrome cybernetic kaiju kept exactly as framed, red chest core pulsing. Lighting: neon reflections, sweeping searchlights, muzzle flashes. Atmosphere: heavy rain, drifting smoke, haze. Beat 1: Type-10 tanks fire, shells spark off chrome armour, debris and dust burst. Beat 2: jets dive overhead, missiles streak in, explosions bloom across shoulder pods, shockwaves ripple puddles. Beat 3: Mechra roars, strides forward, asphalt cracks, cars bounce. Sound: air-raid sirens, screams, tank cannon booms, helicopter rotors, jet roar, deep metallic monster roar, rumbling footsteps, explosions. No dialogue, no music, no on-screen text. Anamorphic 2.39:1, photoreal, light film grain.",
+   "end_frame": "m_military",
    "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Clear cinematic escalation: building collapse, dust-choked reveal of the spiked back, fleeing crowd, and a strong money-shot close-up of Gorrak with horns and glowing green atomic breath. Monster identity stays consistent (horned reptilian, green glow), motion is continuous, no melting anatomy or garbled geometry. Minor murkiness in the dust transition (frames 3-4) and heavy motion blur on runners, but no failure-level artifacts. Best window is seconds 3-5: spike reveal through dust, crowd sprinting past camera, ending on the head close-up with breath charging."
-   }
-  },
-  {
-   "clip": "tridon_crosswalk",
-   "model": "minimax/h3/image-to-video",
-   "provider": "fal-ai",
-   "resolution": "768P",
-   "est_usd": 0.3,
-   "prompt": "Low-angle dolly push-in at street level, holding the start frame composition: Tridon, the colossal golden three-headed winged dragon kaiju, towers over a dusk scramble crosswalk. Beat 1: its wings flare as golden electricity crackles across all three necks. Beat 2: a lightning bolt slams the asphalt, cracks spiderwebbing outward, dust and embers erupting. Beat 3: panicked crowds fleeing in every direction as the dragon's heads rear back, wings beating. Warm amber dusk backlight, smoke and drifting embers, distant searchlights sweeping haze. Sound: deafening thunder crack, rumbling footsteps, screams, shattering glass, wailing sirens, crumbling concrete. No dialogue, no music, no on-screen text.",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Tridon's identity stays consistent across all six frames — three heads, twin wings, bipedal stance, golden-orange palette — with no melting, morphing, or broken geometry. Clear motion progression: advance, wings spreading, fleeing crowds, sweeping spotlights, and a beam-fire beat at frame 3. Frame 3's vertical blast is slightly overexposed and washes out body detail, and the front-to-rear orientation flip after frame 4 is mildly jarring, but neither is a clear failure. The 2-4 window gives a clean arc: frontal approach, close menace, beam payoff."
-   }
-  },
-  {
-   "clip": "mechra_04_military",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "military tanks on a Tokyo street fire their cannons at a colossal chrome cybernetic war machine kaiju with glowing red core lights advancing toward them, muzzle flashes and explosions burst on its body, attack helicopters circle and launch missiles, smoke and fire, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 6,
-    "verdict": "keep",
-    "reason": "Mechra stays consistent across all six frames — chrome body, red chest core, outstretched arms — with no melting, identity drift, or broken geometry. Tanks advance and muzzle flashes/explosions escalate through the back half, so the shot has real motion despite the monster's static pose. Slightly soft detail and a posed, floating kaiju keep it from a higher score, but it's trailer-usable. The 2s-5s window captures the tank advance into the firing and explosion beats for the strongest cut."
-   }
-  },
-  {
-   "clip": "mechra_05_collapse",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "a colossal chrome cybernetic war machine kaiju with glowing red core lights smashes through a leaning skyscraper which collapses and crumbles in a huge cloud of dust and fire, the monster raises its arms and roars triumphantly amid burning ruins, low-angle cinematic shot, dramatic dusk lighting, epic scale, film grain, smooth motion\n",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Mechra holds a consistent chrome-mech identity across all six frames, the explosion escalates naturally, and the roaring pose with the glowing red plasma core in the middle frames reads genuinely cinematic. Frame 1 is slightly muddled where the mech meets the collapsing tower, and the final frame nearly loses the subject in smoke, but there's no melting anatomy, identity swap, or broken geometry. Seconds 2-5 give the cleanest beat: head emerging through fireball, then two strong roaring frames with the plasma core lit."
-   }
-  },
-  {
-   "clip": "tridon_debris",
-   "model": "minimax/h3/image-to-video",
-   "provider": "fal-ai",
-   "resolution": "768P",
-   "est_usd": 0.3,
-   "prompt": "Handheld shake, street-level POV inside the fleeing crowd. Warm amber dusk lighting pierced by golden electric flashes; thick dust, smoke, embers, and raining glass shards fill the air. Beat 1: the leaning skyscraper topples further, shedding glass and debris onto the street. Beat 2: panicked crowds fleeing sprint toward and past the camera, stumbling, arms raised. Beat 3: Tridon, the colossal golden three-headed winged dragon, smashes through the buildings behind, wings spreading wide, golden electricity crackling across its scales. Sound: screams, rumbling collapse, explosions, glass shattering, distant sirens, heavy stomping footfalls, electric crackle. No dialogue, no music, no on-screen text.",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Tridon stays consistent as the golden three-headed dragon across all frames, with clear motion escalation: tower collapse, civilians scattering and ducking, then a strong winged reveal with crackling golden volt lightning. No melting anatomy, identity swaps, or garbled artifacts; civilians in frame 4 are slightly smeared and building edges a bit soft, but within tolerance. The final three seconds (ducking crowd -> lightning close-up -> full rearing reveal) give the best rising action and payoff for the trailer cut."
-   }
-  },
-  {
-   "clip": "intro_01_city",
-   "model": "Wan-AI/Wan2.2-I2V-A14B",
-   "provider": "fal-ai",
-   "resolution": "720p",
-   "est_usd": 0.405,
-   "prompt": "dreamlike neon Tokyo street at night in thick glowing purple fog, a gigantic kaiju silhouette slowly walks through the haze far behind the skyscrapers, neon lights flicker and reflect on wet asphalt, slow dolly forward, surreal hallucination, glitchy shimmering light, cinematic\n",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Moody neon-noir city canyon with strong purple/teal grade, wet-street reflections, and a consistent kaiju silhouette holding the end of the street across all six frames. No melting, identity swaps, or broken geometry; the creature shows subtle postural shift suggesting a slow ominous advance rather than a frozen frame. Deductions: motion is very subtle and the monster stays distant and indistinct, so it reads more as a teaser beat than a hero reveal. Seconds 2-5 give the clearest silhouette and most stable framing for the cut."
-   }
-  },
-  {
-   "clip": "mechra_highway",
-   "model": "minimax/h3/image-to-video",
-   "provider": "fal-ai",
-   "resolution": "768P",
-   "est_usd": 0.3,
-   "prompt": "Low-angle dolly push-in toward Mechra, the colossal chrome cybernetic war-machine kaiju, holding the start frame's elevated-highway composition. Golden-hour backlight cuts through thick smoke, drifting embers, and dust haze; faint searchlights sweep the skyline. Beat 1: Mechra's glowing red core pulses brighter as shoulder missile pods vent steam. Beat 2: fresh missiles streak overhead, smoke trails spiraling, and detonate against the towers in expanding fireballs. Beat 3: panicked crowds fleeing between abandoned cars as a dusty shockwave rolls down the freeway. Sound: screaming crowds, rumbling metallic footsteps, missile shrieks, booming explosions, shattering glass, wailing sirens, car alarms. No dialogue, no music, no on-screen text.",
-   "kimi_review": {
-    "score": 7,
-    "verdict": "keep",
-    "reason": "Mechra-style chrome mech with red plasma core holds identity across all six frames — no melting, morphing, or geometry breaks. Clear temporal progression: the machine advances on camera through a sunset street battle while missile contrails, smoke plumes, and side explosions escalate, giving real motion and trailer-grade stakes. Frames 1-2 are slightly underexposed/soft on the mech, but seconds 2-5 build to the strongest beat: detailed hero framing capped by symmetrical fireballs. Minor glow/exposure drift between frames is within acceptable AI variance, not a failure."
-   }
-  },
-  {
-   "clip": "intro_crowd",
-   "model": "minimax/h3/image-to-video",
-   "provider": "fal-ai",
-   "resolution": "768P",
-   "est_usd": 0.3,
-   "prompt": "Low-angle dolly pushes slowly forward through the neon-drenched street, keeping the start frame's composition. Purple fog and drifting dust swallow the skyscrapers; magenta and cyan neon flickers while searchlights sweep the haze. Beat 1: panicked crowds fleeing sprint toward camera, arms pumping, silhouettes stumbling. Beat 2: Gorrak's colossal horned silhouette stomps through the haze far behind them, each footfall shaking the frame, glass facades rippling. Beat 3: a sickly green atomic glow ignites in the kaiju's jaws, backlighting the fog. Lighting: moody neon rim light, volumetric purple haze. Sound: terrified screams, thunderous rumbling footsteps, distant sirens, shattering glass, a deep guttural roar. No dialogue, no music, no text.",
-   "kimi_review": {
-    "score": 4,
+    "score": 3,
     "verdict": "reroll",
-    "reason": "Monster identity is unstable: frame 1 reads as a bulky mech with glowing accents, frame 2 as a lanky brown organic humanoid, and frame 6 abruptly becomes a small glowing green hovering object with a jarring purple-to-green palette flip. Crowd motion and building geometry are fine, and seconds 2-5 (smoky silhouette advance) are the most coherent stretch, but the kaiju changing form is a clear failure for a trailer shot."
+    "reason": "Clear failure: the kaiju changes identity across frames — it shifts from a dark chrome mech with a red core, to a golden glowing figure, to an orange energy variant, to a white-helmed creature with a different head and silhouette. Frame 6 is completely black (missing content). Searchlights, tanks, and wet-street reflections are atmospheric, but the monster's inconsistent design and the dead frame break the shot."
    }
   },
   {
-   "clip": "mechra_debris",
+   "clip": "g_attack",
    "model": "minimax/h3/image-to-video",
    "provider": "fal-ai",
    "resolution": "768P",
-   "est_usd": 0.3,
-   "prompt": "Handheld shake, street-level POV inside panicked crowds fleeing toward camera. Dusk amber haze, smoke and dust, embers, glass shards raining, searchlights cutting through. Beat 1: the leaning skyscraper topples further with a deep groan, windows bursting. Beat 2: Mechra, colossal chrome war-machine with glowing red core lights and shoulder missile pods, smashes through the tower's base, debris cascading. Beat 3: crowd surges past camera as a shockwave of dust rolls in. Sound: screams, rumbling footsteps, glass shattering, explosions, distant sirens, metallic stomps. No dialogue, no music, no on-screen text.",
+   "seconds": "6",
+   "est_usd": 0.36,
+   "status": "ok",
+   "prompt": "The kaiju keeps EXACTLY its first-frame shape for the whole shot: a hulking horned brute with two huge curved bull horns, gorilla-like hunched shoulders and long knuckle-dragging forearms, short stubby tail, grey-green quill mane; it never becomes a dinosaur or grows a long tail. Slow push-in at low angle. Gorrak, exactly as framed—horned grey-brown kaiju—rears back, quill mane flaring #66ff66, then unleashes a torrent of green green energy breath that sweeps through a row of skyscrapers; towers explode in sequence, concrete debris and glass cascading, dust clouds billowing, a shockwave rippling across rain-slick streets. Climax: a towering green-tinged mushroom cloud rises over the neon skyline. Lighting: green beam glow bouncing off wet asphalt, sweeping searchlights, flickering neon through rain and smoke; anamorphic 2.39:1, light film grain. Sound: air-raid sirens, distant screams, tank cannon booms, helicopter rotors, jet roar, deep guttural monster roar, rumbling footsteps, massive sequential explosions. No dialogue, no music, no on-screen text.",
+   "end_frame": "g_attack_end",
    "kimi_review": {
-    "score": 6,
+    "score": 7,
     "verdict": "keep",
-    "reason": "Strong trailer energy: low-angle city scale, fleeing crowds, volumetric beams, and an escalating destruction arc. Mechra reads clearly in frames 1-2 with no identity swap, no melting anatomy, and constant motion. Weaknesses: the kaiju vanishes behind dust after frame 3 and the beams read as white searchlights rather than pink-red plasma, but these are polish issues, not clear failures. Seconds 1-3 give the tightest arc: Mechra firing, full beam barrage, and the building collapse beat."
+    "reason": "Gorrak stays on-model across all six frames: spiky dorsal plates, nasal horn, hulking reptilian bulk, and signature green atomic breath. Clear action progression (beam fire -> impact bloom -> sweeping beam -> turn -> advance through the blast cloud) with moody night-city searchlights giving strong classic kaiju-trailer homage energy. Minor head/snout silhouette drift in frame 6 and slightly soft anatomy in the quadruped frames, but no identity change, melting, broken geometry, or frozen motion that would justify a reroll."
    }
   },
   {
-   "clip": "mechra_crowd",
+   "clip": "t_attack",
    "model": "minimax/h3/image-to-video",
    "provider": "fal-ai",
    "resolution": "768P",
-   "est_usd": 0.3,
-   "prompt": "Low-angle dolly pushes slowly forward, holding the start-frame composition as Mechra, the colossal chrome cybernetic war-machine kaiju with glowing red core lights and shoulder missile pods, advances down the avenue. Warm sunset backlight, dust and smoke drifting between glass towers, floating embers. Beat 1: panicked crowds fleeing toward camera, sprinting past the lens. Beat 2: Mechra's first massive footstep slams down, pavement cracking, dust shockwave rippling outward. Beat 3: shoulder missile pods snap open, red core flaring brighter. Sound: screaming crowds, deep rumbling metallic footsteps, booming ground impact, distant sirens, glass shattering. No dialogue, no music, no on-screen text.",
+   "seconds": "6",
+   "est_usd": 0.36,
+   "status": "ok",
+   "prompt": "The dragon keeps EXACTLY its first-frame design for the whole shot: three long necks and three horned golden heads, orange bat wings, cream belly. Low-angle dolly pushes slowly toward Tridon, exactly as in frame—golden scales, orange wings, cream underbelly. Lighting: strobing lightning, neon reflections, golden #ffee66 beam glow on rain-slick asphalt. Atmosphere: heavy rain, drifting smoke, sweeping searchlights, anamorphic 2.39:1, film grain. Beats: (1) all three heads rear back, throats igniting, then unleash crackling golden volt beams skyward; (2) beams rake the skyline as lightning arcs across Tokyo Tower—the tower sparks, glows white-hot, windows burst, debris and dust cascade; (3) a shockwave ripples the street, flipping cars, as Tridon stomps forward, wings flexing. Sound: wailing air-raid sirens, distant screams, tank cannon booms, helicopter rotors, jet roar, deep triple-throated monster roar, rumbling footsteps, explosions. No dialogue, no music, no text.",
    "kimi_review": {
     "score": 8,
     "verdict": "keep",
-    "reason": "Coherent Mechra approach into low-angle stomp, cracked-impact beat, and strong chrome/red-core hero reveal; good scale and trailer energy. Frame 3 has heavy foreground motion blur, but no clear anatomy melt, identity switch, broken geometry, or frozen motion."
+    "reason": "Consistent golden three-headed winged kaiju across all six frames with coherent beams, smoke, wet-street reflections and a slow push-in; head/wing readability is sometimes obscured by the blast, but there is no identity morph, melting anatomy, broken geometry, or frozen motion."
+   }
+  },
+  {
+   "clip": "m_attack",
+   "model": "minimax/h3/image-to-video",
+   "provider": "fal-ai",
+   "resolution": "768P",
+   "seconds": "6",
+   "est_usd": 0.36,
+   "status": "ok",
+   "prompt": "The machine keeps EXACTLY its first-frame design for the whole shot: chrome armour, long crested head, glowing red chest gem, shoulder missile pods. Low-angle dolly push-in from the exact start frame. Mechra, chrome kaiju unchanged, stands in rain-slick neon Tokyo, searchlights sweeping smoke. Beat one: shoulder missile pods erupt, dozens of smoke trails arcing over skyscrapers, backblast shockwave rippling puddles. Beat two: chest core flares, firing a searing pink-red plasma beam (#ff3366) slicing through a skyscraper; glass and steel debris cascade, dust blooms, windows burst outward. Beat three: Mechra stomps forward through the haze. Lighting: teal night, neon reflections, orange muzzle flashes. Sound: air-raid sirens, screams, tank cannon booms, helicopter rotors, jet roar, deep mechanical roar, rumbling footsteps, explosions. No dialogue, no music, no on-screen text. Anamorphic 2.39:1, light film grain.",
+   "kimi_review": {
+    "score": 8,
+    "verdict": "keep",
+    "reason": "Mechra holds a consistent identity across all six frames — chrome war machine, red chest core, shoulder weapon pods — with a clear escalating action beat: missile volley, smoke trails, then plasma cannon charge-up and full beam blast. City geometry, searchlights, and wet-street reflections stay coherent, and the teal/amber grade with volumetric haze reads as genuinely trailer-worthy. No melting anatomy, morphing, or frozen motion; only minor softness in limb detail at this resolution, which is not a reroll-level failure."
+   }
+  },
+  {
+   "clip": "g_attack_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "DESIGN LOCK: the kaiju is exactly the reference creature: a hulking horned brute with two massive curved bull horns, a bony horned skull, gorilla-like hunched shoulders, huge long forearms with knuckles near the ground, grey-brown armoured hide, a mane of grey-green quills glowing green; NOT a dinosaur, short stubby tail, no long tail. Photoreal cinematic night still, 16:9, rain-slick Tokyo avenue, low angle, the kaiju seen three-quarter front, filling the right half of frame, head thrust forward, jaws wide open, its quill mane blazing green, a thick torrent of green energy breath (hex color #66ff66) blasting from its mouth toward a row of skyscrapers on the left, the first tower's facade bursting with green fire; searchlights, rain, smoke, neon signs. No people in the foreground."
+  },
+  {
+   "clip": "g_attack_end_kf",
+   "model": "fal-ai/flux-2/edit",
+   "provider": "fal-ai",
+   "resolution": "1344x768",
+   "seconds": "0",
+   "est_usd": 0.024,
+   "status": "ok",
+   "prompt": "DESIGN LOCK: the kaiju is exactly the reference creature: a hulking horned brute with two massive curved bull horns, a bony horned skull, gorilla-like hunched shoulders, huge long forearms with knuckles near the ground, grey-brown armoured hide, a mane of grey-green quills glowing green; NOT a dinosaur, short stubby tail, no long tail. Photoreal cinematic night still, 16:9, same rain-slick Tokyo avenue, low angle, the kaiju seen three-quarter front on the right half of frame, roaring with jaws wide, quill mane blazing green, behind it on the left a row of skyscrapers collapsing in green-white fire and a towering green-tinged mushroom cloud rising into the storm clouds; debris and smoke, searchlights, rain."
+  },
+  {
+   "clip": "g_attack",
+   "model": "minimax/h3/image-to-video",
+   "provider": "fal-ai",
+   "resolution": "768P",
+   "seconds": "6",
+   "est_usd": 0.36,
+   "status": "ok",
+   "prompt": "The kaiju keeps EXACTLY its first-frame shape for the whole shot: a hulking horned brute with two huge curved bull horns, gorilla-like hunched shoulders and long knuckle-dragging forearms, short stubby tail, grey-green quill mane; it never becomes a dinosaur or grows a long tail. Slow low-angle push-in. The green energy breath sweeps left along the row of skyscrapers; tower after tower bursts into green-white fireballs and collapses in slow motion, glass and concrete raining down, a shockwave rolls up the wet street. Climax: a towering green-tinged mushroom cloud rises over the skyline. Sound: a deep guttural roar, the crackling roar of the energy beam, chained explosions, collapsing steel, distant air-raid sirens.",
+   "end_frame": "g_attack_end",
+   "kimi_review": {
+    "score": 7,
+    "verdict": "keep",
+    "reason": "Gorrak stays on-model across all six frames: spiky dorsal plates, nasal horn, hulking reptilian bulk, and signature green atomic breath. Clear action progression (beam fire -> impact bloom -> sweeping beam -> turn -> advance through the blast cloud) with moody night-city searchlights giving strong classic kaiju-trailer homage energy. Minor head/snout silhouette drift in frame 6 and slightly soft anatomy in the quadruped frames, but no identity change, melting, broken geometry, or frozen motion that would justify a reroll."
+   }
+  },
+  {
+   "clip": "m_military",
+   "model": "minimax/h3/image-to-video",
+   "provider": "fal-ai",
+   "resolution": "768P",
+   "seconds": "5",
+   "est_usd": 0.3,
+   "status": "ok",
+   "prompt": "The machine keeps EXACTLY its first-frame design for the whole shot: chrome armour, long crested helmet-like head with no teeth or jaws, glowing red chest gem, shoulder missile pods. Low-angle dolly forward through rain-slick intersection toward Mechra, chrome cybernetic kaiju kept exactly as framed, red chest core pulsing. Lighting: neon reflections, sweeping searchlights, muzzle flashes. Atmosphere: heavy rain, drifting smoke, haze. Beat 1: Type-10 tanks fire, shells spark off chrome armour, debris and dust burst. Beat 2: jets dive overhead, missiles streak in, explosions bloom across shoulder pods, shockwaves ripple puddles. Beat 3: Mechra roars, strides forward, asphalt cracks, cars bounce. Sound: air-raid sirens, screams, tank cannon booms, helicopter rotors, jet roar, deep metallic monster roar, rumbling footsteps, explosions. No dialogue, no music, no on-screen text. Anamorphic 2.39:1, photoreal, light film grain.",
+   "end_frame": "m_military",
+   "kimi_review": {
+    "score": 3,
+    "verdict": "reroll",
+    "reason": "Clear failure: the kaiju changes identity across frames — it shifts from a dark chrome mech with a red core, to a golden glowing figure, to an orange energy variant, to a white-helmed creature with a different head and silhouette. Frame 6 is completely black (missing content). Searchlights, tanks, and wet-street reflections are atmospheric, but the monster's inconsistent design and the dead frame break the shot."
    }
   }
  ]
