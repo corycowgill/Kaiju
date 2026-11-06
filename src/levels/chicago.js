@@ -58,6 +58,16 @@ const CHICAGO_LANDMARK_GLBS = [
   // Museum, oceanarium wing (-Z) on the lake; 62 x 74 m plan fitted to the
   // 162 x 136 m site
   { id: 'shedd_aquarium', file: 'shedd_aquarium.glb', trueHeightM: 32, face: 'west', fit: 'footprint', maxH: 1.6, ready: true },
+  // Entrance stair (+Z) west toward the city; 33 m drum fitted to the site
+  { id: 'adler_planetarium', file: 'adler_planetarium.glb', trueHeightM: 20, face: 'west', fit: 'footprint', maxH: 1.6, ready: true },
+  // The Beaux-Arts front block only (lions, +Z on Michigan Ave): placed at the
+  // Michigan edge of the 246 m site, the procedural galleries and Modern
+  // Wing (rear) fill the rest
+  { id: 'art_institute', file: 'art_institute.glb', trueHeightM: 20, face: 'west', fit: 'footprint', maxH: 2.0, front: true, ready: true },
+  // Fountain at true size; the level adds the 85 m pool and the jets
+  { id: 'buckingham_fountain', file: 'buckingham_fountain.glb', trueHeightM: 7.6, fountain: true, ready: true },
+  // State St facade (+Z); its marquee/blade are unlit, the CHICAGO sign overlay is fitted to it
+  { id: 'chicago_theatre', file: 'chicago_theatre.glb', trueHeightM: 25, face: 'west', fit: 'footprint', maxH: 1.3, ready: true },
   // Entrance (+Z) on Michigan Ave
   { id: 'tribune_tower', file: 'tribune_tower.glb', trueHeightM: 141, face: 'west', ready: true },
   // Long axis X fits the layout outline (E-W); +Z, both blocks and the
@@ -100,7 +110,8 @@ const CHICAGO_PROP_GLBS = [
 ];
 // Extra traffic (front faces +Z, real-world metres like the Tokyo vehicles).
 const CHICAGO_VEHICLE_GLBS = [
-  // { url: './assets/vehicles/cta_bus.glb', len: 12.2, weight: 10, parked: false, ready: false },
+  // cloud-3d: 12.05 m along Z, front +Z, wheels on y = 0
+  { url: CHI_BASE + 'cta_bus.glb', len: 12.05, weight: 8, parked: false, ready: true },
 ];
 // Kit pieces placed many times: the generic bascule bridge (scaled to each
 // bridges[] entry, spans along its local X) and the L track segment (tiled
@@ -192,7 +203,8 @@ export function chicagoLod1GLBs() {
   return [...CHICAGO_LANDMARK_GLBS.filter((g) => g.ready && g.lod1 !== false).map((g) => CHI_BASE + g.file),
     ...Object.keys(CHICAGO_KIT_GLBS).filter((id) => !(isMobile && CHICAGO_KIT_GLBS[id].desktopOnly)).map(_kit).filter(Boolean),
     ...CHICAGO_PROP_GLBS.filter((p) => p.ready).map((p) => CHI_PROP_BASE + p.file),
-    ...CHICAGO_GENERIC_GLBS.filter((g) => g.ready).map((g) => CHI_BASE + g.file)];
+    ...CHICAGO_GENERIC_GLBS.filter((g) => g.ready).map((g) => CHI_BASE + g.file),
+    ...CHICAGO_VEHICLE_GLBS.filter((v) => v.ready).map((v) => v.url)];
 }
 
 /** Chicago-only street props as [{ name, url }]. */
@@ -824,6 +836,19 @@ const LANDMARK_BUILDERS = {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) m.box(M.steel, 0.12, h * 0.23, 0.12, mx + sx * w * 0.2, h * 0.85, mz + sz * d * 0.27);
     return m.build();
   },
+  art_institute_rear(h, w, d, M) {
+    // What stands behind the GLB front block: the lower galleries and the
+    // white Modern Wing under its floating canopy (front = +Z, toward the GLB)
+    const m = new Massing();
+    m.box(M.limestone, w * 0.55, h * 0.6, d * 0.7, -w * 0.18, 0, d * 0.1);
+    m.box(M.terracotta, w * 0.5, h * 0.08, d * 0.66, -w * 0.18, h * 0.6, d * 0.1);
+    const mx = w * 0.22, mz = -d * 0.12;
+    m.box(M.darkGlass, w * 0.45, h * 0.3, d * 0.6, mx, 0, mz);
+    m.box(M.white, w * 0.45, h * 0.55, d * 0.6, mx, h * 0.3, mz);
+    m.box(M.steel, w * 0.52, 0.08, d * 0.66, mx, h * 1.08, mz);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) m.box(M.steel, 0.12, h * 0.23, 0.12, mx + sx * w * 0.24, h * 0.85, mz + sz * d * 0.32);
+    return m.build();
+  },
   chicago_theatre(h, w, d, M) {
     // Terracotta front with the arch window; the blade sign and lit marquee
     // are added by addTheatreSign (they carry the CHICAGO lettering)
@@ -846,7 +871,7 @@ const LANDMARK_BUILDERS = {
 /** The Chicago Theatre's vertical blade sign (CHICAGO stacked, lit both
  *  sides) over a bulb-lit marquee, on the front (+Z) of a landmark w x d
  *  wide and h tall. Returned as a Group in the landmark's local frame. */
-function makeTheatreSign(h, w, d, K) {
+function makeTheatreSign(h, w, d, K, bladeX = 0) {
   const g = new THREE.Group();
   const red = 0xff3a2a, warm = 0xffe2b0;
   const dark = new THREE.MeshStandardMaterial({ color: 0x2a0d0a, roughness: 0.6, metalness: 0.4 });
@@ -866,7 +891,7 @@ function makeTheatreSign(h, w, d, K) {
   const bh = h * 0.95, bw = bh / 7 * 1.15;
   const blade = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.18, bh, bw), dark);
   const by = h * 0.29 + bh / 2, bz = d / 2 + bw / 2 + 0.05;
-  blade.position.set(0, by, bz);
+  blade.position.set(bladeX, by, bz);
   g.add(blade);
   const letters = K.signTex('CHICAGO', red, true);
   const lm = new THREE.MeshStandardMaterial({ map: letters, emissiveMap: letters, emissive: 0xffffff, emissiveIntensity: 1.8 });
@@ -874,7 +899,7 @@ function makeTheatreSign(h, w, d, K) {
     // One plane per side, each facing outward so neither reads mirrored
     const pl = new THREE.Mesh(new THREE.PlaneGeometry(bw * 0.95, bh * 0.97), lm);
     pl.rotation.y = sx * Math.PI / 2;
-    pl.position.set(sx * (bw * 0.09 + 0.02), by, bz);
+    pl.position.set(bladeX + sx * (bw * 0.09 + 0.02), by, bz);
     g.add(pl);
   }
   return g;
@@ -1240,6 +1265,12 @@ export function buildChicago(scene, world, opts, K) {
   // Lawns: mottled grass texture (world-unit UVs). Grant Park also gets its
   // formal path grid lined with allees of trees; other parks a loose scatter.
   const onRoad = (x, z, pad) => roads.some((r) => distToPolyline(x, z, r.points) < r.width / 2 + SIDEWALK_W + pad);
+  // Park trees keep off landmark sites (the Art Institute, the fountain pool...)
+  const lmBoxes = L.landmarks.map((lm) => {
+    const c = Math.abs(Math.cos(lm.rotY || 0)), s = Math.abs(Math.sin(lm.rotY || 0));
+    return [lm.x, lm.z, (lm.w * c + lm.d * s) / 2 + 2, (lm.w * s + lm.d * c) / 2 + 2];
+  });
+  const onLandmark = (x, z) => lmBoxes.some(([lx, lz, hw, hd]) => Math.abs(x - lx) < hw && Math.abs(z - lz) < hd);
   let alleeTrees = 0;
   const ALLEE_CAP = lite ? 60 : 320;
   for (const p of L.parks) {
@@ -1268,7 +1299,7 @@ export function buildChicago(scene, world, opts, K) {
             for (let t = 3; t < rl - 2 && alleeTrees < ALLEE_CAP; t += 7) {
               for (const sd of [-1, 1]) {
                 const tx = pts[0][0] + dx * t - dz * 2.4 * sd, tz = pts[0][1] + dz * t + dx * 2.4 * sd;
-                if (!pointInPoly(tx, tz, p.polygon) || isWater(tx, tz) || onRoad(tx, tz, 1)) continue;
+                if (!pointInPoly(tx, tz, p.polygon) || isWater(tx, tz) || onRoad(tx, tz, 1) || onLandmark(tx, tz)) continue;
                 scene.add(K.makeTree(tx, tz, (0.95 + Math.random() * 0.15) * PS));
                 alleeTrees++;
               }
@@ -1292,7 +1323,7 @@ export function buildChicago(scene, world, opts, K) {
       const tx = x + (Math.random() - 0.5) * step * 0.7, tz = z + (Math.random() - 0.5) * step * 0.7;
       if (!pointInPoly(tx, tz, p.polygon) || isWater(tx, tz)) continue;
       if (p.paths.some((q) => distToPolyline(tx, tz, q.points) < q.width / 2 + 2)) continue;
-      if (onRoad(tx, tz, 1.5)) continue;
+      if (onRoad(tx, tz, 1.5) || onLandmark(tx, tz)) continue;
       scene.add(K.makeTree(tx, tz, (0.9 + Math.random() * 0.5) * PS));
     }
   }
@@ -1346,10 +1377,43 @@ export function buildChicago(scene, world, opts, K) {
   // ---- landmarks ----
   // The theatre's lettered blade sign + marquee ride on the building's group,
   // so they go when it collapses
-  const addTheatreSign = (b, lm, ry) => {
-    const sg = makeTheatreSign(lm.h, lm.w, lm.d, K);
+  const addTheatreSign = (b, lm, ry, bladeX = 0) => {
+    const sg = makeTheatreSign(lm.h, lm.w, lm.d, K, bladeX);
     sg.rotation.y = ry;
     b.group.add(sg);
+  };
+  // Buckingham: the 85 m pool (the model's own basin is small), granite rim
+  // and animated jets, all on the landmark's group (gone when it collapses)
+  const addFountainPool = (b, lm) => {
+    const R = Math.max(lm.w, lm.d) / 2;
+    const g = new THREE.Group();
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(R, 40).rotateX(-Math.PI / 2), M.water);
+    pool.position.y = 0.12;
+    pool.receiveShadow = true;
+    g.add(pool);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(R, 0.35, 4, 48).rotateX(Math.PI / 2), M.fountain);
+    rim.position.y = 0.2;
+    g.add(rim);
+    // Central jet plus a ring of arcing side jets, breathing up and down
+    const jets = [];
+    const jetGeom = new THREE.ConeGeometry(0.35, 1, 8, 1, true).translate(0, 0.5, 0);
+    const main = new THREE.Mesh(jetGeom, M.fountainWater);
+    main.position.y = lm.h * 0.6;
+    g.add(main); jets.push({ m: main, base: lm.h * 4, ph: 0 });
+    for (let k = 0; k < 8; k++) {
+      const a = k / 8 * Math.PI * 2;
+      const j = new THREE.Mesh(jetGeom, M.fountainWater);
+      j.position.set(Math.cos(a) * R * 0.55, 0.15, Math.sin(a) * R * 0.55);
+      j.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); // lean in toward the centre
+      g.add(j); jets.push({ m: j, base: lm.h * 1.2, ph: k * 0.7 });
+    }
+    b.group.add(g);
+    animators.push({
+      update(dt, time) {
+        if (b.destroyed) return;
+        for (const jt of jets) jt.m.scale.set(1, jt.base * (0.85 + 0.15 * Math.sin(time * 1.7 + jt.ph)), 1);
+      },
+    });
   };
   for (const lm of L.landmarks) {
     const c = Math.abs(Math.cos(lm.rotY || 0)), s = Math.abs(Math.sin(lm.rotY || 0));
@@ -1367,7 +1431,18 @@ export function buildChicago(scene, world, opts, K) {
       const h = lm.heightM ? lm.h * def.trueHeightM / lm.heightM : lm.h;
       const url = CHI_BASE + def.file;
       const rotY = def.face ? _faceRot(lm.rotY || 0, def.face) : def.faceX ? _faceRot(lm.rotY || 0, def.faceX, true) : (lm.rotY || 0);
-      if (/theat/.test(lm.id)) addTheatreSign(b, lm, rotY); // the GLB's sign is blank
+      if (/theat/.test(lm.id)) {
+        // The GLB's sign is blank: fit the CHICAGO blade + marquee to the
+        // placed model once its size is known (its +Z face is the front)
+        K.onTemplatesReady(() => {
+          if (b.destroyed) return;
+          const quarter = Math.abs(Math.sin(rotY)) > Math.SQRT1_2;
+          const w = quarter ? b.d : b.w;
+          // The GLB's blade sits on the +X side of the arch
+          addTheatreSign(b, { h: b.h, w, d: quarter ? b.w : b.d }, rotY, w * 0.22);
+        });
+      }
+      if (def.fountain) addFountainPool(b, lm);
       if (def.clone) {
         // Own scene graph so its node can move (the wheel's rotor)
         K.onTemplatesReady((sc, get) => {
@@ -1396,7 +1471,38 @@ export function buildChicago(scene, world, opts, K) {
           });
         });
       }
-      if (def.fit === 'footprint') {
+      if (def.front) {
+        // Front block on the street edge (+Z side of the site), a separate
+        // destructible landmark; the procedural rear fills the remainder
+        const s = lm.h * def.maxH / def.trueHeightM;
+        const fd = Math.min(lm.d * 0.6, 42 * s * 1.15); // its depth, front to back (approx.)
+        const fx = Math.sin(rotY), fz = Math.cos(rotY); // front direction
+        // Depth of the site along the front direction
+        const siteDepth = Math.abs(fx * Math.cos(lm.rotY || 0) - fz * Math.sin(lm.rotY || 0)) > Math.SQRT1_2 ? lm.w : lm.d;
+        const off = siteDepth / 2 - fd / 2;
+        grid.remove(b);
+        b.x = lm.x + fx * off; b.z = lm.z + fz * off;
+        b.group.position.set(b.x, 0, b.z); b.group.updateMatrix();
+        grid.add(b);
+        const fw = siteDepth === lm.w ? lm.d : lm.w;
+        K.queueGLB({ url, h: lm.h * def.maxH, building: b, maxW: Math.abs(fz) > Math.SQRT1_2 ? fw : fd, maxD: Math.abs(fz) > Math.SQRT1_2 ? fd : fw, rotY, landmark: true, stretch: 1.3 });
+        // Rear: the procedural galleries + Modern Wing behind it
+        const rd = siteDepth - fd;
+        const rx = lm.x - fx * (fd / 2), rz = lm.z - fz * (fd / 2);
+        const rw = Math.abs(fz) > Math.SQRT1_2 ? fw : rd, rdd = Math.abs(fz) > Math.SQRT1_2 ? rd : fw;
+        const rb = new K.Building(rx, rz, rw, rdd, lm.h, { skipWindows: true });
+        rb._skipBodyIM = true;
+        rb.maxHp = rb.hp = Math.round(hp * 0.6);
+        rb.landmarkId = lm.id + '_rear';
+        rb.group.matrixAutoUpdate = false; rb.group.updateMatrix();
+        scene.add(rb.group); buildings.push(rb); grid.add(rb);
+        const rear = LANDMARK_BUILDERS.art_institute_rear(lm.h, fw, rd, M);
+        rear.position.set(rx, 0, rz);
+        rear.rotation.y = rotY;
+        rear.matrixAutoUpdate = false; rear.updateMatrix();
+        scene.add(rear);
+        rb.customMesh = rear;
+      } else if (def.fit === 'footprint') {
         // Model's plan is undersized for the site (AI proportions run tall):
         // fill the layout outline instead, height capped at maxH x layout
         K.queueGLB({ url, h: lm.h * (def.maxH || 1.6), building: b, maxW: aw, maxD: ad, rotY, landmark: true, stretch: 1.3 });
