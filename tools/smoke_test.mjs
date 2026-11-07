@@ -81,7 +81,7 @@ const iphone = device === 'iphone';
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
   userAgent: iphone ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1' : 'Mozilla/5.0 Chrome/120',
   maxTouchPoints: iphone ? 5 : 0 } });
-globalThis.location = { search: `?q=${tier}&level=${level}` };
+globalThis.location = { search: `?q=${tier}&level=${level}&fest=1` };
 globalThis.innerWidth = iphone ? 390 : 1600;
 globalThis.innerHeight = iphone ? 844 : 900;
 globalThis.devicePixelRatio = 1;
@@ -232,6 +232,14 @@ if (level === 'chicago' && res && res.bounds) {
     const bad = proc.filter((b) => !b.pendingGLB);
     if (bad.length) fail(`chicago: ${bad.length} buildings are procedural, not GLB: ${bad.slice(0, 6).map((b) => b.landmarkId || `(${b.x.toFixed(0)},${b.z.toFixed(0)} h${b.h.toFixed(1)})`).join(', ')}`);
     summary += `${res.buildings.length - proc.length} GLB buildings${pending.length ? `, ${pending.length} pending GLB (${[...new Set(pending.map((b) => b.pendingGLB))].join(', ')})` : ''}; `;
+  }
+  // Kaijupalooza! (on by default): its stages, tents and fence runs are
+  // buildings too, so the GLB check above covers them; here just that it's there
+  {
+    const fest = res.buildings.filter((b) => b.fest);
+    if (!fest.length) fail('chicago: Kaijupalooza! festival not built');
+    const fp = fest.filter((b) => !b.glbUrl).length;
+    summary += `festival ${fest.length} pieces (${fest.filter((b) => b.isFence).length} fence runs${fp ? `, ${fp} pending` : ''}); `;
   }
   const lms = res.buildings.filter((b) => b.landmarkId);
   summary += `${lms.length} landmarks; `;

@@ -1,0 +1,638 @@
+// Kaijupalooza!: the summer music festival in Grant Park (Chicago level).
+// Cartographer's layout (assets/levels/chicago_fest.json: fence ring, closed
+// roads, 91 items with x, z, rot, w, d, h; front = local +Z) placed with the
+// artist's GLBs as ordinary destructible buildings: stages, gates, tents,
+// towers and the fence (instanced panels, one building per ~10u run). On
+// top: trampled crowd lawns full of instanced festival-goers, KAIJUPALOOZA!
+// sign panels, animated LED walls and stage light beams.
+// Off by default until every festival GLB has landed (no placeholder boxes
+// in a shipped build); ?fest=1 turns it on, ?fest=0 off. Flip FEST_DEFAULT
+// to true in the commit that adds the last fest_* GLB.
+import * as THREE from 'three';
+import { assetURL } from '../assetCache.js';
+
+const FEST_URL = './assets/levels/chicago_fest.json';
+const FEST_BASE = './assets/buildings/chicago/';
+const TEX_BASE = './assets/textures/';
+
+const FEST_DEFAULT = false;
+export function festEnabled() {
+  try {
+    const q = new URLSearchParams(location.search).get('fest');
+    return q === null ? FEST_DEFAULT : q !== '0';
+  } catch (e) { return FEST_DEFAULT; }
+}
+
+// Artist GLBs (front = local +Z). sizeM: the model's true w x d x h in metres
+// (reference notes), for tiling before the template is parsed. ready: the
+// file (and its _lod1 twin) is in assets/; until then a box stands in and
+// smoke_test lists the piece as pending.
+const FEST_MODELS = {
+  main_stage: { file: 'fest_main_stage.glb', sizeM: [60, 25, 25] },
+  side_stage: { file: 'fest_side_stage.glb', sizeM: [25, 15, 14] },
+  tent_stage: { file: 'fest_tent_stage.glb', sizeM: [30, 25, 15] },
+  entry_gate: { file: 'fest_entry_gate.glb', sizeM: [20, 6, 10] },
+  fence_panel: { file: 'fest_fence_panel.glb', sizeM: [3.5, 0.6, 2.4] },
+  vendor_tent: { file: 'fest_vendor_tent.glb', sizeM: [9, 3, 3.5] },
+  porta_potty_bank: { file: 'fest_porta_potty_bank.glb', sizeM: [7.5, 1.3, 2.3] },
+  delay_tower: { file: 'fest_delay_tower.glb', sizeM: [2.5, 2.5, 12] },
+  vip_deck: { file: 'fest_vip_deck.glb', sizeM: [20, 8, 7] },
+  led_wall: { file: 'fest_led_wall.glb', sizeM: [12, 2, 15] },
+  foh_tower: { file: 'fest_foh_tower.glb', sizeM: [10, 8, 7] },
+  trailer: { file: 'fest_trailer.glb', sizeM: [12, 3, 4] },
+};
+const _ready = (id) => !!FEST_MODELS[id]?.ready;
+
+// Layout kind -> model candidates (first ready one wins, else the first is
+// the pending stand-in) and how it fills the item's box: 'fit' scales one
+// model into w x d x h; 'tile' repeats it at true size along w (rows along d)
+const KINDS = {
+  stage: { models: (it) => [it.id === 'tremor_tent' ? 'tent_stage' : it.tier === 'main' ? 'main_stage' : 'side_stage'], mode: 'fit', color: 0xd23c8c },
+  screen: { models: () => ['led_wall', 'delay_tower'], mode: 'fit', color: 0x222428 },
+  foh_tower: { models: () => ['foh_tower', 'vip_deck'], mode: 'fit', color: 0x3a3a44 },
+  delay_tower: { models: () => ['delay_tower'], mode: 'fit', color: 0x5a5a66 },
+  gate: { models: () => ['entry_gate'], mode: 'tile', color: 0xf0a020 },
+  production: { models: () => ['trailer', 'vendor_tent'], mode: 'tile', color: 0x8a8a90 },
+  vip: { models: () => ['vip_deck'], mode: 'tile', color: 0x7a3cc8 },
+  food: { models: () => ['vendor_tent'], mode: 'tile', color: 0xf07030 },
+  vendor: { models: () => ['vendor_tent'], mode: 'tile', color: 0x30b0a0 },
+  merch: { models: () => ['vendor_tent'], mode: 'tile', color: 0xe0c030 },
+  bar: { models: () => ['vendor_tent'], mode: 'tile', color: 0xd04070 },
+  family: { models: () => ['side_stage'], mode: 'fit', color: 0x50c050, maxHM: 9 },
+  first_aid: { models: () => ['vendor_tent'], mode: 'tile', color: 0xf4f4f4 },
+  water: { models: () => ['vendor_tent'], mode: 'tile', color: 0x3080e0 },
+  toilets: { models: () => ['porta_potty_bank'], mode: 'tile', color: 0x3070c0 },
+  ops: { models: () => ['trailer', 'vendor_tent'], mode: 'tile', color: 0x606068 },
+};
+const _model = (it) => {
+  const c = KINDS[it.kind]?.models(it) || [];
+  return c.find(_ready) || c[0] || null;
+};
+
+/** GLB urls the festival needs (ready models only; [] when it's off). */
+export function festBuildingGLBs() {
+  if (!festEnabled()) return [];
+  return Object.values(FEST_MODELS).filter((m) => m.ready).map((m) => FEST_BASE + m.file);
+}
+
+/** Fetch and normalise the festival layout; null when off or missing. */
+export async function loadFest() {
+  if (!festEnabled()) return null;
+  try {
+    const r = await fetch(FEST_URL, { cache: 'no-cache' });
+    if (!r.ok) return null;
+    const J = await r.json();
+    const pt = (p) => [+p[0], +p[1]];
+    return {
+      fence: (J.fence?.points || []).map(pt),
+      fenceH: +(J.fence?.height || 0.48),
+      closed: (J.closedRoads || []).map((r) => r.points.map(pt)),
+      items: (J.items || []).map((it) => ({
+        ...it, x: +it.x, z: +it.z, rot: +(it.rot || 0), w: +it.w, d: +it.d, h: +it.h,
+        crowdArea: it.crowdArea ? it.crowdArea.map(pt) : null,
+      })),
+    };
+  } catch (e) { return null; }
+}
+
+function _inPoly(x, z, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function _distToRing(x, z, ring) {
+  let best = Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, az] = ring[i], [bx, bz] = ring[(i + 1) % ring.length];
+    const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+    best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t));
+  }
+  return best;
+}
+
+/** Keep the fence 1.5u inside the open streets around it (the gameplay
+ *  ribbons are wider than the kerbs the layout follows, e.g. Michigan):
+ *  the ring is resampled every 4u and each point pushed off any road whose
+ *  centreline runs outside the fence. Once per layout. */
+export function festClearFence(F, roads) {
+  if (F._cleared) return;
+  F._cleared = true;
+  const ring = [];
+  for (let i = 0; i < F.fence.length; i++) {
+    const a = F.fence[i], b = F.fence[(i + 1) % F.fence.length];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (l < 0.2) continue;
+    const n = Math.max(1, Math.ceil(l / 4));
+    for (let k = 0; k < n; k++) ring.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+  }
+  const orig = F.fence;
+  for (const p of ring) {
+    for (let pass = 0; pass < 2; pass++) {
+      for (const r of roads) {
+        for (let i = 0; i + 1 < r.points.length; i++) {
+          const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1];
+          const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+          const t = Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - az) * dz) / l2));
+          const nx = ax + dx * t, nz = az + dz * t;
+          const d = Math.hypot(p[0] - nx, p[1] - nz), need = r.width / 2 + 1.5;
+          if (d >= need || _inPoly(nx, nz, orig)) continue; // clear, or a street inside the fence
+          // Away from the centreline (toward the park when the point sits on it)
+          let ux = p[0] - nx, uz = p[1] - nz;
+          if (d < 1e-3) { ux = -dz; uz = dx; }
+          const ul = Math.hypot(ux, uz) || 1;
+          p[0] = nx + ux / ul * need; p[1] = nz + uz / ul * need;
+        }
+      }
+    }
+  }
+  F.fence = ring;
+}
+
+/** Car-network polylines with the stretches inside the fence cut out
+ *  (Columbus, Balbo, Congress Plaza and Jackson east of Columbus close;
+ *  Michigan, Lake Shore Drive and Roosevelt run along the outside). */
+export function festCutRoads(netRoads, F) {
+  const out = [];
+  const closed = (x, z) => _inPoly(x, z, F.fence) && _distToRing(x, z, F.fence) > 0.8;
+  for (const r of netRoads) {
+    let run = [];
+    const flush = () => { if (run.length >= 2) out.push({ width: r.width, points: run }); run = []; };
+    for (let i = 0; i < r.points.length; i++) {
+      const p = r.points[i];
+      if (i > 0) {
+        // Densify so a long two-point edge is cut where it enters the fence
+        const q = r.points[i - 1], l = Math.hypot(p[0] - q[0], p[1] - q[1]);
+        for (let t = 2; t < l; t += 2) {
+          const x = q[0] + (p[0] - q[0]) * t / l, z = q[1] + (p[1] - q[1]) * t / l;
+          if (closed(x, z)) flush();
+          else if (!run.length) run.push([x, z]);
+        }
+      }
+      if (closed(p[0], p[1])) flush();
+      else run.push(p);
+    }
+    flush();
+  }
+  return out;
+}
+
+const _rectPoly = (it, pad = 0) => {
+  const c = Math.cos(it.rot), s = Math.sin(it.rot), hw = it.w / 2 + pad, hd = it.d / 2 + pad;
+  // local X -> (cos r, -sin r), local Z -> (sin r, cos r)
+  return [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([u, v]) => [it.x + c * u + s * v, it.z - s * u + c * v]);
+};
+
+/** Convex polygon grown by pad (vertices pushed out from the centroid). */
+function _padPoly(poly, pad) {
+  let cx = 0, cz = 0;
+  for (const [x, z] of poly) { cx += x; cz += z; }
+  cx /= poly.length; cz /= poly.length;
+  return poly.map(([x, z]) => { const l = Math.hypot(x - cx, z - cz) || 1; return [x + (x - cx) / l * pad * 1.42, z + (z - cz) / l * pad * 1.42]; });
+}
+
+/** Polygons trees and street props keep off: every footprint (+1u) and the crowd lawns. */
+export function festNoTree(F) {
+  return [...F.items.filter((it) => KINDS[it.kind] || it.kind === 'food_seating').map((it) => _rectPoly(it, 1)),
+    ...F.items.filter((it) => it.crowdArea).map((it) => _padPoly(it.crowdArea, 2))];
+}
+
+// --------------- textures ---------------
+function _canvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+const _loadImg = (file, fn) => new THREE.ImageLoader().load(assetURL(TEX_BASE + file), fn, undefined, () => {});
+
+/** The KAIJUPALOOZA! lettering on a navy panel, sized to the panel's aspect. */
+function _signTexture(aspect) {
+  const wide = aspect > 1.8;
+  const W = wide ? 1024 : 512, H = wide ? Math.round(1024 / Math.min(4, aspect)) : Math.round(512 / Math.max(0.5, aspect));
+  const cv = _canvas(W, H);
+  const cx = cv.getContext('2d');
+  const paint = (img) => {
+    const g = cx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#1b1650'); g.addColorStop(1, '#3a1466');
+    cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+    if (img) {
+      const k = Math.min(W * 0.94 / img.width, H * 0.9 / img.height);
+      cx.drawImage(img, (W - img.width * k) / 2, (H - img.height * k) / 2, img.width * k, img.height * k);
+    }
+    tex.needsUpdate = true;
+  };
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  paint(null);
+  _loadImg(wide ? 'kaijupalooza_banner.png' : 'kaijupalooza_stacked.png', paint);
+  return tex;
+}
+
+// Our own stage names: reference-artist's lettering PNGs (assets/textures/
+// stage_<id>.png); a canvas-lettered fallback for any stage without one
+const STAGE_PNG = new Set(['monster_main', 'kaiju_stage', 'tremor_tent', 'atomic_stage', 'stomp_stage', 'roar_grove']);
+const NAME_COLORS = ['#ff3d8b', '#ff8a1f', '#ffd21f', '#2fd4c0', '#9b5cff', '#4fb3ff'];
+function _nameTexture(id, name) {
+  const cv = _canvas(512, 128);
+  const cx = cv.getContext('2d');
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  cx.fillStyle = '#1b1650'; cx.fillRect(0, 0, 512, 128);
+  if (STAGE_PNG.has(id)) {
+    _loadImg(`stage_${id}.png`, (img) => {
+      const k = Math.min(492 / img.width, 116 / img.height);
+      cx.drawImage(img, (512 - img.width * k) / 2, (128 - img.height * k) / 2, img.width * k, img.height * k);
+      tex.needsUpdate = true;
+    });
+    return tex;
+  }
+  // Placeholder: chunky letters, one colour each, navy outline
+  const text = name.toUpperCase();
+  let size = 78;
+  cx.font = `900 ${size}px 'Arial Black', 'Trebuchet MS', sans-serif`;
+  const tw = cx.measureText(text).width || 300;
+  if (tw > 480) { size = Math.floor(size * 480 / tw); cx.font = `900 ${size}px 'Arial Black', 'Trebuchet MS', sans-serif`; }
+  cx.textBaseline = 'middle';
+  cx.lineJoin = 'round';
+  let x = (512 - Math.min(480, tw)) / 2;
+  [...text].forEach((ch, i) => {
+    const w = cx.measureText(ch).width || size * 0.6;
+    cx.lineWidth = size * 0.18; cx.strokeStyle = '#0d0a33';
+    cx.strokeText(ch, x + 4, 68); cx.strokeText(ch, x, 64);
+    cx.fillStyle = NAME_COLORS[i % NAME_COLORS.length];
+    cx.fillText(ch, x, 64);
+    x += w;
+  });
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Animated LED wall: colour-cycling visuals on a small canvas, redrawn ~12x a second. */
+function _ledScreen(lite) {
+  const W = lite ? 128 : 256, H = lite ? 64 : 128;
+  const cv = _canvas(W, H);
+  const cx = cv.getContext('2d');
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  let logo = null;
+  _loadImg('kaijupalooza_stacked.png', (img) => { logo = img; });
+  let acc = 1;
+  const draw = (t) => {
+    const scene = Math.floor(t / 6) % 5, u = t % 6;
+    const hue = (t * 40) % 360;
+    if (scene === 0) {
+      // Scrolling rainbow bars
+      for (let i = 0; i < 12; i++) {
+        cx.fillStyle = `hsl(${(hue + i * 30) % 360},95%,55%)`;
+        cx.fillRect(((i * W / 12 + t * W * 0.25) % (W + W / 12)) - W / 12, 0, W / 12 + 1, H);
+      }
+    } else if (scene === 1) {
+      // Pulsing rings
+      cx.fillStyle = '#0a0620'; cx.fillRect(0, 0, W, H);
+      for (let r = 8; r > 0; r--) {
+        cx.fillStyle = `hsl(${(hue + r * 45) % 360},100%,${40 + 15 * Math.sin(t * 6 + r)}%)`;
+        cx.beginPath(); cx.arc(W / 2, H / 2, (r / 8) * W * (0.45 + 0.1 * Math.sin(t * 4)), 0, Math.PI * 2); cx.fill();
+      }
+    } else if (scene === 2) {
+      // Equaliser
+      cx.fillStyle = '#05030f'; cx.fillRect(0, 0, W, H);
+      for (let i = 0; i < 16; i++) {
+        const v = 0.2 + 0.8 * Math.abs(Math.sin(t * (3 + i * 0.37) + i));
+        cx.fillStyle = `hsl(${(hue + i * 22) % 360},100%,55%)`;
+        cx.fillRect(i * W / 16 + 1, H * (1 - v), W / 16 - 2, H * v);
+      }
+    } else if (scene === 3 && logo) {
+      cx.fillStyle = `hsl(${hue},70%,${20 + 10 * Math.sin(t * 3)}%)`; cx.fillRect(0, 0, W, H);
+      const k = Math.min(W / logo.width, H / logo.height) * (0.85 + 0.08 * Math.sin(t * 5));
+      cx.drawImage(logo, (W - logo.width * k) / 2, (H - logo.height * k) / 2, logo.width * k, logo.height * k);
+    } else {
+      // Strobe checker
+      const on = Math.floor(u * 4) % 2;
+      for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
+        cx.fillStyle = (i + j + on) % 2 ? `hsl(${(hue + i * 40) % 360},100%,60%)` : '#000';
+        cx.fillRect(i * W / 8, j * H / 4, W / 8, H / 4);
+      }
+    }
+    tex.needsUpdate = true;
+  };
+  draw(0);
+  return {
+    tex,
+    update(dt, time) {
+      acc += dt;
+      if (acc < (lite ? 1 / 8 : 1 / 12)) return;
+      acc = 0;
+      draw(time);
+    },
+  };
+}
+
+// --------------- crowd ---------------
+/** Low-poly festival-goer (~1.2u), origin at the feet; white vertices take the shirt colour. */
+function _personGeom() {
+  const parts = [
+    [0.30, 0.52, 0.18, 0.26, [0.18, 0.2, 0.3]],  // legs (jeans)
+    [0.38, 0.44, 0.22, 0.74, [1, 1, 1]],         // torso (shirt: instance colour)
+    [0.22, 0.22, 0.22, 1.08, [0.86, 0.68, 0.55]], // head
+  ];
+  const pos = [], col = [], idx = [];
+  for (const [w, h, d, y, c] of parts) {
+    const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
+    g.translate(0, y, 0);
+    const p = g.attributes.position;
+    const base = pos.length / 3;
+    for (let i = 0; i < p.count; i++) { pos.push(p.getX(i), p.getY(i), p.getZ(i)); col.push(...c); idx.push(base + i); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  return g;
+}
+const SHIRTS = [0xff3d8b, 0xff8a1f, 0xffd21f, 0x2fd4c0, 0x9b5cff, 0x4fb3ff, 0xffffff, 0x222222, 0xe23030, 0x44cc55];
+
+function _crowdMaterial(uTime) {
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = uTime;
+    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader
+      .replace('#include <color_vertex>', `#include <color_vertex>
+#ifdef USE_INSTANCING_COLOR
+        vColor = color.r + color.g + color.b > 2.99 ? instanceColor.rgb : color;
+#endif`)
+      // Jumping to the beat: about half the crowd bounces, each on its own phase
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        float ph = float(gl_InstanceID) * 1.618;
+        float jumper = step(0.45, fract(ph * 0.37));
+        transformed.y += jumper * max(0.0, sin(uTime * 7.5 + ph * 6.2831)) * 0.22;`);
+  };
+  mat.customProgramCacheKey = () => 'fest-crowd';
+  return mat;
+}
+
+/** Instanced crowd on one stage lawn, packed denser toward the stage. */
+function _makeCrowd(scene, it, n, geom, mat, sp) {
+  const poly = it.crowdArea;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const [x, z] of poly) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+  const far = Math.hypot(x1 - x0, z1 - z0);
+  const pts = [];
+  for (let tries = 0; pts.length < n && tries < n * 12; tries++) {
+    const x = x0 + Math.random() * (x1 - x0), z = z0 + Math.random() * (z1 - z0);
+    if (!_inPoly(x, z, poly) || (sp && Math.hypot(x - sp.x, z - sp.z) < 7)) continue;
+    const near = 1 - Math.min(1, Math.hypot(x - it.x, z - it.z) / far);
+    if (Math.random() > 0.3 + 0.7 * near * near) continue;
+    pts.push(x, z);
+  }
+  const count = pts.length / 2;
+  if (!count) return null;
+  const im = new THREE.InstancedMesh(geom, mat, count);
+  const o = new THREE.Object3D(), c = new THREE.Color();
+  for (let i = 0; i < count; i++) {
+    const x = pts[i * 2], z = pts[i * 2 + 1];
+    o.position.set(x, 0.04, z);
+    o.rotation.set(0, Math.atan2(it.x - x, it.z - z) + (Math.random() - 0.5) * 0.6, 0);
+    o.scale.setScalar(0.9 + Math.random() * 0.25);
+    o.updateMatrix();
+    im.setMatrixAt(i, o.matrix);
+    im.setColorAt(i, c.setHex(SHIRTS[Math.floor(Math.random() * SHIRTS.length)]));
+  }
+  im.computeBoundingSphere();
+  im.castShadow = false; im.receiveShadow = false;
+  scene.add(im);
+  return { im, pts, alive: new Uint8Array(count).fill(1) };
+}
+
+// --------------- builder ---------------
+/**
+ * Place the festival. ctx: { K, buildings, grid, animators, world, lite, glb,
+ * addBatch, polygonGeom, M (Chicago shared materials), S (units per metre) }.
+ */
+export function buildFest(scene, F, ctx) {
+  const { K, buildings, grid, animators, lite, glb, addBatch, polygonGeom, M } = ctx;
+  const S = ctx.S || 0.2;
+  const stages = [];
+
+  // Trampled lawns in front of the stages (over the park grass, under the paths)
+  const trampled = new THREE.MeshStandardMaterial({ color: 0x7c8456, roughness: 1.0, map: M.grass.map });
+  for (const it of F.items) if (it.crowdArea) addBatch(polygonGeom(it.crowdArea, 0.035, 1 / 14), trampled);
+  // Picnic-table strip: paving
+  for (const it of F.items) if (it.kind === 'food_seating') addBatch(polygonGeom(_rectPoly(it), 0.036, 1 / 6), M.path);
+
+  // The kaiju lands in Butler Field: nothing (but a stage) stands on its spawn
+  const sp = ctx.spawn, CLEAR = 9;
+  const onSpawn = (x, z, aw, ad) => sp && Math.abs(x - sp.x) < aw / 2 + CLEAR && Math.abs(z - sp.z) < ad / 2 + CLEAR;
+  const newBuilding = (x, z, aw, ad, h, color, modelId) => {
+    const b = new K.Building(x, z, aw, ad, h, { skipWindows: true, color });
+    b.fest = true;
+    const ok = _ready(modelId);
+    if (ok) b._skipBodyIM = true;
+    else b.pendingGLB = FEST_MODELS[modelId].file;
+    b.group.matrixAutoUpdate = false; b.group.updateMatrix();
+    scene.add(b.group); buildings.push(b); grid.add(b);
+    return { b, ok };
+  };
+  const aabb = (w, d, r) => {
+    const c = Math.abs(Math.cos(r)), s = Math.abs(Math.sin(r));
+    return [w * c + d * s, w * s + d * c];
+  };
+
+  for (const it of F.items) {
+    const kind = KINDS[it.kind];
+    if (!kind) continue;
+    const id = _model(it);
+    if (!id) continue;
+    const mdl = FEST_MODELS[id];
+    const url = FEST_BASE + mdl.file;
+    const ax = [Math.cos(it.rot), -Math.sin(it.rot)], az = [Math.sin(it.rot), Math.cos(it.rot)];
+    if (kind.mode === 'fit') {
+      const h = Math.min(it.h, (kind.maxHM || Infinity) * S);
+      const [aw, ad] = aabb(it.w, it.d, it.rot);
+      if (it.kind !== 'stage' && onSpawn(it.x, it.z, aw, ad)) continue;
+      const { b, ok } = newBuilding(it.x, it.z, aw, ad, h, kind.color, id);
+      if (ok) K.queueGLB({ url, h, building: b, maxW: aw * 1.05, maxD: ad * 1.05, rotY: it.rot, landmark: true, stretch: 1.15 });
+      if (it.kind === 'stage') stages.push({ it, b });
+      continue;
+    }
+    // Tiled: true-size copies along the item's width, rows along its depth
+    const [mw, md, mh] = mdl.sizeM.map((v) => v * S);
+    const nx = Math.max(1, Math.min(12, Math.round(it.w / mw)));
+    const nz = Math.max(1, Math.min(4, Math.floor(it.d / (md * 1.6))));
+    const cw = it.w / nx, cd = it.d / nz;
+    const h = Math.min(mh, it.kind === 'gate' ? mh : Math.max(it.h, mh));
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      const u = (i + 0.5) * cw - it.w / 2, v = (j + 0.5) * cd - it.d / 2;
+      const [aw, ad] = aabb(cw, cd, it.rot);
+      const tx = it.x + ax[0] * u + az[0] * v, tz = it.z + ax[1] * u + az[1] * v;
+      if (onSpawn(tx, tz, aw, ad)) continue;
+      const { b, ok } = newBuilding(tx, tz, aw, ad, h, kind.color, id);
+      if (ok) K.queueGLB({ url, h, building: b, maxW: aw * 1.02, maxD: ad * 1.02, rotY: it.rot, landmark: true });
+    }
+  }
+
+  // ---- fence: instanced panels in runs of up to 14, gaps at the gates ----
+  {
+    const pm = FEST_MODELS.fence_panel;
+    const pl = pm.sizeM[0] * S, h = F.fenceH;
+    const gates = F.items.filter((it) => it.kind === 'gate');
+    const ring = F.fence;
+    for (let i = 0; i < ring.length; i++) { // closing edge too (zero length if the ring repeats its start)
+      const a = ring[i], c = ring[(i + 1) % ring.length];
+      const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
+      if (l < 0.2) continue;
+      const dx = (c[0] - a[0]) / l, dz = (c[1] - a[1]) / l;
+      const ry = Math.atan2(-dz, dx); // panel length (local X) along the edge
+      const n = Math.max(1, Math.round(l / pl)), step = l / n;
+      let run = [];
+      const flush = () => {
+        if (!run.length) return;
+        let rx0 = Infinity, rx1 = -Infinity, rz0 = Infinity, rz1 = -Infinity;
+        for (const t of run) { rx0 = Math.min(rx0, t.x); rx1 = Math.max(rx1, t.x); rz0 = Math.min(rz0, t.z); rz1 = Math.max(rz1, t.z); }
+        const [ew, ed] = aabb(step, 0.15, ry);
+        const { b, ok } = newBuilding((rx0 + rx1) / 2, (rz0 + rz1) / 2, rx1 - rx0 + ew, rz1 - rz0 + ed, h, 0x9c3cc8, 'fence_panel');
+        b.isFence = true;
+        if (ok) K.queueGLB({ url: FEST_BASE + pm.file, h, building: b, tiles: run, tileLen: step, landmark: true });
+        run = [];
+      };
+      for (let k = 0; k < n; k++) {
+        const x = a[0] + dx * (k + 0.5) * step, z = a[1] + dz * (k + 0.5) * step;
+        if (gates.some((g) => Math.hypot(x - g.x, z - g.z) < g.w / 2 + pl * 0.5)) { flush(); continue; }
+        run.push({ x, z, ry });
+        if (run.length >= 14) flush();
+      }
+      flush();
+    }
+  }
+
+  // ---- stage name boards (ride on the stage: gone when it collapses) ----
+  for (const { it, b } of stages) {
+    const bw = Math.min(it.w * 0.62, 9), bh = bw / 4;
+    const mat = new THREE.MeshStandardMaterial({ map: _nameTexture(it.id, it.name), emissive: 0xffffff, roughness: 0.6 });
+    mat.emissiveMap = mat.map; mat.emissiveIntensity = 0.55;
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), mat);
+    board.position.set(Math.sin(it.rot) * (it.d / 2 + 0.05), it.h * 0.94 + bh / 2, Math.cos(it.rot) * (it.d / 2 + 0.05));
+    board.rotation.y = it.rot;
+    b.group.add(board);
+    b.group.updateMatrixWorld(true);
+  }
+
+  // ---- crowds: instanced festival-goers on the lawns (phones fewer, LOW minimal) ----
+  const crowds = [];
+  {
+    const uTime = { value: 0 };
+    const geom = _personGeom(), mat = _crowdMaterial(uTime);
+    const perU2 = !glb ? 0.08 : lite ? 0.22 : 0.62; // people per square unit
+    const cap = !glb ? 450 : lite ? 1600 : 5200;
+    const lawns = stages.filter(({ it }) => it.crowdArea && (glb || it.tier === 'main'));
+    const area = (p) => { let s = 0; for (let i = 0; i < p.length; i++) { const [x0, z0] = p[i], [x1, z1] = p[(i + 1) % p.length]; s += x0 * z1 - x1 * z0; } return Math.abs(s) / 2; };
+    const tot = lawns.reduce((s, { it }) => s + area(it.crowdArea), 0);
+    const k = Math.min(perU2, cap / Math.max(1, tot));
+    for (const { it, b } of lawns) {
+      const c = _makeCrowd(scene, it, Math.round(area(it.crowdArea) * k), geom, mat, sp);
+      if (c) crowds.push({ ...c, stage: b });
+    }
+    animators.push({ update(dt, time) { uTime.value = time; } });
+    // Stomped / blasted festival-goers: flattened where they stood
+    // (game.js damageInRadius calls this like it does for civilians)
+    const flat = new THREE.Matrix4(), squash = new THREE.Vector3(1.6, 0.04, 1.6);
+    if (ctx.world) {
+      ctx.world.crowdHit = (x, z, r2) => {
+        let n = 0;
+        for (const c of crowds) {
+          let dirty = false;
+          for (let i = 0; i < c.alive.length; i++) {
+            if (!c.alive[i]) continue;
+            const dx = c.pts[i * 2] - x, dz = c.pts[i * 2 + 1] - z;
+            if (dx * dx + dz * dz > r2) continue;
+            c.alive[i] = 0; n++; dirty = true;
+            c.im.getMatrixAt(i, flat);
+            flat.scale(squash);
+            c.im.setMatrixAt(i, flat);
+          }
+          if (dirty) c.im.instanceMatrix.needsUpdate = true;
+        }
+        return n;
+      };
+    }
+  }
+
+  // ---- LED walls, KAIJUPALOOZA! sign panels (on the shared GLB materials) ----
+  const led = _ledScreen(lite);
+  animators.push(led);
+  K.onTemplatesReady((sc, get) => {
+    for (const m of Object.values(FEST_MODELS)) {
+      if (!m.ready) continue;
+      get(FEST_BASE + m.file)?.traverse((o) => {
+        if (!o.isMesh) return;
+        const mat = o.material, name = mat.name || '';
+        if (/led_screen/i.test(name)) {
+          mat.map = led.tex; mat.emissiveMap = led.tex; mat.emissive?.setRGB(1, 1, 1); mat.emissiveIntensity = 0.9;
+          mat.color.setRGB(1, 1, 1); mat.metalness = 0; mat.roughness = 0.5;
+          mat.needsUpdate = true;
+        } else if (/sign_panel/i.test(name) && !mat.userData.festSign) {
+          mat.userData.festSign = true;
+          o.geometry.computeBoundingBox();
+          const bb = o.geometry.boundingBox, sz = bb.getSize(new THREE.Vector3());
+          const along = Math.max(sz.x, sz.z), up = Math.max(1e-3, sz.y);
+          mat.map = _signTexture(along / up);
+          mat.color.setRGB(1, 1, 1); mat.metalness = 0;
+          mat.emissiveMap = mat.map; mat.emissive?.setRGB(1, 1, 1); mat.emissiveIntensity = 0.35;
+          mat.needsUpdate = true;
+        }
+      });
+    }
+  });
+
+  // ---- stage lights: sweeping additive beams + strobe bursts (desktop / phone MED) ----
+  if (glb) {
+    const beams = [];
+    for (const { it, b } of stages) {
+      const n = lite ? (it.tier === 'main' ? 4 : 2) : (it.tier === 'main' ? 8 : it.id === 'roar_grove' ? 3 : 5);
+      for (let i = 0; i < n; i++) beams.push({ it, b, u: (i + 0.5) / n - 0.5, phase: Math.random() * 6.28, hue: i / n });
+    }
+    if (beams.length) {
+      const g = new THREE.CylinderGeometry(0.03, 0.55, 1, 10, 1, true);
+      g.translate(0, -0.5, 0); // apex at the origin, opening down -Y
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true });
+      const im = new THREE.InstancedMesh(g, mat, beams.length);
+      im.frustumCulled = false; im.castShadow = false;
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      const q = new THREE.Quaternion(), down = new THREE.Vector3(0, -1, 0), dir = new THREE.Vector3(), pos = new THREE.Vector3(), scl = new THREE.Vector3(), m = new THREE.Matrix4(), col = new THREE.Color();
+      im.setColorAt(0, col.setRGB(1, 1, 1));
+      scene.add(im);
+      const strobe = new Map(); // stage id -> burst end time
+      animators.push({
+        update(dt, time) {
+          beams.forEach((bm, i) => {
+            const { it } = bm;
+            if (bm.b.destroyed) { im.setMatrixAt(i, m.makeScale(0, 0, 0)); return; }
+            const fx = Math.sin(it.rot), fz = Math.cos(it.rot);
+            pos.set(it.x + Math.cos(it.rot) * bm.u * it.w * 0.8 + fx * it.d * 0.35, it.h * 0.88, it.z - Math.sin(it.rot) * bm.u * it.w * 0.8 + fz * it.d * 0.35);
+            // Sky beams fanning out over the crowd: yaw swing around the
+            // stage front, elevation bob
+            const yaw = Math.sin(time * 0.7 + bm.phase) * 0.8 + bm.u * 1.2;
+            const pitch = 0.75 + 0.35 * Math.sin(time * 0.55 + bm.phase * 1.7);
+            const cy = Math.cos(yaw), sy = Math.sin(yaw);
+            dir.set((fx * cy + fz * sy) * Math.cos(pitch), Math.sin(pitch), (fz * cy - fx * sy) * Math.cos(pitch)).normalize();
+            q.setFromUnitVectors(down, dir);
+            const len = it.tier === 'main' ? 30 : 18;
+            scl.set(len * 0.08, len, len * 0.08);
+            im.setMatrixAt(i, m.compose(pos, q, scl));
+            let burst = strobe.get(it.id) || 0;
+            if (time > burst + 3 && Math.random() < dt * 0.25) strobe.set(it.id, burst = time + 1.2);
+            const flash = time < burst && Math.floor(time * 14) % 2 ? 2.2 : 1;
+            col.setHSL((bm.hue + time * 0.06) % 1, 1, 0.5).multiplyScalar(flash);
+            im.setColorAt(i, col);
+          });
+          im.instanceMatrix.needsUpdate = true;
+          if (im.instanceColor) im.instanceColor.needsUpdate = true;
+        },
+      });
+    }
+  }
+
+  return { stages, crowds };
+}

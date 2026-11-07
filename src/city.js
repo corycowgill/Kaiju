@@ -2680,6 +2680,11 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
   // one per building). collapse() zeroes the building's instance slots.
   // customMesh stays a (scene-less) marker: game.js only tests it for
   // "this is a GLB building" and uses b.w/d/h for its footprint AABB.
+  _bucketGLBRoot(root, url, building);
+}
+
+/** Every mesh of a placed (world-matrix) clone becomes a pending instance slot of the building. */
+function _bucketGLBRoot(root, url, building) {
   building._glbSlots = [];
   root.traverse((m) => {
     if (!m.isMesh) return;
@@ -2691,6 +2696,31 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
   });
   building.customMesh = root;
   building.glbUrl = url; // what stands there (smoke_test: no procedural fallbacks)
+}
+
+/** One building made of many true-size copies of a template (a fence run):
+ *  tiles [{ x, z, ry }] are copy centres, each scaled to tileLen along its
+ *  local X and h tall (depth keeps the height's scale). */
+function _placeTiledGLB(url, entry) {
+  const tpl = _glbTemplates.get(url), building = entry.building;
+  if (!tpl || building.destroyed) return;
+  tpl.scene.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(tpl.scene);
+  const sx = entry.tileLen / Math.max(1e-3, box.max.x - box.min.x);
+  const sy = entry.h / Math.max(1e-3, box.max.y - box.min.y);
+  const root = new THREE.Group();
+  for (const t of entry.tiles) {
+    const holder = new THREE.Group();
+    holder.position.set(t.x, 0, t.z);
+    holder.rotation.y = t.ry;
+    const c = tpl.scene.clone(true);
+    c.scale.set(sx, sy, sy);
+    c.position.set(-(box.min.x + box.max.x) / 2 * sx, -box.min.y * sy, -(box.min.z + box.max.z) / 2 * sy);
+    holder.add(c);
+    root.add(holder);
+  }
+  root.updateMatrixWorld(true);
+  _bucketGLBRoot(root, url, building);
 }
 
 // Pending GLB building instances, keyed geometry|material|tile (see above).
@@ -2778,7 +2808,9 @@ export function flushPendingGLBBuildings(scene) {
       url = entry.landmark ? null : _fallbackBuildingGLB(entry.h, entry.pool);
       if (url) swapped++;
     }
-    if (url) {
+    if (url && entry.tiles) {
+      _placeTiledGLB(url, entry);
+    } else if (url) {
       placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0, entry.stretch || 1, !!entry.atOrigin);
     } else if (!entry.building.destroyed) {
       _revealProceduralBody(entry.building);

@@ -1,0 +1,1546 @@
+{
+ "meta": {
+  "name": "Kaijupalooza!",
+  "version": 1,
+  "units": "chicago_layout units (0.2 u/m), +X east, -Z north",
+  "rotNote": "rot = three.js rotation.y; every item's FRONT is its local +Z (rot 0 faces south, PI north, PI/2 east, -PI/2 west). w = width across the front (local X), d = depth (local Z), h = height.",
+  "basis": "Arrangement modelled on public Lollapalooza Grant Park maps and the 2025 road-closure list (CBS Chicago): main entrance Michigan & Ida B. Wells, north entrance Monroe & Columbus; closures of Columbus (Monroe-Roosevelt), Jackson and Balbo (Michigan-LSD), Congress Plaza Dr. Stage positions follow the usual pattern (main stages at the north end of Butler Field and south end of Hutchinson Field, a tent at Petrillo, others around Buckingham Fountain and the south-west field); exact spots are approximate.",
+  "names": "All names are invented for the game; no sponsor or real stage names."
+ },
+ "fence": {
+  "points": [
+   [
+    -2.1,
+    -106.0
+   ],
+   [
+    48.8,
+    -106
+   ],
+   [
+    49.0,
+    -96
+   ],
+   [
+    49.2,
+    -86
+   ],
+   [
+    49.3,
+    -76
+   ],
+   [
+    49.5,
+    -66
+   ],
+   [
+    49.7,
+    -56
+   ],
+   [
+    49.8,
+    -46
+   ],
+   [
+    50.0,
+    -36
+   ],
+   [
+    50.1,
+    -26
+   ],
+   [
+    50.3,
+    -16
+   ],
+   [
+    50.5,
+    -6
+   ],
+   [
+    50.6,
+    4
+   ],
+   [
+    50.8,
+    14
+   ],
+   [
+    51.0,
+    24
+   ],
+   [
+    51.1,
+    34
+   ],
+   [
+    51.3,
+    44
+   ],
+   [
+    51.4,
+    54
+   ],
+   [
+    51.6,
+    64
+   ],
+   [
+    51.8,
+    74
+   ],
+   [
+    51.9,
+    84
+   ],
+   [
+    52.1,
+    94
+   ],
+   [
+    52.2,
+    104
+   ],
+   [
+    52.4,
+    114
+   ],
+   [
+    52.6,
+    124
+   ],
+   [
+    52.7,
+    134
+   ],
+   [
+    51.1,
+    145
+   ],
+   [
+    49.1,
+    150
+   ],
+   [
+    46.1,
+    155
+   ],
+   [
+    42.7,
+    160
+   ],
+   [
+    39.2,
+    165
+   ],
+   [
+    35.8,
+    170
+   ],
+   [
+    32.4,
+    175
+   ],
+   [
+    28.9,
+    180
+   ],
+   [
+    26.9,
+    183.0
+   ],
+   [
+    -53.5,
+    183.0
+   ],
+   [
+    -53.5,
+    -49.5
+   ],
+   [
+    -0.8,
+    -49.5
+   ],
+   [
+    -2.1,
+    -106.0
+   ]
+  ],
+  "height": 0.48,
+  "kind": "temporary steel festival fence with scrim",
+  "areaM2": 669782
+ },
+ "closedRoads": [
+  {
+   "road": "Columbus Drive",
+   "from": "Monroe St",
+   "to": "Roosevelt Rd",
+   "points": [
+    [
+     -0.7,
+     -108
+    ],
+    [
+     0.7,
+     -52
+    ],
+    [
+     2.1,
+     6
+    ],
+    [
+     2.7,
+     62
+    ],
+    [
+     3.3,
+     120
+    ],
+    [
+     5.2,
+     186
+    ]
+   ],
+   "status": "inside fence, pedestrian"
+  },
+  {
+   "road": "Jackson Drive",
+   "from": "Michigan Ave",
+   "to": "Lake Shore Dr",
+   "points": [
+    [
+     -57,
+     -52
+    ],
+    [
+     51.2,
+     -52
+    ]
+   ],
+   "status": "closed; fence runs along its south kerb west of Columbus"
+  },
+  {
+   "road": "Balbo Drive",
+   "from": "Michigan Ave",
+   "to": "Lake Shore Dr",
+   "points": [
+    [
+     -56,
+     62
+    ],
+    [
+     53.1,
+     62
+    ]
+   ],
+   "status": "inside fence, pedestrian"
+  },
+  {
+   "road": "Ida B. Wells Dr / Congress Plaza Dr",
+   "from": "Michigan Ave",
+   "to": "Columbus Dr",
+   "points": [
+    [
+     -60,
+     6
+    ],
+    [
+     2,
+     6
+    ]
+   ],
+   "status": "inside fence (main gate plaza)"
+  },
+  {
+   "road": "Monroe Drive",
+   "from": "Michigan Ave",
+   "to": "Lake Shore Dr",
+   "points": [
+    [
+     -62,
+     -108
+    ],
+    [
+     50.3,
+     -108
+    ]
+   ],
+   "status": "closed to traffic; fence on its south kerb"
+  }
+ ],
+ "items": [
+  {
+   "id": "monster_main",
+   "kind": "stage",
+   "name": "Monster Main",
+   "x": 27.5,
+   "z": -101.0,
+   "rot": 0.0,
+   "w": 12.8,
+   "d": 4.4,
+   "h": 5.2,
+   "faces": "south",
+   "tier": "main",
+   "crowdArea": [
+    [
+     12,
+     -95
+    ],
+    [
+     51,
+     -95
+    ],
+    [
+     51,
+     -56
+    ],
+    [
+     12,
+     -56
+    ]
+   ],
+   "crowdCapacity": 60839
+  },
+  {
+   "id": "monster_main_screen_l",
+   "kind": "screen",
+   "name": "Monster Main video wall",
+   "x": 19.5,
+   "z": -101.0,
+   "rot": 0.0,
+   "w": 2.4,
+   "d": 0.3,
+   "h": 3.04,
+   "faces": "south"
+  },
+  {
+   "id": "monster_main_screen_r",
+   "kind": "screen",
+   "name": "Monster Main video wall",
+   "x": 35.5,
+   "z": -101.0,
+   "rot": 0.0,
+   "w": 2.4,
+   "d": 0.3,
+   "h": 3.04,
+   "faces": "south"
+  },
+  {
+   "id": "monster_main_foh",
+   "kind": "foh_tower",
+   "name": "Monster Main front-of-house mix tower",
+   "x": 27.5,
+   "z": -90.0,
+   "rot": 0.0,
+   "w": 2.0,
+   "d": 1.6,
+   "h": 1.4,
+   "faces": "south"
+  },
+  {
+   "id": "monster_main_delay_1l",
+   "kind": "delay_tower",
+   "name": "Monster Main delay tower",
+   "x": 23.9,
+   "z": -79.0,
+   "rot": 0.0,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "south"
+  },
+  {
+   "id": "monster_main_delay_1r",
+   "kind": "delay_tower",
+   "name": "Monster Main delay tower",
+   "x": 31.1,
+   "z": -79.0,
+   "rot": 0.0,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "south"
+  },
+  {
+   "id": "monster_main_delay_2l",
+   "kind": "delay_tower",
+   "name": "Monster Main delay tower",
+   "x": 23.9,
+   "z": -68.0,
+   "rot": 0.0,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "south"
+  },
+  {
+   "id": "monster_main_delay_2r",
+   "kind": "delay_tower",
+   "name": "Monster Main delay tower",
+   "x": 31.1,
+   "z": -68.0,
+   "rot": 0.0,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "south"
+  },
+  {
+   "id": "monster_main_backstage",
+   "kind": "production",
+   "name": "Monster Main production compound",
+   "x": 44.0,
+   "z": -101.5,
+   "rot": 0.0,
+   "w": 7.2,
+   "d": 4.0,
+   "h": 0.8,
+   "faces": "south",
+   "note": "trailers, generators, artist cabins; fenced off from the crowd"
+  },
+  {
+   "id": "kaiju_stage",
+   "kind": "stage",
+   "name": "Kaiju Stage",
+   "x": 29.0,
+   "z": 168.0,
+   "rot": 3.1416,
+   "w": 12.8,
+   "d": 4.4,
+   "h": 5.2,
+   "faces": "north",
+   "tier": "main",
+   "crowdArea": [
+    [
+     16,
+     104
+    ],
+    [
+     52,
+     104
+    ],
+    [
+     52,
+     138
+    ],
+    [
+     43,
+     160
+    ],
+    [
+     16,
+     161
+    ]
+   ],
+   "crowdCapacity": 77219
+  },
+  {
+   "id": "kaiju_stage_screen_l",
+   "kind": "screen",
+   "name": "Kaiju Stage video wall",
+   "x": 37.0,
+   "z": 168.0,
+   "rot": 3.1416,
+   "w": 2.4,
+   "d": 0.3,
+   "h": 3.04,
+   "faces": "north"
+  },
+  {
+   "id": "kaiju_stage_screen_r",
+   "kind": "screen",
+   "name": "Kaiju Stage video wall",
+   "x": 21.0,
+   "z": 168.0,
+   "rot": 3.1416,
+   "w": 2.4,
+   "d": 0.3,
+   "h": 3.04,
+   "faces": "north"
+  },
+  {
+   "id": "kaiju_stage_foh",
+   "kind": "foh_tower",
+   "name": "Kaiju Stage front-of-house mix tower",
+   "x": 29.0,
+   "z": 157.0,
+   "rot": 3.1416,
+   "w": 2.0,
+   "d": 1.6,
+   "h": 1.4,
+   "faces": "north"
+  },
+  {
+   "id": "kaiju_stage_delay_1l",
+   "kind": "delay_tower",
+   "name": "Kaiju Stage delay tower",
+   "x": 32.6,
+   "z": 146.0,
+   "rot": 3.1416,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "north"
+  },
+  {
+   "id": "kaiju_stage_delay_1r",
+   "kind": "delay_tower",
+   "name": "Kaiju Stage delay tower",
+   "x": 25.4,
+   "z": 146.0,
+   "rot": 3.1416,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "north"
+  },
+  {
+   "id": "kaiju_stage_delay_2l",
+   "kind": "delay_tower",
+   "name": "Kaiju Stage delay tower",
+   "x": 32.6,
+   "z": 135.0,
+   "rot": 3.1416,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "north"
+  },
+  {
+   "id": "kaiju_stage_delay_2r",
+   "kind": "delay_tower",
+   "name": "Kaiju Stage delay tower",
+   "x": 25.4,
+   "z": 135.0,
+   "rot": 3.1416,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "north"
+  },
+  {
+   "id": "kaiju_stage_backstage",
+   "kind": "production",
+   "name": "Kaiju Stage production compound",
+   "x": 29.0,
+   "z": 173.2,
+   "rot": 3.1416,
+   "w": 16.0,
+   "d": 4.4,
+   "h": 0.8,
+   "faces": "north",
+   "note": "trailers, generators, artist cabins; fenced off from the crowd"
+  },
+  {
+   "id": "tremor_tent",
+   "kind": "stage",
+   "name": "Tremor Tent",
+   "x": 8.0,
+   "z": -38.0,
+   "rot": 1.5708,
+   "w": 8.8,
+   "d": 6.4,
+   "h": 2.8,
+   "faces": "east",
+   "tier": "tent",
+   "crowdArea": [
+    [
+     11,
+     -48
+    ],
+    [
+     36,
+     -48
+    ],
+    [
+     36,
+     -28
+    ],
+    [
+     11,
+     -28
+    ]
+   ],
+   "crowdCapacity": 20000
+  },
+  {
+   "id": "tremor_tent_foh",
+   "kind": "foh_tower",
+   "name": "Tremor Tent front-of-house mix tower",
+   "x": 14.0,
+   "z": -38.0,
+   "rot": 1.5708,
+   "w": 2.0,
+   "d": 1.6,
+   "h": 1.4,
+   "faces": "east"
+  },
+  {
+   "id": "tremor_tent_backstage",
+   "kind": "production",
+   "name": "Tremor Tent production compound",
+   "x": 2.8,
+   "z": -38.0,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 2.8,
+   "h": 0.8,
+   "faces": "east",
+   "note": "trailers, generators, artist cabins; fenced off from the crowd"
+  },
+  {
+   "id": "atomic_stage",
+   "kind": "stage",
+   "name": "Atomic Stage",
+   "x": 46.5,
+   "z": 38.0,
+   "rot": -1.5708,
+   "w": 7.2,
+   "d": 3.2,
+   "h": 3.2,
+   "faces": "west",
+   "tier": "secondary",
+   "crowdArea": [
+    [
+     14,
+     20
+    ],
+    [
+     42,
+     20
+    ],
+    [
+     42,
+     56
+    ],
+    [
+     14,
+     56
+    ]
+   ],
+   "crowdCapacity": 40320
+  },
+  {
+   "id": "atomic_stage_screen_l",
+   "kind": "screen",
+   "name": "Atomic Stage video wall",
+   "x": 46.5,
+   "z": 33.3,
+   "rot": -1.5708,
+   "w": 1.4,
+   "d": 0.3,
+   "h": 2.44,
+   "faces": "west"
+  },
+  {
+   "id": "atomic_stage_screen_r",
+   "kind": "screen",
+   "name": "Atomic Stage video wall",
+   "x": 46.5,
+   "z": 42.7,
+   "rot": -1.5708,
+   "w": 1.4,
+   "d": 0.3,
+   "h": 2.44,
+   "faces": "west"
+  },
+  {
+   "id": "atomic_stage_foh",
+   "kind": "foh_tower",
+   "name": "Atomic Stage front-of-house mix tower",
+   "x": 38.5,
+   "z": 38.0,
+   "rot": -1.5708,
+   "w": 2.0,
+   "d": 1.6,
+   "h": 1.4,
+   "faces": "west"
+  },
+  {
+   "id": "atomic_stage_delay_1l",
+   "kind": "delay_tower",
+   "name": "Atomic Stage delay tower",
+   "x": 29.5,
+   "z": 34.4,
+   "rot": -1.5708,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "west"
+  },
+  {
+   "id": "atomic_stage_delay_1r",
+   "kind": "delay_tower",
+   "name": "Atomic Stage delay tower",
+   "x": 29.5,
+   "z": 41.6,
+   "rot": -1.5708,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "west"
+  },
+  {
+   "id": "atomic_stage_backstage",
+   "kind": "production",
+   "name": "Atomic Stage production compound",
+   "x": 50.1,
+   "z": 38.0,
+   "rot": -1.5708,
+   "w": 9.2,
+   "d": 3.2,
+   "h": 0.8,
+   "faces": "west",
+   "note": "trailers, generators, artist cabins; fenced off from the crowd"
+  },
+  {
+   "id": "stomp_stage",
+   "kind": "stage",
+   "name": "Stomp Stage",
+   "x": -27.0,
+   "z": 176.0,
+   "rot": 3.1416,
+   "w": 7.2,
+   "d": 3.2,
+   "h": 3.2,
+   "faces": "north",
+   "tier": "secondary",
+   "crowdArea": [
+    [
+     -50,
+     118
+    ],
+    [
+     -6,
+     118
+    ],
+    [
+     -6,
+     170
+    ],
+    [
+     -50,
+     170
+    ]
+   ],
+   "crowdCapacity": 91519
+  },
+  {
+   "id": "stomp_stage_screen_l",
+   "kind": "screen",
+   "name": "Stomp Stage video wall",
+   "x": -22.3,
+   "z": 176.0,
+   "rot": 3.1416,
+   "w": 1.4,
+   "d": 0.3,
+   "h": 2.44,
+   "faces": "north"
+  },
+  {
+   "id": "stomp_stage_screen_r",
+   "kind": "screen",
+   "name": "Stomp Stage video wall",
+   "x": -31.7,
+   "z": 176.0,
+   "rot": 3.1416,
+   "w": 1.4,
+   "d": 0.3,
+   "h": 2.44,
+   "faces": "north"
+  },
+  {
+   "id": "stomp_stage_foh",
+   "kind": "foh_tower",
+   "name": "Stomp Stage front-of-house mix tower",
+   "x": -27.0,
+   "z": 168.0,
+   "rot": 3.1416,
+   "w": 2.0,
+   "d": 1.6,
+   "h": 1.4,
+   "faces": "north"
+  },
+  {
+   "id": "stomp_stage_delay_1l",
+   "kind": "delay_tower",
+   "name": "Stomp Stage delay tower",
+   "x": -23.4,
+   "z": 159.0,
+   "rot": 3.1416,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "north"
+  },
+  {
+   "id": "stomp_stage_delay_1r",
+   "kind": "delay_tower",
+   "name": "Stomp Stage delay tower",
+   "x": -30.6,
+   "z": 159.0,
+   "rot": 3.1416,
+   "w": 0.6,
+   "d": 0.6,
+   "h": 2.8,
+   "faces": "north"
+  },
+  {
+   "id": "stomp_stage_backstage",
+   "kind": "production",
+   "name": "Stomp Stage production compound",
+   "x": -27.0,
+   "z": 179.6,
+   "rot": 3.1416,
+   "w": 9.2,
+   "d": 3.2,
+   "h": 0.8,
+   "faces": "north",
+   "note": "trailers, generators, artist cabins; fenced off from the crowd"
+  },
+  {
+   "id": "roar_grove",
+   "kind": "stage",
+   "name": "Roar Grove",
+   "x": -40.0,
+   "z": 50.0,
+   "rot": 1.5708,
+   "w": 4.0,
+   "d": 2.4,
+   "h": 1.8,
+   "faces": "east",
+   "tier": "small",
+   "crowdArea": [
+    [
+     -36,
+     36
+    ],
+    [
+     -14,
+     36
+    ],
+    [
+     -14,
+     62
+    ],
+    [
+     -36,
+     62
+    ]
+   ],
+   "crowdCapacity": 22879
+  },
+  {
+   "id": "roar_grove_foh",
+   "kind": "foh_tower",
+   "name": "Roar Grove front-of-house mix tower",
+   "x": -35.6,
+   "z": 50.0,
+   "rot": 1.5708,
+   "w": 2.0,
+   "d": 1.6,
+   "h": 1.4,
+   "faces": "east"
+  },
+  {
+   "id": "roar_grove_backstage",
+   "kind": "production",
+   "name": "Roar Grove production compound",
+   "x": -42.4,
+   "z": 50.0,
+   "rot": 1.5708,
+   "w": 4.4,
+   "d": 1.6,
+   "h": 0.8,
+   "faces": "east",
+   "note": "trailers, generators, artist cabins; fenced off from the crowd"
+  },
+  {
+   "id": "gate_congress",
+   "kind": "gate",
+   "name": "Congress Gate (main entrance)",
+   "x": -53.5,
+   "z": 6.0,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 1.6,
+   "h": 1.2,
+   "faces": "east",
+   "tier": "main",
+   "where": "Michigan Ave & Ida B. Wells Dr; Congress Plaza",
+   "note": "bag check lanes + arch; faces into the park"
+  },
+  {
+   "id": "gate_monroe",
+   "kind": "gate",
+   "name": "Monroe Gate (north entrance)",
+   "x": 12.0,
+   "z": -106.0,
+   "rot": 0.0,
+   "w": 8.0,
+   "d": 1.6,
+   "h": 1.2,
+   "faces": "south",
+   "tier": "main",
+   "where": "Monroe Dr & Columbus Dr",
+   "note": "bag check lanes + arch; faces into the park"
+  },
+  {
+   "id": "gate_jackson",
+   "kind": "gate",
+   "name": "Jackson Gate",
+   "x": -53.5,
+   "z": -46.0,
+   "rot": 1.5708,
+   "w": 4.0,
+   "d": 1.6,
+   "h": 1.2,
+   "faces": "east",
+   "tier": "secondary",
+   "where": "Michigan Ave & Jackson Blvd; exit / re-entry",
+   "note": "bag check lanes + arch; faces into the park"
+  },
+  {
+   "id": "gate_balbo",
+   "kind": "gate",
+   "name": "Balbo Gate",
+   "x": -53.5,
+   "z": 62.0,
+   "rot": 1.5708,
+   "w": 4.0,
+   "d": 1.6,
+   "h": 1.2,
+   "faces": "east",
+   "tier": "secondary",
+   "where": "Michigan Ave & Balbo Dr; accessible entrance",
+   "note": "bag check lanes + arch; faces into the park"
+  },
+  {
+   "id": "gate_roosevelt",
+   "kind": "gate",
+   "name": "Roosevelt Gate",
+   "x": 8.0,
+   "z": 183.0,
+   "rot": 3.1416,
+   "w": 4.0,
+   "d": 1.6,
+   "h": 1.2,
+   "faces": "north",
+   "tier": "exit",
+   "where": "Columbus Dr & Roosevelt Rd; exit only",
+   "note": "bag check lanes + arch; faces into the park"
+  },
+  {
+   "id": "vip_lair_north",
+   "kind": "vip",
+   "name": "Platinum Lair (north)",
+   "x": 8.5,
+   "z": -84,
+   "rot": 1.5708,
+   "w": 18.0,
+   "d": 5.2,
+   "h": 0.8,
+   "faces": "east",
+   "note": "raised deck + lounge tent, side-stage view of Monster Main"
+  },
+  {
+   "id": "vip_lair_south",
+   "kind": "vip",
+   "name": "VIP Lair (south)",
+   "x": 12.5,
+   "z": 135,
+   "rot": 1.5708,
+   "w": 24.0,
+   "d": 5.2,
+   "h": 0.8,
+   "faces": "east",
+   "note": "VIP lawn, bars and lounge along Columbus, beside Kaiju Stage crowd"
+  },
+  {
+   "id": "vip_deck_kaiju",
+   "kind": "vip",
+   "name": "Platinum Deck (south)",
+   "x": 46.5,
+   "z": 146,
+   "rot": -1.5708,
+   "w": 8.0,
+   "d": 3.6,
+   "h": 1.2,
+   "faces": "west",
+   "note": "two-storey viewing deck stage-left of Kaiju Stage"
+  },
+  {
+   "id": "chomp_town_0",
+   "kind": "food",
+   "name": "Chomp Town food stall row",
+   "x": 7.5,
+   "z": -20,
+   "rot": 1.5708,
+   "w": 9.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "east",
+   "note": "row of 8-10 food stalls, chef-curated court, picnic tables east of it"
+  },
+  {
+   "id": "chomp_town_1",
+   "kind": "food",
+   "name": "Chomp Town food stall row",
+   "x": 7.5,
+   "z": -10,
+   "rot": 1.5708,
+   "w": 9.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "east",
+   "note": "row of 8-10 food stalls, chef-curated court, picnic tables east of it"
+  },
+  {
+   "id": "chomp_town_2",
+   "kind": "food",
+   "name": "Chomp Town food stall row",
+   "x": 7.5,
+   "z": 0,
+   "rot": 1.5708,
+   "w": 9.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "east",
+   "note": "row of 8-10 food stalls, chef-curated court, picnic tables east of it"
+  },
+  {
+   "id": "chomp_town_3",
+   "kind": "food",
+   "name": "Chomp Town food stall row",
+   "x": 7.5,
+   "z": 10,
+   "rot": 1.5708,
+   "w": 9.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "east",
+   "note": "row of 8-10 food stalls, chef-curated court, picnic tables east of it"
+  },
+  {
+   "id": "chomp_town_4",
+   "kind": "food",
+   "name": "Chomp Town food stall row",
+   "x": 7.5,
+   "z": 20,
+   "rot": 1.5708,
+   "w": 9.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "east",
+   "note": "row of 8-10 food stalls, chef-curated court, picnic tables east of it"
+  },
+  {
+   "id": "chomp_town_5",
+   "kind": "food",
+   "name": "Chomp Town food stall row",
+   "x": 7.5,
+   "z": 30,
+   "rot": 1.5708,
+   "w": 9.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "east",
+   "note": "row of 8-10 food stalls, chef-curated court, picnic tables east of it"
+  },
+  {
+   "id": "chomp_town_6",
+   "kind": "food",
+   "name": "Chomp Town food stall row",
+   "x": 7.5,
+   "z": 40,
+   "rot": 1.5708,
+   "w": 9.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "east",
+   "note": "row of 8-10 food stalls, chef-curated court, picnic tables east of it"
+  },
+  {
+   "id": "chomp_town_7",
+   "kind": "food",
+   "name": "Chomp Town food stall row",
+   "x": 7.5,
+   "z": 50,
+   "rot": 1.5708,
+   "w": 9.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "east",
+   "note": "row of 8-10 food stalls, chef-curated court, picnic tables east of it"
+  },
+  {
+   "id": "chomp_town_tables",
+   "kind": "food_seating",
+   "name": "Chomp Town picnic tables",
+   "x": 11.8,
+   "z": 18,
+   "rot": 0.0,
+   "w": 3.2,
+   "d": 38.0,
+   "h": 0.2,
+   "faces": "south"
+  },
+  {
+   "id": "grub_row_0",
+   "kind": "food",
+   "name": "Grub Row food stalls",
+   "x": -6.0,
+   "z": 70,
+   "rot": -1.5708,
+   "w": 8.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "west",
+   "note": "second food court on the Columbus side of Hutchinson"
+  },
+  {
+   "id": "grub_row_1",
+   "kind": "food",
+   "name": "Grub Row food stalls",
+   "x": -6.0,
+   "z": 79,
+   "rot": -1.5708,
+   "w": 8.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "west",
+   "note": "second food court on the Columbus side of Hutchinson"
+  },
+  {
+   "id": "grub_row_2",
+   "kind": "food",
+   "name": "Grub Row food stalls",
+   "x": -6.0,
+   "z": 88,
+   "rot": -1.5708,
+   "w": 8.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "west",
+   "note": "second food court on the Columbus side of Hutchinson"
+  },
+  {
+   "id": "grub_row_3",
+   "kind": "food",
+   "name": "Grub Row food stalls",
+   "x": -6.0,
+   "z": 97,
+   "rot": -1.5708,
+   "w": 8.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "west",
+   "note": "second food court on the Columbus side of Hutchinson"
+  },
+  {
+   "id": "grub_row_4",
+   "kind": "food",
+   "name": "Grub Row food stalls",
+   "x": -6.0,
+   "z": 106,
+   "rot": -1.5708,
+   "w": 8.0,
+   "d": 1.2,
+   "h": 0.8,
+   "faces": "west",
+   "note": "second food court on the Columbus side of Hutchinson"
+  },
+  {
+   "id": "bazaar_0",
+   "kind": "vendor",
+   "name": "Kaiju Bazaar vendor tent row",
+   "x": -47.0,
+   "z": 10,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 1.6,
+   "h": 0.8,
+   "faces": "east",
+   "note": "artisan / vendor marketplace tents along Michigan Ave"
+  },
+  {
+   "id": "bazaar_1",
+   "kind": "vendor",
+   "name": "Kaiju Bazaar vendor tent row",
+   "x": -47.0,
+   "z": 20,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 1.6,
+   "h": 0.8,
+   "faces": "east",
+   "note": "artisan / vendor marketplace tents along Michigan Ave"
+  },
+  {
+   "id": "bazaar_2",
+   "kind": "vendor",
+   "name": "Kaiju Bazaar vendor tent row",
+   "x": -47.0,
+   "z": 30,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 1.6,
+   "h": 0.8,
+   "faces": "east",
+   "note": "artisan / vendor marketplace tents along Michigan Ave"
+  },
+  {
+   "id": "bazaar_3",
+   "kind": "vendor",
+   "name": "Kaiju Bazaar vendor tent row",
+   "x": -47.0,
+   "z": 40,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 1.6,
+   "h": 0.8,
+   "faces": "east",
+   "note": "artisan / vendor marketplace tents along Michigan Ave"
+  },
+  {
+   "id": "bazaar_4",
+   "kind": "vendor",
+   "name": "Kaiju Bazaar vendor tent row",
+   "x": -47.0,
+   "z": 50,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 1.6,
+   "h": 0.8,
+   "faces": "east",
+   "note": "artisan / vendor marketplace tents along Michigan Ave"
+  },
+  {
+   "id": "merch_main",
+   "kind": "merch",
+   "name": "Merch Megatent (main)",
+   "x": -44.0,
+   "z": -4.0,
+   "rot": 0.0,
+   "w": 8.0,
+   "d": 4.4,
+   "h": 1.8,
+   "faces": "south",
+   "note": "just inside Congress Gate"
+  },
+  {
+   "id": "merch_south",
+   "kind": "merch",
+   "name": "Merch tent (south)",
+   "x": 20.0,
+   "z": 97,
+   "rot": 0.0,
+   "w": 4.8,
+   "d": 3.2,
+   "h": 1.4,
+   "faces": "south"
+  },
+  {
+   "id": "bar_north",
+   "kind": "bar",
+   "name": "Roar Bar",
+   "x": 47.0,
+   "z": -62,
+   "rot": -1.5708,
+   "w": 6.0,
+   "d": 2.0,
+   "h": 0.8,
+   "faces": "west"
+  },
+  {
+   "id": "bar_mid",
+   "kind": "bar",
+   "name": "Atomic Bar",
+   "x": 46.5,
+   "z": 0,
+   "rot": -1.5708,
+   "w": 6.0,
+   "d": 2.0,
+   "h": 0.8,
+   "faces": "west"
+  },
+  {
+   "id": "bar_south",
+   "kind": "bar",
+   "name": "Stomp Bar",
+   "x": -10.0,
+   "z": 168,
+   "rot": -1.5708,
+   "w": 6.0,
+   "d": 2.0,
+   "h": 0.8,
+   "faces": "west"
+  },
+  {
+   "id": "little_monsters",
+   "kind": "family",
+   "name": "Little Monsters family zone",
+   "x": -40.0,
+   "z": 82,
+   "rot": 1.5708,
+   "w": 10.0,
+   "d": 8.0,
+   "h": 1.0,
+   "faces": "east",
+   "note": "kids area: inflatables, crafts, small stage"
+  },
+  {
+   "id": "first_aid_0",
+   "kind": "first_aid",
+   "name": "First aid tent",
+   "x": 46,
+   "z": -88,
+   "rot": 0.0,
+   "w": 3.2,
+   "d": 2.0,
+   "h": 0.8,
+   "faces": "south",
+   "note": "white tent with red cross banner (no brand)"
+  },
+  {
+   "id": "first_aid_1",
+   "kind": "first_aid",
+   "name": "First aid tent",
+   "x": -45,
+   "z": 25,
+   "rot": 0.0,
+   "w": 3.2,
+   "d": 2.0,
+   "h": 0.8,
+   "faces": "south",
+   "note": "white tent with red cross banner (no brand)"
+  },
+  {
+   "id": "first_aid_2",
+   "kind": "first_aid",
+   "name": "First aid tent",
+   "x": 24,
+   "z": 64,
+   "rot": 0.0,
+   "w": 3.2,
+   "d": 2.0,
+   "h": 0.8,
+   "faces": "south",
+   "note": "white tent with red cross banner (no brand)"
+  },
+  {
+   "id": "first_aid_3",
+   "kind": "first_aid",
+   "name": "First aid tent",
+   "x": -8,
+   "z": 114,
+   "rot": 0.0,
+   "w": 3.2,
+   "d": 2.0,
+   "h": 0.8,
+   "faces": "south",
+   "note": "white tent with red cross banner (no brand)"
+  },
+  {
+   "id": "water_0",
+   "kind": "water",
+   "name": "Water refill station",
+   "x": 48,
+   "z": -72,
+   "rot": 0.0,
+   "w": 1.6,
+   "d": 0.6,
+   "h": 0.6,
+   "faces": "south"
+  },
+  {
+   "id": "water_1",
+   "kind": "water",
+   "name": "Water refill station",
+   "x": 8,
+   "z": -10,
+   "rot": 0.0,
+   "w": 1.6,
+   "d": 0.6,
+   "h": 0.6,
+   "faces": "south"
+  },
+  {
+   "id": "water_2",
+   "kind": "water",
+   "name": "Water refill station",
+   "x": 40,
+   "z": 62,
+   "rot": 0.0,
+   "w": 1.6,
+   "d": 0.6,
+   "h": 0.6,
+   "faces": "south"
+  },
+  {
+   "id": "water_3",
+   "kind": "water",
+   "name": "Water refill station",
+   "x": -30,
+   "z": 105,
+   "rot": 0.0,
+   "w": 1.6,
+   "d": 0.6,
+   "h": 0.6,
+   "faces": "south"
+  },
+  {
+   "id": "water_4",
+   "kind": "water",
+   "name": "Water refill station",
+   "x": 48,
+   "z": 112,
+   "rot": 0.0,
+   "w": 1.6,
+   "d": 0.6,
+   "h": 0.6,
+   "faces": "south"
+  },
+  {
+   "id": "water_5",
+   "kind": "water",
+   "name": "Water refill station",
+   "x": -45,
+   "z": 150,
+   "rot": 0.0,
+   "w": 1.6,
+   "d": 0.6,
+   "h": 0.6,
+   "faces": "south"
+  },
+  {
+   "id": "toilets_0",
+   "kind": "toilets",
+   "name": "Porta-potty bank",
+   "x": 5,
+   "z": -100,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 0.8,
+   "h": 0.6,
+   "faces": "east",
+   "units": 24
+  },
+  {
+   "id": "toilets_1",
+   "kind": "toilets",
+   "name": "Porta-potty bank",
+   "x": 6,
+   "z": -58,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 0.8,
+   "h": 0.6,
+   "faces": "east",
+   "units": 24
+  },
+  {
+   "id": "toilets_2",
+   "kind": "toilets",
+   "name": "Porta-potty bank",
+   "x": 49,
+   "z": -30,
+   "rot": -1.5708,
+   "w": 8.0,
+   "d": 0.8,
+   "h": 0.6,
+   "faces": "west",
+   "units": 24
+  },
+  {
+   "id": "toilets_3",
+   "kind": "toilets",
+   "name": "Porta-potty bank",
+   "x": -50,
+   "z": -10,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 0.8,
+   "h": 0.6,
+   "faces": "east",
+   "units": 24
+  },
+  {
+   "id": "toilets_4",
+   "kind": "toilets",
+   "name": "Porta-potty bank",
+   "x": 49,
+   "z": 80,
+   "rot": -1.5708,
+   "w": 8.0,
+   "d": 0.8,
+   "h": 0.6,
+   "faces": "west",
+   "units": 24
+  },
+  {
+   "id": "toilets_5",
+   "kind": "toilets",
+   "name": "Porta-potty bank",
+   "x": -50,
+   "z": 110,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 0.8,
+   "h": 0.6,
+   "faces": "east",
+   "units": 24
+  },
+  {
+   "id": "toilets_6",
+   "kind": "toilets",
+   "name": "Porta-potty bank",
+   "x": 6,
+   "z": 166,
+   "rot": 1.5708,
+   "w": 8.0,
+   "d": 0.8,
+   "h": 0.6,
+   "faces": "east",
+   "units": 24
+  },
+  {
+   "id": "toilets_7",
+   "kind": "toilets",
+   "name": "Porta-potty bank",
+   "x": -50,
+   "z": 178,
+   "rot": 3.1416,
+   "w": 8.0,
+   "d": 0.8,
+   "h": 0.6,
+   "faces": "north",
+   "units": 24
+  },
+  {
+   "id": "toilets_8",
+   "kind": "toilets",
+   "name": "Porta-potty bank",
+   "x": 25,
+   "z": 60,
+   "rot": 0.0,
+   "w": 8.0,
+   "d": 0.8,
+   "h": 0.6,
+   "faces": "south",
+   "units": 24
+  },
+  {
+   "id": "ops_hq",
+   "kind": "ops",
+   "name": "Festival HQ / security ops",
+   "x": -47.0,
+   "z": 172.0,
+   "rot": 1.5708,
+   "w": 4.0,
+   "d": 2.8,
+   "h": 1.2,
+   "faces": "east"
+  }
+ ]
+}

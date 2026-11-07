@@ -964,6 +964,7 @@ function applyLevelLook(level) {
 }
 
 function buildWorldCity() {
+  world.crowdHit = null; // a level with festival crowds sets it (Chicago)
   const res = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT, level: selectedLevel });
   const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = res;
   world.buildings = buildings;
@@ -2714,6 +2715,12 @@ function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample =
       const dz = cp.z - center.z;
       if (dx * dx + dz * dz < radiusSq) cv.die(world);
     }
+  }
+  // Festival crowds (Chicago's Kaijupalooza!): flattened in the radius;
+  // the first few each hit count as stomped civilians
+  if (world.crowdHit) {
+    const n = world.crowdHit(center.x, center.z, radiusSq);
+    for (let i = 0; i < Math.min(n, 3); i++) world.onCivilianStomped();
   }
 }
 
