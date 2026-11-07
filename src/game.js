@@ -2118,14 +2118,34 @@ function _initStaticHUDRefs() {
 }
 _initStaticHUDRefs();
 
-// Slot icons (24x24 stroke glyphs). Names differ per monster, the slot
-// meaning doesn't: ranged beam, area roar, dash, ground stomp, ultimate.
+// Slot icons: 32x32 filled glyphs, drawn for a distinct silhouette at
+// ~40 px. Names differ per monster, the slot meaning doesn't: jaw blast,
+// fanged roar, horned charge, clawed stomp, atomic ultimate. Shapes fill
+// with the slot's accent (currentColor) and a thin dark outline; .d = dark
+// detail, .s = bold accent stroke, .z / .o = dark strokes over the fill.
 const POWER_ICONS = {
-  beam: '<path d="M2 12h5"/><path d="M8 6.5L22 12 8 17.5l2.5-5.5z"/>',
-  roar: '<path d="M3 9.5v5h3.5L12 19V5L6.5 9.5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9.5 9.5 0 0 1 0 13"/>',
-  charge: '<path d="M4 6l6 6-6 6M12 6l6 6-6 6"/>',
-  stomp: '<path d="M12 3v8M8.5 7.5L12 11l3.5-3.5"/><ellipse cx="12" cy="17.5" rx="9" ry="3.5"/><ellipse cx="12" cy="17.5" rx="4" ry="1.4"/>',
-  ult: '<path d="M12 2l2.6 6.4L21 9l-5 4.4 1.5 7.6L12 17.3 6.5 21 8 13.4 3 9l6.4-.6z"/>',
+  beam: '<path d="M14 14.2 L31 8.5 L31 23.5 L14 17.8 Z"/>'
+    + '<path class="z" d="M14.5 16 L18.5 13.8 L21 18 L24.5 13.2 L27 17.6 L30 14.6"/>'
+    + '<path d="M1 7.5 Q6 2.5 12.5 4.5 L16.5 8.5 L12.5 12.5 L7 12.8 Q4.6 13.6 4.6 16 Q4.6 18.4 7 19.2 L12.5 19.5 L16.5 23.5 L12.5 27.5 Q6 29.5 1 24.5 Z"/>'
+    + '<path d="M1.8 7.4 L0.6 2.6 L4.6 5.2 Z M5.4 4.6 L6 0.6 L9 4 Z"/><circle class="d" cx="7.4" cy="8.4" r="1.5"/><path class="d" d="M8 12.6 L9.2 14.6 L10.4 12.6 Z M8 19.4 L9.2 17.4 L10.4 19.4 Z"/>',
+  roar: '<path class="s" d="M4.5 10 Q1.2 16 4.5 22 M27.5 10 Q30.8 16 27.5 22"/>'
+    + '<path d="M7.5 9.5 Q16 2.5 24.5 9.5 Q27 16 24.5 22.5 Q16 29.5 7.5 22.5 Q5 16 7.5 9.5 Z"/>'
+    + '<path class="d" d="M10 11.5 Q16 7.5 22 11.5 Q23.6 16 22 20.5 Q16 24.5 10 20.5 Q8.4 16 10 11.5 Z"/>'
+    + '<path d="M10.6 11.2 L12.4 16.4 L14.2 10.2 Z M17.8 10.2 L19.6 16.4 L21.4 11.2 Z M11 20.8 L13 16.8 L14.8 21.6 Z M17.2 21.6 L19 16.8 L21 20.8 Z"/>',
+  charge: '<path class="s" d="M1.5 13.5 H7.5 M1 18 H7 M2.5 22.5 H8.5"/>'
+    + '<path d="M10 13 Q16 9.5 23 12 Q28.5 14 29.5 19.5 Q26 23.5 19 23.5 Q12 23.5 10 19.5 Z"/>'
+    + '<path d="M24 13.8 Q27.5 6 31.2 3.5 Q31 10.5 27.6 16 Z"/>'
+    + '<path d="M18.5 11.6 Q20 7 23 5.8 Q22.8 9.5 21.8 12.2 Z"/>'
+    + '<path d="M11.6 12 L12.4 7.6 L15.4 10.6 Z"/>'
+    + '<circle class="d" cx="18.8" cy="16" r="1.6"/><circle class="d" cx="27.2" cy="20" r="0.9"/>',
+  stomp: '<ellipse class="s" cx="16" cy="26.5" rx="13.5" ry="3.2"/>'
+    + '<path class="s" d="M3.5 22.5 L6 24 L5 26 M28.5 22.5 L26 24 L27 26"/>'
+    + '<path d="M9.5 18.5 Q16 13.5 22.5 18.5 Q24 24.5 16 25.5 Q8 24.5 9.5 18.5 Z"/>'
+    + '<ellipse cx="9" cy="12.8" rx="2.6" ry="3.2"/><ellipse cx="16" cy="10.2" rx="2.7" ry="3.4"/><ellipse cx="23" cy="12.8" rx="2.6" ry="3.2"/>'
+    + '<path d="M7.4 10 L8.6 5.6 L10.4 9.8 Z M14.4 7.2 L16 2.4 L17.6 7.2 Z M21.6 9.8 L23.4 5.6 L24.6 10 Z"/>',
+  ult: '<path d="M16 0.8 L18.6 9 L25.8 4.4 L22.4 12.2 L31 13.2 L23.8 17.6 L29.6 24.4 L21.4 22.6 L21 31 L16 24.4 L11 31 L10.6 22.6 L2.4 24.4 L8.2 17.6 L1 13.2 L9.6 12.2 L6.2 4.4 L13.4 9 Z"/>'
+    + '<ellipse class="o" cx="16" cy="16" rx="9" ry="3.3"/><ellipse class="o" cx="16" cy="16" rx="9" ry="3.3" transform="rotate(60 16 16)"/><ellipse class="o" cx="16" cy="16" rx="9" ry="3.3" transform="rotate(-60 16 16)"/>'
+    + '<circle class="d" cx="16" cy="16" r="2.6"/>',
 };
 
 function buildPowersBar() {
@@ -2135,6 +2155,7 @@ function buildPowersBar() {
   hudRefs.pw = {};
   hudRefs.cd = {};
   _pwState = {};
+  delete _hudKey.ultR;
   const items = [
     { key: '1', id: 'beam', name: cfg.beam.name, cost: cfg.beam.cost },
     { key: '2', id: 'roar', name: cfg.roar.name, cost: cfg.roar.cost },
@@ -2143,19 +2164,22 @@ function buildPowersBar() {
     { key: 'Q',   id: 'ult',   name: 'ULTIMATE', cost: 100 },
   ];
   for (const it of items) {
+    it.short = it.id === 'ult' ? 'ULT' : it.name.trim().split(/\s+/).pop();
     const w = document.createElement('div');
     w.className = 'power-wrap ' + it.id;
     w.innerHTML = `
       <div class="power" id="pw-${it.id}" role="button" aria-label="${it.name}${touchUI ? '' : ' (' + it.key + ')'}">
-        <svg viewBox="0 0 24 24" aria-hidden="true">${POWER_ICONS[it.id]}</svg>
+        <svg viewBox="0 0 32 32" aria-hidden="true">${POWER_ICONS[it.id]}</svg>
         <span class="name">${it.name}</span>
         <span class="key">${it.key}</span>
+        <div class="cooldown"></div>
       </div>
-      <div class="cooldown" id="cd-${it.id}"></div>`;
+      <span class="cd-num" id="cd-${it.id}"></span>
+      <span class="lbl">${it.short}</span>`;
     bar.appendChild(w);
     const pwEl = w.querySelector('.power');
     hudRefs.pw[it.id] = w;
-    hudRefs.cd[it.id] = w.querySelector('.cooldown');
+    hudRefs.cd[it.id] = w.querySelector('.cd-num');
     const fire = (e) => {
       e.preventDefault();
       if (it.id === 'beam') fireBeam();
@@ -2235,7 +2259,7 @@ function updateHUD() {
       const txt = t.toFixed(1);
       if (txt !== ps.txt) { ps.txt = txt; cd.textContent = txt; }
       const q = Math.ceil(t / ps.max * 40) / 40;
-      if (q !== ps.q) { ps.q = q; cd.style.setProperty('--cd', q); }
+      if (q !== ps.q) { ps.q = q; w.style.setProperty('--cd', q); }
     }
   };
   updateP('beam', cfg.beam.cost);
@@ -2243,6 +2267,8 @@ function updateHUD() {
   updateP('charge', cfg.charge.cost);
   updateP('stomp', 15);
   updateP('ult', 100);
+  // Ultimate charge ring fills with rage
+  _hudSet('ultR', Math.round(Math.min(1, state.rage / 100) * 40), (v) => { if (hudRefs.pw.ult) hudRefs.pw.ult.style.setProperty('--rage', v / 40); });
 
   // Combo HUD (stats column)
   if (hudRefs.combo) {
