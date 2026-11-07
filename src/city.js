@@ -2640,6 +2640,68 @@ function _placeRubbleInstanced(scene, targetSize, x, y, z, rx, ry, rz) {
   return true;
 }
 
+// ---- Clone-free GLB placement ----
+// A placed building used to be tpl.scene.clone(true) (a full Object3D tree per
+// building, ~3.8k in Chicago) only to read its box and its meshes' world
+// matrices. _Placed stands in for that clone: `top` carries the clone's own
+// transform (copied from the template root, then edited as the clone was) and
+// the template's descendants are walked with the same Matrix4 calls that
+// Object3D.updateWorldMatrix / Box3.setFromObject make on a clone (local
+// matrix recomposed, matrixWorld = parent.matrixWorld x matrix), so boxes and
+// instance matrices are bit-identical to the clone path. Templates holding a
+// node with its own boundingBox (skinned/instanced) take a real clone.
+const _GLB_MARKER = new THREE.Object3D(); // b.customMesh for instanced GLB buildings: scene-less, hit-tested by AABB
+const _pBox = new THREE.Box3();
+function _cloneFreeOK(tplScene) {
+  if (tplScene._cloneFreeOK === undefined) {
+    let ok = true;
+    tplScene.traverse((o) => { if (o.boundingBox !== undefined) ok = false; });
+    tplScene._cloneFreeOK = ok;
+  }
+  return tplScene._cloneFreeOK;
+}
+class _Placed {
+  constructor(tplScene) {
+    this.tpl = tplScene;
+    this.real = !_cloneFreeOK(tplScene);
+    this.top = this.real ? tplScene.clone(true) : new THREE.Object3D().copy(tplScene, false);
+  }
+  /** [{ node, matrix }] for every node with geometry, pre-order (= traverse()):
+   *  world matrices with the clone parented under parentWorld (null: no parent). */
+  nodes(parentWorld = null) {
+    const out = [];
+    if (this.real) {
+      if (parentWorld) { const g = new THREE.Group(); g.matrixAutoUpdate = false; g.matrix.copy(parentWorld); g.add(this.top); g.updateMatrixWorld(true); }
+      else this.top.updateMatrixWorld(true);
+      this.top.traverse((o) => { if (o.geometry !== undefined) out.push({ node: o, matrix: o.matrixWorld }); });
+      return out;
+    }
+    const top = this.top;
+    if (top.matrixAutoUpdate) top.updateMatrix();
+    const tw = parentWorld ? new THREE.Matrix4().multiplyMatrices(parentWorld, top.matrix) : top.matrix.clone();
+    const visit = (src, w) => {
+      if (src.geometry !== undefined) out.push({ node: src, matrix: w });
+      for (const ch of src.children) {
+        if (ch.matrixAutoUpdate) ch.updateMatrix();
+        visit(ch, new THREE.Matrix4().multiplyMatrices(w, ch.matrix));
+      }
+    };
+    visit(this.tpl, tw);
+    return out;
+  }
+  /** Box3.setFromObject(clone) for the parentless clone. */
+  box() {
+    if (this.real) return new THREE.Box3().setFromObject(this.top);
+    const box = new THREE.Box3();
+    for (const { node, matrix } of this.nodes()) {
+      const g = node.geometry;
+      if (g.boundingBox === null) g.computeBoundingBox();
+      box.union(_pBox.copy(g.boundingBox).applyMatrix4(matrix));
+    }
+    return box;
+  }
+}
+
 /** Clone a loaded template, scale to targetHeight, wire onto Building. */
 // stretch > 1: per-axis scale allowed up to stretch x the uniform fit, so a
 // generic block fills its footprint and reaches its height (Chicago kit)
@@ -2649,12 +2711,12 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
   const tpl = _glbTemplates.get(url);
   if (!tpl || building.destroyed) return;
 
-  const root = tpl.scene.clone(true);
+  const P = new _Placed(tpl.scene), root = P.top;
 
   // Apply Y rotation before measuring if specified
   if (rotY) root.rotation.y = rotY;
 
-  const rawBox = new THREE.Box3().setFromObject(root);
+  const rawBox = P.box();
   const rawW = rawBox.max.x - rawBox.min.x;
   const rawD = rawBox.max.z - rawBox.min.z;
   const rawH = rawBox.max.y - rawBox.min.y;
@@ -2681,7 +2743,7 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
     root.scale.setScalar(s);
   }
 
-  const boxScaled = new THREE.Box3().setFromObject(root);
+  const boxScaled = P.box();
   building.w = boxScaled.max.x - boxScaled.min.x;
   building.d = boxScaled.max.z - boxScaled.min.z;
   building.h = boxScaled.max.y - boxScaled.min.y;
@@ -2691,25 +2753,25 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
   const centerZ = (boxScaled.min.z + boxScaled.max.z) / 2;
   if (atOrigin) root.position.set(building.x, yOffset, building.z);
   else root.position.set(building.x - centerX, yOffset, building.z - centerZ);
-  root.updateMatrixWorld(true);
 
-  _bucketGLBRoot(root, url, building);
+  _bucketGLBNodes(P.nodes(), url, building);
 }
 
-/** Every mesh of a placed (world-matrix) clone becomes a pending instance slot of the building. */
-function _bucketGLBRoot(root, url, building) {
+/** Every mesh of a placed building ([{ node, matrix }] from _Placed.nodes,
+ *  world matrices) becomes a pending instance slot of the building. */
+function _bucketGLBNodes(nodes, url, building) {
   building._glbSlots = [];
-  root.traverse((m) => {
-    if (!m.isMesh) return;
-    const e = m.matrixWorld.elements;
+  for (const { node: m, matrix } of nodes) {
+    if (!m.isMesh) continue;
+    const e = matrix.elements;
     // building.glbBucket: a compact group (a festival) batches as one tile
     const tile = building.glbBucket || `${Math.floor(e[12] / _bldgTile)},${Math.floor(e[14] / _bldgTile)}`;
     const key = `${m.geometry.uuid}|${m.material.uuid}|${tile}`;
     let b = _glbBuckets.get(key);
     if (!b) _glbBuckets.set(key, b = { geometry: m.geometry, material: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [], lod1Only: !!building.lod1Only });
-    b.items.push({ matrix: m.matrixWorld.clone(), building });
-  });
-  building.customMesh = root;
+    b.items.push({ matrix: matrix.clone(), building });
+  }
+  building.customMesh = _GLB_MARKER;
   building.glbUrl = url; // what stands there (smoke_test: no procedural fallbacks)
 }
 
@@ -2753,7 +2815,9 @@ function _placeFillGLB(entry, scene) {
   const [pw, , pd] = dim.get(u0), plong = (alongX ? pw : pd) * h / dim.get(u0)[1];
   const n = Math.max(2, Math.min(4, Math.round(len / Math.max(plong * 1.1, 1e-3))));
   const cl = len / n;
-  const root = new THREE.Group();
+  // The cells' clones sat under an identity Group: its matrixWorld is the
+  // identity, so each cell's nodes are walked under that
+  const rootW = new THREE.Matrix4(), cells = [];
   let prev = null;
   for (let i = 0; i < n; i++) {
     const cw = alongX ? cl : dep, cd = alongX ? dep : cl;
@@ -2764,19 +2828,17 @@ function _placeFillGLB(entry, scene) {
     const [rw, rh, rd] = dim.get(uu), s = h / rh * (0.9 + Math.random() * 0.2);
     // Plan scale to the cell (+-25% of the height scale), height by the block
     const sx = THREE.MathUtils.clamp(cw / rw, s * 0.75, s * 1.25), sz = THREE.MathUtils.clamp(cd / rd, s * 0.75, s * 1.25);
-    const c = _glbTemplates.get(uu).scene.clone(true);
+    const P = new _Placed(_glbTemplates.get(uu).scene), c = P.top;
     c.rotation.y = rotY;
     c.scale.set(quarter ? sz : sx, s, quarter ? sx : sz);
-    c.updateMatrixWorld(true);
-    const bx = new THREE.Box3().setFromObject(c);
+    const bx = P.box();
     const off = -len / 2 + (i + 0.5) * cl;
     const tx = b.x + (alongX ? off : 0), tz = b.z + (alongX ? 0 : off);
     c.position.set(tx - (bx.min.x + bx.max.x) / 2, -bx.min.y, tz - (bx.min.z + bx.max.z) / 2);
-    root.add(c);
+    cells.push(P);
   }
-  root.updateMatrixWorld(true);
   b.w = W; b.d = D; b.h = h;
-  _bucketGLBRoot(root, u0, b);
+  _bucketGLBNodes(cells.flatMap((P) => P.nodes(rootW)), u0, b);
 }
 
 /** One building made of many true-size copies of a template (a fence run):
@@ -2789,19 +2851,19 @@ function _placeTiledGLB(url, entry) {
   const box = new THREE.Box3().setFromObject(tpl.scene);
   const sx = entry.tileLen / Math.max(1e-3, box.max.x - box.min.x);
   const sy = entry.h / Math.max(1e-3, box.max.y - box.min.y);
-  const root = new THREE.Group();
+  // root (identity Group) -> holder (tile position/turn) -> copy, as before
+  const rootW = new THREE.Matrix4(), holder = new THREE.Object3D(), nodes = [];
   for (const t of entry.tiles) {
-    const holder = new THREE.Group();
     holder.position.set(t.x, 0, t.z);
     holder.rotation.y = t.ry;
-    const c = tpl.scene.clone(true);
+    holder.updateMatrix();
+    const hw = new THREE.Matrix4().multiplyMatrices(rootW, holder.matrix);
+    const P = new _Placed(tpl.scene), c = P.top;
     c.scale.set(sx, sy, sy);
     c.position.set(-(box.min.x + box.max.x) / 2 * sx, -box.min.y * sy, -(box.min.z + box.max.z) / 2 * sy);
-    holder.add(c);
-    root.add(holder);
+    nodes.push(...P.nodes(hw));
   }
-  root.updateMatrixWorld(true);
-  _bucketGLBRoot(root, url, building);
+  _bucketGLBNodes(nodes, url, building);
 }
 
 // Pending GLB building instances, keyed geometry|material|tile (see above).
