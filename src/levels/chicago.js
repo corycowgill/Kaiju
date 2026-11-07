@@ -247,6 +247,13 @@ function _pool(bucket) {
   const own = CHICAGO_GENERIC_GLBS.filter((g) => _genericOK(g) && g.bucket === bucket).map((g) => CHI_BASE + g.file);
   return own.length ? own : TOKYO_GENERIC[bucket].map((n) => `./assets/buildings/${n}.glb`);
 }
+/** Fill candidates for a lot of height h: its bucket's kit plus the wider
+ *  low-rise commercial pieces (any whose maxH allows the height). */
+function _fillPool(h) {
+  const b = _ownBucket(_bucket(h));
+  return CHICAGO_GENERIC_GLBS.filter((g) => _genericOK(g) && (g.bucket === b || g.bucket === 'low' || g.bucket === 'short') && (!g.maxH || h <= g.maxH * 1.5) && g.file !== 'parking_deck.glb')
+    .map((g) => CHI_BASE + g.file);
+}
 /** One url from the bucket's pool, weighted by share (default 1), avoiding
  *  `avoid` (the models already standing in the neighbouring cells). */
 function _pickGeneric(bucket, avoid, h = 0) {
@@ -1722,9 +1729,10 @@ export function buildChicago(scene, world, opts, K) {
     const b = new K.Building(o.x, o.z, aw, ad, o.h, { skipWindows: true, color });
     b.layoutId = o.id; // the layout footprint it stands on (cells share it)
     b._skipBodyIM = true;
-    // Repeat a low / short piece across a lot it can't cover alone (city.js);
-    // towers stay single (a twin of a mid-rise reads as a copy-paste)
-    b.fillFootprint = REAL && o.h < 18;
+    // Low / short lots pick the kit piece that best covers them, or a row of
+    // mixed pieces butted along the frontage (city.js _placeFillGLB); towers
+    // stay single (a twin of a mid-rise reads as a copy-paste)
+    const fill = REAL && o.h < 18;
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
     // Neighbours differ: skip models already used in this or the adjacent 24u cells
@@ -1738,7 +1746,7 @@ export function buildChicago(scene, world, opts, K) {
     // Kit pieces stretch up to 1.3x per axis to fill the footprint (artist-
     // approved); low / short fill pieces up to 1.6x in plan (never taller
     // than the block), then repeat across what's left
-    K.queueGLB({ url, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool, stretch: b.fillFootprint ? 1.6 : 1.3 });
+    K.queueGLB({ url, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: fill ? _fillPool(o.h) : pool, stretch: 1.3, fill });
   };
   // Every block on every tier: phones used to skip 40% of the blocks under
   // 16u (~110 empty grey lots in the Loop), but the kit is instanced per

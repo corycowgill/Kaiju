@@ -2677,34 +2677,6 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
   else root.position.set(building.x - centerX, yOffset, building.z - centerZ);
   root.updateMatrixWorld(true);
 
-  // fill: a generic piece fitted by height can cover a fraction of a wide
-  // lot (a narrow tower in a block-sized footprint): repeat it in a grid of
-  // up to 4 x 4 copies across the footprint, all one building
-  if (building.fillFootprint && maxW > 0 && maxD > 0) {
-    const nx = Math.max(1, Math.min(4, Math.floor(maxW / (building.w * 1.08)))), nz = Math.max(1, Math.min(4, Math.floor(maxD / (building.d * 1.08))));
-    if (nx * nz > 1) {
-      const grid = new THREE.Group();
-      const sx = maxW / nx, sz = maxD / nz;
-      for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
-        const c = i === 0 && j === 0 ? root : root.clone(true);
-        c.position.set(building.x - maxW / 2 + (i + 0.5) * sx - centerX, yOffset, building.z - maxD / 2 + (j + 0.5) * sz - centerZ);
-        // Each copy a little taller or lower, so the row doesn't read as one stamp
-        if (c !== root) c.scale.y *= 0.82 + Math.random() * 0.3;
-        grid.add(c);
-      }
-      grid.updateMatrixWorld(true);
-      building.w = maxW - (sx - building.w); building.d = maxD - (sz - building.d);
-      _bucketGLBRoot(grid, url, building);
-      return;
-    }
-  }
-
-  // Instanced, not added: every mesh of the placed clone becomes one
-  // instance of a per-(geometry, material, tile) InstancedMesh built by
-  // _buildGLBBuildingInstances (~1 draw per template per tile instead of
-  // one per building). collapse() zeroes the building's instance slots.
-  // customMesh stays a (scene-less) marker: game.js only tests it for
-  // "this is a GLB building" and uses b.w/d/h for its footprint AABB.
   _bucketGLBRoot(root, url, building);
 }
 
@@ -2723,6 +2695,72 @@ function _bucketGLBRoot(root, url, building) {
   });
   building.customMesh = root;
   building.glbUrl = url; // what stands there (smoke_test: no procedural fallbacks)
+}
+
+// Repeat-fill never uses these (a row of them reads as residential)
+const FILL_NO_REPEAT = /brick_hotel/;
+
+/** Generic lot fill (entry.fill): the kit piece whose plan best covers the
+ *  lot at the block height, fitted non-uniformly within +-25% in plan; a lot
+ *  no single piece covers is cut along its long side into 2-4 frontage
+ *  cells, each its own best-fitting piece (never the same as its neighbour)
+ *  butted edge to edge, all one building. */
+function _placeFillGLB(entry, scene) {
+  const b = entry.building;
+  if (b.destroyed) return;
+  const rotY = entry.rotY || 0, h = entry.h, W = entry.maxW, D = entry.maxD;
+  const quarter = Math.abs(Math.sin(rotY)) > Math.SQRT1_2;
+  const urls = [...new Set([entry.url, ...(entry.pool || [])])].filter((u) => _glbTemplates.has(u));
+  const dim = new Map();
+  for (const u of urls) {
+    const t = _glbTemplates.get(u);
+    if (!t._size) { t.scene.updateMatrixWorld(true); t._size = new THREE.Box3().setFromObject(t.scene).getSize(new THREE.Vector3()); }
+    const z = t._size;
+    dim.set(u, quarter ? [z.z, z.y, z.x] : [z.x, z.y, z.z]); // world-axis plan after the turn
+  }
+  // Share of a w x d cell one piece covers at height h (plan stretch <= 1.25;
+  // a piece too big for the cell has to shrink, and loses height: penalised)
+  const cover = (u, w, d) => {
+    const [rw, rh, rd] = dim.get(u), s = h / rh;
+    const fw = rw * s, fd = rd * s;
+    const k = Math.max(fw * 0.75 / w, fd * 0.75 / d, 1);
+    return Math.min(w, fw * 1.25 / k) * Math.min(d, fd * 1.25 / k) / (w * d) / Math.sqrt(k);
+  };
+  const best = (w, d, not) => {
+    const c = urls.filter((u) => u !== not).map((u) => [u, cover(u, w, d)]).sort((x, y) => y[1] - x[1]);
+    const top = c.filter((x) => x[1] >= c[0][1] * 0.92); // near-ties: vary
+    return top[Math.floor(Math.random() * top.length)] || c[0];
+  };
+  const [u0, c0] = best(W, D, null);
+  if (c0 >= 0.75 || W * D < 12) { placeBuildingGLB(u0, h, b, scene, W, D, rotY, 1.25); return; }
+  const alongX = W >= D, len = alongX ? W : D, dep = alongX ? D : W;
+  const [pw, , pd] = dim.get(u0), plong = (alongX ? pw : pd) * h / dim.get(u0)[1];
+  const n = Math.max(2, Math.min(4, Math.round(len / Math.max(plong * 1.1, 1e-3))));
+  const cl = len / n;
+  const root = new THREE.Group();
+  let prev = null;
+  for (let i = 0; i < n; i++) {
+    const cw = alongX ? cl : dep, cd = alongX ? dep : cl;
+    const pool = urls.filter((u) => !FILL_NO_REPEAT.test(u));
+    const [u] = (pool.length ? best.call(null, cw, cd, prev) : [u0]);
+    const uu = pool.includes(u) ? u : (pool.find((x) => x !== prev) || u0);
+    prev = uu;
+    const [rw, rh, rd] = dim.get(uu), s = h / rh * (0.9 + Math.random() * 0.2);
+    // Plan scale to the cell (+-25% of the height scale), height by the block
+    const sx = THREE.MathUtils.clamp(cw / rw, s * 0.75, s * 1.25), sz = THREE.MathUtils.clamp(cd / rd, s * 0.75, s * 1.25);
+    const c = _glbTemplates.get(uu).scene.clone(true);
+    c.rotation.y = rotY;
+    c.scale.set(quarter ? sz : sx, s, quarter ? sx : sz);
+    c.updateMatrixWorld(true);
+    const bx = new THREE.Box3().setFromObject(c);
+    const off = -len / 2 + (i + 0.5) * cl;
+    const tx = b.x + (alongX ? off : 0), tz = b.z + (alongX ? 0 : off);
+    c.position.set(tx - (bx.min.x + bx.max.x) / 2, -bx.min.y, tz - (bx.min.z + bx.max.z) / 2);
+    root.add(c);
+  }
+  root.updateMatrixWorld(true);
+  b.w = W; b.d = D; b.h = h;
+  _bucketGLBRoot(root, u0, b);
 }
 
 /** One building made of many true-size copies of a template (a fence run):
@@ -2837,6 +2875,8 @@ export function flushPendingGLBBuildings(scene) {
     }
     if (url && entry.tiles) {
       _placeTiledGLB(url, entry);
+    } else if (url && entry.fill) {
+      _placeFillGLB({ ...entry, url }, scene);
     } else if (url) {
       placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0, entry.stretch || 1, !!entry.atOrigin);
     } else if (!entry.building.destroyed) {
