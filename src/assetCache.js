@@ -376,6 +376,12 @@ if (_DEBUG_LOADS) {
  *  - Tag geometry as template-owned (userData.template) so a teardown can skip
  *    disposing buffers that every later clone still shares.
  */
+// Called with every parsed GLB scene (after the fix-ups below): game.js uploads
+// its textures right away (renderer.initTexture), so they reach the GPU while
+// loading instead of all at once on the first gameplay frame.
+let _glbParsedHook = null;
+export function onGLBParsed(fn) { _glbParsedHook = fn; }
+
 export function normalizeGLTFMaterials(root) {
   root.traverse((o) => {
     if (!o.isMesh) return;
@@ -390,6 +396,9 @@ export function normalizeGLTFMaterials(root) {
       if (m.metalness >= 0.9 && !m.metalnessMap) m.metalness = 0.2;
     }
   });
+  if (_glbParsedHook) {
+    try { _glbParsedHook(root); } catch (e) { /* uploads on first use instead */ }
+  }
   return root;
 }
 
