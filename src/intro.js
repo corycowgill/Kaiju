@@ -117,7 +117,12 @@ function playIntro() {
 // ------------------------------------------------------ card video previews
 // Cards are built by game.js; we hook them by delegation so load order
 // doesn't matter. The <video> is only created (preload="none" until then)
-// when a card is hovered, focused by keyboard/gamepad, or selected.
+// when a card is hovered, focused by keyboard/gamepad, or selected, and
+// only while the title menu is up: a run hides #menu, which stops every
+// preview and drops its decoder (the selected card used to keep looping
+// behind the game).
+const menuEl = document.getElementById('menu');
+const menuShown = () => !!menuEl && !menuEl.classList.contains('hidden');
 function cardKey(card) {
   const h = card.querySelector('h3');
   return h ? h.textContent.trim().toLowerCase() : '';
@@ -130,16 +135,17 @@ function ensurePreview(card) {
   if (!prev || !key) return null;
   v = makeVideo('', { loop: true, preload: 'none' });
   v.className = 'card-video';
-  v.addEventListener('error', () => { card.dataset.noVideo = '1'; v.remove(); });
+  v.addEventListener('error', () => { if (!v.getAttribute('src')) return; card.dataset.noVideo = '1'; v.remove(); });
   v.addEventListener('playing', () => v.classList.add('on'));
   v.src = VID + 'preview_' + key + '.mp4';
   prev.appendChild(v);
   return v;
 }
 function updateCard(card, hovered) {
-  const active = hovered || card.classList.contains('selected') || card.classList.contains('pad-focus');
+  const active = menuShown() && (hovered || card.classList.contains('selected') || card.classList.contains('pad-focus'));
   if (active) {
     const v = ensurePreview(card);
+    if (v && !v.getAttribute('src')) v.src = VID + 'preview_' + cardKey(card) + '.mp4';
     if (v && v.paused) v.play().catch(() => {});
   } else {
     const v = card.querySelector('video.card-video');
@@ -163,6 +169,16 @@ function hookCards() {
       if (m.target.classList && m.target.classList.contains('monster-card')) updateCard(m.target, m.target.matches(':hover'));
     }
   }).observe(root, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  // Run start / back to the menu
+  if (menuEl) new MutationObserver(() => {
+    if (menuShown()) { for (const c of root.querySelectorAll('.monster-card')) updateCard(c, c.matches(':hover')); return; }
+    for (const v of document.querySelectorAll('video.card-video')) {
+      v.pause(); v.classList.remove('on');
+      v.removeAttribute('src'); v.load(); // releases the decoder and any buffered frames
+    }
+    const tv = document.querySelector('#trailer-modal video');
+    if (tv && !tv.paused) tv.pause();
+  }).observe(menuEl, { attributes: true, attributeFilter: ['class'] });
 }
 
 // ------------------------------------------------------------ trailer modal
