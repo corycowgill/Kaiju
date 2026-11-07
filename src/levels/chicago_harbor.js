@@ -110,7 +110,7 @@ export function buildHarbor(H, ctx) {
     const world = ctx.world;
     const tilt = new THREE.Matrix4(), drop = new THREE.Matrix4();
     const ROLL_T = 1.2, SINK_T = 2.0;
-    const fx = _splashPool(scene, lite ? 120 : 360, lite ? 12 : 32);
+    const fx = _splashPool(scene, lite ? 200 : 600, lite ? 12 : 32);
     animators.push(fx);
     let acc = 0;
     animators.push({
@@ -121,7 +121,7 @@ export function buildHarbor(H, ctx) {
         for (const b of all) {
           if (b.alive && kp && acc > 0.1 && Math.abs(kp.x - b.sp.x) < 8 && Math.abs(kp.z - b.sp.z) < 8) {
             b.alive = false; b.sinkT = 0;
-            fx.burst(b.sp.x, b.sp.z, lite ? 8 : 18);
+            fx.burst(b.sp.x, b.sp.z, lite ? 12 : 28);
             world.onCarDestroyed?.();
           }
           if (b.sinkT >= 0 && b.sinkT < ROLL_T + SINK_T) {
@@ -135,7 +135,7 @@ export function buildHarbor(H, ctx) {
             dirty = dirty || new Set();
             for (const { im } of b.ims) dirty.add(im);
             // A second, smaller splash as it goes under
-            if (b.sinkT - dt < ROLL_T && b.sinkT >= ROLL_T) fx.burst(b.sp.x, b.sp.z, lite ? 3 : 6, 0.6, false);
+            if (b.sinkT - dt < ROLL_T && b.sinkT >= ROLL_T) fx.burst(b.sp.x, b.sp.z, lite ? 5 : 10, 0.6, false);
           }
         }
         if (acc > 0.1) acc = 0;
@@ -164,20 +164,27 @@ export function buildHarbor(H, ctx) {
   return spots.length;
 }
 
-/** Pooled water spray: n droplets (ballistic, shrinking) and r foam rings
- *  (expanding, thinning), each one InstancedMesh; burst() takes the oldest. */
+/** Pooled water spray: n droplets (soft round sprites, one Points draw,
+ *  fading as they fall) and r foam rings (one InstancedMesh); burst() takes
+ *  the oldest. */
 function _splashPool(scene, n, r) {
-  const white = new THREE.MeshBasicMaterial({ color: 0xf2f8ff, transparent: true, opacity: 0.9, depthWrite: false, fog: true });
-  const drops = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.55, 0), white, n);
+  const dpos = new Float32Array(n * 3).fill(-1000), dcol = new Float32Array(n * 3);
+  const dgeo = new THREE.BufferGeometry();
+  dgeo.setAttribute('position', new THREE.BufferAttribute(dpos, 3).setUsage(THREE.DynamicDrawUsage));
+  dgeo.setAttribute('color', new THREE.BufferAttribute(dcol, 3).setUsage(THREE.DynamicDrawUsage));
+  // Additive, so a droplet fades by its colour; camera-facing by nature
+  const dmat = new THREE.PointsMaterial({ size: 0.5, map: _dropTex(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+  const drops = new THREE.Points(dgeo, dmat);
+  drops.frustumCulled = false;
+  scene.add(drops);
   // Foam: one soft, broken ring per smash (a feathered radial band with
   // noise in a small canvas texture), additive so it fades by colour
   const ringMat = new THREE.MeshBasicMaterial({ map: _foamTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
   const ringGeom = new THREE.PlaneGeometry(2, 2);
   ringGeom.rotateX(-Math.PI / 2);
   const rings = new THREE.InstancedMesh(ringGeom, ringMat, r);
-  for (const im of [drops, rings]) { im.frustumCulled = false; im.castShadow = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(im); }
+  rings.frustumCulled = false; rings.castShadow = false; rings.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(rings);
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-  for (let i = 0; i < n; i++) drops.setMatrixAt(i, zero);
   for (let i = 0; i < r; i++) rings.setMatrixAt(i, zero);
   const D = Array.from({ length: n }, () => ({ t: -1, p: new THREE.Vector3(), v: new THREE.Vector3(), s: 1 }));
   const R = Array.from({ length: r }, () => ({ t: -1, x: 0, z: 0, s: 1, ry: 0 }));
@@ -185,13 +192,13 @@ function _splashPool(scene, n, r) {
   for (let i = 0; i < r; i++) rings.setColorAt(i, col.setRGB(0, 0, 0));
   const RING_T = 1.2, up = new THREE.Vector3(0, 1, 0);
   let di = 0, ri = 0, live = 0;
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), rq = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
+  const m = new THREE.Matrix4(), rq = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
   return {
     burst(x, z, count, size = 1, ring = true) {
       for (let k = 0; k < count; k++) {
         const d = D[di]; di = (di + 1) % n;
-        const a = Math.random() * Math.PI * 2, sp = (0.8 + Math.random() * 1.6) * size;
-        d.t = 0; d.s = (0.7 + Math.random() * 0.8) * size;
+        const a = Math.random() * Math.PI * 2, sp = (0.6 + Math.random() * 1.8) * size;
+        d.t = 0; d.s = (0.6 + Math.random() * 0.5) * size;
         d.p.set(x + Math.cos(a) * 0.6, 0.3, z + Math.sin(a) * 0.6);
         d.v.set(Math.cos(a) * sp, (3 + Math.random() * 3) * size, Math.sin(a) * sp);
       }
@@ -209,9 +216,11 @@ function _splashPool(scene, n, r) {
         d.t += dt;
         d.v.y -= 9 * dt;
         d.p.addScaledVector(d.v, dt);
-        if (d.p.y < 0.15 || d.t > 1.6) { d.t = -1; drops.setMatrixAt(i, zero); return; }
-        sc.setScalar(d.s * (1 - d.t / 1.6));
-        drops.setMatrixAt(i, m.compose(d.p, q, sc));
+        if (d.p.y < 0.15 || d.t > 1.6) { d.t = -1; dpos[i * 3 + 1] = -1000; return; }
+        dpos[i * 3] = d.p.x; dpos[i * 3 + 1] = d.p.y; dpos[i * 3 + 2] = d.p.z;
+        // Bright at the burst, fading as it falls back
+        const f = d.s * 0.9 * Math.max(0, 1 - d.t / 1.4) * (d.v.y > 0 ? 1 : 0.7);
+        dcol[i * 3] = dcol[i * 3 + 1] = f * 0.95; dcol[i * 3 + 2] = f;
       });
       R.forEach((g, i) => {
         if (g.t < 0) return;
@@ -224,11 +233,25 @@ function _splashPool(scene, n, r) {
         rings.setMatrixAt(i, m.compose(pos, rq.setFromAxisAngle(up, g.ry), sc));
         rings.setColorAt(i, col.setRGB(a, a, a));
       });
-      drops.instanceMatrix.needsUpdate = true;
+      dgeo.attributes.position.needsUpdate = true;
+      dgeo.attributes.color.needsUpdate = true;
       rings.instanceMatrix.needsUpdate = true;
       if (rings.instanceColor) rings.instanceColor.needsUpdate = true;
     },
   };
+}
+
+/** 32px round droplet sprite: soft white disc, feathered edge */
+function _dropTex() {
+  const N = 32, cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  const cx = cv.getContext('2d');
+  const g = cx.createRadialGradient(N / 2, N / 2, 0, N / 2, N / 2, N / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.45, 'rgba(255,255,255,0.75)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  cx.fillStyle = g; cx.fillRect(0, 0, N, N);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 /** 128px foam ring: a radial band feathered on both edges (peak at r 0.72),
