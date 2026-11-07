@@ -227,6 +227,9 @@ const CHICAGO_KIT_GLBS = {
   boat_cruiser_sail: { file: 'boat_cruiser_sail.glb', len: 11.1, sinkM: 1.9, ready: true },
   boat_motor_yacht: { file: 'boat_motor_yacht.glb', len: 12.9, sinkM: 1.1, ready: true },
   boat_center_console: { file: 'boat_center_console.glb', len: 7.0, sinkM: 0.6, ready: true },
+  // BP Pedestrian Bridge (artist-3d v3): compass axes, metres, bbox centred on
+  // the origin; placed at (7.17, -142.45) yaw 0, true scale (7.2 m tall)
+  bp_bridge: { file: 'bp_bridge.glb', at: [7.17, -142.45], heightM: 7.2, ready: true },
   planter_bollard: { file: 'planter_bollard.glb', ready: true },
   // Soldier Field north wing wall: 105 x 10 x 20 m limestone, length along X
   soldier_field_wing: { file: 'soldier_field_wing.glb', ready: true },
@@ -1721,6 +1724,26 @@ export function buildChicago(scene, world, opts, K) {
       const w = Math.max(0.25, (q.width || 0.6) / 2);
       addBatch(ribbon(q.points, -w, w, 0.04, 1 / SW_TILE), decal(M.path, 4));
     }
+  }
+
+  // ---- BP Pedestrian Bridge over Columbus Dr (Columbus traffic runs under
+  // its 5 m clearance) and the path ends it lands on ----
+  if (REAL && _kit('bp_bridge')) {
+    const d = CHICAGO_KIT_GLBS.bp_bridge, Sc = L.scale || 0.2;
+    const b = new K.Building(d.at[0], d.at[1], 4, 4, d.heightM * Sc, { skipWindows: true });
+    b._skipBodyIM = true;
+    b.landmarkId = 'bp_bridge';
+    b.maxHp = b.hp = 160;
+    b.group.matrixAutoUpdate = false; b.group.updateMatrix();
+    scene.add(b.group); buildings.push(b); grid.add(b);
+    K.queueGLB({ url: _kit('bp_bridge'), h: d.heightM * Sc, building: b, maxW: 0, maxD: 0, rotY: 0, landmark: true });
+    // The kaiju walks over a 7 m deck: its collision box is the central span
+    // only, not the 32 x 20u bounding box of the S-curves
+    K.onTemplatesReady(() => { b.w = 6; b.d = 4; });
+    // West: a path from the Great Lawn edge to the landing; east: the mapped
+    // stub carried on to where the ramp touches down, ~2u past it
+    addBatch(ribbon([[-10.9, -132.7], [-8.6, -133.0]], -0.4, 0.4, 0.045, 1 / SW_TILE), decal(M.path, 4));
+    addBatch(ribbon([[21.0, -143.1], [22.97, -141.94], [23.9, -141.4]], -0.35, 0.35, 0.045, 1 / SW_TILE), decal(M.path, 4));
   }
 
   // ---- buildings ----
