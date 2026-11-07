@@ -58,7 +58,7 @@ export const ASSET_HASHES = {
   "assets/buildings/chicago/fest_delay_tower.glb": "92abb5916b",
   "assets/buildings/chicago/fest_delay_tower_lod1.glb": "72acc2f674",
   "assets/buildings/chicago/fest_entry_gate.glb": "9d4824bf26",
-  "assets/buildings/chicago/fest_entry_gate_lod1.glb": "c754bd10a8",
+  "assets/buildings/chicago/fest_entry_gate_lod1.glb": "08232c824e",
   "assets/buildings/chicago/fest_fence_panel.glb": "a6b5e8da1d",
   "assets/buildings/chicago/fest_fence_panel_lod1.glb": "36a3011ac6",
   "assets/buildings/chicago/fest_foh_tower.glb": "e862b047e2",
