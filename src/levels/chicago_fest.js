@@ -144,7 +144,9 @@ export function festClearFence(F, roads) {
           let ux = p[0] - nx, uz = p[1] - nz;
           if (d < 1e-3) { ux = -dz; uz = dx; }
           const ul = Math.hypot(ux, uz) || 1;
-          p[0] = nx + ux / ul * need; p[1] = nz + uz / ul * need;
+          let sg = 1;
+          if (!_inPoly(nx + ux / ul * need, nz + uz / ul * need, orig)) sg = -1; // the park side
+          p[0] = nx + sg * ux / ul * need; p[1] = nz + sg * uz / ul * need;
         }
       }
     }
@@ -479,32 +481,38 @@ export function buildFest(scene, F, ctx) {
     const pl = pm.sizeM[0] * S, h = F.fenceH;
     const gates = F.items.filter((it) => it.kind === 'gate');
     const ring = F.fence;
+    // Panels every ~3.5 m along the whole ring (arc length, across its
+    // resampled corners); a run (one building) ends after 14 panels, at a
+    // gate gap or where the fence turns
+    let run = [];
+    const flush = () => {
+      if (!run.length) return;
+      let rx0 = Infinity, rx1 = -Infinity, rz0 = Infinity, rz1 = -Infinity;
+      for (const t of run) { rx0 = Math.min(rx0, t.x); rx1 = Math.max(rx1, t.x); rz0 = Math.min(rz0, t.z); rz1 = Math.max(rz1, t.z); }
+      const [ew, ed] = aabb(pl, 0.15, run[0].ry);
+      const { b, ok } = newBuilding((rx0 + rx1) / 2, (rz0 + rz1) / 2, rx1 - rx0 + ew, rz1 - rz0 + ed, h, 0x9c3cc8, 'fence_panel');
+      b.isFence = true;
+      if (ok) K.queueGLB({ url: FEST_BASE + pm.file, h, building: b, tiles: run, tileLen: pl, landmark: true });
+      run = [];
+    };
+    let carry = pl / 2;
     for (let i = 0; i < ring.length; i++) { // closing edge too (zero length if the ring repeats its start)
       const a = ring[i], c = ring[(i + 1) % ring.length];
       const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
-      if (l < 0.2) continue;
+      if (l < 1e-3) continue;
       const dx = (c[0] - a[0]) / l, dz = (c[1] - a[1]) / l;
       const ry = Math.atan2(-dz, dx); // panel length (local X) along the edge
-      const n = Math.max(1, Math.round(l / pl)), step = l / n;
-      let run = [];
-      const flush = () => {
-        if (!run.length) return;
-        let rx0 = Infinity, rx1 = -Infinity, rz0 = Infinity, rz1 = -Infinity;
-        for (const t of run) { rx0 = Math.min(rx0, t.x); rx1 = Math.max(rx1, t.x); rz0 = Math.min(rz0, t.z); rz1 = Math.max(rz1, t.z); }
-        const [ew, ed] = aabb(step, 0.15, ry);
-        const { b, ok } = newBuilding((rx0 + rx1) / 2, (rz0 + rz1) / 2, rx1 - rx0 + ew, rz1 - rz0 + ed, h, 0x9c3cc8, 'fence_panel');
-        b.isFence = true;
-        if (ok) K.queueGLB({ url: FEST_BASE + pm.file, h, building: b, tiles: run, tileLen: step, landmark: true });
-        run = [];
-      };
-      for (let k = 0; k < n; k++) {
-        const x = a[0] + dx * (k + 0.5) * step, z = a[1] + dz * (k + 0.5) * step;
+      let t = carry;
+      for (; t < l; t += pl) {
+        const x = a[0] + dx * t, z = a[1] + dz * t;
         if (gates.some((g) => Math.hypot(x - g.x, z - g.z) < g.w / 2 + pl * 0.5)) { flush(); continue; }
+        if (run.length && Math.abs(Math.sin(ry - run[0].ry)) > 0.5) flush();
         run.push({ x, z, ry });
         if (run.length >= 14) flush();
       }
-      flush();
+      carry = t - l;
     }
+    flush();
   }
 
   // ---- stage name boards (ride on the stage: gone when it collapses) ----
