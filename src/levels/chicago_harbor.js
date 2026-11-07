@@ -9,11 +9,12 @@ import * as THREE from 'three';
 const SAIL_SCALE = 1.5; // boats at 1.5x true size, like the rest of the street furniture
 const WIND_RY = -2.356; // August SW wind: local +X (the bow) points south-west
 
-/** Template parts of a boat GLB, centred, hull bottom at y 0, length along X. */
-function _parts(tpl, scale) {
+/** Template parts of a boat GLB, centred, hull bottom at y 0, bow along +X
+ *  (bowZ: a model built bow +Z is turned a quarter first). */
+function _parts(tpl, scale, bowZ = false) {
   tpl.updateMatrixWorld(true);
   const b = new THREE.Box3().setFromObject(tpl);
-  const fix = new THREE.Matrix4().makeScale(scale, scale, scale)
+  const fix = new THREE.Matrix4().makeRotationY(bowZ ? Math.PI / 2 : 0).multiply(new THREE.Matrix4().makeScale(scale, scale, scale))
     .multiply(new THREE.Matrix4().makeTranslation(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2));
   const parts = [];
   tpl.traverse((o) => { if (o.isMesh) parts.push({ geom: o.geometry, mat: o.material, m: new THREE.Matrix4().multiplyMatrices(fix, o.matrixWorld) }); });
@@ -53,26 +54,35 @@ export function buildHarbor(H, ctx) {
   while (spots.length > cap) spots.splice(Math.floor(rnd() * spots.length), 1);
 
   K.onTemplatesReady((sc, get) => {
-    const kinds = {};
+    // kinds: parts + how far the keel sits below the lake surface (y 0.2)
+    const kinds = {}, sinkOf = {};
     const sail = ctx.kit.sail && get(ctx.kit.sail);
-    if (sail) kinds.sail = _parts(sail, S * SAIL_SCALE);
-    for (const [k, url, len] of ctx.kit.extra || []) {
+    if (sail) { kinds.sail = _parts(sail, S * SAIL_SCALE); sinkOf.sail = 0.2 - 0.6 * S * SAIL_SCALE; }
+    for (const [k, url, len, sinkM] of ctx.kit.extra || []) {
       const t = get(url);
-      if (t) {
-        t.updateMatrixWorld(true);
-        const sz = new THREE.Box3().setFromObject(t).getSize(new THREE.Vector3());
-        kinds[k] = _parts(t, S * SAIL_SCALE * len / Math.max(sz.x, sz.z));
-      }
+      if (!t) continue;
+      t.updateMatrixWorld(true);
+      const sz = new THREE.Box3().setFromObject(t).getSize(new THREE.Vector3());
+      const sc = S * SAIL_SCALE * len / Math.max(sz.x, sz.z); // true LOA x 1.5 (sizes in m)
+      kinds[k] = _parts(t, sc, true);
+      sinkOf[k] = 0.2 - (sinkM || 0) * sc;
     }
     if (!kinds.sail) return;
-    // One InstancedMesh per part per boat kind (power falls back to sail until its GLB lands)
+    // Boat kind per spot: sail = the classic moored sloop or the cruiser,
+    // power = mostly motor yachts plus centre consoles (sail stands in for any
+    // kind not delivered). One InstancedMesh per part per kind.
+    const pick = (sp) => {
+      const r = rnd();
+      const k = sp.kind === 'sail' ? (r < 0.5 ? 'boat_cruiser_sail' : 'sail') : (r < 0.7 ? 'boat_motor_yacht' : 'boat_center_console');
+      return kinds[k] ? k : 'sail';
+    };
     const byKind = new Map();
     for (const sp of spots) {
-      const k = kinds[sp.kind] ? sp.kind : 'sail';
+      const k = pick(sp);
       if (!byKind.has(k)) byKind.set(k, []);
       byKind.get(k).push(sp);
     }
-    const sink = -0.6 * S * SAIL_SCALE + 0.2; // hull a draft below the lake surface (0.2)
+    const sink = sinkOf.sail;
     const all = [];
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
     for (const [k, list] of byKind) {
@@ -84,7 +94,7 @@ export function buildHarbor(H, ctx) {
       });
       list.forEach((sp, i) => {
         q.setFromAxisAngle(up, sp.ry);
-        const base = new THREE.Matrix4().compose(new THREE.Vector3(sp.x, sink, sp.z), q, one);
+        const base = new THREE.Matrix4().compose(new THREE.Vector3(sp.x, sinkOf[k], sp.z), q, one);
         for (const { im, p } of ims) im.setMatrixAt(i, m.multiplyMatrices(base, p.m));
         all.push({ sp, i, ims, base, alive: true, sinkT: -1 });
       });

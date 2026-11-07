@@ -223,6 +223,10 @@ const CHICAGO_KIT_GLBS = {
   riverwalk: { file: 'riverwalk.glb', len: 12, street: 6, ready: true },
   // Street furniture placed in bulk (metres; scaled by FURNITURE_UPM)
   sailboat_moored: { file: 'sailboat_moored.glb', ready: true },
+  // Harbour boats (artist-3d): bow +Z, keel at y 0, sunk sinkM to the waterline
+  boat_cruiser_sail: { file: 'boat_cruiser_sail.glb', len: 11.1, sinkM: 1.9, ready: true },
+  boat_motor_yacht: { file: 'boat_motor_yacht.glb', len: 12.9, sinkM: 1.1, ready: true },
+  boat_center_console: { file: 'boat_center_console.glb', len: 7.0, sinkM: 0.6, ready: true },
   planter_bollard: { file: 'planter_bollard.glb', ready: true },
   // Soldier Field north wing wall: 105 x 10 x 20 m limestone, length along X
   soldier_field_wing: { file: 'soldier_field_wing.glb', ready: true },
@@ -2406,7 +2410,7 @@ export function buildChicago(scene, world, opts, K) {
   // Real harbours: Monroe's mooring field and DuSable's slips (instanced,
   // smashable); the random scatter below is the fallback without that data
   const harbor = !!(sailGLB && L.mill?.harbors);
-  if (harbor) buildHarbor(L.mill.harbors, { K, world, scene, lite, spawn: L.spawn, animators, kit: { sail: sailGLB, extra: [] }, S: L.scale || 0.2 });
+  if (harbor) buildHarbor(L.mill.harbors, { K, world, scene, lite, spawn: L.spawn, animators, kit: { sail: sailGLB, extra: ['boat_cruiser_sail', 'boat_motor_yacht', 'boat_center_console'].filter((k) => _kit(k)).map((k) => [k, _kit(k), CHICAGO_KIT_GLBS[k].len, CHICAGO_KIT_GLBS[k].sinkM]) }, S: L.scale || 0.2 });
   if (lakes.length && !harbor) {
     for (let i = 0; i < (lite ? 5 : 12) * (sailGLB ? 2 : 1); i++) {
       for (let tries = 0; tries < 30; tries++) {
