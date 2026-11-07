@@ -65,6 +65,9 @@ export function buildHarbor(H, ctx) {
       const sz = new THREE.Box3().setFromObject(t).getSize(new THREE.Vector3());
       const sc = S * SAIL_SCALE * len / Math.max(sz.x, sz.z); // true LOA x 1.5 (sizes in m)
       kinds[k] = _parts(t, sc, true);
+      // White power-boat hulls sat over the noon bloom threshold: scale their
+      // base colour so pure white lands near sRGB 0xd8 (as the CTA bus)
+      if (!/sail/.test(k)) for (const p of kinds[k]) if (!p.mat.userData.harborToned) { p.mat.userData.harborToned = true; p.mat.color.multiplyScalar(0.69); }
       sinkOf[k] = 0.2 - (sinkM || 0) * sc;
     }
     if (!kinds.sail) return;

@@ -1698,10 +1698,12 @@ export function buildChicago(scene, world, opts, K) {
       let cx = 0, cz = 0;
       for (const [x, z] of cl) { cx += x; cz += z; }
       cx /= cl.length; cz /= cl.length;
-      let rx = Infinity, rz = Infinity;
-      for (const [x, z] of cl) { rx = Math.min(rx, Math.abs(x - cx) || Infinity); rz = Math.min(rz, Math.abs(z - cz) || Infinity); }
+      // Radius: inside the loop's nearest point, less the ribbon's half width
+      let rmin = Infinity;
+      for (const [x, z] of cl) rmin = Math.min(rmin, Math.hypot(x - cx, z - cz));
       const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.lawn);
-      dome.scale.set(Math.max(2, rx * 0.85), 1.0, Math.max(2, rz * 0.85));
+      const rr = Math.max(2, rmin - 1.2);
+      dome.scale.set(rr, 1.0, rr);
       dome.position.set(cx, 0.02, cz);
       dome.receiveShadow = true;
       dome.matrixAutoUpdate = false; dome.updateMatrix();
