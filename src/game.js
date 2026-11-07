@@ -1990,6 +1990,7 @@ async function startGame(key) {
   } catch (e) {
     reportLoadError('startGame', key, e);
     document.getElementById('loading-screen')?.classList.remove('visible');
+    if (_hudPrewarm) { _hudPrewarm.restore(); _hudPrewarm = null; }
     toast('LOADING FAILED · TAP START TO RETRY', 'bad');
   } finally {
     _startingGame = false;
@@ -2030,6 +2031,7 @@ async function _startGameInner(key) {
     loadingBar.style.width = '0%';
     loadingPct.textContent = '0%';
     loadingStatus.textContent = 'INITIALIZING';
+    _hudPrewarmBegin(); // drawn under the downloads; settled by _hudPrewarmEnd
 
     // Initialize asset cache (IndexedDB) before any loads
     const cacheWarm = await initAssetCache();
@@ -2129,6 +2131,7 @@ async function _startGameInner(key) {
       loadingPct.textContent = pct + '%';
       loadingStatus.textContent = `WARMING UP SHADERS \u2022 ${ready}/${total}`;
     });
+    await _hudPrewarmEnd();
     loadingScreen.classList.remove('visible');
 
     k = { root: glb.root, head: glb.head, tail: glb.tail, mixer: glb.mixer, glb };
@@ -4602,6 +4605,158 @@ function _preloadUpgradeArt() {
   for (const u of UPGRADE_POOL) { const im = new Image(); im.decoding = 'async'; im.src = u.img; }
 }
 
+function _fillUpgradeCard(card, u) {
+  card.className = 'ucard';
+  card.style.setProperty('--ac', u.ac);
+  card.innerHTML = `<div class="u-art"><img class="icon" src="${u.img}" alt="" width="256" height="256" decoding="async"><span class="u-emoji" aria-hidden="true">${u.icon}</span></div><h3>${u.name}</h3><p>${u.desc}</p>`;
+  const img = card.querySelector('img');
+  img.addEventListener('error', () => img.parentElement.classList.add('noimg'), { once: true });
+  return img;
+}
+
+// START prewarm for the DOM HUD. Chrome compiles a GPU raster program the
+// first time each kind of HUD content is drawn (text shadows, gradients,
+// conic sweeps, rounded clips, blended art...); on a cold GPU cache each
+// link takes 0.1-2.5 s, and during play that froze the frame the first time
+// a popup, toast or cooldown showed up. One of each is drawn, near-invisible
+// (opacity 0.01) above the opaque loading screen, from the start of the
+// loading screen (so the compiles overlap the downloads) until the end.
+// Raster is asynchronous, so the end waits for frames to come back to a
+// steady rate (the compositor can't commit while tiles are still compiling).
+let _hudPrewarm = null;
+function _hudPrewarmBegin() {
+  if (_hudPrewarm) return;
+  const $ = (id) => document.getElementById(id);
+  const hud = $('hud'), powers = $('powers'), obj = $('wave-objective'), boss = $('boss-bar');
+  const modal = $('upgrade-modal'), cards = $('upgrade-cards'), msg = $('message'), banner = $('wave-banner');
+  const extra = [];
+  const touchIds = ['joy-zone', 'joystick', 'attack-btn', 'sprint-btn'];
+  _hudPrewarm = { imgs: [], restore: () => {
+    for (const el of extra) el.remove();
+    for (const id of ['hud-toasts', 'mini-toasts']) { const w = $(id); if (w) w.innerHTML = ''; }
+    hud.classList.add('hidden');
+    powers.classList.add('hidden');
+    for (const id of touchIds) $(id)?.classList.add('hidden');
+    obj.classList.remove('complete'); obj.style.display = 'none';
+    boss.style.display = 'none';
+    if (hudRefs.combo) hudRefs.combo.style.opacity = '0';
+    $('vitals')?.classList.remove('low');
+    hudRefs.lowHp?.classList.remove('active');
+    if (hudRefs.damageFlash) hudRefs.damageFlash.style.opacity = '0';
+    msg.classList.remove('show'); msg.textContent = '';
+    banner.classList.remove('show'); banner.innerHTML = '';
+    modal.style.display = 'none'; cards.innerHTML = '';
+    _pauseMenu?.classList.add('hidden');
+    if (!state.kaiju) minimapCanvas?.classList.add('hidden');
+    _hudComboOn = false; _hudLowHp = false; _hudKey = {};
+    document.body.classList.remove('hud-prewarm');
+  } };
+  try {
+    document.body.classList.add('hud-prewarm');
+    hud.classList.remove('hidden');
+    powers.classList.remove('hidden');
+    if (touchUI) for (const id of touchIds) $(id)?.classList.remove('hidden');
+    // Every power state: ready, cooling (sweep + badge), short of rage, ult charging / ready
+    buildPowersBar();
+    const st = { beam: 'is-ready', roar: 'is-cd', charge: 'is-low', stomp: 'is-ready', ult: 'is-ready' };
+    for (const id of Object.keys(st)) {
+      const w = hudRefs.pw[id];
+      if (!w) continue;
+      w.classList.add(st[id]);
+      w.style.setProperty('--cd', 0.5);
+      w.style.setProperty('--rage', 0.6);
+      if (hudRefs.cd[id]) hudRefs.cd[id].textContent = '2.5';
+    }
+    // The sweeps' end points (an empty / full conic is a different gradient
+    // program from a partial one), and the ult ring short of rage
+    const pwBar = hudRefs.pw.beam?.parentElement;
+    const variant = (src, cls, prop, v) => {
+      if (!src || !pwBar) return;
+      const c = src.cloneNode(true);
+      c.className = src.className.replace(/is-\w+/g, '') + ' ' + cls;
+      c.style.setProperty(prop, v);
+      pwBar.appendChild(c); extra.push(c);
+    };
+    for (const v of [0, 1]) variant(hudRefs.pw.roar, 'is-cd', '--cd', v);
+    for (const v of [0, 0.25, 0.75, 1]) variant(hudRefs.pw.ult, 'is-low', '--rage', v);
+    _prewarmMinimap();
+    obj.style.display = 'flex';
+    obj.classList.add('complete');
+    boss.style.display = 'block';
+    if (hudRefs.combo) hudRefs.combo.style.opacity = '1';
+    $('vitals')?.classList.add('low');
+    hudRefs.lowHp?.classList.add('active');
+    if (hudRefs.damageFlash) hudRefs.damageFlash.style.opacity = '0.85';
+    for (const kind of ['good', 'bad', '']) {
+      const t = document.createElement('div'); t.className = 'toast' + (kind ? ' ' + kind : ''); t.textContent = 'WARM UP';
+      t.style.animation = 'none'; $('hud-toasts')?.appendChild(t);
+      const m = document.createElement('div'); m.className = 'mini-toast' + (kind ? ' ' + kind : ''); m.textContent = 'WARM UP';
+      m.style.animation = 'none'; $('mini-toasts')?.appendChild(m);
+    }
+    msg.textContent = '☢︎ WARM UP'; msg.classList.add('show');
+    banner.innerHTML = 'WAVE 1<small>WARM UP</small>'; banner.classList.add('show');
+    for (const sc of [1, 1.4]) {
+      const pop = document.createElement('div');
+      pop.className = 'popup'; pop.textContent = '+1500';
+      pop.style.transform = `translate(50vw, 50vh) scale(${sc})`;
+      popupContainer?.appendChild(pop); extra.push(pop);
+    }
+    const di = $('dmg-indicators');
+    for (const cls of ['dmg-ind', 'dmg-ind warn']) {
+      const d = document.createElement('div');
+      d.className = cls; d.style.opacity = '1';
+      di?.appendChild(d); extra.push(d);
+    }
+    // Upgrade picker (with its art) and the pause sheet
+    cards.innerHTML = '';
+    _hudPrewarm.imgs = UPGRADE_POOL.slice(0, 3).map((u) => { const c = document.createElement('div'); cards.appendChild(c); return _fillUpgradeCard(c, u); });
+    modal.style.display = 'flex';
+    _pauseMenu?.classList.remove('hidden');
+  } catch (e) {
+    warnOnce('prewarm|hud', '[prewarm] HUD prewarm failed:', e && e.message);
+  }
+}
+// One of each minimap draw (grid, even-odd water fill, dots, air-strike
+// ring, rotated arrow) so the 2D canvas' raster programs exist before play
+function _prewarmMinimap() {
+  if (!minimapCtx) return;
+  minimapCanvas.classList.remove('hidden');
+  const ctx = minimapCtx, cw = minimapCanvas.width;
+  ctx.clearRect(0, 0, cw, cw);
+  ctx.fillStyle = 'rgba(20, 0, 30, 0.6)'; ctx.fillRect(0, 0, cw, cw);
+  ctx.strokeStyle = 'rgba(255, 80, 100, 0.18)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cw / 2, 0); ctx.lineTo(cw / 2, cw); ctx.stroke();
+  ctx.fillStyle = 'rgba(40, 110, 170, 0.55)';
+  ctx.beginPath(); ctx.moveTo(10, 10); ctx.lineTo(90, 20); ctx.lineTo(60, 90); ctx.closePath();
+  ctx.moveTo(40, 30); ctx.lineTo(60, 35); ctx.lineTo(50, 55); ctx.closePath(); ctx.fill('evenodd');
+  ctx.fillStyle = '#ffcc44'; ctx.fillRect(100, 100, 4, 4);
+  ctx.strokeStyle = '#ff3344'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(150, 150, 5, 0, Math.PI * 2); ctx.stroke();
+  ctx.save(); ctx.translate(cw / 2, cw / 2); ctx.rotate(0.7);
+  ctx.fillStyle = '#66ff99'; ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 5); ctx.lineTo(-5, 5); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.restore();
+}
+async function _hudPrewarmEnd() {
+  const pw = _hudPrewarm;
+  if (!pw) return;
+  try {
+    await Promise.race([Promise.all(pw.imgs.map((im) => im.decode().catch(() => {}))), new Promise((r) => setTimeout(r, 1500))]);
+    // Wait for 6 frames in a row under 50 ms (raster caught up), 4 s at most
+    await new Promise((resolve) => {
+      const t0 = performance.now(); let last = t0, ok = 0;
+      const step = (now) => {
+        ok = now - last < 50 ? ok + 1 : 0; last = now;
+        if (ok >= 6 || now - t0 > 4000) resolve(); else requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  } finally {
+    pw.restore();
+    _hudPrewarm = null;
+  }
+}
+
 function offerUpgrades() {
   state.upgradePending = true;
   state.paused = true;
@@ -4619,11 +4774,7 @@ function offerUpgrades() {
   wrap.innerHTML = '';
   for (const u of picks) {
     const card = document.createElement('div');
-    card.className = 'ucard';
-    card.style.setProperty('--ac', u.ac);
-    card.innerHTML = `<div class="u-art"><img class="icon" src="${u.img}" alt="" width="256" height="256" decoding="async"><span class="u-emoji" aria-hidden="true">${u.icon}</span></div><h3>${u.name}</h3><p>${u.desc}</p>`;
-    const img = card.querySelector('img');
-    img.addEventListener('error', () => img.parentElement.classList.add('noimg'), { once: true });
+    _fillUpgradeCard(card, u);
     const choose = () => {
       u.apply();
       audio.tone(660, 0.1); audio.tone(880, 0.15);

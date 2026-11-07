@@ -48,16 +48,16 @@
     --c-ok: #66ff99;
     --c-cool: #88ccff;
     --c-muted: rgba(255, 230, 200, 0.55);
-    --glass: rgba(16, 3, 7, 0.42);
+    --glass: rgba(16, 3, 7, 0.58);
     --glass-strong: rgba(16, 3, 7, 0.82);
-    --blur: blur(8px) saturate(1.15);
+    --blur: none;                                     /* no live backdrop blur over the canvas (per-frame raster) */
     --stroke: 1px solid rgba(255, 204, 102, 0.24);
     --stroke-hot: 1px solid rgba(255, 80, 100, 0.7);
     --r: 10px;
     --r-pill: 999px;
     --glow: 0 0 14px rgba(211, 37, 60, 0.45);
     --glow-ready: 0 0 14px rgba(255, 204, 102, 0.6);
-    --txt-outline: 0 1px 0 #000, 0 0 2px #000, 0 0 6px rgba(0, 0, 0, 0.85);
+    --txt-outline: 0 1px 0 #000, 1px 0 0 #000, -1px 0 0 #000, 0 -1px 0 #000, 0 2px 0 rgba(0, 0, 0, 0.6);
     --safe-t: max(var(--sp-2), env(safe-area-inset-top));
     --safe-r: max(var(--sp-3), env(safe-area-inset-right));
     --safe-b: max(var(--sp-2), env(safe-area-inset-bottom));
@@ -135,8 +135,9 @@
     height: 100%; border-radius: inherit;
     transform-origin: 0 50%; transition: transform 0.2s; will-change: transform;
   }
-  #hpBar > div { background: linear-gradient(90deg, var(--c-red), #ff7766); box-shadow: 0 0 8px rgba(255, 85, 102, 0.8); }
-  #ragBar > div { background: linear-gradient(90deg, #ffaa00, #ffee44); box-shadow: 0 0 8px rgba(255, 204, 68, 0.8); }
+  /* No glow shadow on the fills: they scale with transform, and a blur re-rastered at each new scale compiles new GPU programs */
+  #hpBar > div { background: linear-gradient(90deg, var(--c-red), #ff7766); }
+  #ragBar > div { background: linear-gradient(90deg, #ffaa00, #ffee44); }
   /* Low HP: bar + number turn hot and the label gets a warning mark (not colour alone) */
   .vitals.low #hpNum { color: var(--c-red-hi); }
   .vitals.low #hpMeter .label::after { content: ' ▲ LOW'; color: var(--c-red-hi); letter-spacing: 2px; }
@@ -146,7 +147,7 @@
   #score {
     font-family: var(--f-display); font-size: var(--fs-score); letter-spacing: 3px; line-height: 1;
     color: var(--c-score); font-variant-numeric: tabular-nums;
-    text-shadow: 0 0 10px rgba(255, 153, 51, 0.8), var(--txt-outline);
+    text-shadow: 0 2px 0 #8a3a00, var(--txt-outline);
   }
   .stat-line { display: flex; gap: var(--sp-2); align-items: baseline; margin-top: 2px; }
   .stat-line b { font-family: var(--f-display); font-weight: 400; font-size: var(--fs-value); letter-spacing: 1px; color: var(--c-cream); }
@@ -155,10 +156,10 @@
   #combo { display: flex; align-items: center; gap: var(--sp-2); opacity: 0; transition: opacity 0.2s; margin-top: 2px; }
   #combo-mult {
     font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 1px; color: var(--c-score);
-    text-shadow: 0 0 8px rgba(255, 102, 68, 0.8), var(--txt-outline);
+    text-shadow: 0 2px 0 #8a2a10, var(--txt-outline);
   }
   .combo-track { width: clamp(44px, 8vw, 90px); height: 4px; background: rgba(0, 0, 0, 0.5); border-radius: var(--r-pill); overflow: hidden; }
-  #combo-bar { height: 100%; background: linear-gradient(90deg, #ff6644, #ffee44); transform-origin: 0 50%; }
+  #combo-bar { height: 100%; background: linear-gradient(90deg, #ff6644, #ffee44); transform-origin: 0 50%; will-change: transform; }
 
   /* Round menu button (pause + sound + quality live behind it) */
   .hud-btn {
@@ -204,7 +205,8 @@
      touch = an arc of icon buttons round SMASH (see body.touch below).
      Each slot has its own accent (icon + ring); state is carried by ring
      style and dimming: ready = solid accent ring + glow, cooling = icon
-     dimmed under a dark sweep + seconds badge, short of rage = dashed ring. */
+     dimmed under a dark sweep + seconds badge, short of rage = faint ring,
+     dimmed icon, no glow. */
   .power-wrap.beam   { --ac: #5ce1ff; }
   .power-wrap.roar   { --ac: #ff9a3c; }
   .power-wrap.charge { --ac: #ffd24a; }
@@ -222,13 +224,13 @@
     background: var(--glass-strong); border: 2px solid rgba(255, 230, 200, 0.22);
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
     color: var(--ac); text-align: center; cursor: pointer; user-select: none;
-    transition: transform 0.1s, opacity 0.2s, box-shadow 0.2s, border-color 0.2s;
+    transition: transform 0.1s, opacity 0.2s, border-color 0.2s;
     pointer-events: auto; touch-action: none;
   }
   .power svg {
     width: 34px; height: 34px; overflow: visible; position: relative; z-index: 1;
     fill: currentColor; stroke: rgba(10, 0, 4, 0.9); stroke-width: 1.1; stroke-linejoin: round; paint-order: stroke;
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7)); transition: opacity 0.2s, filter 0.2s;
+    transition: opacity 0.2s;
   }
   .power-wrap.ult .power svg { width: 42px; height: 42px; }
   .power svg .d { fill: #1a0006; stroke: none; }
@@ -247,9 +249,17 @@
     background: var(--c-cream); border-radius: 4px; box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
   }
   .power:active { transform: scale(0.92); }
-  .power-wrap.is-ready .power { border-color: var(--ac); box-shadow: 0 0 14px color-mix(in srgb, var(--ac) 65%, transparent); }
-  .power-wrap.is-low .power { border-style: dashed; border-color: rgba(255, 230, 200, 0.35); }
-  .power-wrap.is-low .power svg, .power-wrap.is-cd .power svg { opacity: 0.75; filter: grayscale(0.6) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7)); }
+  .power-wrap.is-ready .power { border-color: var(--ac); }
+  /* Ready glow: a pre-drawn radial halo faded in with opacity (an animated or
+     toggled blur shadow compiles a new GPU raster program per blur size) */
+  .power-wrap::after {
+    content: ''; position: absolute; inset: -9px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--ac) 70%, transparent) 55%, transparent 100%);
+    z-index: -1; transition: opacity 0.2s; will-change: opacity;
+  }
+  .power-wrap.is-ready::after { opacity: 0.6; }
+  .power-wrap.is-low .power { border-color: rgba(255, 230, 200, 0.16); } /* solid: a dashed rounded border is a path draw with its own raster program */
+  .power-wrap.is-low .power svg, .power-wrap.is-cd .power svg { opacity: 0.45; }
   .power-wrap.is-low .power .name { opacity: 0.55; }
   /* Dark radial sweep over the (dimmed) icon while cooling down */
   .cooldown {
@@ -272,14 +282,11 @@
   .power-wrap.ult::before {
     content: ''; position: absolute; inset: -6px; border-radius: calc(var(--r) + 5px); pointer-events: none;
     background: conic-gradient(var(--ac) calc(var(--rage, 0) * 360deg), rgba(255, 230, 200, 0.14) 0);
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor; mask-composite: exclude; padding: 3px;
   }
-  .power-wrap.is-ready.ult .power { animation: readyPulse 1.1s ease-in-out infinite alternate; }
-  @keyframes readyPulse {
-    from { box-shadow: 0 0 6px color-mix(in srgb, var(--ac) 50%, transparent); transform: scale(1); }
-    to   { box-shadow: 0 0 26px var(--ac); transform: scale(1.06); }
-  }
+  .power-wrap.ult .power { background: #12030a; }
+  .power-wrap.ult::after { inset: -12px; }
+  .power-wrap.is-ready.ult::after { animation: readyPulse 1.1s ease-in-out infinite alternate; }
+  @keyframes readyPulse { from { opacity: 0.25; } to { opacity: 0.9; } }
 
   /* Centre message (ultimate callouts) */
   #message {
@@ -651,14 +658,13 @@
   .dmg-ind {
     position: absolute; left: 50%; top: 50%;
     width: 120px; height: min(62vh, 520px);
-    opacity: 0; transition: opacity 0.12s linear;
+    opacity: 0; transition: opacity 0.12s linear; will-change: transform, opacity;
   }
   .dmg-ind::before {
     content: ''; position: absolute; top: 0; left: 50%;
     transform: translateX(-50%);
     border-left: 44px solid transparent; border-right: 44px solid transparent;
     border-bottom: 30px solid rgba(255, 46, 46, 0.92);
-    filter: drop-shadow(0 0 10px rgba(255, 0, 0, 0.85));
   }
   /* Boss wind-up: orange, larger, pulsing (animation on the pseudo
      elements so the JS-driven transform on the box isn't overridden). */
@@ -666,7 +672,6 @@
   .dmg-ind.warn::before {
     border-left-width: 56px; border-right-width: 56px;
     border-bottom: 38px solid rgba(255, 150, 30, 0.95);
-    filter: drop-shadow(0 0 14px rgba(255, 120, 0, 0.95));
     animation: dmgWarnPulse 0.22s ease-in-out infinite alternate;
   }
   .dmg-ind.warn::after {
@@ -961,7 +966,7 @@
     position: absolute; left: 0; top: 0;
     transform: translate(-50%, -50%);
     font-weight: bold; font-size: 24px;
-    color: #ffee66; text-shadow: 0 0 8px #000, 2px 2px 0 #000, -2px -2px 0 #000;
+    color: #ffee66; text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
     white-space: nowrap;
     will-change: transform, opacity;
   }
@@ -1008,7 +1013,7 @@
     width: 230px; display: flex; flex-direction: column; overflow: hidden;
     background: var(--glass-strong); border: 2px solid rgba(255, 230, 200, 0.18); border-radius: var(--r);
     cursor: pointer; text-align: center; padding-bottom: var(--sp-4);
-    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    transition: transform 0.15s, border-color 0.15s;
   }
   .ucard:hover, .ucard:focus-visible {
     border-color: var(--ac); transform: translateY(-4px); outline: none;
@@ -1024,6 +1029,7 @@
   }
   /* The art is painted on black: screen-blend drops the black into the glow */
   .ucard .u-art .icon { width: 116px; height: 116px; object-fit: contain; mix-blend-mode: screen; }
+  .ucard .u-art { isolation: isolate; } /* blend inside the panel only, not against the live canvas */
   .ucard .u-emoji { display: none; font-size: 56px; line-height: 1; }
   .ucard .u-art.noimg .icon { display: none; }
   .ucard .u-art.noimg .u-emoji { display: block; }
@@ -1077,6 +1083,14 @@
   .warn-card .wc-actions { display: flex; gap: var(--sp-3); justify-content: center; align-items: center; flex-wrap: wrap; }
   .warn-card .start-btn { margin: 0; font-size: 14px; padding: 10px 28px; letter-spacing: 4px; }
   @media (max-height: 420px) { .warn-card { padding: var(--sp-3) var(--sp-4); } .warn-card .wc-title { margin-bottom: var(--sp-1); } }
+
+  /* START prewarm (_prewarmHUD): the in-play HUD drawn once, near-invisible,
+     above the opaque loading screen so its raster pipelines compile there */
+  body.hud-prewarm #hud, body.hud-prewarm #powers, body.hud-prewarm #mobile-ui > *, body.hud-prewarm #message,
+  body.hud-prewarm #wave-banner, body.hud-prewarm #popups, body.hud-prewarm #upgrade-modal, body.hud-prewarm #pause-menu,
+  body.hud-prewarm #damage-flash, body.hud-prewarm #lowhp-warning, body.hud-prewarm #dmg-indicators {
+    opacity: 0.01 !important; z-index: 300 !important; pointer-events: none !important;
+  }
 
   /* Reduced motion: no pulses, slides or spins; state changes stay visible */
   @media (prefers-reduced-motion: reduce) {
@@ -1260,10 +1274,10 @@
 </script>
 
 <!-- Damage screen flash -->
-<div id="damage-flash" style="position:fixed; inset:0; pointer-events:none; z-index:9; background:radial-gradient(ellipse at center, transparent 40%, #ff0033 100%); opacity:0; transition:opacity 0.25s;"></div>
+<div id="damage-flash" style="position:fixed; inset:0; pointer-events:none; z-index:9; will-change:opacity; background:radial-gradient(ellipse at center, transparent 40%, #ff0033 100%); opacity:0; transition:opacity 0.25s;"></div>
 <!-- Directional damage chevrons (populated by addDamageIndicator in game.js) -->
 <div id="dmg-indicators" style="position:fixed; inset:0; pointer-events:none; z-index:10; overflow:hidden;"></div>
-<div id="lowhp-warning" style="position:fixed; inset:0; pointer-events:none; z-index:9; box-shadow:inset 0 0 120px 60px #ff0033; opacity:0;"></div>
+<div id="lowhp-warning" style="position:fixed; inset:0; pointer-events:none; z-index:9; will-change:opacity; box-shadow:inset 0 0 120px 60px #ff0033; opacity:0;"></div>
 
 <!-- Floating score popup container -->
 <div id="popups" style="position:fixed; inset:0; pointer-events:none; z-index:8; overflow:hidden;"></div>
@@ -1489,24 +1503,24 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.45",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.45",
-    "./src/audio.js": "./src/audio.js?v=1.11.45",
-    "./src/city.js": "./src/city.js?v=1.11.45",
-    "./src/effects.js": "./src/effects.js?v=1.11.45",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.45",
-    "./src/game.js": "./src/game.js?v=1.11.45",
-    "./src/intro.js": "./src/intro.js?v=1.11.45",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.45",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.45",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.45",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.45",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.45",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.45",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.45",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.45",
-    "./src/quality.js": "./src/quality.js?v=1.11.45",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.45"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.46",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.46",
+    "./src/audio.js": "./src/audio.js?v=1.11.46",
+    "./src/city.js": "./src/city.js?v=1.11.46",
+    "./src/effects.js": "./src/effects.js?v=1.11.46",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.46",
+    "./src/game.js": "./src/game.js?v=1.11.46",
+    "./src/intro.js": "./src/intro.js?v=1.11.46",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.46",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.46",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.46",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.46",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.46",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.46",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.46",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.46",
+    "./src/quality.js": "./src/quality.js?v=1.11.46",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.46"
   }
 }
 </script>
@@ -1520,7 +1534,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.45"></script>
-<script type="module" async src="./src/intro.js?v=1.11.45"></script>
+<script type="module" src="./src/game.js?v=1.11.46"></script>
+<script type="module" async src="./src/intro.js?v=1.11.46"></script>
 </body>
 </html>
