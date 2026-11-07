@@ -145,7 +145,9 @@ const CHICAGO_LANDMARK_GLBS = [
 const CHICAGO_GENERIC_GLBS = [
   // gen_low2_*: the 'low' bucket (blocks under 7u), +Z street face. Downtown
   // commercial types only: no greystones, walk-ups or courtyard flats in the Loop
-  { file: 'gen_low2_brick_shop.glb', bucket: 'low', ready: true },
+  // brick_shop v2: 17 x 13.9 m, 13.7 m tall commercial (was an 8 x 20 m
+  // row lot): only on blocks up to 4u so it isn't blown up to a giant shop
+  { file: 'gen_low2_brick_shop.glb', bucket: 'low', maxH: 4, ready: true },
   { file: 'gen_low2_terracotta_comm.glb', bucket: 'low', ready: true },
   { file: 'gen_low2_warehouse.glb', bucket: 'low', share: 0.6, ready: true },
   { file: 'gen_low2_modern_mid.glb', bucket: 'low', ready: true },
@@ -154,6 +156,7 @@ const CHICAGO_GENERIC_GLBS = [
   // reads as a giant)
   { file: 'gen_low2_bank.glb', bucket: 'low', ready: true },
   { file: 'gen_low2_loft.glb', bucket: 'low', ready: true },
+  { file: 'gen_low2_chicago_school.glb', bucket: 'low', ready: true }, // cream Chicago School office, 30 m
   { file: 'gen_low2_garage_retail.glb', bucket: 'low', maxH: 4, ready: true },
   { file: 'gen_low2_retail_strip.glb', bucket: 'low', maxH: 3, share: 2, ready: true }, // weighted up: only ~40 blocks are low enough
   { file: 'gen_low_brick_loft.glb', bucket: 'short', ready: true },

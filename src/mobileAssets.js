@@ -36,6 +36,7 @@ export const MOBILE_VARIANTS = new Set([
   "buildings/chicago/franklin_center.glb",
   "buildings/chicago/gen_low2_bank.glb",
   "buildings/chicago/gen_low2_brick_shop.glb",
+  "buildings/chicago/gen_low2_chicago_school.glb",
   "buildings/chicago/gen_low2_garage_retail.glb",
   "buildings/chicago/gen_low2_loft.glb",
   "buildings/chicago/gen_low2_modern_mid.glb",
