@@ -86,7 +86,7 @@ export const ASSET_HASHES = {
   "assets/buildings/chicago/gen_low2_bank.glb": "4fe0ce55f2",
   "assets/buildings/chicago/gen_low2_bank_lod1.glb": "1b69b42936",
   "assets/buildings/chicago/gen_low2_brick_shop.glb": "dcf9639e85",
-  "assets/buildings/chicago/gen_low2_brick_shop_lod1.glb": "5968ee7b6f",
+  "assets/buildings/chicago/gen_low2_brick_shop_lod1.glb": "4a1fc384b6",
   "assets/buildings/chicago/gen_low2_chicago_school.glb": "b03c34d01a",
   "assets/buildings/chicago/gen_low2_chicago_school_lod1.glb": "6c2c346923",
   "assets/buildings/chicago/gen_low2_garage_retail.glb": "e114ea291a",
