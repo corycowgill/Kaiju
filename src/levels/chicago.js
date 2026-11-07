@@ -149,8 +149,13 @@ const CHICAGO_GENERIC_GLBS = [
   { file: 'gen_low2_terracotta_comm.glb', bucket: 'low', ready: true },
   { file: 'gen_low2_warehouse.glb', bucket: 'low', share: 0.6, ready: true },
   { file: 'gen_low2_modern_mid.glb', bucket: 'low', ready: true },
-  // TRELLIS downtown commercial low-rise (artist-3d / cloud-3d)
+  // TRELLIS downtown commercial low-rise (artist-3d / cloud-3d). maxH (u):
+  // only on blocks up to that height (a 5 m strip scaled up to a 30 m block
+  // reads as a giant)
   { file: 'gen_low2_bank.glb', bucket: 'low', ready: true },
+  { file: 'gen_low2_loft.glb', bucket: 'low', ready: true },
+  { file: 'gen_low2_garage_retail.glb', bucket: 'low', maxH: 4, ready: true },
+  { file: 'gen_low2_retail_strip.glb', bucket: 'low', maxH: 2.6, share: 0.7, ready: true },
   { file: 'gen_low_brick_loft.glb', bucket: 'short', ready: true },
   { file: 'gen_low_limestone_block.glb', bucket: 'short', ready: true },
   { file: 'gen_low_terracotta_office.glb', bucket: 'short', ready: true },
@@ -239,9 +244,11 @@ function _pool(bucket) {
 }
 /** One url from the bucket's pool, weighted by share (default 1), avoiding
  *  `avoid` (the models already standing in the neighbouring cells). */
-function _pickGeneric(bucket, avoid) {
+function _pickGeneric(bucket, avoid, h = 0) {
   bucket = _ownBucket(bucket);
-  const own = CHICAGO_GENERIC_GLBS.filter((g) => _genericOK(g) && g.bucket === bucket);
+  const all = CHICAGO_GENERIC_GLBS.filter((g) => _genericOK(g) && g.bucket === bucket);
+  const fit = all.filter((g) => !g.maxH || h <= g.maxH);
+  const own = fit.length ? fit : all;
   if (!own.length) { const p = _pool(bucket); return p[Math.floor(Math.random() * p.length)]; }
   const ok = avoid ? own.filter((g) => !avoid.has(CHI_BASE + g.file)) : own;
   const list = ok.length ? ok : own;
@@ -1629,7 +1636,7 @@ export function buildChicago(scene, world, opts, K) {
     const cx = Math.floor(o.x / 24), cz = Math.floor(o.z / 24);
     const avoid = new Set();
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const u of picked.get((cx + i) + ':' + (cz + j)) || []) avoid.add(u);
-    const url = _pickGeneric(_bucket(o.h), avoid);
+    const url = _pickGeneric(_bucket(o.h), avoid, o.h);
     const k = cx + ':' + cz;
     if (!picked.has(k)) picked.set(k, []);
     picked.get(k).push(url);
