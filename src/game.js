@@ -2386,12 +2386,12 @@ function buildPowersBar() {
     it.short = it.id === 'ult' ? 'ULT' : it.name.trim().split(/\s+/).pop();
     const w = document.createElement('div');
     w.className = 'power-wrap ' + it.id;
-    w.innerHTML = `
+    w.innerHTML = `${it.id === 'ult' ? '<div class="u-ring"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path/></svg></div>' : ''}
       <div class="power" id="pw-${it.id}" role="button" aria-label="${it.name}${touchUI ? '' : ' (' + it.key + ')'}">
         <svg viewBox="0 0 32 32" aria-hidden="true">${POWER_ICONS[it.id]}</svg>
         <span class="name">${it.name}</span>
         <span class="key">${it.key}</span>
-        <div class="cooldown"></div>
+        <svg class="cooldown" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path/></svg>
       </div>
       <span class="cd-num" id="cd-${it.id}"></span>
       <span class="lbl">${it.short}</span>`;
@@ -2411,6 +2411,17 @@ function buildPowersBar() {
     pwEl.addEventListener('mousedown', fire);
   }
 }
+
+// Pie of fraction f (0..1) clockwise from 12 o'clock, radius 71 so it
+// reaches the corners of the 100x100 box (the cooldown sweep, the ult ring)
+function _piePath(f) {
+  if (f <= 0) return '';
+  if (f >= 0.999) return 'M50 -21A71 71 0 1 1 49.99 -21Z';
+  const a = f * Math.PI * 2;
+  return `M50 50L50 -21A71 71 0 ${f > 0.5 ? 1 : 0} 1 ${(50 + 71 * Math.sin(a)).toFixed(2)} ${(50 - 71 * Math.cos(a)).toFixed(2)}Z`;
+}
+function _sweep(wrap, f) { const p = wrap && wrap.querySelector('.cooldown path'); if (p) p.setAttribute('d', _piePath(f)); }
+function _ring(wrap, f) { const p = wrap && wrap.querySelector('.u-ring path'); if (p) p.setAttribute('d', _piePath(f)); }
 
 // HUD DOM writes are heavy enough that smashing them at 60Hz causes frame
 // hitches in dense fights. Throttle the slow stuff to ~10Hz and write a
@@ -2478,7 +2489,7 @@ function updateHUD() {
       const txt = t.toFixed(1);
       if (txt !== ps.txt) { ps.txt = txt; cd.textContent = txt; }
       const q = Math.ceil(t / ps.max * 40) / 40;
-      if (q !== ps.q) { ps.q = q; w.style.setProperty('--cd', q); }
+      if (q !== ps.q) { ps.q = q; _sweep(w, q); }
     }
   };
   updateP('beam', cfg.beam.cost);
@@ -2487,7 +2498,7 @@ function updateHUD() {
   updateP('stomp', 15);
   updateP('ult', 100);
   // Ultimate charge ring fills with rage
-  _hudSet('ultR', Math.round(Math.min(1, state.rage / 100) * 40), (v) => { if (hudRefs.pw.ult) hudRefs.pw.ult.style.setProperty('--rage', v / 40); });
+  _hudSet('ultR', Math.round(Math.min(1, state.rage / 100) * 40), (v) => _ring(hudRefs.pw.ult, v / 40));
 
   // Combo HUD (stats column)
   if (hudRefs.combo) {
@@ -4761,21 +4772,21 @@ function _hudPrewarmBegin() {
       const w = hudRefs.pw[id];
       if (!w) continue;
       w.classList.add(st[id]);
-      w.style.setProperty('--cd', 0.5);
-      w.style.setProperty('--rage', 0.6);
+      _sweep(w, 0.5);
+      _ring(w, 0.6);
       if (hudRefs.cd[id]) hudRefs.cd[id].textContent = '2.5';
     }
     // The sweeps' end points (an empty / full conic is a different gradient
     // program from a partial one), and the ult ring short of rage
     const pwBar = hudRefs.pw.beam?.parentElement;
-    const variant = (src, cls, prop, v) => {
+    const variant = (src, cls, set, v) => {
       if (!src || !pwBar) return;
       const c = src.cloneNode(true);
       c.className = src.className.replace(/is-\w+/g, '') + ' ' + cls;
-      c.style.setProperty(prop, v);
+      set(c, v);
       pwBar.appendChild(c); extra.push(c);
     };
-    for (const v of [0, 1]) variant(hudRefs.pw.roar, 'is-cd', '--cd', v);
+    for (const v of [0, 1]) variant(hudRefs.pw.roar, 'is-cd', _sweep, v);
     // One power cycles ready -> cooling (sweep running down) -> short of rage
     // and the ult ring fills, so the state transitions and every sweep angle
     // are drawn too
@@ -4786,13 +4797,13 @@ function _hudPrewarmBegin() {
       if (w) {
         const s = ['is-ready', 'is-cd', 'is-low'][Math.floor(tick / 8) % 3];
         if (!w.classList.contains(s)) { w.classList.remove('is-ready', 'is-cd', 'is-low'); w.classList.add(s); }
-        w.style.setProperty('--cd', 1 - (tick % 8) / 8);
+        _sweep(w, 1 - (tick % 8) / 8);
       }
-      if (u) u.style.setProperty('--rage', (tick % 20) / 20);
+      if (u) _ring(u, (tick % 20) / 20);
       // the callouts' fade transitions (ultimate / wave banner)
       if (tick % 16 === 0) { msg.classList.toggle('show'); banner.classList.toggle('show'); }
     }, 50);
-    for (const v of [0, 0.25, 0.75, 1]) variant(hudRefs.pw.ult, 'is-low', '--rage', v);
+    for (const v of [0, 0.25, 0.75, 1]) variant(hudRefs.pw.ult, 'is-low', _ring, v);
     _prewarmMinimap();
     // Bars part-filled (the rage fill starts at scaleX(0): nothing to raster)
     if (hudRefs.hpInner) hudRefs.hpInner.style.transform = 'scaleX(0.6)';

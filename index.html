@@ -262,11 +262,14 @@
   .power-wrap.is-low .power svg, .power-wrap.is-cd .power svg { opacity: 0.45; }
   .power-wrap.is-low .power .name { opacity: 0.55; }
   /* Dark radial sweep over the (dimmed) icon while cooling down */
-  .cooldown {
+  /* (an SVG pie path, set by _sweep: a path fill shares the icons' raster
+     program, where a hard-stop conic gradient compiled its own variants) */
+  .power-wrap .power svg.cooldown {
     position: absolute; inset: 0; z-index: 1; pointer-events: none; display: none;
-    background: conic-gradient(rgba(0, 0, 0, 0.42) calc(var(--cd, 0) * 360deg), transparent 0);
+    width: 100% !important; height: 100% !important; opacity: 1 !important;
+    fill: rgba(0, 0, 0, 0.42); stroke: none;
   }
-  .power-wrap.is-cd .cooldown { display: block; }
+  .power-wrap.is-cd .power svg.cooldown { display: block; }
   /* Seconds left: a small corner badge, so the icon stays readable */
   .cd-num {
     position: absolute; right: -6px; top: -6px; z-index: 3; display: none;
@@ -279,10 +282,11 @@
   .power-wrap .lbl { display: none; }
   /* Ultimate: bigger, with a charge ring that fills as rage builds and a
      pulse once it's ready */
-  .power-wrap.ult::before {
-    content: ''; position: absolute; inset: -6px; border-radius: calc(var(--r) + 5px); pointer-events: none;
-    background: conic-gradient(var(--ac) calc(var(--rage, 0) * 360deg), rgba(255, 230, 200, 0.14) 0);
+  .power-wrap .u-ring {
+    position: absolute; inset: -6px; border-radius: calc(var(--r) + 5px); pointer-events: none; overflow: hidden;
+    background: rgba(255, 230, 200, 0.14);
   }
+  .power-wrap .u-ring svg { display: block; width: 100%; height: 100%; fill: var(--ac); }
   .power-wrap.ult .power { background: #12030a; }
   .power-wrap.ult::after { inset: -12px; }
   .power-wrap.is-ready.ult::after { animation: readyPulse 1.1s ease-in-out infinite alternate; }
@@ -788,7 +792,7 @@
   body.touch .power-wrap:nth-child(2) { --a: 140deg; } /* roar */
   body.touch .power-wrap:nth-child(3) { --a: 114deg; } /* charge */
   body.touch .power-wrap:nth-child(5) { --a: 88deg; }  /* ultimate: top, above SMASH, hard to hit by accident */
-  body.touch .power, body.touch .power-wrap.ult::before { border-radius: 50%; }
+  body.touch .power, body.touch .power-wrap .u-ring { border-radius: 50%; }
   body.touch .power svg, body.touch .power-wrap.ult .power svg { width: 64%; height: 64%; }
   body.touch .power .name, body.touch .power .key { display: none; }
   body.touch .cd-num { right: -8px; top: -4px; }
@@ -1503,24 +1507,24 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.51",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.51",
-    "./src/audio.js": "./src/audio.js?v=1.11.51",
-    "./src/city.js": "./src/city.js?v=1.11.51",
-    "./src/effects.js": "./src/effects.js?v=1.11.51",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.51",
-    "./src/game.js": "./src/game.js?v=1.11.51",
-    "./src/intro.js": "./src/intro.js?v=1.11.51",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.51",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.51",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.51",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.51",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.51",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.51",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.51",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.51",
-    "./src/quality.js": "./src/quality.js?v=1.11.51",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.51"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.52",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.52",
+    "./src/audio.js": "./src/audio.js?v=1.11.52",
+    "./src/city.js": "./src/city.js?v=1.11.52",
+    "./src/effects.js": "./src/effects.js?v=1.11.52",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.52",
+    "./src/game.js": "./src/game.js?v=1.11.52",
+    "./src/intro.js": "./src/intro.js?v=1.11.52",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.52",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.52",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.52",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.52",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.52",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.52",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.52",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.52",
+    "./src/quality.js": "./src/quality.js?v=1.11.52",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.52"
   }
 }
 </script>
@@ -1534,7 +1538,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.51"></script>
-<script type="module" async src="./src/intro.js?v=1.11.51"></script>
+<script type="module" src="./src/game.js?v=1.11.52"></script>
+<script type="module" async src="./src/intro.js?v=1.11.52"></script>
 </body>
 </html>
