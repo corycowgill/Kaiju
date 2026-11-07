@@ -374,10 +374,13 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST) {
   scene.traverse((o) => { if (o.userData.instance) clones.push(o); });
   const buckets = new Map();
   for (const c of clones) {
+    // userData.instanceTile: a coarser tile for one kind (lot cars: many
+    // small copies spread thin, where 120u tiles cost a draw each)
+    const t = c.userData.instanceTile || tile;
     c.traverse((m) => {
       if (!m.isMesh) return;
       const e = m.matrixWorld.elements;
-      const key = `${m.geometry.uuid}|${m.material.uuid}|${Math.floor(e[12] / tile)},${Math.floor(e[14] / tile)}`;
+      const key = `${m.geometry.uuid}|${m.material.uuid}|${t}:${Math.floor(e[12] / t)},${Math.floor(e[14] / t)}`;
       let b = buckets.get(key);
       if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, recv: m.receiveShadow, matrices: [] });
       b.matrices.push(m.matrixWorld.clone());

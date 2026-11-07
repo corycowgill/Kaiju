@@ -189,7 +189,7 @@ const CHICAGO_VEHICLE_GLBS = [
   { url: CHI_BASE + 'chicago_taxi.glb', len: 4.92, weight: 18, ready: true },
   // v2 has its own lightbar_red/_blue lens materials, which Car flashes
   // (lightBar adds a procedural bar only if a model has none)
-  { url: CHI_BASE + 'police_suv.glb', len: 5.14, weight: 6, lightBar: true, ready: true },
+  { url: CHI_BASE + 'police_suv.glb', len: 5.14, weight: 6, lightBar: true, parked: false, ready: true }, // its lightbar flashes: never parked in a lot
   { url: CHI_BASE + 'sedan_red.glb', len: 4.82, weight: 14, ready: true },
   { url: CHI_BASE + 'sedan_blue.glb', len: 4.82, weight: 12, ready: true },
   { url: CHI_BASE + 'sedan_silver.glb', len: 4.82, weight: 12, ready: true },
@@ -1502,6 +1502,39 @@ export function buildChicago(scene, world, opts, K) {
     return [[-hw, -hd], [-hw, hd], [hw, hd], [hw, -hd]].map(([u, v]) => [lm.x + c * u + s * v, lm.z - s * u + c * v]);
   });
   const holesIn = (poly) => bowlHoles.filter((h) => h.every(([x, z]) => pointInPoly(x, z, poly)));
+  // Surface lots (landuse fill, the Soldier Field site, gap-fill lots):
+  // painted stall lines, parked cars in about 70% of the stalls and
+  // planters on the corners. Stalls run along the lot's long side on a
+  // 2.3 x 6u grid (two rows of 2.5u cars back to back); a stall needs all
+  // four car corners inside the polygon. Cars: one shared cap (phones
+  // fewer, LOW none); stripes are one batch
+  const lotCars = { n: 0, cap: !glb ? 0 : lite ? 140 : 420 };
+  const stripes = [[], [], []], lotPlanters = [];
+  const parkLot = (poly) => {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const [x, z] of poly) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    const along = x1 - x0 >= z1 - z0;
+    const [a0, a1, b0, b1] = along ? [x0, x1, z0, z1] : [z0, z1, x0, x1];
+    const at = (u, v) => (along ? [u, v] : [v, u]);
+    for (let v = b0 + 2.5; v < b1 - 2.5; v += 6) {
+      for (let u = a0 + 1.2; u < a1 - 1.2; u += 2.3) {
+        const [x, z] = at(u, v);
+        const ok = [[-1, -2], [1, -2], [-1, 2], [1, 2]].every(([a, b]) => pointInPoly(...at(u + a, v + b), poly));
+        if (!ok) continue;
+        // Stall line on the stall's left edge, the length of the car
+        const [lx, lz] = at(u - 1.15, v);
+        quadAlong(stripes[0], stripes[1], stripes[2], lx, lz, along ? 0 : 1, along ? 1 : 0, 4.6, 0.09, 0.045);
+        if (lotCars.n >= lotCars.cap || Math.random() < 0.3) continue;
+        const car = K.makeParkedCar(x, z, (along ? 0 : Math.PI / 2) + (Math.random() < 0.5 ? 0 : Math.PI) + (Math.random() - 0.5) * 0.08);
+        if (car) { car.userData.instanceTile = 480; scene.add(car); lotCars.n++; }
+      }
+    }
+    // Planters just inside the corners of the lot's bounding box
+    for (const [cx, cz] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) {
+      const px = cx + Math.sign((x0 + x1) / 2 - cx) * 1.2, pz = cz + Math.sign((z0 + z1) / 2 - cz) * 1.2;
+      if (pointInPoly(px, pz, poly)) lotPlanters.push({ x: px, z: pz, ry: 0 });
+    }
+  };
   let alleeTrees = 0, railTracks = 0;
   const RAIL_CAP = lite ? 60 : 240;
   const ALLEE_CAP = lite ? 60 : 320;
@@ -1521,6 +1554,7 @@ export function buildChicago(scene, world, opts, K) {
     const lay = !p.fill ? 0 : p.surface === 'railyard' || p.surface === 'gravel' ? 1 : p.kind === 'plaza' ? 3 : 2;
     addBatch(polygonGeom(p.polygon, 0.03, uv, holesIn(p.polygon)), lay ? decal(base, lay) : base);
     for (const q of p.paths) addBatch(ribbon(q.points, -q.width / 2, q.width / 2, 0.04), M.path);
+    if (REAL && p.kind === 'plaza' && p.surface === 'parking' && !onFest(p.polygon[0][0], p.polygon[0][1])) parkLot(p.polygon);
     // Rail yards (landuse fill: the Metra / IC corridor): track pairs along
     // the yard's long axis every ~4.6 m, clipped to the polygon
     if (REAL && p.surface === 'railyard') {
@@ -2347,6 +2381,7 @@ export function buildChicago(scene, world, opts, K) {
         carry = t - l;
       }
     }
+    spots.planter_bollard.push(...lotPlanters);
     for (const k of Object.keys(spots)) spots[k] = spots[k].filter((p) => !onFest(p.x, p.z));
     // Phones: planters only (each kind costs a draw per 120u tile it reaches)
     const kinds = Object.keys(spots).filter((k) => glb && _kit(k) && spots[k].length && !(lite && CHICAGO_KIT_GLBS[k].desktopOnly));
@@ -2402,24 +2437,7 @@ export function buildChicago(scene, world, opts, K) {
     flat(lots.map((p) => p.polygon), 0.034, decal(roadMat, 3), ASPHALT_TILE);
     for (const q of S.paths) addBatch(ribbon(q.points, -Math.max(0.3, q.width / 2), Math.max(0.3, q.width / 2), 0.036), decal(M.path, 4));
     flat(S.water, 0.04, decal(M.water, 5), 14);
-    // Parked cars: E-W stall rows on a 2.3 x 6u grid inside each lot,
-    // keeping a car's corners inside the polygon (phones: fewer, LOW: none)
-    let cars = 0;
-    const cap = !glb ? 0 : lite ? 60 : 200;
-    for (const p of lots) {
-      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-      for (const [x, z] of p.polygon) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
-      const along = x1 - x0 >= z1 - z0; // stall rows along the lot's long side
-      for (let u = (along ? x0 : z0) + 1.2; u < (along ? x1 : z1) - 1.2 && cars < cap; u += 2.3) {
-        for (let v = (along ? z0 : x0) + 2.5; v < (along ? z1 : x1) - 2.5 && cars < cap; v += 6) {
-          const x = along ? u : v, z = along ? v : u;
-          const ok = [[-1, -2], [1, -2], [-1, 2], [1, 2]].every(([a, b]) => pointInPoly(along ? x + a : x + b, along ? z + b : z + a, p.polygon));
-          if (!ok || Math.random() < 0.3) continue;
-          const car = K.makeParkedCar(x, z, (along ? 0 : Math.PI / 2) + (Math.random() < 0.5 ? 0 : Math.PI) + (Math.random() - 0.5) * 0.08);
-          if (car) { scene.add(car); cars++; }
-        }
-      }
-    }
+    for (const p of lots) parkLot(p.polygon);
   }
 
   // ---- distant backdrop: suburbs west/north/south (nothing over the lake) ----
@@ -2462,6 +2480,7 @@ export function buildChicago(scene, world, opts, K) {
 
   animators.push(K.makePigeonFlock(scene));
 
+  if (stripes[0].length) addBatch(_geom(...stripes), M.whiteLine, false);
   instance();
   K.mergeStaticMeshes(scene);
 
