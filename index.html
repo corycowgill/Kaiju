@@ -477,6 +477,18 @@
     text-shadow: 0 0 10px #ff8866, 2px 2px 0 #1a0006;
   }
   .monster-card p { font-size: 13px; color: #ddd; line-height: 1.5; font-style: italic; }
+  .monster-card .pw-stat { display: flex; align-items: center; gap: 6px; }
+  .monster-card .pw-stat svg {
+    flex: none; width: 18px; height: 18px; overflow: visible;
+    fill: var(--ac); stroke: rgba(10, 0, 4, 0.9); stroke-width: 1.3; stroke-linejoin: round; paint-order: stroke;
+  }
+  .monster-card .pw-stat.beam { --ac: #5ce1ff; }
+  .monster-card .pw-stat.roar { --ac: #ff9a3c; }
+  .monster-card .pw-stat.charge { --ac: #ffd24a; }
+  .monster-card .pw-stat svg .d { fill: #1a0006; stroke: none; }
+  .monster-card .pw-stat svg .t { fill: #fff4dc; stroke: none; }
+  .monster-card .pw-stat svg .s { fill: none; stroke: var(--ac); stroke-width: 2.4; stroke-linecap: round; }
+  .monster-card .pw-stat svg .z, .monster-card .pw-stat svg .o { fill: none; stroke: #1a0006; stroke-width: 1.6; }
   .monster-card .stat {
     font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
     font-size: 12px; color: #aaccff; margin-top: 6px; letter-spacing: 2px;
@@ -1282,7 +1294,7 @@
   </div>
   <div class="hud-center">
     <div id="boss-bar">
-      <div id="boss-name">⚠ MEGA-MECH ZX ⚠</div>
+      <div id="boss-name">&#9888;&#xFE0E; MEGA-MECH ZX &#9888;&#xFE0E;</div>
       <div class="boss-track"><div id="boss-hp"></div></div>
     </div>
     <div id="wave-objective">
@@ -1452,24 +1464,24 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.36",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.36",
-    "./src/audio.js": "./src/audio.js?v=1.11.36",
-    "./src/city.js": "./src/city.js?v=1.11.36",
-    "./src/effects.js": "./src/effects.js?v=1.11.36",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.36",
-    "./src/game.js": "./src/game.js?v=1.11.36",
-    "./src/intro.js": "./src/intro.js?v=1.11.36",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.36",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.36",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.36",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.36",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.36",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.36",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.36",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.36",
-    "./src/quality.js": "./src/quality.js?v=1.11.36",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.36"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.37",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.37",
+    "./src/audio.js": "./src/audio.js?v=1.11.37",
+    "./src/city.js": "./src/city.js?v=1.11.37",
+    "./src/effects.js": "./src/effects.js?v=1.11.37",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.37",
+    "./src/game.js": "./src/game.js?v=1.11.37",
+    "./src/intro.js": "./src/intro.js?v=1.11.37",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.37",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.37",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.37",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.37",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.37",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.37",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.37",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.37",
+    "./src/quality.js": "./src/quality.js?v=1.11.37",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.37"
   }
 }
 </script>
@@ -1483,7 +1495,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.36"></script>
-<script type="module" async src="./src/intro.js?v=1.11.36"></script>
+<script type="module" src="./src/game.js?v=1.11.37"></script>
+<script type="module" async src="./src/intro.js?v=1.11.37"></script>
 </body>
 </html>

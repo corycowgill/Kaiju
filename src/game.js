@@ -1501,6 +1501,38 @@ window.addEventListener('touchcancel', endLook);
   showLevel(selectedLevel);
 }
 
+// Slot icons: 32x32 filled glyphs, drawn for a distinct silhouette at
+// ~40 px. Names differ per monster, the slot meaning doesn't: snout blast,
+// fanged roar, horned charge, clawed stomp, atomic ultimate. Shapes fill
+// with the slot's accent (currentColor) and a thin dark outline; .d = dark
+// detail, .t = teeth, .s = bold accent stroke, .z / .o = dark strokes over the fill.
+const POWER_ICONS = {
+  beam: '<path d="M19.5 14.4 L31.5 8.6 L31.5 23.4 L19.5 17.6 Z"/>'
+    + '<path class="z" d="M20.4 16 L22.6 14.4 L24.4 17.6 L26.6 13.8 L28.6 17.4 L31 14.8"/>'
+    + '<path d="M0.6 12.5 L3.6 7.8 L8.5 5.4 L10.5 3.6 L13 5.6 L20.5 7.8 L23 10.2 L9.5 15.3 L21 21.2 L19.8 23.6 L9 23.6 L3.5 22.6 L0.6 19 Z"/>'
+    + '<path class="t" d="M11.2 14.3 L12.2 12.2 L13.4 13.4 Z M14.2 12.9 L15.2 10.8 L16.4 12 Z M17.2 11.6 L18.2 9.7 L19.2 10.8 Z M19.9 10.6 L20.8 8.9 L21.7 9.8 Z M11.4 16.2 L12.6 18.3 L13.4 16.9 Z M14.4 17.8 L15.6 19.8 L16.4 18.5 Z M17.4 19.3 L18.6 21.3 L19.4 20 Z"/>'
+    + '<path class="d" d="M8.6 7.4 L12.6 7.2 L11 8.8 Z"/><circle class="d" cx="20.4" cy="8.8" r="0.7"/>'
+    + '<path d="M2.6 7.4 L2.2 3.6 L5 5.6 Z M5.8 5.6 L6.2 1.6 L8.4 4.6 Z"/>',
+  roar: '<path class="s" d="M4.5 10 Q1.2 16 4.5 22 M27.5 10 Q30.8 16 27.5 22"/>'
+    + '<path d="M7.5 9.5 Q16 2.5 24.5 9.5 Q27 16 24.5 22.5 Q16 29.5 7.5 22.5 Q5 16 7.5 9.5 Z"/>'
+    + '<path class="d" d="M10 11.5 Q16 7.5 22 11.5 Q23.6 16 22 20.5 Q16 24.5 10 20.5 Q8.4 16 10 11.5 Z"/>'
+    + '<path d="M10.6 11.2 L12.4 16.4 L14.2 10.2 Z M17.8 10.2 L19.6 16.4 L21.4 11.2 Z M11 20.8 L13 16.8 L14.8 21.6 Z M17.2 21.6 L19 16.8 L21 20.8 Z"/>',
+  charge: '<path class="s" d="M1.5 13.5 H7.5 M1 18 H7 M2.5 22.5 H8.5"/>'
+    + '<path d="M10 13 Q16 9.5 23 12 Q28.5 14 29.5 19.5 Q26 23.5 19 23.5 Q12 23.5 10 19.5 Z"/>'
+    + '<path d="M24 13.8 Q27.5 6 31.2 3.5 Q31 10.5 27.6 16 Z"/>'
+    + '<path d="M18.5 11.6 Q20 7 23 5.8 Q22.8 9.5 21.8 12.2 Z"/>'
+    + '<path d="M11.6 12 L12.4 7.6 L15.4 10.6 Z"/>'
+    + '<circle class="d" cx="18.8" cy="16" r="1.6"/><circle class="d" cx="27.2" cy="20" r="0.9"/>',
+  stomp: '<ellipse class="s" cx="16" cy="26.5" rx="13.5" ry="3.2"/>'
+    + '<path class="s" d="M3.5 22.5 L6 24 L5 26 M28.5 22.5 L26 24 L27 26"/>'
+    + '<path d="M9.5 18.5 Q16 13.5 22.5 18.5 Q24 24.5 16 25.5 Q8 24.5 9.5 18.5 Z"/>'
+    + '<ellipse cx="9" cy="12.8" rx="2.6" ry="3.2"/><ellipse cx="16" cy="10.2" rx="2.7" ry="3.4"/><ellipse cx="23" cy="12.8" rx="2.6" ry="3.2"/>'
+    + '<path d="M7.4 10 L8.6 5.6 L10.4 9.8 Z M14.4 7.2 L16 2.4 L17.6 7.2 Z M21.6 9.8 L23.4 5.6 L24.6 10 Z"/>',
+  ult: '<path d="M16 0.8 L18.6 9 L25.8 4.4 L22.4 12.2 L31 13.2 L23.8 17.6 L29.6 24.4 L21.4 22.6 L21 31 L16 24.4 L11 31 L10.6 22.6 L2.4 24.4 L8.2 17.6 L1 13.2 L9.6 12.2 L6.2 4.4 L13.4 9 Z"/>'
+    + '<ellipse class="o" cx="16" cy="16" rx="9" ry="3.3"/><ellipse class="o" cx="16" cy="16" rx="9" ry="3.3" transform="rotate(60 16 16)"/><ellipse class="o" cx="16" cy="16" rx="9" ry="3.3" transform="rotate(-60 16 16)"/>'
+    + '<circle class="d" cx="16" cy="16" r="2.6"/>',
+};
+
 // ------------------------- Monster select UI -------------------------
 // Build cards immediately with the emoji visible, THEN swap in rendered 3D
 // portraits async so the title screen never appears blank if the preview
@@ -1517,9 +1549,9 @@ for (const key of Object.keys(MONSTERS)) {
     <h3>${m.name}</h3>
     <p>${m.description}</p>
     <div class="stat">HP ${m.stats.hp} · SPD ${m.stats.speed} · MELEE ${m.stats.melee}</div>
-    <div class="stat">⚡ ${m.beam.name}</div>
-    <div class="stat">📢 ${m.roar.name}</div>
-    <div class="stat">💥 ${m.charge.name}</div>
+    <div class="stat pw-stat beam"><svg viewBox="0 0 32 32" aria-hidden="true">${POWER_ICONS.beam}</svg>${m.beam.name}</div>
+    <div class="stat pw-stat roar"><svg viewBox="0 0 32 32" aria-hidden="true">${POWER_ICONS.roar}</svg>${m.roar.name}</div>
+    <div class="stat pw-stat charge"><svg viewBox="0 0 32 32" aria-hidden="true">${POWER_ICONS.charge}</svg>${m.charge.name}</div>
   `;
   card.addEventListener('click', () => {
     document.querySelectorAll('.monster-card').forEach((c) => c.classList.remove('selected'));
@@ -2118,38 +2150,6 @@ function _initStaticHUDRefs() {
 }
 _initStaticHUDRefs();
 
-// Slot icons: 32x32 filled glyphs, drawn for a distinct silhouette at
-// ~40 px. Names differ per monster, the slot meaning doesn't: snout blast,
-// fanged roar, horned charge, clawed stomp, atomic ultimate. Shapes fill
-// with the slot's accent (currentColor) and a thin dark outline; .d = dark
-// detail, .t = teeth, .s = bold accent stroke, .z / .o = dark strokes over the fill.
-const POWER_ICONS = {
-  beam: '<path d="M19.5 14.4 L31.5 8.6 L31.5 23.4 L19.5 17.6 Z"/>'
-    + '<path class="z" d="M20.4 16 L22.6 14.4 L24.4 17.6 L26.6 13.8 L28.6 17.4 L31 14.8"/>'
-    + '<path d="M0.6 12.5 L3.6 7.8 L8.5 5.4 L10.5 3.6 L13 5.6 L20.5 7.8 L23 10.2 L9.5 15.3 L21 21.2 L19.8 23.6 L9 23.6 L3.5 22.6 L0.6 19 Z"/>'
-    + '<path class="t" d="M11.2 14.3 L12.2 12.2 L13.4 13.4 Z M14.2 12.9 L15.2 10.8 L16.4 12 Z M17.2 11.6 L18.2 9.7 L19.2 10.8 Z M19.9 10.6 L20.8 8.9 L21.7 9.8 Z M11.4 16.2 L12.6 18.3 L13.4 16.9 Z M14.4 17.8 L15.6 19.8 L16.4 18.5 Z M17.4 19.3 L18.6 21.3 L19.4 20 Z"/>'
-    + '<path class="d" d="M8.6 7.4 L12.6 7.2 L11 8.8 Z"/><circle class="d" cx="20.4" cy="8.8" r="0.7"/>'
-    + '<path d="M2.6 7.4 L2.2 3.6 L5 5.6 Z M5.8 5.6 L6.2 1.6 L8.4 4.6 Z"/>',
-  roar: '<path class="s" d="M4.5 10 Q1.2 16 4.5 22 M27.5 10 Q30.8 16 27.5 22"/>'
-    + '<path d="M7.5 9.5 Q16 2.5 24.5 9.5 Q27 16 24.5 22.5 Q16 29.5 7.5 22.5 Q5 16 7.5 9.5 Z"/>'
-    + '<path class="d" d="M10 11.5 Q16 7.5 22 11.5 Q23.6 16 22 20.5 Q16 24.5 10 20.5 Q8.4 16 10 11.5 Z"/>'
-    + '<path d="M10.6 11.2 L12.4 16.4 L14.2 10.2 Z M17.8 10.2 L19.6 16.4 L21.4 11.2 Z M11 20.8 L13 16.8 L14.8 21.6 Z M17.2 21.6 L19 16.8 L21 20.8 Z"/>',
-  charge: '<path class="s" d="M1.5 13.5 H7.5 M1 18 H7 M2.5 22.5 H8.5"/>'
-    + '<path d="M10 13 Q16 9.5 23 12 Q28.5 14 29.5 19.5 Q26 23.5 19 23.5 Q12 23.5 10 19.5 Z"/>'
-    + '<path d="M24 13.8 Q27.5 6 31.2 3.5 Q31 10.5 27.6 16 Z"/>'
-    + '<path d="M18.5 11.6 Q20 7 23 5.8 Q22.8 9.5 21.8 12.2 Z"/>'
-    + '<path d="M11.6 12 L12.4 7.6 L15.4 10.6 Z"/>'
-    + '<circle class="d" cx="18.8" cy="16" r="1.6"/><circle class="d" cx="27.2" cy="20" r="0.9"/>',
-  stomp: '<ellipse class="s" cx="16" cy="26.5" rx="13.5" ry="3.2"/>'
-    + '<path class="s" d="M3.5 22.5 L6 24 L5 26 M28.5 22.5 L26 24 L27 26"/>'
-    + '<path d="M9.5 18.5 Q16 13.5 22.5 18.5 Q24 24.5 16 25.5 Q8 24.5 9.5 18.5 Z"/>'
-    + '<ellipse cx="9" cy="12.8" rx="2.6" ry="3.2"/><ellipse cx="16" cy="10.2" rx="2.7" ry="3.4"/><ellipse cx="23" cy="12.8" rx="2.6" ry="3.2"/>'
-    + '<path d="M7.4 10 L8.6 5.6 L10.4 9.8 Z M14.4 7.2 L16 2.4 L17.6 7.2 Z M21.6 9.8 L23.4 5.6 L24.6 10 Z"/>',
-  ult: '<path d="M16 0.8 L18.6 9 L25.8 4.4 L22.4 12.2 L31 13.2 L23.8 17.6 L29.6 24.4 L21.4 22.6 L21 31 L16 24.4 L11 31 L10.6 22.6 L2.4 24.4 L8.2 17.6 L1 13.2 L9.6 12.2 L6.2 4.4 L13.4 9 Z"/>'
-    + '<ellipse class="o" cx="16" cy="16" rx="9" ry="3.3"/><ellipse class="o" cx="16" cy="16" rx="9" ry="3.3" transform="rotate(60 16 16)"/><ellipse class="o" cx="16" cy="16" rx="9" ry="3.3" transform="rotate(-60 16 16)"/>'
-    + '<circle class="d" cx="16" cy="16" r="2.6"/>',
-};
-
 function buildPowersBar() {
   const cfg = state.monsterCfg;
   const bar = document.getElementById('powers');
@@ -2380,7 +2380,7 @@ function startWave(n) {
   const theme = isBossWave ? null : (n <= 1 ? THEMES[0] : themePool[Math.floor(Math.random() * themePool.length)]);
   if (isBossWave) {
     showWaveBanner(`WAVE ${n}`, 'BOSS APPROACHING');
-    toast('⚠ BOSS WAVE ⚠', 'bad');
+    toast('⚠\uFE0E BOSS WAVE ⚠\uFE0E', 'bad');
     audio.bossSpawn();
   } else {
     showWaveBanner(`WAVE ${n}`, theme.name);
@@ -3337,7 +3337,7 @@ function fireUltimate() {
     setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.glow,  260), 380);
     setTimeout(() => world.spawnShockwave(center.clone(), 0xeeffaa,       320), 620);
     setTimeout(() => world.shake(2.0, 0.9), 200);
-    showMessage('☢ ATOMIC DEVASTATION ☢', 1.4);
+    showMessage('☢\uFE0E ATOMIC DEVASTATION ☢\uFE0E', 1.4);
   } else if (cfg.variant === 'ghidorah') {
     // GHIDORAH -- LIGHTNING STORM
     // Chain lightning from each of the kaiju's heads to every enemy in
@@ -3369,7 +3369,7 @@ function fireUltimate() {
       setTimeout(() => world.spawnExplosion?.(groundP, 0.8), 250);
     }
     setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.glow, 160), 200);
-    showMessage('⚡ THUNDERSTORM ⚡', 1.4);
+    showMessage('ϟ THUNDERSTORM ϟ', 1.4);
   } else if (cfg.variant === 'mecha') {
     // MECHAKAI -- MISSILE BARRAGE + PLASMA BEAM
     // 16 missiles ringing outward in two staggered waves + a giant plasma
@@ -3382,7 +3382,7 @@ function fireUltimate() {
       world.effects.push(makeMissileLaunchFlash(world, origin));
     }, 280);
     setTimeout(() => world.spawnShockwave(center.clone(), cfg.beam.color, 170), 180);
-    showMessage('☄ MISSILE BARRAGE ☄', 1.4);
+    showMessage('☄\uFE0E MISSILE BARRAGE ☄\uFE0E', 1.4);
   } else {
     // Generic fallback (shouldn't hit, but kept for safety)
     world.spawnBeam(origin, dir, 360, cfg.beam.color, cfg.beam.glow);
@@ -4362,7 +4362,7 @@ function spawnAirStrike() {
   ring.position.set(leadX, 0.3, leadZ);
   scene.add(ring);
   state.airstrikes.push({ x: leadX, z: leadZ, ring, timer: 2.2 });
-  toast('⚠ AIR STRIKE INCOMING ⚠', 'bad');
+  toast('⚠\uFE0E AIR STRIKE INCOMING ⚠\uFE0E', 'bad');
 }
 
 // ------------------------- Minimap -------------------------
