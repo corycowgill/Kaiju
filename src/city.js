@@ -2541,43 +2541,6 @@ const DEBRIS_GLBS_FALLBACK = [
 ];
 const _debrisTemplates = [];  // array of { scene, box } after loading
 
-/** Shader-prewarm stand-ins for every loaded building / LOD1 / debris
- *  template: a 1-instance InstancedMesh per (geometry, material) (buildings,
- *  LOD twins and rubble draw instanced) plus a plain Mesh per debris piece
- *  (flying chunks), so renderer.compileAsync can link those program variants
- *  before they're first drawn. Nothing is uploaded; drop the group after. */
-export function templateWarmStage() {
-  const g = new THREE.Group(), seen = new Set();
-  const addIM = (geometry, material, recv) => {
-    const k = geometry.uuid + '|' + material.uuid;
-    if (seen.has(k)) return;
-    seen.add(k);
-    const im = new THREE.InstancedMesh(geometry, material, 1);
-    im.receiveShadow = recv;
-    im.castShadow = true;
-    g.add(im);
-  };
-  for (const t of _glbTemplates.values()) {
-    t.scene.traverse((o) => {
-      if (!o.isMesh || o.isSkinnedMesh) return;
-      for (const geom of [o.geometry, _lod1ByGeom.get(o.geometry)]) if (geom) addIM(geom, o.material, o.receiveShadow);
-    });
-  }
-  // Debris flies as plain meshes and rests as instanced rubble; cars drive
-  // as plain meshes (one of each model, spawned after the prewarm) and park
-  // instanced
-  for (const t of [..._debrisTemplates, ..._carTemplates]) {
-    t.scene.traverse((o) => {
-      if (!o.isMesh) return;
-      addIM(o.geometry, o.material, o.receiveShadow);
-      const m = new THREE.Mesh(o.geometry, o.material);
-      m.castShadow = o.castShadow; m.receiveShadow = o.receiveShadow;
-      g.add(m);
-    });
-  }
-  return g;
-}
-
 export async function loadDebrisTemplates() {
   await _loadDebrisList(DEBRIS_GLBS);
   if (_debrisTemplates.length === 0) await _loadDebrisList(DEBRIS_GLBS_FALLBACK);
