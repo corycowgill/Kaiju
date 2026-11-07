@@ -240,10 +240,22 @@ function _padPoly(poly, pad) {
   return poly.map(([x, z]) => { const l = Math.hypot(x - cx, z - cz) || 1; return [x + (x - cx) / l * pad * 1.42, z + (z - cz) / l * pad * 1.42]; });
 }
 
-/** Polygons trees and street props keep off: every footprint (+1u) and the crowd lawns. */
+/** Convex hull (monotone chain) of [x, z] points. */
+function _hull(pts) {
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const q of p) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (const q of p.reverse()) { while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+
+/** Polygons trees and street props keep off: every footprint (+1u), and per
+ *  stage its footprint +6u together with the whole wedge out to its crowd
+ *  field (hull of both), so nothing stands between a stage and its crowd. */
 export function festNoTree(F) {
   return [...F.items.filter((it) => KINDS[it.kind] || it.kind === 'food_seating').map((it) => _rectPoly(it, 1)),
-    ...F.items.filter((it) => it.crowdArea).map((it) => _padPoly(it.crowdArea, 2))];
+    ...F.items.filter((it) => it.crowdArea).map((it) => _hull([..._rectPoly(it, 6), ..._padPoly(it.crowdArea, 2)]))];
 }
 
 // --------------- textures ---------------
