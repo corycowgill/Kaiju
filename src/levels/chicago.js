@@ -430,7 +430,7 @@ function _normalizeLayout(L) {
     .filter((o) => !(o.landmark && lmIds.has(o.landmark))) // the landmark itself stands there
     .map((o) => {
       const r = o.cx !== undefined ? { x: +o.cx, z: +o.cz, w: +o.w, d: +o.d, rotY: +(o.rot || 0) } : _rect(o);
-      return { ...r, id: o.id, podiumOf: o.podiumOf || null, h: +(o.h ?? o.height ?? 12), style: o.style || null };
+      return { ...r, id: o.id, podiumOf: o.podiumOf || null, h: +(o.h ?? o.height ?? 12), style: o.style || null, phoneSkip: !!o.phoneSkip };
     })
     // Soldier Field's north wing walls need their own wall GLB (requested);
     // a generic block kit piece can't stand in for a 105 m x 10 m wall
@@ -1751,7 +1751,8 @@ export function buildChicago(scene, world, opts, K) {
   // Every block on every tier: phones used to skip 40% of the blocks under
   // 16u (~110 empty grey lots in the Loop), but the kit is instanced per
   // template and tile, so the infill costs triangles (~0.3M), not draws
-  for (const o of L.buildings) placeBlock(o);
+  // (phoneSkip: West Loop sheds and kiosks under 2u, desktop only)
+  for (const o of L.buildings) if (!(lite && o.phoneSkip)) placeBlock(o);
 
   // ---- landmarks ----
   // The theatre's lettered blade sign + marquee ride on the building's group,

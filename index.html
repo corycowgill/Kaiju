@@ -24,6 +24,51 @@
     -webkit-user-select: none; user-select: none;
     position: fixed; inset: 0;
   }
+  /* ---------- HUD style tokens ----------
+     One spacing scale, one type scale, one radius / stroke / glow. Colour
+     carries state: gold = ready, red = danger / damage, green = done,
+     blue = movement, muted cream = unavailable. Every state also has a
+     non-colour cue (digits + sweep, dashed ring, check mark). */
+  :root {
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+    --fs-cap: clamp(10px, 7px + 0.45vmin, 12px);      /* labels, keycaps */
+    --fs-body: clamp(12px, 8px + 0.75vmin, 16px);     /* chips, toasts */
+    --fs-value: clamp(15px, 9px + 1.3vmin, 24px);     /* wave, combo label */
+    --fs-score: clamp(22px, 10px + 2.6vmin, 40px);    /* score, combo mult */
+    --fs-banner: clamp(34px, 12px + 5.5vmin, 78px);   /* wave banner */
+    --f-display: 'Bebas Neue', 'Noto Sans JP', sans-serif;
+    --f-jp: 'Noto Sans JP', sans-serif;
+    --c-ink: #0b0204;
+    --c-cream: #ffe6c8;
+    --c-gold: #ffcc66;
+    --c-score: #ffee66;
+    --c-kanji: #ff8866;
+    --c-red: #d3253c;
+    --c-red-hi: #ff3344;
+    --c-ok: #66ff99;
+    --c-cool: #88ccff;
+    --c-muted: rgba(255, 230, 200, 0.55);
+    --glass: rgba(16, 3, 7, 0.42);
+    --glass-strong: rgba(16, 3, 7, 0.82);
+    --blur: blur(8px) saturate(1.15);
+    --stroke: 1px solid rgba(255, 204, 102, 0.24);
+    --stroke-hot: 1px solid rgba(255, 80, 100, 0.7);
+    --r: 10px;
+    --r-pill: 999px;
+    --glow: 0 0 14px rgba(211, 37, 60, 0.45);
+    --glow-ready: 0 0 14px rgba(255, 204, 102, 0.6);
+    --txt-outline: 0 1px 0 #000, 0 0 2px #000, 0 0 6px rgba(0, 0, 0, 0.85);
+    --safe-t: max(var(--sp-2), env(safe-area-inset-top));
+    --safe-r: max(var(--sp-3), env(safe-area-inset-right));
+    --safe-b: max(var(--sp-2), env(safe-area-inset-bottom));
+    --safe-l: max(var(--sp-3), env(safe-area-inset-left));
+    --map: clamp(84px, 18vmin, 190px);
+    /* touch controls: >= 48 px targets, ~10 mm joystick base on phones */
+    --smash: clamp(84px, 22vmin, 112px);
+    --pw: clamp(48px, 12.5vmin, 62px);
+    --arc-r: calc((var(--pw) + 10px) / 0.47);         /* 27 deg between arc slots */
+    --joy: clamp(120px, 32vmin, 150px);
+  }
   /* Type system */
   .display { font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif; letter-spacing: 4px; }
   .brush   { font-family: 'Yuji Mai', 'Noto Sans JP', serif; }
@@ -32,123 +77,192 @@
   #game { position: fixed; inset: 0; touch-action: none; }
   #game canvas { display: block; width: 100% !important; height: 100% !important; touch-action: none; }
 
-  /* HUD */
+  /* HUD: one top grid (vitals | objective + boss + toasts | stats + map +
+     menu) so nothing can overlap at any size. A soft top scrim and outlined
+     text carry legibility instead of boxed panels. */
   #hud {
-    position: fixed; top: 0; left: 0; right: 0; padding: 14px 20px;
-    display: flex; justify-content: space-between; align-items: flex-start;
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: var(--safe-t) var(--safe-r) 0 var(--safe-l);
+    display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: var(--sp-3); align-items: start;
     pointer-events: none; z-index: 10;
-    text-shadow: 0 0 6px #000, 2px 2px 0 #000;
+    text-shadow: var(--txt-outline);
   }
-  .panel {
-    background:
-      linear-gradient(180deg, rgba(35, 6, 12, 0.78), rgba(10, 0, 5, 0.78)),
-      repeating-linear-gradient(135deg, rgba(255,80,90,0.04) 0 3px, transparent 3px 6px);
-    border: 1px solid #c83246;
-    border-left: 3px solid #d3253c;
-    border-right: 3px solid #d3253c;
-    padding: 10px 14px; border-radius: 4px;
-    box-shadow:
-      0 0 18px rgba(211, 37, 60, 0.35),
-      inset 0 0 22px rgba(255, 80, 100, 0.08);
-    min-width: 240px;
+  #hud::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 0; z-index: -1;
+    height: clamp(72px, 18vh, 150px); pointer-events: none;
+    background: linear-gradient(180deg, rgba(8, 0, 3, 0.5), rgba(8, 0, 3, 0));
   }
-  .panel::before {
-    content: ''; position: absolute;
+  .hud-left { display: flex; flex-direction: column; gap: var(--sp-2); align-items: flex-start; min-width: 0; }
+  .hud-center {
+    display: flex; flex-direction: column; gap: var(--sp-2); align-items: center;
+    max-width: min(44vw, 520px); min-width: 0;
   }
-  .bar {
-    height: 14px;
-    background: #1a050a;
-    border: 1px solid #883344;
-    border-radius: 2px;
-    overflow: hidden;
-    margin-top: 4px;
-    box-shadow: inset 0 0 6px rgba(0,0,0,0.7);
+  .hud-right {
+    justify-self: end; min-width: 0;
+    display: grid; gap: var(--sp-2); justify-items: end; align-items: start;
+    grid-template-columns: auto auto; grid-template-areas: "stats btn" "map map";
   }
-  .bar > div { height: 100%; transition: width 0.2s; box-shadow: 0 0 8px currentColor; }
-  #hpBar > div { background: linear-gradient(90deg,#d3253c,#ff7766); color:#ff5566; }
-  #ragBar > div { background: linear-gradient(90deg,#ffaa00,#ffee44); color:#ffcc44; }
+  /* Short screens (phones in landscape, zoomed desktops): map beside the stats */
+  @media (max-height: 540px) {
+    .hud-right { grid-template-columns: auto auto auto; grid-template-areas: "map stats btn"; }
+  }
   .label {
-    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
-    font-size: 12px; letter-spacing: 4px;
-    color: #ffcc66; font-weight: 400;
+    font-family: var(--f-display);
+    font-size: var(--fs-cap); letter-spacing: 3px;
+    color: var(--c-gold); font-weight: 400; white-space: nowrap;
   }
-  .label .jp-sub {
-    display: inline-block;
-    margin-left: 6px;
-    font-family: 'Noto Sans JP', sans-serif;
-    font-size: 10px; letter-spacing: 1px; color: #ff8866;
-    font-weight: 700;
+  .jp-sub {
+    display: inline-block; margin-left: var(--sp-1);
+    font-family: var(--f-jp); font-size: 0.9em; letter-spacing: 1px;
+    color: var(--c-kanji); font-weight: 700;
   }
-  .value {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 22px; letter-spacing: 2px; color: #fff;
+  .value { font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 2px; color: var(--c-cream); }
+
+  /* Vitals */
+  .vitals { width: clamp(150px, 22vw, 260px); display: grid; gap: var(--sp-1); }
+  .meter-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-2); }
+  .meter-num { font-family: var(--f-display); font-size: var(--fs-cap); letter-spacing: 1px; color: var(--c-cream); }
+  .bar {
+    height: clamp(7px, 1.5vmin, 12px); margin-bottom: var(--sp-1);
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 230, 200, 0.2);
+    border-radius: var(--r-pill); overflow: hidden;
   }
-  #stats { text-align: right; }
+  .bar > div {
+    height: 100%; border-radius: inherit;
+    transform-origin: 0 50%; transition: transform 0.2s; will-change: transform;
+  }
+  #hpBar > div { background: linear-gradient(90deg, var(--c-red), #ff7766); box-shadow: 0 0 8px rgba(255, 85, 102, 0.8); }
+  #ragBar > div { background: linear-gradient(90deg, #ffaa00, #ffee44); box-shadow: 0 0 8px rgba(255, 204, 68, 0.8); }
+  /* Low HP: bar + number turn hot and the label gets a warning mark (not colour alone) */
+  .vitals.low #hpNum { color: var(--c-red-hi); }
+  .vitals.low #hpMeter .label::after { content: ' ▲ LOW'; color: var(--c-red-hi); letter-spacing: 2px; }
+
+  /* Stats (score / wave / combo) */
+  #stats { grid-area: stats; text-align: right; display: grid; justify-items: end; }
   #score {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 34px; letter-spacing: 4px;
-    color: #ffee66;
-    text-shadow: 0 0 10px #ff9933, 2px 2px 0 #000;
+    font-family: var(--f-display); font-size: var(--fs-score); letter-spacing: 3px; line-height: 1;
+    color: var(--c-score); font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 10px rgba(255, 153, 51, 0.8), var(--txt-outline);
   }
+  .stat-line { display: flex; gap: var(--sp-2); align-items: baseline; margin-top: 2px; }
+  .stat-line b { font-family: var(--f-display); font-weight: 400; font-size: var(--fs-value); letter-spacing: 1px; color: var(--c-cream); }
+  /* Combo lives in the stats column: a fixed home that never covers a control.
+     Space is reserved (opacity only) so the minimap below doesn't jump. */
+  #combo { display: flex; align-items: center; gap: var(--sp-2); opacity: 0; transition: opacity 0.2s; margin-top: 2px; }
+  #combo-mult {
+    font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 1px; color: var(--c-score);
+    text-shadow: 0 0 8px rgba(255, 102, 68, 0.8), var(--txt-outline);
+  }
+  .combo-track { width: clamp(44px, 8vw, 90px); height: 4px; background: rgba(0, 0, 0, 0.5); border-radius: var(--r-pill); overflow: hidden; }
+  #combo-bar { height: 100%; background: linear-gradient(90deg, #ff6644, #ffee44); transform-origin: 0 50%; }
 
-  /* Powers */
+  /* Round menu button (pause + sound + quality live behind it) */
+  .hud-btn {
+    grid-area: btn;
+    width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    background: var(--glass); border: var(--stroke);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    cursor: pointer; pointer-events: auto; touch-action: none; padding: 0;
+  }
+  .hud-btn i { display: block; width: 4px; height: 15px; border-radius: 2px; background: var(--c-gold); }
+  .hud-btn:hover { border-color: var(--c-gold); }
+
+  /* Objective chip: the one objective channel. Completion morphs the chip
+     (check + bonus) for a few seconds, then it collapses until next wave. */
+  #wave-objective {
+    display: none; align-items: center; gap: var(--sp-2); position: relative;
+    padding: 5px var(--sp-3) 7px; border-radius: var(--r-pill); overflow: hidden;
+    background: var(--glass); border: var(--stroke);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 2px; color: var(--c-cream);
+    white-space: nowrap; transition: opacity 0.5s, border-color 0.3s;
+  }
+  #wave-objective .obj-tag { font-family: var(--f-jp); font-weight: 700; font-size: 0.8em; color: var(--c-kanji); letter-spacing: 0; }
+  #wave-objective-count { color: var(--c-gold); font-variant-numeric: tabular-nums; }
+  .obj-prog { position: absolute; left: var(--sp-3); right: var(--sp-3); bottom: 3px; height: 2px; background: rgba(255, 230, 200, 0.15); border-radius: 1px; }
+  #wave-objective-bar { height: 100%; background: var(--c-gold); transform-origin: 0 50%; transform: scaleX(0); transition: transform 0.25s; }
+  #wave-objective.complete { border-color: var(--c-ok); color: var(--c-ok); animation: chipPop 0.45s ease-out; }
+  #wave-objective.complete .obj-tag::before { content: '✓ '; }
+  #wave-objective.complete #wave-objective-count { color: var(--c-ok); }
+  #wave-objective.complete #wave-objective-bar { background: var(--c-ok); }
+  #wave-objective.fade { opacity: 0; }
+  @keyframes chipPop { 0% { transform: scale(0.92); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
+
+  /* Boss bar (centre column, above the chip) */
+  #boss-bar { display: none; width: clamp(200px, 40vw, 520px); }
+  #boss-name { text-align: center; font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 5px; color: #ff5566; margin-bottom: 3px; }
+  .boss-track { height: clamp(8px, 1.6vmin, 14px); background: rgba(30, 0, 0, 0.6); border: var(--stroke-hot); border-radius: var(--r-pill); overflow: hidden; box-shadow: var(--glow); }
+  #boss-hp { height: 100%; background: linear-gradient(90deg, #ff2244, #ffaa44); transform-origin: 0 50%; transition: transform 0.2s; }
+
+  /* Powers: desktop = compact icon bar bottom centre with keycap badges;
+     touch = an arc of icon buttons round SMASH (see body.touch below). */
   #powers {
-    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-    display: flex; gap: 12px; z-index: 10;
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--safe-b) + var(--sp-2));
+    display: flex; gap: var(--sp-2); z-index: 10;
   }
+  .power-wrap { position: relative; width: 64px; height: 64px; }
   .power {
-    width: 78px; height: 78px; border-radius: 4px;
-    background:
-      linear-gradient(180deg, rgba(35, 6, 12, 0.85), rgba(10, 0, 5, 0.85));
-    border: 1px solid #c83246;
-    border-bottom: 3px solid #d3253c;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    color: #ffe6c8; text-align: center; cursor: pointer; user-select: none;
-    box-shadow:
-      0 0 12px rgba(211, 37, 60, 0.45),
-      inset 0 0 10px rgba(255, 80, 100, 0.08);
-    transition: transform 0.1s;
+    position: absolute; inset: 0; border-radius: var(--r);
+    background: var(--glass); border: var(--stroke);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    color: var(--c-cream); text-align: center; cursor: pointer; user-select: none;
+    transition: transform 0.1s, opacity 0.2s, box-shadow 0.2s, border-color 0.2s;
+    pointer-events: auto; touch-action: none;
   }
-  .power:hover { transform: translateY(-3px); }
-  .power.disabled { opacity: 0.4; }
-  .power .key {
-    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
-    font-size: 22px; font-weight: 400; color: #ffcc66; letter-spacing: 1px;
-    text-shadow: 0 0 8px #ff8866;
-  }
+  .power svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .power .name {
-    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
-    font-size: 10px; letter-spacing: 2px;
+    font-family: var(--f-display); font-size: 9px; letter-spacing: 1px; line-height: 1;
+    max-width: 58px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .power .key {
+    position: absolute; top: -6px; left: -6px; min-width: 20px; height: 18px; padding: 0 4px;
+    font-family: var(--f-display); font-size: 12px; line-height: 18px; letter-spacing: 1px; color: var(--c-ink);
+    background: var(--c-cream); border-radius: 4px; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
+  }
+  .power:active { transform: scale(0.92); }
+  /* States: ready = gold ring + glow; cooling = dark sweep + seconds;
+     short of rage = dimmed with a dashed ring */
+  .power-wrap.is-ready .power { border-color: var(--c-gold); box-shadow: var(--glow-ready); color: #fff; }
+  .power-wrap.is-ready.ult .power { animation: readyPulse 1.2s ease-in-out infinite alternate; }
+  .power-wrap.is-low .power { opacity: 0.5; border-style: dashed; border-color: var(--c-muted); }
+  .power-wrap.is-cd .power { color: var(--c-muted); }
+  @keyframes readyPulse { from { box-shadow: 0 0 6px rgba(255, 204, 102, 0.4); } to { box-shadow: 0 0 22px rgba(255, 204, 102, 0.95); } }
   .cooldown {
-    position: absolute; inset: 0; background: rgba(0,0,0,0.7);
-    border-radius: 10px; color: #fff; display: flex; align-items: center; justify-content: center;
-    font-size: 22px; font-weight: bold;
+    position: absolute; inset: 0; border-radius: var(--r); pointer-events: none;
+    display: none; align-items: center; justify-content: center;
+    background: conic-gradient(rgba(0, 0, 0, 0.66) calc(var(--cd, 0) * 360deg), rgba(0, 0, 0, 0.12) 0);
+    font-family: var(--f-display); font-size: 20px; letter-spacing: 1px; color: #fff;
   }
-  .power-wrap { position: relative; }
+  .power-wrap.is-cd .cooldown { display: flex; }
 
-  /* Crosshair / message */
+  /* Centre message (ultimate callouts) */
   #message {
-    position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
+    position: fixed; top: 34%; left: 50%; transform: translate(-50%, -50%);
     font-family: 'Yuji Mai', 'Bebas Neue', sans-serif;
-    font-size: 56px; letter-spacing: 6px; color: #ffe6b0; text-align: center;
-    text-shadow:
-      0 0 24px #ff2244,
-      0 0 10px #ffaa44,
-      4px 4px 0 #1a0006;
+    font-size: clamp(26px, 10px + 5vmin, 56px); letter-spacing: 6px; color: var(--c-cream); text-align: center;
+    text-shadow: 0 0 24px #ff2244, 0 0 10px #ffaa44, 4px 4px 0 #1a0006;
     pointer-events: none; z-index: 11; opacity: 0;
-    transition: opacity 0.3s;
+    transition: opacity 0.3s; white-space: nowrap;
   }
   #message.show { opacity: 1; }
 
-  /* Controls help */
+  /* Controls help (desktop; dims once the run is under way) */
   #help {
-    position: fixed; bottom: 16px; right: 16px; z-index: 10;
-    background: rgba(0,0,0,0.55); padding: 8px 12px; border-radius: 6px;
-    font-size: 12px; line-height: 1.5; color: #ddd; max-width: 220px;
-    border: 1px solid #444;
+    position: fixed; right: var(--safe-r); bottom: calc(var(--safe-b) + var(--sp-2)); z-index: 10;
+    background: var(--glass); padding: var(--sp-2) var(--sp-3); border-radius: var(--r); border: var(--stroke);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    font-size: var(--fs-cap); line-height: 1.55; color: #ddd; max-width: 230px;
+    transition: opacity 1.2s;
   }
-  #help b { color: #ffcc66; }
+  #help.dim { opacity: 0.28; }
+  #help b { color: var(--c-gold); }
+  /* Narrow desktops: the bar and help panel would meet, so the help panel goes */
+  @media (max-width: 1000px) { #help { display: none !important; } }
 
   /* Menus */
   .overlay {
@@ -534,95 +648,90 @@
     padding-top: 10px;
   }
 
-  /* ---------- Mobile / touch controls ---------- */
+  /* ---------- Touch controls ----------
+     body.touch = phones (isMobile) and any coarse-pointer device such as an
+     iPad, whose Mac UA keeps it off the phone quality path. */
   #mobile-ui { display: none; pointer-events: none; }
-  body.mobile #mobile-ui { display: block; }
-  body.mobile #help { display: none !important; }
+  body.touch #mobile-ui { display: block; }
+  body.touch #help { display: none !important; }
 
-  /* Safe-area aware HUD on mobile */
-  body.mobile #hud {
-    padding-top: max(8px, env(safe-area-inset-top));
-    padding-left: max(10px, env(safe-area-inset-left));
-    padding-right: max(10px, env(safe-area-inset-right));
+  /* Floating joystick: the base rests semi-transparent bottom-left and jumps
+     under the thumb wherever it lands in the lower-left zone. */
+  #joy-zone {
+    position: fixed; left: 0; bottom: 0; width: 45%; height: 68%;
+    z-index: 11; pointer-events: auto; touch-action: none;
   }
-
-  /* Joystick (left) */
   #joystick {
     position: fixed;
-    bottom: max(20px, calc(env(safe-area-inset-bottom) + 16px));
-    left: max(16px, calc(env(safe-area-inset-left) + 12px));
-    width: 130px; height: 130px; border-radius: 50%;
-    background: rgba(0,0,0,0.35); border: 2px solid rgba(255,80,100,0.5);
-    box-shadow: 0 0 20px rgba(255,80,100,0.3) inset;
-    z-index: 12; pointer-events: auto; touch-action: none;
+    left: calc(var(--safe-l) + var(--sp-3)); bottom: calc(var(--safe-b) + var(--sp-3));
+    width: var(--joy); height: var(--joy); border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 0, 0, 0.12) 40%, rgba(0, 0, 0, 0.3) 100%);
+    border: 2px solid rgba(255, 230, 200, 0.28);
+    z-index: 12; pointer-events: none; opacity: 0.45; transition: opacity 0.15s;
   }
+  #joystick.active { opacity: 1; border-color: rgba(255, 204, 102, 0.55); }
   #joystick .knob {
     position: absolute; top: 50%; left: 50%;
-    width: 60px; height: 60px; border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, #ff7788, #aa2233);
+    width: 44%; height: 44%; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ff8899, #aa2233);
+    border: 1px solid rgba(255, 230, 200, 0.5);
     transform: translate(-50%, -50%);
-    box-shadow: 0 0 14px rgba(255,80,100,0.6);
-    pointer-events: none;
+    box-shadow: 0 0 12px rgba(255, 80, 100, 0.5);
   }
 
-  /* Attack button (right) */
+  /* SMASH: bottom-right anchor that the ability arc is centred on */
   #attack-btn {
     position: fixed;
-    bottom: max(28px, calc(env(safe-area-inset-bottom) + 22px));
-    right: max(16px, calc(env(safe-area-inset-right) + 12px));
-    width: 100px; height: 100px; border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, #ff5566, #880022);
-    border: 3px solid #ffcc66;
-    color: #fff; font-weight: bold; font-size: 16px; letter-spacing: 2px;
-    text-shadow: 2px 2px 0 #000;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 0 24px rgba(255,80,100,0.6);
-    z-index: 12; pointer-events: auto; touch-action: none;
-    user-select: none;
+    right: calc(var(--safe-r) + var(--sp-3)); bottom: calc(var(--safe-b) + var(--sp-3));
+    width: var(--smash); height: var(--smash); border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(255, 85, 102, 0.92), rgba(136, 0, 34, 0.92));
+    border: 2px solid var(--c-gold);
+    color: #fff; font-family: var(--f-display); font-size: calc(var(--smash) * 0.2); letter-spacing: 2px;
+    text-shadow: var(--txt-outline);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1;
+    box-shadow: var(--glow);
+    z-index: 12; pointer-events: auto; touch-action: none; user-select: none;
   }
-  #attack-btn:active { transform: scale(0.92); background: radial-gradient(circle at 30% 30%, #ffaa66, #aa3322); }
+  #attack-btn small { font-family: var(--f-jp); font-weight: 700; font-size: 0.55em; color: var(--c-gold); letter-spacing: 0; margin-top: 2px; }
+  #attack-btn:active { transform: scale(0.92); background: radial-gradient(circle at 35% 30%, #ffaa66, #aa3322); }
 
-  /* Sprint toggle button */
+  /* RUN toggle: left thumb, above the joystick's rest spot */
   #sprint-btn {
     position: fixed;
-    bottom: max(140px, calc(env(safe-area-inset-bottom) + 130px));
-    right: max(28px, calc(env(safe-area-inset-right) + 22px));
-    width: 64px; height: 64px; border-radius: 50%;
-    background: rgba(0,0,0,0.55); border: 2px solid #66aaff;
-    color: #aaccff; font-weight: bold; font-size: 12px; letter-spacing: 2px;
+    left: calc(var(--safe-l) + var(--sp-3));
+    bottom: calc(var(--safe-b) + var(--sp-3) + var(--joy) + var(--sp-3));
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--glass); border: 2px solid rgba(136, 204, 255, 0.6);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    color: var(--c-cool); font-family: var(--f-display); font-size: 13px; letter-spacing: 2px;
     display: flex; align-items: center; justify-content: center;
     z-index: 12; pointer-events: auto; touch-action: none;
   }
-  #sprint-btn.on { background: rgba(80,140,200,0.8); color: #fff; }
+  #sprint-btn.on { background: rgba(80, 140, 200, 0.85); border-style: solid; color: #fff; box-shadow: 0 0 14px rgba(136, 204, 255, 0.7); }
+  #sprint-btn.on::after { content: ' ON'; margin-left: 2px; font-size: 9px; }
 
-  /* Pause button */
-  #pause-btn {
-    position: fixed;
-    top: max(6px, calc(env(safe-area-inset-top) + 4px));
-    left: 50%; transform: translateX(-50%);
-    width: 36px; height: 36px; border-radius: 50%;
-    background: rgba(0,0,0,0.6); border: 1px solid #ffcc66;
-    color: #ffcc66; font-size: 16px;
-    display: flex; align-items: center; justify-content: center;
-    z-index: 13; pointer-events: auto; touch-action: none;
+  /* Ability arc: #powers collapses to the centre point of SMASH and each
+     button sits on a circle round it (--a = angle, 0 = right, 90 = up). */
+  body.touch #powers {
+    left: auto; transform: none; display: block; width: 0; height: 0; gap: 0;
+    right: calc(var(--safe-r) + var(--sp-3) + var(--smash) / 2);
+    bottom: calc(var(--safe-b) + var(--sp-3) + var(--smash) / 2);
+    z-index: 12;
   }
-
-  /* Mobile HUD shrinks */
-  body.mobile #hud { padding: 6px 10px; font-size: 12px; }
-  body.mobile .panel { min-width: 0; padding: 6px 8px; }
-  body.mobile .label { font-size: 9px; letter-spacing: 1px; }
-  body.mobile .value { font-size: 14px; }
-  body.mobile #score { font-size: 18px; }
-  body.mobile .bar { height: 9px; }
-  body.mobile #powers {
-    gap: 6px;
-    bottom: max(8px, calc(env(safe-area-inset-bottom) + 4px));
-    /* Keep power buttons clear of the joystick + attack button */
-    left: 50%; transform: translateX(-50%);
+  body.touch .power-wrap {
+    position: absolute; width: var(--pw); height: var(--pw);
+    left: calc(cos(var(--a)) * var(--arc-r) - var(--pw) / 2);
+    top: calc(sin(var(--a)) * var(--arc-r) * -1 - var(--pw) / 2);
   }
-  body.mobile .power { width: 54px; height: 54px; }
-  body.mobile .power .key { font-size: 14px; }
-  body.mobile .power .name { font-size: 9px; }
+  body.touch .power-wrap:nth-child(4) { --a: 192deg; } /* stomp: lowest, nearest the thumb */
+  body.touch .power-wrap:nth-child(1) { --a: 165deg; } /* beam */
+  body.touch .power-wrap:nth-child(2) { --a: 138deg; } /* roar */
+  body.touch .power-wrap:nth-child(3) { --a: 111deg; } /* charge */
+  body.touch .power-wrap:nth-child(5) { --a: 84deg; }  /* ultimate: top, hard to hit by accident */
+  body.touch .power, body.touch .cooldown { border-radius: 50%; }
+  body.touch .power svg { width: 45%; height: 45%; }
+  body.touch .power .name, body.touch .power .key { display: none; }
+  body.touch .cooldown { font-size: calc(var(--pw) * 0.34); }
 
   /* Mobile menu — must fit a 390px iPhone landscape height with no scroll */
   body.mobile .overlay {
@@ -1232,23 +1341,23 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.21",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.21",
-    "./src/audio.js": "./src/audio.js?v=1.11.21",
-    "./src/city.js": "./src/city.js?v=1.11.21",
-    "./src/effects.js": "./src/effects.js?v=1.11.21",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.21",
-    "./src/game.js": "./src/game.js?v=1.11.21",
-    "./src/intro.js": "./src/intro.js?v=1.11.21",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.21",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.21",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.21",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.21",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.21",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.21",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.21",
-    "./src/quality.js": "./src/quality.js?v=1.11.21",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.21"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.22",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.22",
+    "./src/audio.js": "./src/audio.js?v=1.11.22",
+    "./src/city.js": "./src/city.js?v=1.11.22",
+    "./src/effects.js": "./src/effects.js?v=1.11.22",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.22",
+    "./src/game.js": "./src/game.js?v=1.11.22",
+    "./src/intro.js": "./src/intro.js?v=1.11.22",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.22",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.22",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.22",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.22",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.22",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.22",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.22",
+    "./src/quality.js": "./src/quality.js?v=1.11.22",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.22"
   }
 }
 </script>
@@ -1262,7 +1371,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.21"></script>
-<script type="module" async src="./src/intro.js?v=1.11.21"></script>
+<script type="module" src="./src/game.js?v=1.11.22"></script>
+<script type="module" async src="./src/intro.js?v=1.11.22"></script>
 </body>
 </html>
