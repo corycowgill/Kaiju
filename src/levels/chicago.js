@@ -1150,6 +1150,7 @@ export function buildChicago(scene, world, opts, K) {
   const B = L.bounds;
   const animators = [];
   const STREET_TILE = K.TILE.STREET, SW_TILE = K.TILE.SIDEWALK;
+  const ASPHALT_TILE = L.real ? 2 : STREET_TILE;
   // Real-scale map: narrower sidewalks, smaller markings and street furniture
   const REAL = L.real;
   const SIDEWALK_W = REAL ? 1.2 : 3.0;
@@ -1357,10 +1358,14 @@ export function buildChicago(scene, world, opts, K) {
   {
     const asphalt = roadMat = new THREE.MeshStandardMaterial({
       map: K.loadTileTex('asphalt_color.jpg', 1, 1), normalMap: K.loadDataTex('asphalt_normal.jpg', 1, 1),
-      normalScale: new THREE.Vector2(1.4, 1.4), roughnessMap: K.loadDataTex('asphalt_roughness.jpg', 1, 1),
-      aoMap: K.loadDataTex('asphalt_ao.jpg', 1, 1), aoMapIntensity: 0.7, roughness: 0.82, metalness: 0.08, color: 0x9a9a9a,
+      normalScale: new THREE.Vector2(0.7, 0.7), roughnessMap: K.loadDataTex('asphalt_roughness.jpg', 1, 1),
+      // The texture averages a cool (125, 134, 156): this tint takes it to a
+      // dark neutral warm grey (~(78, 76, 72) sRGB) under the noon sun
+      aoMap: K.loadDataTex('asphalt_ao.jpg', 1, 1), aoMapIntensity: 0.7, roughness: 0.9, metalness: 0.02, color: 0xa3957a,
     });
-    const uvs = 1 / STREET_TILE;
+    // Real-scale map: one texture repeat per ASPHALT_TILE (10 m), not Tokyo's
+    // 12u (60 m here), whose coarse grain read as gravel at street level
+    const uvs = 1 / ASPHALT_TILE;
     // Each net edge separately so sidewalks/markings can be trimmed at junctions
     const nodeW = new Float32Array(net.nodes.length); // widest road at each node
     for (const e of net.edges) {
@@ -1506,7 +1511,7 @@ export function buildChicago(scene, world, opts, K) {
       M.ballast.needsUpdate = M.gravel.needsUpdate = true;
     }
     const plaza = { parking: roadMat, railyard: M.ballast, gravel: M.gravel, paved: swMat }[p.surface] || M.lot;
-    const uv = p.kind === 'plaza' && ['parking', 'railyard', 'gravel'].includes(p.surface) ? 1 / STREET_TILE : p.surface === 'paved' ? 1 / SW_TILE : 1 / 14;
+    const uv = p.kind === 'plaza' && p.surface === 'parking' ? 1 / ASPHALT_TILE : p.kind === 'plaza' && ['railyard', 'gravel'].includes(p.surface) ? 1 / STREET_TILE : p.surface === 'paved' ? 1 / SW_TILE : 1 / 14;
     const base = p.kind === 'plaza' ? plaza : p.kind === 'beach' ? M.sand : p.kind === 'lawn' ? M.lawn : M.grass;
     // Landuse fill overlaps the older park polygons at the same height: its
     // own draw order (yards, lawns, gardens, then lots and paving) by depth offset
@@ -2395,7 +2400,7 @@ export function buildChicago(scene, world, opts, K) {
     for (const poly of S.lawns) if (poly.length >= 3 && !covered(poly)) addBatch(polygonGeom(poly, 0.031, 1 / 14, holesIn(poly)), decal(M.lawn, 1));
     flat(S.gardens, 0.032, decal(M.grass, 2), 14);
     flat(paved, 0.033, decal(swMat, 3), SW_TILE);
-    flat(lots.map((p) => p.polygon), 0.034, decal(roadMat, 3), STREET_TILE);
+    flat(lots.map((p) => p.polygon), 0.034, decal(roadMat, 3), ASPHALT_TILE);
     for (const q of S.paths) addBatch(ribbon(q.points, -Math.max(0.3, q.width / 2), Math.max(0.3, q.width / 2), 0.036), decal(M.path, 4));
     flat(S.water, 0.04, decal(M.water, 5), 14);
     // Parked cars: E-W stall rows on a 2.3 x 6u grid inside each lot,
