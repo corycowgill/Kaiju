@@ -426,10 +426,19 @@ function _normalizeLayout(L) {
     // a generic block kit piece can't stand in for a 105 m x 10 m wall
     .filter((o) => !(o.podiumOf === 'soldier_field' && !_kit('soldier_field_wing')))
     .filter((o) => o.w > 0.5 && o.d > 0.5 && o.h > 0.5);
-  // Facades stop 0.9u past the kerb (the sidewalk's outer part runs under
-  // them): the full 1.2 + 0.3 setback on top of the gameplay-widened roads
-  // left only ~half of the Loop's building area standing
-  if (out.real) _clearRoads(out.buildings, out.roads, 0.9);
+  // Facades stop at a real Loop sidewalk, 0.6u (3 m) past the kerb: the old
+  // 1.2 + 0.3 setback on top of the gameplay-widened roads left only about
+  // half the Loop's building area standing. Street furniture lives in that
+  // strip. The L structure (and its stations) clears buildings the same way
+  const SIDEWALK_REAL = 0.6;
+  if (out.real) {
+    const railRibbons = out.rail.map((r) => ({ width: r.width + 0.6 - 2 * SIDEWALK_REAL, points: r.points }));
+    const stationRibbons = out.stations.map((st) => {
+      const ux = Math.cos(st.rotY), uz = -Math.sin(st.rotY), hl = st.length / 2;
+      return { width: 9 - 2 * SIDEWALK_REAL, points: [[st.x - ux * hl, st.z - uz * hl], [st.x + ux * hl, st.z + uz * hl]] };
+    });
+    _clearRoads(out.buildings, [...out.roads, ...railRibbons, ...stationRibbons], SIDEWALK_REAL, out.water.map((w) => w.polygon));
+  }
   const dus = (L.landmarks || []).find((o) => o.id === 'dusable_bridge');
   out.dusable = dus ? [+dus.x, +dus.z] : null;
   out.landmarks = (L.landmarks || []).filter((o) => !KIT_IDS.has(o.id)).map((o) => ({
@@ -443,7 +452,8 @@ function _normalizeLayout(L) {
 /** Trim (and nudge) building boxes back from the road ribbons: every road
  *  segment whose half width + `margin` reaches into a box pushes that face
  *  back; the box keeps at least 45% of each side. */
-function _clearRoads(buildings, roads, margin) {
+function _clearRoads(buildings, roads, margin, water = []) {
+  const wet = (x, z) => water.some((poly) => pointInPoly(x, z, poly));
   const CELL = 24;
   const segs = new Map();
   for (const r of roads) {
@@ -483,10 +493,14 @@ function _clearRoads(buildings, roads, margin) {
         const sgn = dist >= 0 ? 1 : -1;
         const alongX = Math.abs(ax[0] * nx + ax[1] * nz) >= Math.abs(az[0] * nx + az[1] * nz);
         const cur = alongX ? o.w : o.d, min = (alongX ? w0 : d0) * 0.45;
-        const cut = Math.min(over, cur - min);
-        if (cut <= 0) continue;
+        const cut = Math.max(0, Math.min(over, cur - min));
         if (alongX) o.w -= cut; else o.d -= cut;
-        o.x += nx * sgn * cut / 2; o.z += nz * sgn * cut / 2;
+        // At the 45% floor the rest of the overlap moves the box back off
+        // the street instead (it stood in the kerb lane otherwise)
+        let push = cut / 2 + Math.min(1, over - cut);
+        // Riverside: never toward the water (4u clear past the far face)
+        if (wet(o.x + nx * sgn * (push + ex + 4), o.z + nz * sgn * (push + ex + 4))) push = cut / 2;
+        o.x += nx * sgn * push; o.z += nz * sgn * push;
       }
     }
   }
@@ -1680,22 +1694,29 @@ export function buildChicago(scene, world, opts, K) {
     // split into a grid of lots ~1.5x its height, each its own kit pick at a
     // slightly varied height; on 3x3 and up the interior cells stay open
     // (light courts, alleys)
-    if (!o.cell && REAL && o.h < 7) {
-      const cell = Math.max(o.h * 1.5, 6);
-      const nx = Math.min(4, Math.max(1, Math.round(o.w / cell))), nz = Math.min(4, Math.max(1, Math.round(o.d / cell)));
+    // Mid-rises (18-40u) split the same way into up to 3 x 3 towers of their
+    // own picks: a single tower model scaled to the block height stood on a
+    // fraction of a Palmer House / Block 37 sized footprint
+    if (!o.cell && REAL && (o.h < 7 || (o.h >= 18 && o.h < 40))) {
+      const mid = o.h >= 18;
+      const cell = mid ? Math.max(o.h * 0.75, 8) : Math.max(o.h * 1.5, 6);
+      const cap = mid ? 3 : 4;
+      const nx = Math.min(cap, Math.max(1, Math.round(o.w / cell))), nz = Math.min(cap, Math.max(1, Math.round(o.d / cell)));
       if (nx * nz > 1) {
         const r = o.rotY || 0, cw = o.w / nx, cd = o.d / nz;
         const ax = [Math.cos(r), -Math.sin(r)], az = [Math.sin(r), Math.cos(r)];
         for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
           if (nx >= 3 && nz >= 3 && i > 0 && i < nx - 1 && j > 0 && j < nz - 1) continue;
           const u = (i + 0.5) * cw - o.w / 2, v = (j + 0.5) * cd - o.d / 2;
+          const hv = o.h * (0.85 + Math.random() * 0.3);
           placeBlock({ ...o, cell: true, x: o.x + ax[0] * u + az[0] * v, z: o.z + ax[1] * u + az[1] * v, w: cw, d: cd,
-            h: Math.min(6.9, o.h * (0.85 + Math.random() * 0.3)) });
+            h: mid ? Math.min(39.9, Math.max(18, hv)) : Math.min(6.9, hv) });
         }
         return;
       }
     }
     const b = new K.Building(o.x, o.z, aw, ad, o.h, { skipWindows: true, color });
+    b.layoutId = o.id; // the layout footprint it stands on (cells share it)
     b._skipBodyIM = true;
     // Repeat a low / short piece across a lot it can't cover alone (city.js);
     // towers stay single (a twin of a mid-rise reads as a copy-paste)
@@ -1710,8 +1731,10 @@ export function buildChicago(scene, world, opts, K) {
     const k = cx + ':' + cz;
     if (!picked.has(k)) picked.set(k, []);
     picked.get(k).push(url);
-    // Kit pieces stretch up to 1.3x per axis to fill the footprint (artist-approved)
-    K.queueGLB({ url, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool, stretch: 1.3 });
+    // Kit pieces stretch up to 1.3x per axis to fill the footprint (artist-
+    // approved); low / short fill pieces up to 1.6x in plan (never taller
+    // than the block), then repeat across what's left
+    K.queueGLB({ url, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool, stretch: b.fillFootprint ? 1.6 : 1.3 });
   };
   // Every block on every tier: phones used to skip 40% of the blocks under
   // 16u (~110 empty grey lots in the Loop), but the kit is instanced per
@@ -2198,7 +2221,7 @@ export function buildChicago(scene, world, opts, K) {
       if (w < lampMinW) continue;
       for (let t = Math.min(6, e.len / 2); t < e.len - 3; t += lampEvery) {
         const s = (n++ % 2) ? 1 : -1;
-        const off = s * (w / 2 + SIDEWALK_W * 0.25);
+        const off = s * (w / 2 + (REAL ? 0.25 : SIDEWALK_W * 0.25)); // in the 0.6u strip
         const x = net.nodes[e.a].x + e.dx * t - e.dz * off, z = net.nodes[e.a].z + e.dz * t + e.dx * off;
         if (isWater(x, z) || onFest(x, z)) continue;
         const lamp = hasLamp ? K.cloneProp(lampName, 5.6 * PS) : makeChiLamp();
@@ -2233,7 +2256,7 @@ export function buildChicago(scene, world, opts, K) {
         placed.push([node.x, node.z]);
         const ux = e.a === ni ? e.dx : -e.dx, uz = e.a === ni ? e.dz : -e.dz; // away from the junction
         const ry = Math.atan2(ux, uz); // +Z -> u; +X -> (uz, -ux)
-        const back = w / 2 + SIDEWALK_W * 1.2, side = w / 2 + SIDEWALK_W * 0.5;
+        const back = w / 2 + SIDEWALK_W * 1.2, side = w / 2 + (REAL ? 0.35 : SIDEWALK_W * 0.5);
         const sig = K.cloneProp('chi_traffic_signal', 6.4 * PS);
         sig.position.set(node.x + ux * back - uz * side, 0, node.z + uz * back + ux * side);
         sig.rotation.y = ry;
@@ -2268,7 +2291,7 @@ export function buildChicago(scene, world, opts, K) {
       const w = e.laneOff * 4;
       const t = e.len * (0.2 + Math.random() * 0.6);
       const s = Math.random() < 0.5 ? 1 : -1;
-      const off = s * (w / 2 + SIDEWALK_W * 0.55);
+      const off = s * (w / 2 + (REAL ? 0.3 : SIDEWALK_W * 0.55)); // shelters and carts at the kerb
       const x = net.nodes[e.a].x + e.dx * t - e.dz * off, z = net.nodes[e.a].z + e.dz * t + e.dx * off;
       if (isWater(x, z) || onFest(x, z)) continue;
       const shelter = i < shelterN;
@@ -2356,7 +2379,7 @@ export function buildChicago(scene, world, opts, K) {
         const [mx, mz] = mid(e);
         if (used.some(([x, z]) => Math.abs(x - mx) < 40 && Math.abs(z - mz) < 40)) continue;
         const side = Math.random() < 0.5 ? 1 : -1;
-        const off = side * (e.laneOff * 2 + SIDEWALK_W * 0.55);
+        const off = side * (e.laneOff * 2 + (REAL ? 0.35 : SIDEWALK_W * 0.55));
         const x = mx - e.dz * off, z = mz + e.dx * off;
         if (isWater(x, z) || onLandmark(x, z)) continue;
         used.push([mx, mz]);
@@ -2373,7 +2396,7 @@ export function buildChicago(scene, world, opts, K) {
       const w = e.laneOff * 4;
       if (w < (REAL ? 8 : 0)) continue;
       corner++;
-      const co = w / 2 + SIDEWALK_W * 0.5;
+      const co = w / 2 + (REAL ? 0.35 : SIDEWALK_W * 0.5);
       const ry = Math.atan2(e.dx, e.dz);
       if (corner % 2 === 0 && spots.planter_bollard.length < (lite ? 40 : 120)) {
         for (const sgn of [-1, 1]) {
@@ -2381,7 +2404,8 @@ export function buildChicago(scene, world, opts, K) {
         }
       }
       if (corner % 3 === 1 && spots.newspaper_box_cluster.length < (lite ? 15 : 45)) {
-        spots.newspaper_box_cluster.push({ x: node.x + (e.dx + e.dz) * co * 1.4, z: node.z + (e.dz - e.dx) * co * 1.4, ry: ry + Math.PI / 2 });
+        const nk = REAL ? 1 : 1.4; // real scale: on the corner, not inside the corner building
+        spots.newspaper_box_cluster.push({ x: node.x + (e.dx + e.dz) * co * nk, z: node.z + (e.dz - e.dx) * co * nk, ry: ry + Math.PI / 2 });
       }
     }
     // Lakefront Trail benches: every ~25u along the shore, on the land side, facing the water
@@ -2517,7 +2541,7 @@ export function buildChicago(scene, world, opts, K) {
       while (ei < net.edges.length - 1 && r > net.edges[ei].len) { r -= net.edges[ei].len; ei++; }
       const e = net.edges[ei];
       if (!e) break;
-      const off = (Math.random() < 0.5 ? 1 : -1) * (e.laneOff * 2 + (REAL ? 0.6 : 1.5)); // mid-sidewalk
+      const off = (Math.random() < 0.5 ? 1 : -1) * (e.laneOff * 2 + (REAL ? 0.4 : 1.5)); // on the sidewalk
       const x = net.nodes[e.a].x + e.dx * r - e.dz * off, z = net.nodes[e.a].z + e.dz * r + e.dx * off;
       if (!isWater(x, z) && x > B.minX && x < B.maxX && z > B.minZ && z < B.maxZ) return [x, z];
     }
