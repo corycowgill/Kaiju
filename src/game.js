@@ -26,7 +26,7 @@ import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
 import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce, onGLBParsed, canonMaterialMaps } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
-import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes } from './vfx.js';
+import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
 // ------------------------- High score (localStorage) -------------------------
@@ -1924,6 +1924,14 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
   const run = _linkAsync(stage);
   if (kaijuRoot) stage.remove(kaijuRoot); // compile() already ran synchronously
   const city = _linkAsync(scene);
+  // Phones: the effect set too. Queued at the first frame, it hadn't drained
+  // when the first powers fired (0.4-1 s blocks at +4 s).
+  let fxLink = null;
+  if (isMobile && !_vfxLinked) {
+    _vfxStaged = new THREE.Group();
+    for (const g of _stageVfx()) _vfxStaged.add(g);
+    _vfxLinked = fxLink = _linkAsync(_vfxStaged);
+  }
   // ...and the shadow pass's depth variants of all of it. That pass draws
   // with the scene's lights but a null scene, so no fog in their keys.
   const fog = scene.fog;
@@ -1931,7 +1939,7 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
   const depth = _linkAsync(_depthStandIns([scene, stage, kaijuRoot].filter(Boolean)));
   scene.fog = fog;
   let finished = false;
-  const all = Promise.all([run, city, depth]).then(() => { finished = true; });
+  const all = Promise.all([run, city, fxLink, depth]).then(() => { finished = true; });
   while (!finished && performance.now() - t0 < 60000) {
     if (onProgress) {
       const progs = renderer.info.programs;
@@ -1940,6 +1948,14 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
     _drainTexQueue(8);
     await Promise.race([all, new Promise((r) => setTimeout(r, 50))]);
   }
+  // Their first-use lookups too (a sync round trip each), while nothing waits
+  if (fxLink) _vfxStaged.traverse((o) => {
+    const pr = o.material && !Array.isArray(o.material) && renderer.properties.get(o.material).currentProgram;
+    if (pr && pr.isReady()) { pr.getUniforms(); pr.getAttributes(); }
+  });
+  // The effect sheets aren't in the scene: their first upload (and mipmaps)
+  // stalled the GPU 0.9-3.8 s when the first powers fired
+  for (const t of effectTextures()) _texQueue.add(t);
   await _preuploadTextures([scene, stage, kaijuRoot]);
   // One warm frame behind the opaque loading screen, shadow pass back on and
   // the staged kaiju/enemies in the scene unculled: links the shadow-depth

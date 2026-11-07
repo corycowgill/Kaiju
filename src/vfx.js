@@ -78,6 +78,10 @@ export function init(_scene) {
   }
 }
 
+/** Every effect texture loaded so far (flipbook sheets, the noise texture),
+ *  for uploading behind the loading screen instead of on first use. */
+export function effectTextures() { return [...Object.values(_flipTex), NOISE_TEX]; }
+
 export function tick(_dt) {
   if (!initialized) return;
   _tickScorch();
