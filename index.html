@@ -509,7 +509,7 @@
     color: #ffcc66; background: rgba(20, 2, 6, 0.7); border: 1px solid #883344; border-radius: 2px;
   }
   button.trailer-btn:hover { border-color: #ffcc66; color: #fff0d0; }
-  body.mobile button.trailer-btn { margin-top: 4px; padding: 3px 12px; font-size: 11px; letter-spacing: 3px; }
+  @media (max-height: 540px) { button.trailer-btn { margin-top: 4px; padding: 3px 12px; font-size: 11px; letter-spacing: 3px; } }
   #trailer-modal {
     position: fixed; inset: 0; z-index: 10000; background: rgba(0, 0, 0, 0.88);
     display: flex; align-items: center; justify-content: center;
@@ -631,7 +631,7 @@
   #wave-banner {
     position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%);
     font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
-    font-size: 78px; letter-spacing: 14px; color: #ffe6c8; text-align: center;
+    font-size: var(--fs-banner); letter-spacing: 0.18em; color: #ffe6c8; text-align: center; white-space: nowrap;
     text-shadow:
       0 0 36px #ff2244,
       0 0 14px #ffaa44,
@@ -642,7 +642,7 @@
   #wave-banner small {
     display: block;
     font-family: 'Yuji Mai', 'Noto Sans JP', serif;
-    font-size: 24px; color: #ff9966; letter-spacing: 8px;
+    font-size: 0.32em; color: #ff9966; letter-spacing: 0.33em;
     margin-top: 14px;
     border-top: 1px solid rgba(255,150,100,0.35);
     padding-top: 10px;
@@ -733,84 +733,113 @@
   body.touch .power .name, body.touch .power .key { display: none; }
   body.touch .cooldown { font-size: calc(var(--pw) * 0.34); }
 
-  /* Mobile menu — must fit a 390px iPhone landscape height with no scroll */
-  body.mobile .overlay {
-    padding-top: max(8px, env(safe-area-inset-top));
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-    padding-left: max(10px, env(safe-area-inset-left));
-    padding-right: max(10px, env(safe-area-inset-right));
-    overflow: hidden;
-    justify-content: center;
-    gap: 4px;
+  /* Short screens (phones in landscape, small or 200%-zoomed desktop windows):
+     the menus compact to fit ~360-430 px of height. `safe center` keeps the
+     top reachable (scrolls) instead of clipping the title when it still overflows. */
+  .overlay { justify-content: safe center; }
+  @media (max-height: 540px) {
+    .overlay {
+      padding-top: max(8px, env(safe-area-inset-top));
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
+      padding-left: max(10px, env(safe-area-inset-left));
+      padding-right: max(10px, env(safe-area-inset-right));
+      justify-content: safe center;
+      gap: 4px;
+    }
+    .overlay h1 {
+      font-size: 32px; letter-spacing: 4px; margin-bottom: 0; line-height: 1.0; gap: 10px;
+    }
+    .overlay h1 .kanji { font-size: 1.0em; }
+    .overlay h1::before { width: 160px; height: 160px; }
+    .overlay h2 {
+      font-size: 11px; letter-spacing: 4px; margin: 6px 0 6px 0; padding: 4px 12px;
+    }
+    .overlay h2::before, .overlay h2::after { margin: 0 5px; font-size: 9px; }
+    #menu .starring { font-size: 10px; letter-spacing: 8px; margin: 4px 0 6px 0; gap: 8px; }
+    #menu .starring::before, #menu .starring::after { max-width: 60px; }
+    #menu .studio { font-size: 9px; letter-spacing: 3px; margin-top: 6px; }
+    #menu::before { font-size: 280px; opacity: 0.7; }
+    #menu::after { display: none; } /* drop film strips on mobile to save vertical space */
+    #highscore-display { font-size: 10px; letter-spacing: 2px; margin-bottom: 6px; }
+    .monsters { gap: 8px; flex-wrap: nowrap; max-width: 100%; }
+    .monster-card {
+      flex: 1 1 0;
+      width: auto;
+      min-width: 0;
+      max-width: 32%;
+      padding: 6px 8px;
+    }
+    .monster-card .preview { height: 46px; font-size: 26px; margin-bottom: 4px; border-radius: 4px; }
+    .monster-card h3 { font-size: 13px; margin-bottom: 2px; }
+    .monster-card p { font-size: 9.5px; line-height: 1.25; margin-bottom: 2px; }
+    .monster-card .stat { font-size: 8.5px; margin-top: 1px; line-height: 1.2; }
+    /* Only keep the first stat row visible on mobile to save vertical space */
+    .monster-card .stat ~ .stat { display: none; }
+    button.start-btn {
+      padding: 8px 24px; font-size: 14px; margin-top: 8px;
+      letter-spacing: 3px; border-width: 2px;
+    }
+    #menu .menu-hint { display: none; }
+    #menu .starring { display: none; }
+    #gameover #goTitle { font-size: 34px; }
+    #gameover .go-score-big { font-size: 30px; margin: 2px 0 0; }
+    #gameover #goSubtitle { margin-bottom: 4px; }
+    #gameover .stats-grid { gap: 0 24px; margin: 4px auto; }
+    #gameover .stats-row { font-size: 13px; padding: 2px 0; }
+    #gameover .stats-row b { font-size: 14px; }
+    #gameover .stats-divider { margin: 4px auto; }
+    #upgrade-modal { gap: 10px; }
+    #upgrade-modal h2 { font-size: 22px; }
+    .ucard { width: 30%; min-width: 130px; padding: 10px; }
+    .ucard h3 { font-size: 14px; }
+    .ucard p { font-size: 10px; }
+    .levels { gap: 8px; margin: 0 0 4px 0; }
+    .level-card { min-width: 0; padding: 3px 12px; }
+    .level-card b { font-size: 12px; letter-spacing: 2px; }
+    .level-card span { display: none; }
   }
-  body.mobile .overlay h1 {
-    font-size: 32px; letter-spacing: 4px; margin-bottom: 0; line-height: 1.0; gap: 10px;
-  }
-  body.mobile .overlay h1 .kanji { font-size: 1.0em; }
-  body.mobile .overlay h1::before { width: 160px; height: 160px; }
-  body.mobile .overlay h2 {
-    font-size: 11px; letter-spacing: 4px; margin: 6px 0 6px 0; padding: 4px 12px;
-  }
-  body.mobile .overlay h2::before, body.mobile .overlay h2::after { margin: 0 5px; font-size: 9px; }
-  body.mobile #menu .starring { font-size: 10px; letter-spacing: 8px; margin: 4px 0 6px 0; gap: 8px; }
-  body.mobile #menu .starring::before, body.mobile #menu .starring::after { max-width: 60px; }
-  body.mobile #menu .studio { font-size: 9px; letter-spacing: 3px; margin-top: 6px; }
-  body.mobile #menu::before { font-size: 280px; opacity: 0.7; }
-  body.mobile #menu::after { display: none; } /* drop film strips on mobile to save vertical space */
-  body.mobile #highscore-display { font-size: 10px; letter-spacing: 2px; margin-bottom: 6px; }
-  body.mobile .monsters { gap: 8px; flex-wrap: nowrap; max-width: 100%; }
-  body.mobile .monster-card {
-    flex: 1 1 0;
-    width: auto;
-    min-width: 0;
-    max-width: 32%;
-    padding: 6px 8px;
-  }
-  body.mobile .monster-card .preview { height: 46px; font-size: 26px; margin-bottom: 4px; border-radius: 4px; }
-  body.mobile .monster-card h3 { font-size: 13px; margin-bottom: 2px; }
-  body.mobile .monster-card p { font-size: 9.5px; line-height: 1.25; margin-bottom: 2px; }
-  body.mobile .monster-card .stat { font-size: 8.5px; margin-top: 1px; line-height: 1.2; }
-  /* Only keep the first stat row visible on mobile to save vertical space */
-  body.mobile .monster-card .stat ~ .stat { display: none; }
-  body.mobile button.start-btn {
-    padding: 8px 24px; font-size: 14px; margin-top: 8px;
-    letter-spacing: 3px; border-width: 2px;
-  }
-  body.mobile #menu .menu-hint { display: none; }
+  body.touch #menu .menu-hint { display: none; }
 
-  /* Landscape hint */
+  /* Landscape-only: twin-thumb controls and the third-person camera need
+     the width, so phones in portrait get a rotate prompt */
   #rotate-hint {
-    position: fixed; inset: 0; background: #000; z-index: 1000;
+    position: fixed; inset: 0; z-index: 1000;
+    background: radial-gradient(ellipse at center, #260308 0%, #0a0103 75%);
     display: none; align-items: center; justify-content: center;
-    flex-direction: column; gap: 16px; text-align: center; padding: 20px;
+    flex-direction: column; gap: var(--sp-4); text-align: center; padding: var(--sp-5);
   }
-  #rotate-hint .icon { font-size: 64px; animation: rot 1.6s ease-in-out infinite; }
+  #rotate-hint .icon {
+    width: 46px; height: 78px; border: 3px solid var(--c-gold); border-radius: 9px; position: relative;
+    box-shadow: var(--glow); animation: rot 1.8s ease-in-out infinite;
+  }
+  #rotate-hint .icon::after { content: ''; position: absolute; left: 50%; bottom: 5px; width: 12px; height: 3px; margin-left: -6px; border-radius: 2px; background: var(--c-gold); }
+  #rotate-hint .rh-title { font-family: var(--f-display); font-size: 26px; letter-spacing: 5px; color: var(--c-cream); }
+  #rotate-hint .rh-title .jp-sub { font-size: 0.7em; }
+  #rotate-hint .rh-sub { font-size: 13px; color: var(--c-muted); }
   @keyframes rot {
-    0%, 100% { transform: rotate(0deg); }
-    50% { transform: rotate(90deg); }
+    0%, 20% { transform: rotate(0deg); }
+    55%, 100% { transform: rotate(-90deg); }
   }
   body.mobile.portrait #rotate-hint { display: flex; }
 
-  /* Toast popups */
-  .toast {
-    background:
-      linear-gradient(180deg, rgba(35, 6, 12, 0.92), rgba(10, 0, 5, 0.92));
-    color: #ffee66;
-    padding: 6px 18px;
-    border-radius: 2px;
-    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
-    font-weight: 400; letter-spacing: 5px;
-    border: 1px solid #c83246;
-    border-left: 3px solid #ffcc66; border-right: 3px solid #ffcc66;
-    font-size: 16px;
-    box-shadow: 0 0 18px rgba(255, 200, 80, 0.35);
-    animation: toastIn 0.3s ease-out, toastOut 0.4s ease-in 2.0s forwards;
-    text-shadow: 0 0 8px #ff8866, 2px 2px 0 #1a0006;
+  /* Toasts: brief pills under the objective chip in a run (#hud-toasts),
+     top centre on the menus (#toasts). Same family as the chip. */
+  #toasts {
+    position: fixed; top: calc(var(--safe-t) + 64px); left: 50%; transform: translateX(-50%); z-index: 11;
+    pointer-events: none; display: flex; flex-direction: column; gap: var(--sp-1); align-items: center;
   }
-  .toast.bad { color: #ff8866; border-color: #ff5544; box-shadow: 0 0 18px rgba(255,80,80,0.5); }
-  .toast.good { color: #66ffaa; border-color: #44ddaa; box-shadow: 0 0 18px rgba(80,255,150,0.4); }
+  #hud-toasts { display: flex; flex-direction: column; gap: var(--sp-1); align-items: center; }
+  .toast {
+    background: var(--glass-strong); color: var(--c-score);
+    padding: 4px var(--sp-4); border-radius: var(--r-pill); border: var(--stroke);
+    font-family: var(--f-display); font-weight: 400; letter-spacing: 3px; font-size: var(--fs-body);
+    white-space: nowrap;
+    animation: toastIn 0.3s ease-out, toastOut 0.4s ease-in 2.0s forwards;
+  }
+  .toast.bad { color: #ff8866; border-color: rgba(255, 85, 68, 0.8); }
+  .toast.good { color: var(--c-ok); border-color: rgba(68, 221, 170, 0.8); }
   @keyframes toastIn {
-    from { opacity: 0; transform: translateY(-12px) scale(0.9); }
+    from { opacity: 0; transform: translateY(-10px) scale(0.92); }
     to   { opacity: 1; transform: translateY(0) scale(1); }
   }
   @keyframes toastOut {
@@ -818,31 +847,27 @@
     to   { opacity: 0; transform: translateY(-8px); }
   }
 
-  /* Mini-toast feed (left rail). Smaller, less intrusive than #toasts.
-     Used for combo milestones, destruction tier feedback, jet kills,
-     ultimate-ready hint, gamepad connect/disconnect - high-frequency or
-     low-priority events that previously cluttered the center toast slot. */
+  /* Mini-toast feed (left rail, under the vitals). Smaller, less intrusive
+     than toasts. Used for combo milestones, destruction tier feedback, jet
+     kills, ultimate-ready hint, gamepad connect/disconnect - high-frequency
+     or low-priority events that previously cluttered the center toast slot. */
   #mini-toasts {
-    position: fixed; top: 100px; left: 16px; z-index: 11;
     pointer-events: none;
-    display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
-    max-width: 260px;
+    display: flex; flex-direction: column; gap: var(--sp-1); align-items: flex-start;
+    max-width: min(260px, 40vw);
   }
   .mini-toast {
-    background: linear-gradient(90deg, rgba(35, 6, 12, 0.85), rgba(10, 0, 5, 0.55));
-    color: #ffee66;
-    padding: 3px 10px;
-    border-radius: 2px;
-    font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
-    font-weight: 400; letter-spacing: 2px;
-    border-left: 2px solid #ffcc66;
-    font-size: 12px;
-    text-shadow: 0 0 4px #ff8866, 1px 1px 0 #1a0006;
+    background: linear-gradient(90deg, rgba(16, 3, 7, 0.7), rgba(16, 3, 7, 0));
+    color: var(--c-score);
+    padding: 2px var(--sp-3) 2px var(--sp-2);
+    font-family: var(--f-display); font-weight: 400; letter-spacing: 2px;
+    border-left: 2px solid var(--c-gold);
+    font-size: var(--fs-cap);
     animation: miniToastIn 0.25s ease-out, miniToastOut 0.4s ease-in 1.6s forwards;
-    white-space: nowrap;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
   }
   .mini-toast.bad  { color: #ff8866; border-color: #ff5544; }
-  .mini-toast.good { color: #66ffaa; border-color: #44ddaa; }
+  .mini-toast.good { color: var(--c-ok); border-color: #44ddaa; }
   @keyframes miniToastIn {
     from { opacity: 0; transform: translateX(-20px); }
     to   { opacity: 1; transform: translateX(0); }
@@ -851,13 +876,6 @@
     from { opacity: 1; }
     to   { opacity: 0; transform: translateX(-12px); }
   }
-
-  body.mobile #combo { top: 180px; right: 10px; }
-  body.mobile #combo-mult { font-size: 22px; }
-  body.mobile #boss-bar { top: 50px; width: 80%; }
-  body.mobile #toasts { top: 100px; }
-  body.mobile #mini-toasts { top: 60px; left: 8px; max-width: 55vw; }
-  body.mobile .mini-toast { font-size: 10px; padding: 2px 6px; letter-spacing: 1px; }
 
   /* Score popup */
   .popup {
@@ -879,22 +897,14 @@
     50%      { opacity: 0.85; }
   }
 
-  /* Mini-map */
+  /* Mini-map (a cell of the HUD's right cluster) */
   #minimap {
-    position: fixed;
-    top: max(120px, calc(env(safe-area-inset-top) + 110px));
-    right: max(20px, calc(env(safe-area-inset-right) + 10px));
-    width: 180px; height: 180px;
-    border: 2px solid #ff5566;
-    border-radius: 8px;
-    background: rgba(0,0,0,0.55);
-    box-shadow: 0 0 16px rgba(255,80,100,0.35);
-    z-index: 10;
+    grid-area: map;
+    width: var(--map); height: var(--map);
+    border: var(--stroke); border-radius: var(--r);
+    background: rgba(0, 0, 0, 0.5);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
     image-rendering: pixelated;
-  }
-  body.mobile #minimap {
-    width: 110px; height: 110px;
-    top: max(60px, calc(env(safe-area-inset-top) + 50px));
   }
 
   /* Upgrade modal */
@@ -919,21 +929,61 @@
   .ucard .icon { font-size: 38px; }
   .ucard h3 { font-size: 18px; color: #ffcc66; margin: 6px 0; }
   .ucard p { font-size: 12px; color: #ddd; line-height: 1.5; }
-  body.mobile .ucard { width: 30%; min-width: 130px; padding: 10px; }
-  body.mobile .ucard h3 { font-size: 14px; }
-  body.mobile .ucard p { font-size: 10px; }
-  body.mobile #upgrade-modal h2 { font-size: 22px; }
 
-  /* Mute button */
-  #mute-btn {
-    position: fixed;
-    top: max(8px, calc(env(safe-area-inset-top) + 4px));
-    right: max(20px, calc(env(safe-area-inset-right) + 16px));
-    width: 36px; height: 36px; border-radius: 50%;
-    background: rgba(0,0,0,0.6); border: 1px solid #ffcc66;
-    color: #ffcc66; font-size: 16px; cursor: pointer;
+  /* Pause sheet: resume, sound, quality, quit. Opened by the HUD menu
+     button, Esc or a gamepad's Start. */
+  #pause-menu {
+    position: fixed; inset: 0; z-index: 60;
     display: flex; align-items: center; justify-content: center;
-    z-index: 13; pointer-events: auto;
+    background: rgba(6, 0, 2, 0.55);
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+    padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  }
+  .sheet {
+    width: min(340px, 100%); max-height: 100%; overflow-y: auto;
+    display: flex; flex-direction: column; gap: var(--sp-2); align-items: stretch;
+    padding: var(--sp-4) var(--sp-5) var(--sp-5); border-radius: var(--r);
+    background: var(--glass-strong); border: var(--stroke); box-shadow: var(--glow);
+    text-align: center;
+  }
+  .sheet-title { font-family: var(--f-display); font-size: 34px; letter-spacing: 8px; color: var(--c-cream); text-shadow: 0 0 18px #ff2244; margin-bottom: var(--sp-1); }
+  .sheet-title .jp-sub { font-size: 0.45em; vertical-align: middle; }
+  .sheet-btn {
+    min-height: 44px; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill);
+    font-family: var(--f-display); font-size: 18px; letter-spacing: 4px; color: var(--c-cream);
+    background: rgba(255, 230, 200, 0.06); border: var(--stroke); cursor: pointer;
+  }
+  .sheet-btn:hover, .sheet-btn:focus-visible { border-color: var(--c-gold); color: #fff; outline: none; }
+  .sheet-btn.primary { background: linear-gradient(180deg, var(--c-red), #8e0a1c); border-color: var(--c-gold); }
+  .sheet-btn.ghost { background: transparent; color: var(--c-muted); font-size: 14px; }
+  #pause-menu #quality-picker-pause { justify-content: center; margin: var(--sp-1) 0; }
+  #pause-menu #quality-picker-pause a { min-height: 32px; display: inline-flex; align-items: center; }
+  .sheet-hint { font-family: var(--f-display); font-size: var(--fs-cap); letter-spacing: 3px; color: var(--c-muted); }
+  body.touch .sheet-hint { display: none; }
+  @media (max-height: 420px) {
+    .sheet { padding: var(--sp-3) var(--sp-4); gap: 6px; }
+    .sheet-title { font-size: 24px; margin: 0; }
+    .sheet-btn { min-height: 40px; font-size: 15px; padding: 4px var(--sp-3); }
+  }
+
+  /* Data warning card */
+  .warn-card {
+    background: var(--glass-strong); border: var(--stroke-hot); border-radius: var(--r);
+    padding: var(--sp-5); max-width: 360px; text-align: center; color: #eee; box-shadow: var(--glow);
+  }
+  .warn-card .wc-title { font-family: var(--f-display); font-size: 24px; letter-spacing: 5px; color: #ff5566; margin-bottom: var(--sp-3); }
+  .warn-card .wc-body { font-size: 14px; line-height: 1.5; margin-bottom: var(--sp-2); }
+  .warn-card .wc-note { font-size: 12px; color: var(--c-muted); margin-bottom: var(--sp-4); }
+  .warn-card .wc-actions { display: flex; gap: var(--sp-3); justify-content: center; align-items: center; flex-wrap: wrap; }
+  .warn-card .start-btn { margin: 0; font-size: 14px; padding: 10px 28px; letter-spacing: 4px; }
+  @media (max-height: 420px) { .warn-card { padding: var(--sp-3) var(--sp-4); } .warn-card .wc-title { margin-bottom: var(--sp-1); } }
+
+  /* Reduced motion: no pulses, slides or spins; state changes stay visible */
+  @media (prefers-reduced-motion: reduce) {
+    .toast, .mini-toast, #wave-objective.complete, .power-wrap.is-ready.ult .power,
+    #rotate-hint .icon, #loading-status { animation: none !important; }
+    #lowhp-warning.active { animation: none; opacity: 0.55; }
+    .bar > div, #boss-hp, #wave-objective-bar, #message, #wave-banner { transition: none; }
   }
 
   /* Level select (Tokyo / Chicago) */
@@ -962,10 +1012,6 @@
     display: block; font-family: 'Bebas Neue', 'Noto Sans JP', sans-serif;
     font-size: 11px; color: #aaccff; letter-spacing: 2px; margin-top: 2px;
   }
-  body.mobile .levels { gap: 8px; margin: 0 0 4px 0; }
-  body.mobile .level-card { min-width: 0; padding: 3px 12px; }
-  body.mobile .level-card b { font-size: 12px; letter-spacing: 2px; }
-  body.mobile .level-card span { display: none; }
 
   /* Gamepad / keyboard menu navigation cursor */
   .level-card.pad-focus,
@@ -1122,18 +1168,18 @@
 <!-- Floating score popup container -->
 <div id="popups" style="position:fixed; inset:0; pointer-events:none; z-index:8; overflow:hidden;"></div>
 
-<!-- Mobile touch controls -->
+<!-- Mobile touch controls (body.touch) -->
 <div id="mobile-ui">
+  <div id="joy-zone" class="hidden"></div>
   <div id="joystick" class="hidden"><div class="knob"></div></div>
-  <div id="attack-btn" class="hidden">SMASH</div>
-  <div id="sprint-btn" class="hidden">RUN</div>
-  <div id="pause-btn" class="hidden">II</div>
+  <div id="attack-btn" class="hidden" role="button" aria-label="Smash">SMASH<small>撃</small></div>
+  <div id="sprint-btn" class="hidden" role="button" aria-label="Run toggle">RUN</div>
 </div>
 
 <div id="rotate-hint">
-  <div class="icon">📱</div>
-  <div style="font-size:20px; color:#ffcc66;">ROTATE TO LANDSCAPE</div>
-  <div style="font-size:13px; color:#aaa;">For the best kaiju-stomping experience</div>
+  <div class="icon"></div>
+  <div class="rh-title">ROTATE TO LANDSCAPE <span class="jp-sub">横向き</span></div>
+  <div class="rh-sub">Kaiju Havoc plays sideways: one thumb moves, the other smashes</div>
 </div>
 
 <!-- Title / Monster Select -->
@@ -1156,67 +1202,72 @@
   <div class="studio">PRESENTED BY · <b>HALLUCINATED GAMES</b> · ハルシネイテッド ゲームズ</div>
 </div>
 
-<!-- HUD -->
+<!-- HUD: vitals | boss bar + objective chip + toasts | stats + menu + minimap -->
 <div id="hud" class="hidden">
-  <div class="panel">
-    <div class="label">KAIJU HP <span class="jp-sub">体力</span></div>
-    <div class="bar" id="hpBar"><div style="width:100%"></div></div>
-    <div class="label" style="margin-top:6px">RAGE <span class="jp-sub">怒気</span></div>
-    <div class="bar" id="ragBar"><div style="width:0%"></div></div>
+  <div class="hud-left">
+    <div class="vitals" id="vitals">
+      <div id="hpMeter">
+        <div class="meter-head"><span class="label">HP <span class="jp-sub">体力</span></span><span class="meter-num" id="hpNum"></span></div>
+        <div class="bar" id="hpBar"><div></div></div>
+      </div>
+      <div>
+        <div class="meter-head"><span class="label">RAGE <span class="jp-sub">怒気</span></span><span class="meter-num" id="ragNum"></span></div>
+        <div class="bar" id="ragBar"><div style="transform:scaleX(0)"></div></div>
+      </div>
+    </div>
+    <div id="mini-toasts"></div>
   </div>
-  <div id="stats" class="panel">
-    <div class="label">SCORE <span class="jp-sub">得点</span></div>
-    <div id="score" class="value">0</div>
-    <div class="label" style="margin-top:6px">WAVE <span class="jp-sub">波</span></div>
-    <div class="value" id="waveText">1 / 0</div>
+  <div class="hud-center">
+    <div id="boss-bar">
+      <div id="boss-name">⚠ MEGA-MECH ZX ⚠</div>
+      <div class="boss-track"><div id="boss-hp"></div></div>
+    </div>
+    <div id="wave-objective">
+      <span class="obj-tag">目標</span>
+      <span id="wave-objective-text">SMASH 5 BUILDINGS</span>
+      <span id="wave-objective-count">0 / 5</span>
+      <div class="obj-prog"><div id="wave-objective-bar"></div></div>
+    </div>
+    <div id="hud-toasts"></div>
+  </div>
+  <div class="hud-right">
+    <div id="stats">
+      <div class="label">SCORE <span class="jp-sub">得点</span></div>
+      <div id="score">0</div>
+      <div class="stat-line"><span class="label">WAVE <span class="jp-sub">波</span></span><b id="waveText">1</b><span class="label">· <b id="bldText">0</b> RAZED</span></div>
+      <div id="combo"><div class="combo-track"><div id="combo-bar"></div></div><span id="combo-mult">x1.0</span></div>
+    </div>
+    <button id="pause-btn" class="hud-btn" type="button" title="Pause (Esc)" aria-label="Pause menu"><i></i><i></i></button>
+    <canvas id="minimap" width="220" height="220" class="hidden"></canvas>
   </div>
 </div>
 
-<!-- Powers bar -->
+<!-- Powers bar (desktop) / ability arc round SMASH (touch) -->
 <div id="powers" class="hidden"></div>
 
 <!-- Center message -->
 <div id="message"></div>
 <div id="wave-banner"></div>
 
-<!-- Combo + Toast -->
-<div id="combo" style="position:fixed; top:340px; right:20px; z-index:11; text-align:right; font-weight:bold; pointer-events:none; opacity:0; transition:opacity 0.2s; text-shadow:0 0 8px #000, 2px 2px 0 #000;">
-  <div id="combo-mult" style="font-size:38px; color:#ffee44;">x1.0</div>
-  <div id="combo-label" style="font-size:13px; color:#ffcc66; letter-spacing:3px;">COMBO</div>
-  <div style="width:100px; height:6px; background:rgba(0,0,0,0.5); border-radius:3px; overflow:hidden; margin-left:auto; margin-top:4px;">
-    <div id="combo-bar" style="height:100%; width:100%; background:linear-gradient(90deg,#ff6644,#ffee44);"></div>
+<!-- Menu-time toasts (in a run they go to #hud-toasts) -->
+<div id="toasts"></div>
+
+<!-- Pause sheet -->
+<div id="pause-menu" class="hidden" role="dialog" aria-label="Paused">
+  <div class="sheet">
+    <div class="sheet-title">PAUSED <span class="jp-sub">一時停止</span></div>
+    <button class="sheet-btn primary" id="resume-btn" type="button">RESUME</button>
+    <button class="sheet-btn" id="mute-btn" type="button">SOUND · ON</button>
+    <div id="pause-quality-slot"></div>
+    <button class="sheet-btn ghost" id="quit-btn" type="button">QUIT TO MENU</button>
+    <div class="sheet-hint">ESC / START TO RESUME</div>
   </div>
 </div>
-
-<div id="toasts" style="position:fixed; top:160px; left:50%; transform:translateX(-50%); z-index:11; pointer-events:none; display:flex; flex-direction:column; gap:6px; align-items:center;"></div>
-<div id="mini-toasts"></div>
-
-<!-- Mini-map -->
-<canvas id="minimap" width="220" height="220" class="hidden"></canvas>
-
-<!-- Mute button -->
-<button id="mute-btn" class="hidden" title="Mute">🔊</button>
 
 <!-- Upgrade modal -->
 <div id="upgrade-modal">
   <h2>CHOOSE A POWER</h2>
   <div class="cards" id="upgrade-cards"></div>
-</div>
-
-<!-- Wave objective -->
-<div id="wave-objective" style="position:fixed; top:75px; left:50%; transform:translateX(-50%); z-index:11; pointer-events:none; display:none; padding:6px 16px; background:rgba(20,4,8,0.78); border:1px solid #c83246; border-left:3px solid #d3253c; border-right:3px solid #d3253c; border-radius:2px; box-shadow:0 0 14px rgba(211,37,60,0.4);">
-  <div style="font-family:'Bebas Neue','Noto Sans JP',sans-serif; font-size:11px; letter-spacing:5px; color:#ffcc66; text-align:center;">
-    OBJECTIVE <span class="jp-sub" style="color:#ff8866; margin-left:6px; font-family:'Noto Sans JP',sans-serif; font-size:10px; font-weight:700;">目標</span>
-  </div>
-  <div id="wave-objective-text" style="font-family:'Bebas Neue',sans-serif; font-size:18px; letter-spacing:3px; color:#ffe6c8; text-align:center; text-shadow:0 0 8px #ff8866;">SMASH 5 BUILDINGS · 0 / 5</div>
-</div>
-
-<!-- Boss bar -->
-<div id="boss-bar" style="position:fixed; top:14px; left:50%; transform:translateX(-50%); width:60%; max-width:520px; z-index:11; pointer-events:none; display:none;">
-  <div style="text-align:center; font-size:14px; letter-spacing:6px; color:#ff5566; text-shadow:0 0 8px #000, 2px 2px 0 #000; margin-bottom:4px;" id="boss-name">⚠ MEGA-MECH ZX ⚠</div>
-  <div style="height:14px; background:#220000; border:2px solid #ff3344; border-radius:6px; overflow:hidden; box-shadow:0 0 16px rgba(255,80,100,0.6);">
-    <div id="boss-hp" style="height:100%; width:100%; background:linear-gradient(90deg,#ff2244,#ffaa44);"></div>
-  </div>
 </div>
 
 <!-- Help -->
@@ -1251,18 +1302,15 @@
 </div>
 
 <!-- Mobile data warning -->
-<div id="mobile-data-warn" class="overlay hidden" style="z-index:9999; display:flex; align-items:center; justify-content:center;">
-  <div style="background:rgba(0,0,0,0.95); border:2px solid #ff5566; border-radius:16px; padding:32px 28px; max-width:340px; text-align:center; color:#eee; font-family:inherit;">
-    <div style="font-size:28px; margin-bottom:8px;">&#9888;</div>
-    <div style="font-size:18px; font-weight:bold; letter-spacing:3px; color:#ff5566; margin-bottom:12px;">DATA WARNING</div>
-    <div style="font-size:14px; line-height:1.5; margin-bottom:8px;">
-      This game requires downloading <b id="data-warn-size" style="color:#ffcc44;">~52 MB</b> of 3D assets on first play.
+<div id="mobile-data-warn" class="overlay hidden" style="z-index:9999;">
+  <div class="warn-card">
+    <div class="wc-title">&#9888; DATA WARNING</div>
+    <div class="wc-body">This game downloads <b id="data-warn-size" style="color:var(--c-score);">~52 MB</b> of 3D assets on first play.</div>
+    <div class="wc-note">Assets are cached after the first download. Wi-Fi recommended.</div>
+    <div class="wc-actions">
+      <button id="data-warn-ok" class="start-btn" type="button">PROCEED</button>
+      <button id="data-warn-cancel" class="sheet-btn ghost" type="button">CANCEL</button>
     </div>
-    <div style="font-size:12px; color:#aaa; margin-bottom:20px;">
-      Assets are cached locally after the first download. <br>We recommend using Wi-Fi.
-    </div>
-    <button id="data-warn-ok" class="start-btn" style="margin:0 8px; font-size:14px; padding:10px 28px;">PROCEED</button>
-    <button id="data-warn-cancel" style="margin:0 8px; font-size:13px; padding:8px 20px; background:transparent; border:1px solid #666; color:#999; border-radius:8px; cursor:pointer; font-family:inherit; letter-spacing:2px;">CANCEL</button>
   </div>
 </div>
 
@@ -1341,23 +1389,23 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.22",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.22",
-    "./src/audio.js": "./src/audio.js?v=1.11.22",
-    "./src/city.js": "./src/city.js?v=1.11.22",
-    "./src/effects.js": "./src/effects.js?v=1.11.22",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.22",
-    "./src/game.js": "./src/game.js?v=1.11.22",
-    "./src/intro.js": "./src/intro.js?v=1.11.22",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.22",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.22",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.22",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.22",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.22",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.22",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.22",
-    "./src/quality.js": "./src/quality.js?v=1.11.22",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.22"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.23",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.23",
+    "./src/audio.js": "./src/audio.js?v=1.11.23",
+    "./src/city.js": "./src/city.js?v=1.11.23",
+    "./src/effects.js": "./src/effects.js?v=1.11.23",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.23",
+    "./src/game.js": "./src/game.js?v=1.11.23",
+    "./src/intro.js": "./src/intro.js?v=1.11.23",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.23",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.23",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.23",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.23",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.23",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.23",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.23",
+    "./src/quality.js": "./src/quality.js?v=1.11.23",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.23"
   }
 }
 </script>
@@ -1371,7 +1419,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.22"></script>
-<script type="module" async src="./src/intro.js?v=1.11.22"></script>
+<script type="module" src="./src/game.js?v=1.11.23"></script>
+<script type="module" async src="./src/intro.js?v=1.11.23"></script>
 </body>
 </html>

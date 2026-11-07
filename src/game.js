@@ -68,6 +68,10 @@ function _setLevel(level) {
 // Mobile + quality flags now live in src/quality.js so the VFX manager and
 // any future module can read the same source of truth.
 if (isMobile) document.body.classList.add('mobile');
+// Touch controls / touch HUD layout: phones, plus any coarse-pointer device
+// that isMobile leaves on the desktop quality path (iPadOS reports a Mac UA).
+const touchUI = isMobile || (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
+if (touchUI) document.body.classList.add('touch');
 console.info('[KAIJU HAVOC] quality tier =', QUALITY);
 // Highlight the active quality pick on the title screen.
 {
@@ -79,38 +83,44 @@ console.info('[KAIJU HAVOC] quality tier =', QUALITY);
   }
 }
 // Persist the choice (localStorage) so it sticks across visits. The picker
-// is also cloned into a pause-screen overlay so phones (no title screen
-// mid-run) can switch tiers; tick() shows it only while paused.
-const _pausePicker = (() => {
+// is also cloned into the pause sheet so phones (no title screen mid-run)
+// can switch tiers; tick() shows the sheet only while paused.
+const _pauseMenu = document.getElementById('pause-menu');
+(() => {
   const src = document.getElementById('quality-picker');
-  if (!src) return null;
+  const slot = document.getElementById('pause-quality-slot');
+  if (!src || !slot) return;
   const el = src.cloneNode(true);
   el.id = 'quality-picker-pause';
-  el.style.cssText += ';position:fixed;left:50%;bottom:22%;transform:translateX(-50%);z-index:60;'
-    + 'background:rgba(20,0,30,0.75);padding:8px 12px;border-radius:4px;display:none;pointer-events:auto;';
-  document.body.appendChild(el);
-  return el;
+  slot.appendChild(el);
 })();
 document.querySelectorAll('#quality-picker a, #quality-picker-pause a').forEach((a) => {
   const pick = (e) => { e.preventDefault(); setQualityAndReload(a.getAttribute('href').replace('?q=', '')); };
   a.addEventListener('click', pick);
   a.addEventListener('touchend', pick);
 });
-let _pausePickerShown = false;
-function _syncPausePicker() {
-  const show = !!(state.paused && state.kaiju && !state.gameOver);
-  if (!_pausePicker || show === _pausePickerShown) return;
-  _pausePickerShown = show;
-  _pausePicker.style.display = show ? 'flex' : 'none';
+// The upgrade picker also sets state.paused; the sheet stays out of its way.
+let _pauseMenuShown = false;
+function _syncPauseMenu() {
+  const show = !!(state.paused && state.kaiju && !state.gameOver && !state.upgradePending);
+  if (!_pauseMenu || show === _pauseMenuShown) return;
+  _pauseMenuShown = show;
+  _pauseMenu.classList.toggle('hidden', !show);
+}
+/** Pause / resume from Esc, the HUD menu button, the sheet or a gamepad's Start. */
+function togglePause(on = !state.paused) {
+  if (state.upgradePending || state.gameOver) return;
+  state.paused = on;
+  if (on) document.exitPointerLock?.();
 }
 
 function updateOrientationClass() {
   if (!isMobile) return;
-  if (window.innerHeight > window.innerWidth) document.body.classList.add('portrait');
-  else document.body.classList.remove('portrait');
+  document.body.classList.toggle('portrait', window.innerHeight > window.innerWidth);
 }
 updateOrientationClass();
 window.addEventListener('orientationchange', updateOrientationClass);
+window.addEventListener('resize', updateOrientationClass);
 
 // ------------------------- Setup -------------------------
 const game = document.getElementById('game');
@@ -1076,11 +1086,7 @@ function _requestPointerLock() {
 const keys = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
-  if (e.code === 'Escape') {
-    state.paused = !state.paused;
-    showMessage(state.paused ? 'PAUSED' : '', state.paused ? 0 : 0);
-    if (state.paused) document.exitPointerLock?.();
-  }
+  if (e.code === 'Escape') togglePause();
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
@@ -1330,6 +1336,7 @@ const touchInput = {
 };
 
 const joystickEl = document.getElementById('joystick');
+const joyZone = document.getElementById('joy-zone');
 const knobEl = joystickEl ? joystickEl.querySelector('.knob') : null;
 const attackBtn = document.getElementById('attack-btn');
 const sprintBtn = document.getElementById('sprint-btn');
@@ -1343,20 +1350,31 @@ function resetJoystick() {
   touchInput.moveX = 0; touchInput.moveZ = 0;
   touchInput.joyId = null;
   setKnob(0, 0);
+  if (joystickEl) { joystickEl.style.transform = ''; joystickEl.classList.remove('active'); }
 }
 
-if (joystickEl) {
+// Floating joystick: a touch anywhere in the lower-left zone moves the base
+// under the thumb (kept fully on screen); it returns to its rest spot on release.
+if (joystickEl && joyZone) {
+  let joyMax = 50;
   const handleJoyStart = (id, cx, cy) => {
+    joystickEl.style.transform = '';
     const r = joystickEl.getBoundingClientRect();
-    touchInput.joyCx = r.left + r.width / 2;
-    touchInput.joyCy = r.top + r.height / 2;
+    const rad = r.width / 2;
+    joyMax = rad * 0.6;
+    const x = Math.max(rad + 8, Math.min(window.innerWidth / 2, cx));
+    const y = Math.max(rad + 8, Math.min(window.innerHeight - rad - 8, cy));
+    joystickEl.style.transform = `translate(${x - (r.left + rad)}px, ${y - (r.top + rad)}px)`;
+    joystickEl.classList.add('active');
+    touchInput.joyCx = x;
+    touchInput.joyCy = y;
     touchInput.joyId = id;
     handleJoyMove(cx, cy);
   };
   const handleJoyMove = (cx, cy) => {
     const dx = cx - touchInput.joyCx;
     const dy = cy - touchInput.joyCy;
-    const max = 50;
+    const max = joyMax;
     const len = Math.hypot(dx, dy);
     const nx = len > max ? dx * max / len : dx;
     const ny = len > max ? dy * max / len : dy;
@@ -1364,12 +1382,13 @@ if (joystickEl) {
     touchInput.moveX = nx / max;
     touchInput.moveZ = -ny / max; // up on screen = forward
   };
-  joystickEl.addEventListener('touchstart', (e) => {
+  joyZone.addEventListener('touchstart', (e) => {
     e.preventDefault();
+    if (touchInput.joyId !== null) return;
     const t = e.changedTouches[0];
     handleJoyStart(t.identifier, t.clientX, t.clientY);
   }, { passive: false });
-  joystickEl.addEventListener('touchmove', (e) => {
+  joyZone.addEventListener('touchmove', (e) => {
     e.preventDefault();
     for (const t of e.changedTouches) {
       if (t.identifier === touchInput.joyId) {
@@ -1382,8 +1401,8 @@ if (joystickEl) {
       if (t.identifier === touchInput.joyId) resetJoystick();
     }
   };
-  joystickEl.addEventListener('touchend', endJoy);
-  joystickEl.addEventListener('touchcancel', endJoy);
+  joyZone.addEventListener('touchend', endJoy);
+  joyZone.addEventListener('touchcancel', endJoy);
 }
 
 if (attackBtn) {
@@ -1403,27 +1422,33 @@ if (sprintBtn) {
   }, { passive: false });
 }
 
+// HUD menu button (touch and mouse) + the pause sheet's buttons
 if (pauseBtn) {
-  pauseBtn.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    state.paused = !state.paused;
-    showMessage(state.paused ? 'PAUSED' : '', state.paused ? 0 : 0);
-  }, { passive: false });
+  pauseBtn.addEventListener('touchstart', (e) => { e.preventDefault(); togglePause(); }, { passive: false });
+  pauseBtn.addEventListener('click', () => togglePause());
 }
+document.getElementById('resume-btn')?.addEventListener('click', () => {
+  togglePause(false);
+  if (!touchUI && state.kaiju) _requestPointerLock();
+});
+document.getElementById('quit-btn')?.addEventListener('click', () => {
+  if (!state.kaiju || state.gameOver) return;
+  state.paused = false;
+  audio.stopMusic();
+  _hideRunHUD();
+  restartInPlace();
+});
 
-// Camera drag: any touch on the right half (not on a button) controls look
+// Camera drag: any touch outside the controls (and the joystick zone) looks
 function isOnControl(target) {
   if (!target || !target.closest) return false;
-  return !!target.closest('#joystick, #attack-btn, #sprint-btn, #pause-btn, #powers, #hud, #menu, #gameover');
+  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #powers, #menu, #gameover, #pause-menu, #upgrade-modal');
 }
 window.addEventListener('touchstart', (e) => {
-  if (!isMobile || state.gameOver || !state.kaiju) return;
-  // Compute live joystick gate so landscape (wider screen) still allows look.
-  const joyRect = joystickEl ? joystickEl.getBoundingClientRect() : null;
+  if (!touchUI || state.gameOver || !state.kaiju) return;
   for (const t of e.changedTouches) {
     if (t.identifier === touchInput.joyId) continue;
     if (isOnControl(t.target)) continue;
-    if (joyRect && t.clientX < joyRect.right + 24 && t.clientY > joyRect.top - 40) continue;
     if (touchInput.lookId !== null) continue;
     touchInput.lookId = t.identifier;
     touchInput.lookLastX = t.clientX;
@@ -1431,7 +1456,7 @@ window.addEventListener('touchstart', (e) => {
   }
 }, { passive: true });
 window.addEventListener('touchmove', (e) => {
-  if (!isMobile) return;
+  if (!touchUI) return;
   for (const t of e.changedTouches) {
     if (t.identifier !== touchInput.lookId) continue;
     const dx = t.clientX - touchInput.lookLastX;
@@ -1760,6 +1785,7 @@ function restartInPlace() {
   }
   state.kaiju = null;
   _hudLastScore = -1;
+  _hudKey = {};
   buildWorldCity();
   if (_bldgLevelsLoaded.has(world.level)) flushPendingGLBBuildings(scene);
   document.getElementById('gameover').classList.add('hidden');
@@ -1806,7 +1832,7 @@ window.__restartInPlace = restartInPlace;
 // ?debug test hooks (QA scripts): inspect state and trigger abilities
 if (/[?&]debug\b/.test(location.search)) {
   // composer(): the post chain (bloom, grade) for in-game-look screenshots
-  window.__qa = { state, world, camera, renderer, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n) };
+  window.__qa = { state, world, camera, renderer, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on) };
 }
 async function startGame(key) {
   if (_startingGame) return;
@@ -1999,15 +2025,18 @@ async function _startGameInner(key) {
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('powers').classList.remove('hidden');
   document.getElementById('minimap').classList.remove('hidden');
-  document.getElementById('mute-btn').classList.remove('hidden');
-  if (!isMobile) {
-    document.getElementById('help').classList.remove('hidden');
+  if (!touchUI) {
+    const help = document.getElementById('help');
+    help.classList.remove('hidden', 'dim');
+    // The help card fades back once the player has had time to read it
+    clearTimeout(_helpDimTimer);
+    _helpDimTimer = setTimeout(() => help.classList.add('dim'), 20000);
   } else {
-    // Reveal mobile controls
+    // Reveal touch controls
+    document.getElementById('joy-zone').classList.remove('hidden');
     document.getElementById('joystick').classList.remove('hidden');
     document.getElementById('attack-btn').classList.remove('hidden');
     document.getElementById('sprint-btn').classList.remove('hidden');
-    document.getElementById('pause-btn').classList.remove('hidden');
   }
   buildPowersBar();
 
@@ -2024,7 +2053,24 @@ async function _startGameInner(key) {
   audio.startMusic();
 
   startWave(1);
-  if (!isMobile) _requestPointerLock();
+  if (!touchUI) _requestPointerLock();
+}
+let _helpDimTimer = 0;
+/** Hide the in-run HUD (game over, quit to menu). */
+function _hideRunHUD() {
+  document.exitPointerLock?.();
+  document.getElementById('hud').classList.add('hidden');
+  document.getElementById('powers').classList.add('hidden');
+  document.getElementById('help').classList.add('hidden');
+  document.getElementById('boss-bar').style.display = 'none';
+  const oo = document.getElementById('wave-objective');
+  if (oo) oo.style.display = 'none';
+  const ce = document.getElementById('combo');
+  if (ce) ce.style.opacity = '0';
+  _hudComboOn = false;
+  for (const id of ['joy-zone', 'joystick', 'attack-btn', 'sprint-btn']) document.getElementById(id)?.classList.add('hidden');
+  resetJoystick();
+  touchInput.attackHeld = false;
 }
 
 // ------------------------- HUD -------------------------
@@ -2035,30 +2081,52 @@ async function _startGameInner(key) {
 const hudRefs = {
   damageFlash: null,
   lowHp: null,
+  hud: null,
+  vitals: null,
   hpInner: null,
   ragInner: null,
+  hpNum: null,
+  ragNum: null,
   score: null,
   waveText: null,
+  bldText: null,
   combo: null,
   comboMult: null,
   comboBar: null,
   bossHp: null,
+  hudToasts: null,
   pw: {},
   cd: {},
 };
 function _initStaticHUDRefs() {
   hudRefs.damageFlash = document.getElementById('damage-flash');
   hudRefs.lowHp = document.getElementById('lowhp-warning');
-  const hp = document.getElementById('hpBar'); if (hp) hudRefs.hpInner = hp.firstChild;
-  const rag = document.getElementById('ragBar'); if (rag) hudRefs.ragInner = rag.firstChild;
+  hudRefs.hud = document.getElementById('hud');
+  hudRefs.vitals = document.getElementById('vitals');
+  const hp = document.getElementById('hpBar'); if (hp) hudRefs.hpInner = hp.firstElementChild;
+  const rag = document.getElementById('ragBar'); if (rag) hudRefs.ragInner = rag.firstElementChild;
+  hudRefs.hpNum = document.getElementById('hpNum');
+  hudRefs.ragNum = document.getElementById('ragNum');
   hudRefs.score = document.getElementById('score');
   hudRefs.waveText = document.getElementById('waveText');
+  hudRefs.bldText = document.getElementById('bldText');
   hudRefs.combo = document.getElementById('combo');
   hudRefs.comboMult = document.getElementById('combo-mult');
   hudRefs.comboBar = document.getElementById('combo-bar');
   hudRefs.bossHp = document.getElementById('boss-hp');
+  hudRefs.hudToasts = document.getElementById('hud-toasts');
 }
 _initStaticHUDRefs();
+
+// Slot icons (24x24 stroke glyphs). Names differ per monster, the slot
+// meaning doesn't: ranged beam, area roar, dash, ground stomp, ultimate.
+const POWER_ICONS = {
+  beam: '<path d="M2 12h5"/><path d="M8 6.5L22 12 8 17.5l2.5-5.5z"/>',
+  roar: '<path d="M3 9.5v5h3.5L12 19V5L6.5 9.5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9.5 9.5 0 0 1 0 13"/>',
+  charge: '<path d="M4 6l6 6-6 6M12 6l6 6-6 6"/>',
+  stomp: '<path d="M12 3v8M8.5 7.5L12 11l3.5-3.5"/><ellipse cx="12" cy="17.5" rx="9" ry="3.5"/><ellipse cx="12" cy="17.5" rx="4" ry="1.4"/>',
+  ult: '<path d="M12 2l2.6 6.4L21 9l-5 4.4 1.5 7.6L12 17.3 6.5 21 8 13.4 3 9l6.4-.6z"/>',
+};
 
 function buildPowersBar() {
   const cfg = state.monsterCfg;
@@ -2066,6 +2134,7 @@ function buildPowersBar() {
   bar.innerHTML = '';
   hudRefs.pw = {};
   hudRefs.cd = {};
+  _pwState = {};
   const items = [
     { key: '1', id: 'beam', name: cfg.beam.name, cost: cfg.beam.cost },
     { key: '2', id: 'roar', name: cfg.roar.name, cost: cfg.roar.cost },
@@ -2075,16 +2144,17 @@ function buildPowersBar() {
   ];
   for (const it of items) {
     const w = document.createElement('div');
-    w.className = 'power-wrap';
+    w.className = 'power-wrap ' + it.id;
     w.innerHTML = `
-      <div class="power" id="pw-${it.id}">
-        <div class="key">${it.key}</div>
-        <div class="name">${it.name}</div>
+      <div class="power" id="pw-${it.id}" role="button" aria-label="${it.name}${touchUI ? '' : ' (' + it.key + ')'}">
+        <svg viewBox="0 0 24 24" aria-hidden="true">${POWER_ICONS[it.id]}</svg>
+        <span class="name">${it.name}</span>
+        <span class="key">${it.key}</span>
       </div>
-      <div class="cooldown" id="cd-${it.id}" style="display:none"></div>`;
+      <div class="cooldown" id="cd-${it.id}"></div>`;
     bar.appendChild(w);
     const pwEl = w.querySelector('.power');
-    hudRefs.pw[it.id] = pwEl;
+    hudRefs.pw[it.id] = w;
     hudRefs.cd[it.id] = w.querySelector('.cooldown');
     const fire = (e) => {
       e.preventDefault();
@@ -2100,17 +2170,30 @@ function buildPowersBar() {
 }
 
 // HUD DOM writes are heavy enough that smashing them at 60Hz causes frame
-// hitches in dense fights. Throttle the slow stuff to ~10Hz; only the
-// damage flash / low-HP overlay (cheap single-element styles) refresh
-// every frame for visual smoothness.
+// hitches in dense fights. Throttle the slow stuff to ~10Hz and write a
+// node only when its value changed; bars move with transform (no layout).
+// Only the damage flash / low-HP overlay (cheap single-element styles)
+// refresh every frame for visual smoothness.
 let _hudLast = 0;
 let _hudLastScore = -1;
+let _hudKey = {};      // last written value per HUD field
+let _pwState = {};     // per power: { s: 'ready'|'low'|'cd', max, txt, q }
+let _hudComboOn = false;
+let _hudLowHp = false;
+function _hudSet(k, v, write) {
+  if (_hudKey[k] === v) return;
+  _hudKey[k] = v;
+  write(v);
+}
 function updateHUDFast() {
   if (hudRefs.damageFlash) hudRefs.damageFlash.style.opacity = String(state.damageFlash * 0.85);
   if (hudRefs.lowHp) {
-    const hpPct = state.hp / state.maxHp;
-    if (hpPct < 0.3 && !state.gameOver) hudRefs.lowHp.classList.add('active');
-    else hudRefs.lowHp.classList.remove('active');
+    const low = state.hp / state.maxHp < 0.3 && !state.gameOver;
+    if (low !== _hudLowHp) {
+      _hudLowHp = low;
+      hudRefs.lowHp.classList.toggle('active', low);
+      if (hudRefs.vitals) hudRefs.vitals.classList.toggle('low', low);
+    }
   }
 }
 function updateHUD() {
@@ -2118,31 +2201,41 @@ function updateHUD() {
   const now = performance.now();
   if (now - _hudLast < 100) return; // 10 Hz
   _hudLast = now;
-  if (hudRefs.hpInner) hudRefs.hpInner.style.width = Math.max(0, state.hp / state.maxHp * 100) + '%';
-  if (hudRefs.ragInner) hudRefs.ragInner.style.width = (state.rage / state.maxRage * 100) + '%';
+  const hpF = Math.max(0, state.hp / state.maxHp);
+  _hudSet('hp', Math.round(hpF * 200), (v) => { if (hudRefs.hpInner) hudRefs.hpInner.style.transform = `scaleX(${v / 200})`; });
+  _hudSet('hpN', Math.max(0, Math.ceil(state.hp)), (v) => { if (hudRefs.hpNum) hudRefs.hpNum.textContent = v; });
+  _hudSet('rag', Math.round(state.rage / state.maxRage * 200), (v) => { if (hudRefs.ragInner) hudRefs.ragInner.style.transform = `scaleX(${v / 200})`; });
+  _hudSet('ragN', Math.floor(state.rage), (v) => { if (hudRefs.ragNum) hudRefs.ragNum.textContent = v; });
   if (hudRefs.score && state.score !== _hudLastScore) {
     hudRefs.score.textContent = state.score.toLocaleString();
     _hudLastScore = state.score;
   }
-  if (hudRefs.waveText) hudRefs.waveText.textContent = `${state.wave} / ${state.buildingsDestroyed} buildings`;
+  _hudSet('wave', state.wave, (v) => { if (hudRefs.waveText) hudRefs.waveText.textContent = v; });
+  _hudSet('bld', state.buildingsDestroyed, (v) => { if (hudRefs.bldText) hudRefs.bldText.textContent = v; });
 
   const cfg = state.monsterCfg;
   if (!cfg) return;
+  // Power states: cooling (dark sweep + seconds), short of rage (dashed,
+  // dimmed), ready (gold ring). Class flips only on a state change.
   const updateP = (id, cost) => {
-    const el = hudRefs.pw[id];
+    const w = hudRefs.pw[id];
     const cd = hudRefs.cd[id];
-    if (!el) return;
+    if (!w) return;
+    const ps = _pwState[id] || (_pwState[id] = { s: '', max: 0, txt: '', q: -1 });
     const t = state.cooldowns[id];
-    if (t > 0) {
-      cd.style.display = 'flex';
-      cd.textContent = t.toFixed(1);
-      el.classList.add('disabled');
-    } else if (state.rage < cost) {
-      cd.style.display = 'none';
-      el.classList.add('disabled');
-    } else {
-      cd.style.display = 'none';
-      el.classList.remove('disabled');
+    const s = t > 0 ? 'cd' : state.rage < cost ? 'low' : 'ready';
+    if (s !== ps.s) {
+      w.classList.remove('is-' + ps.s);
+      w.classList.add('is-' + s);
+      if (s === 'cd') ps.max = t;
+      ps.s = s;
+    }
+    if (s === 'cd') {
+      if (t > ps.max) ps.max = t;
+      const txt = t.toFixed(1);
+      if (txt !== ps.txt) { ps.txt = txt; cd.textContent = txt; }
+      const q = Math.ceil(t / ps.max * 40) / 40;
+      if (q !== ps.q) { ps.q = q; cd.style.setProperty('--cd', q); }
     }
   };
   updateP('beam', cfg.beam.cost);
@@ -2151,20 +2244,19 @@ function updateHUD() {
   updateP('stomp', 15);
   updateP('ult', 100);
 
-  // Combo HUD
+  // Combo HUD (stats column)
   if (hudRefs.combo) {
-    if (state.combo > 0) {
-      hudRefs.combo.style.opacity = '1';
-      if (hudRefs.comboMult) hudRefs.comboMult.textContent = 'x' + comboMult().toFixed(1);
-      if (hudRefs.comboBar) hudRefs.comboBar.style.width = Math.max(0, state.comboTimer / state.comboMaxTimer * 100) + '%';
-    } else {
-      hudRefs.combo.style.opacity = '0';
+    const on = state.combo > 0;
+    if (on !== _hudComboOn) { _hudComboOn = on; hudRefs.combo.style.opacity = on ? '1' : '0'; }
+    if (on) {
+      _hudSet('cm', comboMult().toFixed(1), (v) => { if (hudRefs.comboMult) hudRefs.comboMult.textContent = 'x' + v; });
+      _hudSet('cb', Math.round(Math.max(0, state.comboTimer / state.comboMaxTimer) * 50), (v) => { if (hudRefs.comboBar) hudRefs.comboBar.style.transform = `scaleX(${v / 50})`; });
     }
   }
 
   // Boss bar
   if (state.boss && !state.boss.dead && hudRefs.bossHp) {
-    hudRefs.bossHp.style.width = Math.max(0, state.boss.hp / state.boss.maxHp * 100) + '%';
+    _hudSet('boss', Math.round(Math.max(0, state.boss.hp / state.boss.maxHp) * 200), (v) => { hudRefs.bossHp.style.transform = `scaleX(${v / 200})`; });
   }
 }
 
@@ -2181,8 +2273,11 @@ function showMessage(text, duration = 1.8) {
   }
 }
 
+// In a run toasts stack under the objective chip (HUD centre column, so
+// they can't overlap it or the boss bar); on the menus they use #toasts.
 function toast(text, kind = '') {
-  const wrap = document.getElementById('toasts');
+  const inRun = hudRefs.hudToasts && hudRefs.hud && !hudRefs.hud.classList.contains('hidden');
+  const wrap = inRun ? hudRefs.hudToasts : document.getElementById('toasts');
   if (!wrap) return;
   const el = document.createElement('div');
   el.className = 'toast' + (kind ? ' ' + kind : '');
@@ -2232,7 +2327,11 @@ function startWave(n) {
   state.waveObjective.current = 0;
   state.waveObjective.complete = false;
   const objEl = document.getElementById('wave-objective');
-  if (objEl) objEl.style.display = 'block';
+  if (objEl) {
+    clearTimeout(_objHideTimer);
+    objEl.classList.remove('complete', 'fade');
+    objEl.style.display = 'flex';
+  }
   updateWaveObjectiveText();
 
   const isBossWave = n > 0 && n % 4 === 0;
@@ -2534,33 +2633,49 @@ world.onPickup = (type, pos) => {
     if (pos) spawnPopup(pos.clone().setY(4), '+500', '#ffcc44');
   }
 };
-function updateWaveObjectiveText() {
+// One objective channel: the chip at the top of the HUD. Completion turns
+// it green with a check and the bonus for a few seconds, then it fades and
+// collapses until the next wave (no second centre toast).
+let _objHideTimer = 0;
+function updateWaveObjectiveText(bonus) {
   const text = document.getElementById('wave-objective-text');
+  const count = document.getElementById('wave-objective-count');
+  const bar = document.getElementById('wave-objective-bar');
   if (!text) return;
   const o = state.waveObjective;
   if (o.complete) {
-    text.textContent = `OBJECTIVE COMPLETE · ${o.goal} / ${o.goal}`;
-    text.style.color = '#66ff99';
-    text.style.textShadow = '0 0 10px #33ee88';
+    text.textContent = 'OBJECTIVE COMPLETE';
+    if (count) count.textContent = bonus ? `+${bonus.toLocaleString()}` : `${o.goal} / ${o.goal}`;
+    if (bar) bar.style.transform = 'scaleX(1)';
   } else {
     const lbl = o.label || 'SMASH';
     const noun = o.noun || 'BUILDINGS';
-    text.textContent = `${lbl} ${o.goal} ${noun} · ${o.current} / ${o.goal}`;
-    text.style.color = '#ffe6c8';
-    text.style.textShadow = '0 0 8px #ff8866';
+    text.textContent = `${lbl} ${o.goal} ${noun}`;
+    if (count) count.textContent = `${o.current} / ${o.goal}`;
+    if (bar) bar.style.transform = `scaleX(${o.goal ? Math.min(1, o.current / o.goal) : 0})`;
   }
 }
 function progressObjective(kind) {
   const obj = state.waveObjective;
   if (!obj || obj.complete || obj.kind !== kind) return;
   obj.current++;
+  let shown = 0;
   if (obj.current >= obj.goal) {
     obj.complete = true;
     const bonus = 1500 + state.wave * 250;
     addScore(bonus);
-    toast(`OBJECTIVE COMPLETE · +${Math.floor(bonus * comboMult())}`, 'good');
+    shown = Math.floor(bonus * comboMult());
+    const el = document.getElementById('wave-objective');
+    if (el) {
+      el.classList.add('complete');
+      clearTimeout(_objHideTimer);
+      _objHideTimer = setTimeout(() => {
+        el.classList.add('fade');
+        _objHideTimer = setTimeout(() => { if (state.waveObjective.complete) el.style.display = 'none'; }, 600);
+      }, 3200);
+    }
   }
-  updateWaveObjectiveText();
+  updateWaveObjectiveText(shown);
 }
 
 world.onBuildingDestroyed = (b) => {
@@ -2627,15 +2742,7 @@ function gameOver(victory) {
       }
     }
   }
-  document.exitPointerLock?.();
-  document.getElementById('hud').classList.add('hidden');
-  document.getElementById('powers').classList.add('hidden');
-  document.getElementById('help').classList.add('hidden');
-  document.getElementById('boss-bar').style.display = 'none';
-  const oo = document.getElementById('wave-objective');
-  if (oo) oo.style.display = 'none';
-  const ce = document.getElementById('combo');
-  if (ce) ce.style.opacity = '0';
+  _hideRunHUD();
   const goEl = document.getElementById('gameover');
   document.getElementById('goTitle').textContent = victory ? `${LEVELS[world.level || 'tokyo'].name} FALLS` : 'DEFEATED';
   document.getElementById('goSubtitle').textContent = victory
@@ -3759,10 +3866,7 @@ function updatePlayer(dt) {
   if (keys.KeyQ   || padInput.pressed.ult) fireUltimate();
   if (keys.Space  || padInput.pressed.stomp) fireStomp();
   if (state.mouseDown || touchInput.attackHeld || padInput.attack) fireMelee();
-  if (padInput.pressed.pause) {
-    state.paused = !state.paused;
-    showMessage(state.paused ? 'PAUSED' : '', state.paused ? 0 : 0);
-  }
+  if (padInput.pressed.pause) togglePause();
 }
 
 // ------------------------- Damage direction indicator -------------------------
@@ -4370,7 +4474,7 @@ function offerUpgrades() {
       state.upgradePending = false;
       state.paused = false;
       _menuPad.focused = -1;
-      if (!isMobile) _requestPointerLock();
+      if (!touchUI) _requestPointerLock();
       // Now actually advance the wave
       if (!state.gameOver) startWave(state.wave + 1);
     };
@@ -4386,8 +4490,9 @@ const muteBtn = document.getElementById('mute-btn');
 if (muteBtn) {
   muteBtn.addEventListener('click', () => {
     audio.setMuted(!audio.muted);
-    muteBtn.textContent = audio.muted ? '🔇' : '🔊';
+    muteBtn.textContent = audio.muted ? 'SOUND · OFF' : 'SOUND · ON';
   });
+  muteBtn.textContent = audio.muted ? 'SOUND · OFF' : 'SOUND · ON';
 }
 
 // ------------------------- Main loop -------------------------
@@ -4478,7 +4583,7 @@ function tick(now) {
   // city only needs ~15 fps (it cost ~6 ms GPU per frame at full rate).
   // Input, gamepad and menu logic above still run every frame.
   const idleScreen = !state.kaiju || state.paused;
-  _syncPausePicker();
+  _syncPauseMenu();
   if (!idleScreen || now - _lastIdleRender >= IDLE_RENDER_MS) {
     _lastIdleRender = now;
     if (composer) composer.render();
