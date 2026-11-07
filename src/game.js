@@ -1936,7 +1936,7 @@ window.__restartInPlace = restartInPlace;
 // ?debug test hooks (QA scripts): inspect state and trigger abilities
 if (/[?&]debug\b/.test(location.search)) {
   // composer(): the post chain (bloom, grade) for in-game-look screenshots
-  window.__qa = { state, world, camera, renderer, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on), gameOver: (v) => gameOver(!!v) };
+  window.__qa = { state, world, camera, renderer, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on), gameOver: (v) => gameOver(!!v), upgrades: () => offerUpgrades() };
 }
 async function startGame(key) {
   if (_startingGame) return;
@@ -2174,6 +2174,7 @@ async function _startGameInner(key) {
   audio.startMusic();
 
   startWave(1);
+  _preloadUpgradeArt();
   if (!touchUI) _requestPointerLock();
 }
 let _helpDimTimer = 0;
@@ -4554,15 +4555,25 @@ function drawMinimap() {
 }
 
 // ------------------------- Upgrade choice modal -------------------------
+// img = painted card art (emoji icon is the fallback if it fails to load),
+// ac = the card's accent glow.
 const UPGRADE_POOL = [
-  { id: 'hp',    icon: '❤️', name: 'TITAN HEART',    desc: '+30 max HP and full heal', apply: () => { state.maxHp += 30; state.hp = state.maxHp; } },
-  { id: 'dmg',   icon: '💥', name: 'CRUSHING BLOWS', desc: '+20% damage to everything', apply: () => { state.upgrades.dmgMult *= 1.2; } },
-  { id: 'speed', icon: '🌪️', name: 'KAIJU FURY',     desc: '+15% movement speed',      apply: () => { state.upgrades.speedMult *= 1.15; } },
-  { id: 'regen', icon: '🩸', name: 'REGEN SCALES',   desc: 'Heal 2 HP / sec passively', apply: () => { state.upgrades.regenRate += 2; } },
-  { id: 'rage',  icon: '🔥', name: 'WRATH OVERFLOW', desc: '+50% rage gain',           apply: () => { state.upgrades.rageGainMult *= 1.5; } },
-  { id: 'combo', icon: '⏱️', name: 'BLOOD FRENZY',   desc: '+1.5s combo timer',        apply: () => { state.comboMaxTimer += 1.5; } },
-  { id: 'hpkit', icon: '✨', name: 'BATTLE READY',   desc: 'Restore 60 HP and 60 rage', apply: () => { state.hp = Math.min(state.maxHp, state.hp + 60); state.rage = Math.min(state.maxRage, state.rage + 60); } },
+  { id: 'hp',    icon: '❤️', img: './assets/ui/upgrades/hp.webp', ac: '#ff4466', name: 'TITAN HEART',    desc: '+30 max HP and full heal', apply: () => { state.maxHp += 30; state.hp = state.maxHp; } },
+  { id: 'dmg',   icon: '💥', img: './assets/ui/upgrades/dmg.webp', ac: '#ff8a3c', name: 'CRUSHING BLOWS', desc: '+20% damage to everything', apply: () => { state.upgrades.dmgMult *= 1.2; } },
+  { id: 'speed', icon: '🌪️', img: './assets/ui/upgrades/speed.webp', ac: '#7fe0ff', name: 'KAIJU FURY',     desc: '+15% movement speed',      apply: () => { state.upgrades.speedMult *= 1.15; } },
+  { id: 'regen', icon: '🩸', img: './assets/ui/upgrades/regen.webp', ac: '#66ff99', name: 'REGEN SCALES',   desc: 'Heal 2 HP / sec passively', apply: () => { state.upgrades.regenRate += 2; } },
+  { id: 'rage',  icon: '🔥', img: './assets/ui/upgrades/rage.webp', ac: '#ff7a2a', name: 'WRATH OVERFLOW', desc: '+50% rage gain',           apply: () => { state.upgrades.rageGainMult *= 1.5; } },
+  { id: 'combo', icon: '⏱️', img: './assets/ui/upgrades/combo.webp', ac: '#ff3355', name: 'BLOOD FRENZY',   desc: '+1.5s combo timer',        apply: () => { state.comboMaxTimer += 1.5; } },
+  { id: 'hpkit', icon: '✨', img: './assets/ui/upgrades/hpkit.webp', ac: '#ffe066', name: 'BATTLE READY',   desc: 'Restore 60 HP and 60 rage', apply: () => { state.hp = Math.min(state.maxHp, state.hp + 60); state.rage = Math.min(state.maxRage, state.rage + 60); } },
 ];
+
+// Decode the card art when a run starts so the picker never pops in empty.
+let _upgradeArtLoaded = false;
+function _preloadUpgradeArt() {
+  if (_upgradeArtLoaded) return;
+  _upgradeArtLoaded = true;
+  for (const u of UPGRADE_POOL) { const im = new Image(); im.decoding = 'async'; im.src = u.img; }
+}
 
 function offerUpgrades() {
   state.upgradePending = true;
@@ -4582,7 +4593,10 @@ function offerUpgrades() {
   for (const u of picks) {
     const card = document.createElement('div');
     card.className = 'ucard';
-    card.innerHTML = `<div class="icon">${u.icon}</div><h3>${u.name}</h3><p>${u.desc}</p>`;
+    card.style.setProperty('--ac', u.ac);
+    card.innerHTML = `<div class="u-art"><img class="icon" src="${u.img}" alt="" width="256" height="256" decoding="async"><span class="u-emoji" aria-hidden="true">${u.icon}</span></div><h3>${u.name}</h3><p>${u.desc}</p>`;
+    const img = card.querySelector('img');
+    img.addEventListener('error', () => img.parentElement.classList.add('noimg'), { once: true });
     const choose = () => {
       u.apply();
       audio.tone(660, 0.1); audio.tone(880, 0.15);
