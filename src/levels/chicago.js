@@ -7,10 +7,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { isMobile } from '../quality.js';
+import { buildHarbor } from './chicago_harbor.js';
 import { loadFest, festBuildingGLBs, festClearFence, festCutRoads, festInside, festNoTree, buildFest } from './chicago_fest.js';
 
 const LAYOUT_URL = './assets/levels/chicago_layout.json';
 const SF_SITE_URL = './assets/levels/chicago_soldier_field_site.json';
+// Millennium / Maggie Daley Parks and the harbours (cartographer's geometry)
+const MILL_URL = './assets/levels/chicago_millennium.json';
 
 /** site_dressing.json -> { lawns, gardens, plazas, northPlaza: [[x, z]...] polygons,
  *  parking [{ polygon, surface }], paths [{ points, width }], water } */
@@ -38,6 +41,10 @@ export async function loadChicagoLayout() {
     const sr = await fetch(SF_SITE_URL, { cache: 'no-cache' });
     if (sr.ok) _layout.sfSite = _normalizeSite(await sr.json());
   } catch (e) { /* no site dressing */ }
+  try {
+    const mr = await fetch(MILL_URL, { cache: 'no-cache' });
+    if (mr.ok) _layout.mill = await mr.json();
+  } catch (e) { /* no park / harbour detail */ }
   // Kaijupalooza! in Grant Park (see festEnabled for the default)
   _layout.fest = await loadFest();
   return _layout;
@@ -134,8 +141,9 @@ const CHICAGO_LANDMARK_GLBS = [
   { id: 'navy_pier_festival_hall', file: 'navy_pier_festival_hall.glb', trueHeightM: 41, faceX: 'east', ready: true },
   // Chrome: needs scene.environment (desktop HIGH); duller steel elsewhere
   { id: 'mirrored_sculpture', file: 'mirrored_sculpture.glb', trueHeightM: 10.4, chrome: true, ready: true },
-  // One glass tower; its twin stands 70 m south, the two screens facing
-  { id: 'crown_fountain', file: 'crown_fountain.glb', trueHeightM: 15.2, face: 'south', pair: 14, ready: true },
+  // One glass tower (the layout's is the south one); its twin stands 51 m
+  // north across the reflecting pool, the two screens facing (cartographer)
+  { id: 'crown_fountain', file: 'crown_fountain.glb', trueHeightM: 15.2, face: 'north', pair: -10.2, ready: true },
 ];
 // Generic downtown blocks, picked by height bucket like Tokyo's pools.
 // share: fraction of that bucket's blocks that use it (the rest stay boxes),
@@ -700,6 +708,13 @@ function mats() {
   };
   for (const m of Object.values(_M)) m.userData.shared = true;
   return _M;
+}
+
+// Plain coloured ground surface (play-garden safety surfacing), shared
+const _std2 = new Map();
+function std2(color) {
+  if (!_std2.has(color)) { const m = new THREE.MeshStandardMaterial({ color, roughness: 0.95 }); m.userData.shared = true; _std2.set(color, m); }
+  return _std2.get(color);
 }
 
 // Ground decal layers that overlap at (almost) the same height: a copy of
@@ -1519,6 +1534,9 @@ export function buildChicago(scene, world, opts, K) {
   // ...and off the festival's stages, tents and crowd lawns
   const festPolys = L.fest ? festNoTree(L.fest) : [];
   noTree.push(...festPolys);
+  // Maggie Daley Park: no trees on the skating ribbon or the play garden
+  const MD = REAL && L.mill?.maggieDaley;
+  if (MD) noTree.push(MD.skatingRibbon.surfacePolygon, ...MD.playGarden.map((g) => g.polygon));
   const onFest = (x, z) => festPolys.some((poly) => pointInPoly(x, z, poly));
   const onLandmark = (x, z) => lmBoxes.some(([lx, lz, hw, hd]) => Math.abs(x - lx) < hw && Math.abs(z - lz) < hd)
     || noTree.some((poly) => pointInPoly(x, z, poly));
@@ -1660,6 +1678,42 @@ export function buildChicago(scene, world, opts, K) {
       if (p.paths.some((q) => distToPolyline(tx, tz, q.points) < q.width / 2 + 2)) continue;
       if (onRoad(tx, tz, 1.5) || onLandmark(tx, tz)) continue;
       scene.add(K.makeTree(tx, tz, (0.9 + Math.random() * 0.5) * PS));
+    }
+  }
+
+  // ---- Maggie Daley Park (cartographer's geometry): the green roof over
+  // the Lakeside Garage. Mounded lawns, the hill inside the skating ribbon,
+  // the ribbon itself raised on low kerb walls, the play-garden zones in
+  // safety-surface colours, and its 180 footpaths ----
+  if (MD) {
+    for (const lw of MD.lawns || []) if (lw.polygon?.length >= 3) addBatch(polygonGeom(lw.polygon, 0.034, 1 / 14), decal(M.lawn, 2));
+    const R = MD.skatingRibbon;
+    const cl = R.centerline || [];
+    if (cl.length > 3) {
+      // The hill the ribbon loops around: a flattened dome, 4-5 m (1u) tall
+      let cx = 0, cz = 0;
+      for (const [x, z] of cl) { cx += x; cz += z; }
+      cx /= cl.length; cz /= cl.length;
+      let rx = Infinity, rz = Infinity;
+      for (const [x, z] of cl) { rx = Math.min(rx, Math.abs(x - cx) || Infinity); rz = Math.min(rz, Math.abs(z - cz) || Infinity); }
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.lawn);
+      dome.scale.set(Math.max(2, rx * 0.85), 1.0, Math.max(2, rz * 0.85));
+      dome.position.set(cx, 0.02, cz);
+      dome.receiveShadow = true;
+      dome.matrixAutoUpdate = false; dome.updateMatrix();
+      dome.userData.batch = true;
+      scene.add(dome);
+      // Ribbon surface 0.12u up, low kerb walls along both edges
+      const hw = (R.width_m?.median || 6.6) * (L.scale || 0.2) / 2;
+      addBatch(ribbon(cl, -hw, hw, 0.12, 1 / SW_TILE, true), decal(swMat, 3));
+      for (const sd of [-1, 1]) addBatch(ribbon(cl, sd * hw - 0.08, sd * hw + 0.08, 0.2, 1, true), M.curb);
+    }
+    const rubber = [std2(0x2f7fc1), std2(0xe07a2e), std2(0x3aa37a)];
+    (MD.playGarden || []).forEach((g, i) => { if (g.polygon?.length >= 3) addBatch(polygonGeom(g.polygon, 0.036, 1 / 6), decal(rubber[i % 3], 3)); });
+    for (const q of MD.paths || []) {
+      if ((q.points || []).length < 2) continue;
+      const w = Math.max(0.25, (q.width || 0.6) / 2);
+      addBatch(ribbon(q.points, -w, w, 0.04, 1 / SW_TILE), decal(M.path, 4));
     }
   }
 
@@ -2349,7 +2403,11 @@ export function buildChicago(scene, world, opts, K) {
   }
   const sailGLB = glb ? _kit('sailboat_moored') : null;
   const moorings = [];
-  if (lakes.length) {
+  // Real harbours: Monroe's mooring field and DuSable's slips (instanced,
+  // smashable); the random scatter below is the fallback without that data
+  const harbor = !!(sailGLB && L.mill?.harbors);
+  if (harbor) buildHarbor(L.mill.harbors, { K, world, scene, lite, spawn: L.spawn, animators, kit: { sail: sailGLB, extra: [] }, S: L.scale || 0.2 });
+  if (lakes.length && !harbor) {
     for (let i = 0; i < (lite ? 5 : 12) * (sailGLB ? 2 : 1); i++) {
       for (let tries = 0; tries < 30; tries++) {
         const x = B.minX + Math.random() * (B.maxX - B.minX), z = B.minZ + Math.random() * (B.maxZ - B.minZ);

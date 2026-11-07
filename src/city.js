@@ -4552,6 +4552,9 @@ export class Car {
       let tpl = tpls[tpls.length - 1];
       for (const t of tpls) { pick -= t.weight; if (pick < 0) { tpl = t; break; } }
       const clone = _cloneCarScene(tpl);
+      // Long vehicles (buses, 10 m+) keep to the major streets: Loop bus
+      // routes run on State, Michigan, Madison, Jackson... not 4.5u side streets
+      this.minRoadW = tpl.len && tpl.len >= 10 ? 6.5 : 0;
       const size = tpl.box.getSize(new THREE.Vector3());
       const targetLen = _carTargetLen(tpl); // old cars: ~3.6u to match procedural size
       const s = targetLen / Math.max(size.x, size.y, size.z);
@@ -4642,7 +4645,9 @@ export class Car {
       // Any edge but the one we came along (U-turn only at dead ends)
       let next = this.edge;
       if (out.length > 1) {
-        do { next = out[Math.floor(Math.random() * out.length)]; } while (next === this.edge);
+        const wide = this.minRoadW ? out.filter((ei) => ei !== this.edge && net.edges[ei].laneOff * 4 >= this.minRoadW) : [];
+        if (wide.length) next = wide[Math.floor(Math.random() * wide.length)];
+        else do { next = out[Math.floor(Math.random() * out.length)]; } while (next === this.edge);
       }
       this.edge = next;
       this.from = node;
@@ -4777,8 +4782,13 @@ export function spawnCars(scene, count, cityRadius = 380, blockSize = 36) {
       // Edge picked by length, so traffic density is even along the roads
       let r = Math.random() * net.total, ei = 0;
       while (ei < net.edges.length - 1 && r > net.edges[ei].len) { r -= net.edges[ei].len; ei++; }
-      const e = net.edges[ei];
+      let e = net.edges[ei];
       const c = new Car(0, 0, 'z', 1);
+      if (c.minRoadW && e.laneOff * 4 < c.minRoadW) {
+        // A bus spawns on a major street
+        const wide = net.edges.map((x, k) => k).filter((k) => net.edges[k].laneOff * 4 >= c.minRoadW);
+        if (wide.length) { ei = wide[Math.floor(Math.random() * wide.length)]; e = net.edges[ei]; }
+      }
       c._placeOnNet(net, ei, Math.random() < 0.5 ? e.a : e.b, Math.random() * e.len);
       scene.add(c.root);
       cars.push(c);
