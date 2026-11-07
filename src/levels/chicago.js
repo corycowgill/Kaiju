@@ -234,9 +234,10 @@ const CHICAGO_KIT_GLBS = {
   // at cartographer's spots. heightM: the model's true height; fit: w x d (m)
   // it may stretch toward in plan (the climbing wall's 26 x 24 m site)
   maggie_climbing_wall: { file: 'maggie_climbing_wall.glb', at: [29.2, -163.3], heightM: 12, fit: [26, 24], ready: true },
-  maggie_net_tower: { file: 'maggie_net_tower.glb', at: [26.8, -129.2], heightM: 13.3, ready: true }, // Cradle Nest zone
-  maggie_play_ship: { file: 'maggie_play_ship.glb', at: [35.1, -137.5], heightM: 9, rot: 0.6, ready: true }, // The Sea zone
-  maggie_fieldhouse: { file: 'maggie_fieldhouse.glb', at: [28.0, -176.1], heightM: 6, rot: 0.018, ready: true }, // glass front +Z, into the park
+  // (placements: artist-3d's manifest layoutCentre / rotRad)
+  maggie_net_tower: { file: 'maggie_net_tower.glb', at: [44.1, -127.0], heightM: 13.3, rot: -1.565, ready: true }, // Slide Crater
+  maggie_play_ship: { file: 'maggie_play_ship.glb', at: [34.7, -137.0], heightM: 9, rot: 1.198, ready: true }, // The Sea; +Z the boarding broadside
+  maggie_fieldhouse: { file: 'maggie_fieldhouse.glb', at: [28.0, -176.1], heightM: 5, rot: 0.018, ready: true }, // model size (OSM's is an 84 x 5 m sliver); glass front +Z into the park
   planter_bollard: { file: 'planter_bollard.glb', ready: true },
   // Soldier Field north wing wall: 105 x 10 x 20 m limestone, length along X
   soldier_field_wing: { file: 'soldier_field_wing.glb', ready: true },
