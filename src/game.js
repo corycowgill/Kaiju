@@ -1034,7 +1034,10 @@ function buildWorldCity() {
 }
 buildWorldCity();
 window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
-// (Shaders: nothing is compiled ahead at the menu -- see _prewarmShaders.)
+// Desktop: about a second after the title menu is up (past its own first
+// frames' stall), link the effect set in the background
+// (_linkVfxBehindMenu); a START before then skips this.
+if (!isMobile) setTimeout(() => { if (!state.kaiju && !_startingGame) _linkVfxBehindMenu(); }, 3700);
 
 // ------------------------- Game state -------------------------
 const state = {
@@ -1733,8 +1736,11 @@ function _disposeKaijuGLB(glb) {
 //  - START, behind the loading screen: the kaiju, one of each enemy and the
 //    whole scene (GLB buildings just flushed in), awaited in full, then one
 //    warm frame links the shadow-depth variants with nothing else queued;
-//  - after the first gameplay frames: one VFX builder at a time, so a pending
-//    batch is only ever a few programs.
+//  - the effects: desktop, behind the idle title menu, two programs in
+//    flight at a time (_linkVfxBehindMenu); phones all at once from the
+//    first gameplay frame, never waited on (_queueVfxLinks); whatever a
+//    desktop START leaves unlinked, one builder at a time after the first
+//    frames (_linkVfxInSlices).
 // Staged throwaways are dropped without disposing their materials, which
 // would release the programs again.
 
@@ -1742,7 +1748,7 @@ function _disposeKaijuGLB(glb) {
  *  render target the scene is drawn into bound (with the post composer: its
  *  linear, untonemapped read buffer; tone mapping and output colour space are
  *  part of a program's key). Resolves when every program is linked. */
-function _linkAsync(root, target = composer ? composer.readBuffer : null) {
+function _linkAsync(root, target = composer ? composer.readBuffer : null, wait = true) {
   const lightsFrom = root === scene ? null : scene;
   // The programs these will draw with (compile() skips Mesh.onBeforeRender)
   root.traverse((o) => { for (const m of [].concat(o.material || [])) canonMaterialMaps(m); });
@@ -1750,7 +1756,8 @@ function _linkAsync(root, target = composer ? composer.readBuffer : null) {
   renderer.setRenderTarget(target);
   let p;
   try {
-    p = renderer.compileAsync ? renderer.compileAsync(root, camera, lightsFrom)
+    // wait=false: compile() only; the links finish in the GPU process, unpolled
+    p = wait && renderer.compileAsync ? renderer.compileAsync(root, camera, lightsFrom)
       : Promise.resolve(renderer.compile(root, camera, lightsFrom));
   } catch (e) {
     p = Promise.reject(e);
@@ -1793,11 +1800,15 @@ function _depthStandIns(roots) {
   return g;
 }
 
-/** One Group per VFX builder, for linking one at a time. */
+// Effects the powers and smashing fire first, linked first
+const _VFX_FIRST = ['explosion', 'sparks', 'dustBurst', 'smokePuff', 'hitPulse', 'beam', 'beamImpact', 'soundRings',
+  'shockwave', 'atomicDome', 'breathCone', 'smokeColumn', 'muzzleFlash', 'tailSweep', 'wingSlash', 'chainLightning'];
+/** One Group per VFX builder (most used first), staged with a stub world. */
 function _stageVfx() {
   const groups = [];
   const P = new THREE.Vector3(0, 2, 0), D = new THREE.Vector3(0, 0, 1), B = new THREE.Vector3(0, 2, 10);
-  for (const name of listBuilders()) {
+  const all = listBuilders();
+  for (const name of [..._VFX_FIRST.filter((n) => all.includes(n)), ...all.filter((n) => !_VFX_FIRST.includes(n))]) {
     const stage = new THREE.Group();
     const stubWorld = Object.create(world);
     stubWorld.scene = stage; stubWorld.effects = []; stubWorld.shells = []; stubWorld.debris = [];
@@ -1814,7 +1825,66 @@ function _stageVfx() {
   resetPooledLights();
   return groups;
 }
-let _vfxLinked = null;
+let _vfxLinked = null, _vfxStaged = null;
+/** Every effect program in one compile() call, not waited on or polled (a
+ *  readiness poll is a sync round trip to the busy GPU process): the links
+ *  run on the GPU process's workers while the menu or the game goes on. The
+ *  staged effects are kept, so their programs stay acquired. */
+function _queueVfxLinks() {
+  if (_vfxLinked) return;
+  const t0 = performance.now();
+  _vfxStaged = new THREE.Group();
+  for (const g of _stageVfx()) _vfxStaged.add(g);
+  _vfxLinked = _linkAsync(_vfxStaged, undefined, false);
+  console.log(`[prewarm:vfx] effect set queued in ${(performance.now() - t0).toFixed(0)} ms (${renderer.info.programs.length} programs)`);
+}
+/** Behind the idle menu: at most two programs in flight (one staged mesh's
+ *  material each, compile() only), topped up every 100 ms as they finish
+ *  linking; materials whose program already exists go straight through.
+ *  The whole set in flight at once held up the GPU process's other work for
+ *  ~1.6 s and froze the menu's frames; two at a time they don't (~7 s for
+ *  the set, cold). Stops when START is pressed: what's left is linked after
+ *  the first frames (_linkVfxInSlices). */
+function _linkVfxBehindMenu() {
+  if (_vfxLinked) return;
+  const t0 = performance.now();
+  _vfxStaged = new THREE.Group();
+  const items = [], seen = new Set();
+  for (const g of _stageVfx()) {
+    _vfxStaged.add(g);
+    g.traverse((o) => {
+      if (!o.material || Array.isArray(o.material) || seen.has(o.material)) return;
+      seen.add(o.material);
+      items.push(o.clone(false)); // that one material, without the children
+    });
+  }
+  // Once linked, the program's first-use work too (error log and uniform
+  // and attribute lookups, each a sync round trip to the GPU process; on a
+  // first draw in play they waited 2 s behind a busy GPU process)
+  const pending = (o) => {
+    const pr = renderer.properties.get(o.material).currentProgram;
+    if (!pr) return false;
+    if (!pr.isReady()) return true;
+    pr.getUniforms(); pr.getAttributes();
+    return false;
+  };
+  const CAP = 2;
+  let i = 0;
+  const inFlight = [];
+  const next = () => {
+    if (state.kaiju || _startingGame) { _vfxLinked = null; return; }
+    for (let k = inFlight.length - 1; k >= 0; k--) if (!pending(inFlight[k])) inFlight.splice(k, 1);
+    while (i < items.length && inFlight.length < CAP) {
+      const o = items[i++];
+      _linkAsync(o, undefined, false);
+      if (pending(o)) inFlight.push(o);
+    }
+    if (inFlight.length) { setTimeout(next, 100); return; }
+    console.log(`[prewarm:vfx] ${items.length} effect materials linked behind the menu in ${(performance.now() - t0).toFixed(0)} ms (${renderer.info.programs.length} programs)`);
+  };
+  _vfxLinked = Promise.resolve();
+  next();
+}
 function _linkVfxInSlices() {
   if (_vfxLinked) return _vfxLinked;
   const t0 = performance.now();
@@ -2202,8 +2272,10 @@ async function _startGameInner(key) {
   audio.startMusic();
 
   startWave(1);
-  // Effects aren't drawn in the first frames: link them now, one at a time
-  setTimeout(_linkVfxInSlices, 500);
+  // Effects not linked behind the menu: phones queue them all now, desktop
+  // links them one at a time after the first frames
+  if (isMobile) _queueVfxLinks();
+  else setTimeout(_linkVfxInSlices, 500);
   _preloadUpgradeArt();
   if (!touchUI) _requestPointerLock();
 }
