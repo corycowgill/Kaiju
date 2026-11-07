@@ -156,10 +156,46 @@ export function festClearFence(F, roads) {
     for (let k = 0; k < n; k++) ring.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
   }
   const orig = F.fence;
+  // Road segments in their original scan order, bucketed on a grid. A segment
+  // only acts on p when p is within its need (half width + 1.5u), so a pass
+  // tests the segments near p's position at the start of the pass, in the
+  // same order; if p is pushed further than SLACK from there, the rest of
+  // the pass falls back to the full scan. Same pushes, same order: identical.
+  const segs = [];
+  let needMax = 0;
+  for (const r of roads) {
+    needMax = Math.max(needMax, r.width / 2 + 1.5);
+    for (let i = 0; i + 1 < r.points.length; i++) segs.push(r, i);
+  }
+  const C = 16, SLACK = 8, cells = new Map();
+  for (let g = 0; g < segs.length; g += 2) {
+    const r = segs[g], i = segs[g + 1];
+    const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1], R = needMax + SLACK;
+    for (let cx = Math.floor((Math.min(ax, bx) - R) / C); cx <= Math.floor((Math.max(ax, bx) + R) / C); cx++) {
+      for (let cz = Math.floor((Math.min(az, bz) - R) / C); cz <= Math.floor((Math.max(az, bz) + R) / C); cz++) {
+        const k = cx * 73856093 ^ cz * 19349663;
+        let l = cells.get(k);
+        if (!l) cells.set(k, l = []);
+        l.push(g);
+      }
+    }
+  }
   for (const p of ring) {
     for (let pass = 0; pass < 6; pass++) { // corners: two streets push in turn
-      for (const r of roads) {
-        for (let i = 0; i + 1 < r.points.length; i++) {
+      const sx = p[0], sz = p[1];
+      const near = cells.get(Math.floor(sx / C) * 73856093 ^ Math.floor(sz / C) * 19349663) || [];
+      let full = -1; // segs index to resume a full scan from (p moved past SLACK)
+      for (let n = 0; ; n++) {
+        let g;
+        if (full < 0) {
+          if (n >= near.length) break;
+          g = near[n];
+        } else {
+          g = full; full += 2;
+          if (g >= segs.length) break;
+        }
+        const r = segs[g], i = segs[g + 1];
+        {
           const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1];
           const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
           const t = Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - az) * dz) / l2));
@@ -173,6 +209,7 @@ export function festClearFence(F, roads) {
           let sg = 1;
           if (!_inPoly(nx + ux / ul * need, nz + uz / ul * need, orig)) sg = -1; // the park side
           p[0] = nx + sg * ux / ul * need; p[1] = nz + sg * uz / ul * need;
+          if (full < 0 && Math.hypot(p[0] - sx, p[1] - sz) > SLACK) full = g + 2;
         }
       }
     }

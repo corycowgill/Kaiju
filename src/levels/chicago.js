@@ -478,7 +478,18 @@ function _normalizeLayout(L) {
  *  segment whose half width + `margin` reaches into a box pushes that face
  *  back; the box keeps at least 45% of each side. */
 function _clearRoads(buildings, roads, margin, water = []) {
-  const wet = (x, z) => water.some((poly) => pointInPoly(x, z, poly));
+  // Bbox reject before the even-odd test: outside a polygon's z range no edge
+  // straddles z, and more than 1u outside its x range every crossing lies on
+  // one side (an even count): pointInPoly is false there either way
+  const wbox = water.map((poly) => {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const [x, z] of poly) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    return [x0 - 1, x1 + 1, z0, z1];
+  });
+  const wet = (x, z) => water.some((poly, i) => {
+    const b = wbox[i];
+    return x >= b[0] && x <= b[1] && z >= b[2] && z <= b[3] && pointInPoly(x, z, poly);
+  });
   const CELL = 24;
   const segs = new Map();
   for (const r of roads) {
