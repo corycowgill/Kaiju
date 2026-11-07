@@ -135,7 +135,7 @@ export function buildHarbor(H, ctx) {
             dirty = dirty || new Set();
             for (const { im } of b.ims) dirty.add(im);
             // A second, smaller splash as it goes under
-            if (b.sinkT - dt < ROLL_T && b.sinkT >= ROLL_T) fx.burst(b.sp.x, b.sp.z, lite ? 3 : 6, 0.6);
+            if (b.sinkT - dt < ROLL_T && b.sinkT >= ROLL_T) fx.burst(b.sp.x, b.sp.z, lite ? 3 : 6, 0.6, false);
           }
         }
         if (acc > 0.1) acc = 0;
@@ -169,8 +169,10 @@ export function buildHarbor(H, ctx) {
 function _splashPool(scene, n, r) {
   const white = new THREE.MeshBasicMaterial({ color: 0xf2f8ff, transparent: true, opacity: 0.9, depthWrite: false, fog: true });
   const drops = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.55, 0), white, n);
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0xe8f4ff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, fog: true });
-  const ringGeom = new THREE.RingGeometry(0.9, 1, 28, 1);
+  // Foam: one soft, broken ring per smash (a feathered radial band with
+  // noise in a small canvas texture), additive so it fades by colour
+  const ringMat = new THREE.MeshBasicMaterial({ map: _foamTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+  const ringGeom = new THREE.PlaneGeometry(2, 2);
   ringGeom.rotateX(-Math.PI / 2);
   const rings = new THREE.InstancedMesh(ringGeom, ringMat, r);
   for (const im of [drops, rings]) { im.frustumCulled = false; im.castShadow = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(im); }
@@ -178,11 +180,14 @@ function _splashPool(scene, n, r) {
   for (let i = 0; i < n; i++) drops.setMatrixAt(i, zero);
   for (let i = 0; i < r; i++) rings.setMatrixAt(i, zero);
   const D = Array.from({ length: n }, () => ({ t: -1, p: new THREE.Vector3(), v: new THREE.Vector3(), s: 1 }));
-  const R = Array.from({ length: r }, () => ({ t: -1, x: 0, z: 0, s: 1 }));
+  const R = Array.from({ length: r }, () => ({ t: -1, x: 0, z: 0, s: 1, ry: 0 }));
+  const col = new THREE.Color();
+  for (let i = 0; i < r; i++) rings.setColorAt(i, col.setRGB(0, 0, 0));
+  const RING_T = 1.2, up = new THREE.Vector3(0, 1, 0);
   let di = 0, ri = 0, live = 0;
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), rq = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
   return {
-    burst(x, z, count, size = 1) {
+    burst(x, z, count, size = 1, ring = true) {
       for (let k = 0; k < count; k++) {
         const d = D[di]; di = (di + 1) % n;
         const a = Math.random() * Math.PI * 2, sp = (0.8 + Math.random() * 1.6) * size;
@@ -190,8 +195,10 @@ function _splashPool(scene, n, r) {
         d.p.set(x + Math.cos(a) * 0.6, 0.3, z + Math.sin(a) * 0.6);
         d.v.set(Math.cos(a) * sp, (3 + Math.random() * 3) * size, Math.sin(a) * sp);
       }
-      const g = R[ri]; ri = (ri + 1) % r;
-      g.t = 0; g.x = x; g.z = z; g.s = size;
+      if (ring) {
+        const g = R[ri]; ri = (ri + 1) % r;
+        g.t = 0; g.x = x; g.z = z; g.s = size; g.ry = Math.random() * Math.PI * 2;
+      }
       live = 2.2;
     },
     update(dt) {
@@ -209,17 +216,43 @@ function _splashPool(scene, n, r) {
       R.forEach((g, i) => {
         if (g.t < 0) return;
         g.t += dt;
-        if (g.t > 2) { g.t = -1; rings.setMatrixAt(i, zero); return; }
-        // Spreads out to ~4u, thinning as it goes (scale y unused: flat ring)
-        const rad = (1 + g.t * 1.2) * g.s, fade = 1 - g.t / 2;
+        if (g.t > RING_T) { g.t = -1; rings.setMatrixAt(i, zero); rings.setColorAt(i, col.setRGB(0, 0, 0)); return; }
+        // Spreads from ~1.5u to ~4u, fading out (ease-out) as it goes
+        const k = g.t / RING_T, rad = (1.5 + 2.6 * (1 - (1 - k) * (1 - k))) * g.s, a = 0.5 * (1 - k) * (1 - k * 0.3);
         sc.set(rad, 1, rad);
         pos.set(g.x, 0.24, g.z);
-        rings.setMatrixAt(i, m.compose(pos, q, sc.multiplyScalar(0.6 + 0.4 * fade)));
+        rings.setMatrixAt(i, m.compose(pos, rq.setFromAxisAngle(up, g.ry), sc));
+        rings.setColorAt(i, col.setRGB(a, a, a));
       });
       drops.instanceMatrix.needsUpdate = true;
       rings.instanceMatrix.needsUpdate = true;
+      if (rings.instanceColor) rings.instanceColor.needsUpdate = true;
     },
   };
+}
+
+/** 128px foam ring: a radial band feathered on both edges (peak at r 0.72),
+ *  broken up by angular and fine noise; black outside (additive) */
+function _foamTex() {
+  const N = 128, cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  const cx = cv.getContext('2d');
+  const img = cx.createImageData(N, N), d = img.data;
+  const lobes = Array.from({ length: 7 }, () => [Math.random() * 6.28, 0.3 + Math.random() * 0.5]);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = (x + 0.5) / N * 2 - 1, v = (y + 0.5) / N * 2 - 1, r = Math.hypot(u, v), a = Math.atan2(v, u);
+    const band = Math.exp(-(((r - 0.72) / 0.12) ** 2));
+    let broken = 0.55;
+    for (const [ph, w] of lobes) broken += 0.12 * w * Math.sin(a * 3 + ph * 2 + Math.sin(a * 5 + ph));
+    const grain = 0.75 + 0.25 * Math.random();
+    const val = Math.max(0, Math.min(1, band * broken * grain * 1.6)) * 255;
+    const i = (y * N + x) * 4;
+    d[i] = d[i + 1] = d[i + 2] = val; d[i + 3] = 255;
+  }
+  cx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 function _distLine(x, z, pts) {
