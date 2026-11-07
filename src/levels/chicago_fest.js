@@ -687,5 +687,14 @@ export function buildFest(scene, F, ctx) {
     }
   }
 
+  // Hook for other systems (stage music, audio-director): one entry per
+  // stage; destroyed reads live, group is the stage building's group
+  // (removed from the scene when it collapses)
+  if (ctx.world) {
+    ctx.world.festStages = stages.map(({ it, b }) => ({
+      id: it.id, name: it.name, tier: it.tier || '', x: it.x, z: it.z, rot: it.rot, w: it.w, d: it.d, h: it.h,
+      building: b, group: b.group, get destroyed() { return b.destroyed; },
+    }));
+  }
   return { stages, crowds };
 }

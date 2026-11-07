@@ -965,6 +965,7 @@ function applyLevelLook(level) {
 
 function buildWorldCity() {
   world.crowdHit = null; // a level with festival crowds sets it (Chicago)
+  world.festStages = null; // ...and its stages (chicago_fest.js: id, name, x, z, rot, h, group, destroyed)
   const res = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT, level: selectedLevel });
   const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = res;
   world.buildings = buildings;
@@ -4004,6 +4005,7 @@ function updateWorld(dt) {
     e.update(dt, world, kpos);
   }
   audio.updateAmbience(world.enemies, kpos);
+  audio.updateStages(world.festStages, kpos, camera);
 
   // Shells -- compute kaiju centre once per frame, not per shell
   if (state.kaiju) {

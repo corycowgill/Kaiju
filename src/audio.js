@@ -63,6 +63,25 @@ const SFX = {
 const LOOP_SAMPLES = { loop_heli: 185220, loop_tank: 194040, loop_city: 348390 };
 const MP3_PRIMING = 1105;
 
+// Kaijupalooza! stage music (Chicago level). One looping mono track per stage,
+// keyed by the chicago_fest.js stage id; positional around the kaiju.
+const STAGE_DIR = 'assets/music/stages/';
+const STAGE_TRACKS = {
+  monster_main: 'stage_monster_main', kaiju_stage: 'stage_kaiju_stage', tremor_tent: 'stage_tremor_tent',
+  atomic_stage: 'stage_atomic_stage', stomp_stage: 'stage_stomp_stage', roar_grove: 'stage_roar_grove',
+};
+// Exact loop lengths (samples at 44.1 kHz), same padding guard as LOOP_SAMPLES.
+// AAC (.m4a) priming is 1024 samples; Vorbis needs none.
+const STAGE_LOOP_SAMPLES = {
+  monster_main: 3051290, kaiju_stage: 2645876, tremor_tent: 2776133,
+  atomic_stage: 2965302, stomp_stage: 2721569, roar_grove: 3044854,
+};
+const AAC_PRIMING = 1024;
+const STAGE_NEAR = 14;          // full volume inside this (u, beyond the stage's half-size)
+const STAGE_FAR = 80;           // silent beyond this (u); the main stage carries further
+const STAGE_FAR_MAIN = 95;
+const STAGE_GAIN = 0.8;
+
 // Monster variant (monsters.js cfg.variant) -> per-kaiju SFX suffix
 const KAIJU_SFX = { gojira: 'gorrak', ghidorah: 'tridon', mecha: 'mechra' };
 
@@ -79,6 +98,10 @@ class Audio {
     this._kaiju = 'gorrak';
     this._amb = null;       // ambience loops (created once buffers decode)
     this._ambT = 0;
+    this._stages = null;    // festStages array the stage voices belong to
+    this._stageV = {};      // stage id -> { src, g, lp, pan } or { dead: true }
+    this._stageBuf = {};    // stage id -> AudioBuffer | Promise | 'failed' (lazy)
+    this._stageT = 0;
   }
 
   // Must be called from a user gesture (click / touchstart) to satisfy autoplay policies.
@@ -90,10 +113,16 @@ class Audio {
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.45;
     this.master.connect(this.ctx.destination);
+    // Background music goes through its own duck stage so festival stages can pull it down
+    this.musicDuck = this.ctx.createGain();
+    this.musicDuck.connect(this.master);
+    this.stageBus = this.ctx.createGain();
+    this.stageBus.connect(this.master);
     this.loadSfx();
     // Fade ambience loops out when updateAmbience() stops being called (pause, menus).
     setInterval(() => {
       if (this._amb && this.ctx && this._now() - this._ambT > 0.5) this._setAmbience(0, 0, 0);
+      if (this.stageBus && this.ctx && this._now() - this._stageT > 0.5) this._fadeStages();
     }, 250);
   }
 
@@ -224,6 +253,159 @@ class Audio {
     a.loop_heli.g.gain.setTargetAtTime(heli, t, 0.35);
     a.loop_tank.g.gain.setTargetAtTime(tank, t, 0.35);
     a.loop_city.g.gain.setTargetAtTime(city, t, 0.8);
+  }
+
+  // ============ Kaijupalooza! stage music ============
+  // Call once per frame with world.festStages (null outside the festival),
+  // the kaiju position (the listener) and the camera (for left/right pan).
+  // Tracks load lazily the first time a stage is in earshot, and only after a
+  // user gesture (there's no AudioContext before init()). Volume falls off
+  // with distance and highs roll off far away; phones run the 3 nearest stages.
+  updateStages(stages, kpos, camera) {
+    if (!this.ctx) return;
+    if (stages !== this._stages) { this._stopStages(); this._stages = stages; }
+    if (!stages || !kpos || this._ambOff) return;
+    const t = this._now();
+    this._stageT = t;
+    const phone = this._isPhone();
+    const maxVoices = phone ? 3 : 6;
+    // camera right vector on the ground plane, for panning
+    let rx = 1, rz = 0;
+    if (camera) {
+      const e = camera.matrixWorld.elements;
+      const l = Math.hypot(e[0], e[2]) || 1;
+      rx = e[0] / l; rz = e[2] / l;
+    }
+
+    const ranked = [];
+    for (const st of stages) {
+      if (!STAGE_TRACKS[st.id]) continue;
+      const d = Math.hypot(st.x - kpos.x, st.z - kpos.z);
+      const near = STAGE_NEAR + Math.max(st.w || 0, st.d || 0) / 2;
+      const far = st.tier === 'main' ? STAGE_FAR_MAIN : STAGE_FAR;
+      const k = Math.max(0, Math.min(1, (far - d) / (far - near)));
+      ranked.push({ st, d, k });
+    }
+    ranked.sort((a, b) => a.d - b.d);
+    let loudest = 0, live = 0;
+    for (let j = 0; j < ranked.length; j++) {
+      const { st, d, k } = ranked[j];
+      const id = st.id;
+      const v = this._stageV[id];
+      if (st.destroyed) { if (!v || !v.dead) this._killStage(id); continue; }
+      if (v && v.dead) continue;  // stage fell: stays silent
+      const i = live++;           // rank among standing stages
+      if (i >= maxVoices || k <= 0) {
+        if (v) this._dropStage(id);
+        if (phone && i >= maxVoices && this._stageBuf[id] instanceof AudioBuffer) delete this._stageBuf[id]; // free decoded RAM
+        continue;
+      }
+      const buf = this._stageBuf[id];
+      if (!buf) { this._loadStage(id); continue; }
+      if (!(buf instanceof AudioBuffer)) continue;   // decoding, or failed
+      const voice = v || this._startStage(id, buf);
+      // PA faces the crowd (stage front = local +Z): about -4 dB behind the stage
+      const front = d > 1 ? ((kpos.x - st.x) * Math.sin(st.rot || 0) + (kpos.z - st.z) * Math.cos(st.rot || 0)) / d : 1;
+      const g = k * k * (0.8 + 0.2 * front);
+      voice.g.gain.setTargetAtTime(g * STAGE_GAIN, t, 0.25);
+      voice.lp.frequency.setTargetAtTime(1200 + 17000 * g, t, 0.25);
+      if (voice.pan) {
+        const dx = (st.x - kpos.x) / (d || 1), dz = (st.z - kpos.z) / (d || 1);
+        voice.pan.pan.setTargetAtTime((dx * rx + dz * rz) * 0.8 * Math.min(1, d / 20), t, 0.15);
+      }
+      loudest = Math.max(loudest, g);
+    }
+    this.stageBus.gain.setTargetAtTime(1, t, 0.3);
+    // standing in front of a stage pulls the background score down
+    this.musicDuck.gain.setTargetAtTime(1 - 0.75 * loudest, t, 0.5);
+  }
+
+  _isPhone() {
+    if (this._phone === undefined) {
+      this._phone = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches && (navigator.maxTouchPoints || 0) > 0);
+    }
+    return this._phone;
+  }
+
+  // OGG Vorbis where supported, AAC (.m4a) otherwise (iOS Safari)
+  _loadStage(id) {
+    if (this._stageBuf[id]) return;
+    const probe = document.createElement('audio');
+    const exts = probe.canPlayType && probe.canPlayType('audio/ogg; codecs="vorbis"') ? ['ogg', 'm4a'] : ['m4a', 'ogg'];
+    this._stageBuf[id] = (async () => {
+      for (const ext of exts) {
+        try {
+          const arr = await cachedFetch(STAGE_DIR + STAGE_TRACKS[id] + '.' + ext);
+          const buf = await new Promise((resolve, reject) => { this.ctx.decodeAudioData(arr, resolve, reject); });
+          buf._ext = ext;
+          if (this._stageBuf[id] instanceof Promise) this._stageBuf[id] = buf; // not evicted / destroyed meanwhile
+          return;
+        } catch (e) { /* try next format */ }
+      }
+      this._stageBuf[id] = 'failed';
+    })();
+  }
+
+  _startStage(id, buf) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const len = (STAGE_LOOP_SAMPLES[id] || 0) / 44100;
+    // Any extra length is codec padding: AAC decoders that ignore the edit list
+    // add 1024 priming samples up front; every AAC decoder may add <1024 at the end.
+    const extra = buf.duration - len;
+    if (len && extra > 0.0005) {
+      src.loopStart = buf._ext === 'm4a' && extra >= (AAC_PRIMING - 8) / 44100 ? AAC_PRIMING / 44100 : 0;
+      src.loopEnd = src.loopStart + len;
+    }
+    const loopLen = (src.loopEnd || buf.duration) - src.loopStart;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 1200;
+    const g = this.ctx.createGain();
+    g.gain.value = 0;
+    const pan = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+    src.connect(lp); lp.connect(g);
+    if (pan) { g.connect(pan); pan.connect(this.stageBus); } else g.connect(this.stageBus);
+    // the show keeps going while you're away: resume at the "live" position
+    src.start(0, src.loopStart + (this._now() % loopLen));
+    return (this._stageV[id] = { src, g, lp, pan });
+  }
+
+  _dropStage(id) {
+    const v = this._stageV[id];
+    delete this._stageV[id];
+    if (!v || !v.src) return;
+    const t = this._now();
+    v.g.gain.setTargetAtTime(0, t, 0.2);
+    v.src.onended = () => { try { v.src.disconnect(); v.lp.disconnect(); v.g.disconnect(); if (v.pan) v.pan.disconnect(); } catch (e) {} };
+    try { v.src.stop(t + 1.0); } catch (e) {}
+  }
+
+  // Stage destroyed: the PA dies (tape-stop pitch drop + fade), then silence for good
+  _killStage(id) {
+    const v = this._stageV[id];
+    if (v && v.src) {
+      const t = this._now();
+      v.src.playbackRate.setValueAtTime(1, t);
+      v.src.playbackRate.linearRampToValueAtTime(0.25, t + 0.9);
+      v.g.gain.setTargetAtTime(0, t + 0.3, 0.25);
+      v.src.onended = () => { try { v.src.disconnect(); v.lp.disconnect(); v.g.disconnect(); if (v.pan) v.pan.disconnect(); } catch (e) {} };
+      try { v.src.stop(t + 1.6); } catch (e) {}
+    }
+    this._stageV[id] = { dead: true };
+    delete this._stageBuf[id];
+  }
+
+  _fadeStages() {
+    const t = this._now();
+    this.stageBus.gain.setTargetAtTime(0, t, 0.25);
+    this.musicDuck.gain.setTargetAtTime(1, t, 0.5);
+  }
+
+  _stopStages() {
+    for (const id of Object.keys(this._stageV)) this._dropStage(id);
+    this._stageV = {};
+    if (this.musicDuck) this.musicDuck.gain.setTargetAtTime(1, this._now(), 0.5);
   }
 
   // Single tone with envelope and optional pitch slide
@@ -462,7 +644,7 @@ class Audio {
       const g = this.ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
       g.gain.linearRampToValueAtTime(volume, t + 1.0);
-      src.connect(g); g.connect(this.master);
+      src.connect(g); g.connect(this.musicDuck);
       src.start(t);
       this.musicSource = src;
       this.musicGain = g;
@@ -475,6 +657,7 @@ class Audio {
     const t = this._now ? this._now() : 0;
     this._ambOff = true;
     if (this._amb && this.ctx) this._setAmbience(0, 0, 0);
+    if (this.ctx) this._fadeStages();
     if (this.musicGain && this.ctx) {
       try {
         this.musicGain.gain.cancelScheduledValues(t);
@@ -499,7 +682,7 @@ class Audio {
     masterG.gain.linearRampToValueAtTime(volume, t + 2.0);
     const lp = this.ctx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = 700;
-    masterG.connect(this.master);
+    masterG.connect(this.musicDuck);
     lp.connect(masterG);
 
     // Bass drone with subtle pitch-LFO
