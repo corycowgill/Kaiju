@@ -883,6 +883,16 @@ if (GLB_CONTENT) {
   }
 } else {
   window.__dbg && window.__dbg('DBG · LOW phone: skipping tree/ped GLB preload');
+  // Chicago on phone LOW still gets its GLB vehicles: one mesh a car (the
+  // procedural fallback car is ~6 draws, the level's biggest draw cost there)
+  if (selectedLevel === 'chicago') {
+    try {
+      await initAssetCache();
+      await loadCarTemplates(undefined, selectedLevel);
+    } catch (e) {
+      reportLoadError('PreLoad', 'car templates', e); // procedural fallback
+    }
+  }
 }
 
 // Build city

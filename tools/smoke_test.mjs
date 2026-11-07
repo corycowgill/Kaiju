@@ -137,6 +137,7 @@ const world = new Proxy({ scene, enemies: [], effects: [], shells: [], debris: [
 await step('vfx.init', () => { vfx.init(scene); vfx.registerAllBuilders(effects); });
 await step('level data', () => city.loadLevelData(level));
 if (Q.GLB_CONTENT) await step('tree/ped/car templates', () => Promise.all([city.loadTreeTemplates(undefined, level), city.loadPedestrianTemplates(), city.loadCarTemplates(undefined, level)]));
+else if (level === 'chicago') await step('car templates', () => city.loadCarTemplates(undefined, level)); // as game.js: GLB cars on Chicago LOW
 const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q.isMobile, glb: Q.GLB_CONTENT, level }));
 for (const key of ['godzilla', 'ghidorah', 'mecha']) await step(`kaiju ${key}`, () => loadKaijuModel(key));
 if (Q.GLB_CONTENT) {

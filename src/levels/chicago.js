@@ -1149,7 +1149,7 @@ export function buildChicago(scene, world, opts, K) {
   const instance = () => K.instanceStaticClones(scene, !glb ? 4000 : lite ? 240 : 120, lite ? 185 : 150);
   // GLB buildings: the generic kit is a dozen tiny (<300 tri) templates, so
   // big batch tiles keep their draws down at almost no triangle cost
-  K.setBuildingTile(!glb ? 600 : lite ? 440 : 300); // phone LOW: one tile per quadrant
+  K.setBuildingTile(!glb ? 600 : lite ? 440 : 400); // phone LOW: one tile per quadrant; desktop 400 since the street-wall split
   const B = L.bounds;
   const animators = [];
   const STREET_TILE = K.TILE.STREET, SW_TILE = K.TILE.SIDEWALK;
@@ -1671,6 +1671,26 @@ export function buildChicago(scene, world, opts, K) {
         K.queueGLB({ url: CHI_BASE + tile.file, h: tile.hM * (L.scale || 0.2), building: tb, maxW: tb.w, maxD: tb.d, rotY: o.rotY || 0, pool, stretch: 1.3 });
       }
       return;
+    }
+    // Street wall: a low block much wider than a kit piece scaled to its
+    // height (a 30u lot at 3u tall held one 4u building on a bare pad) is
+    // split into a grid of lots ~1.5x its height, each its own kit pick at a
+    // slightly varied height; on 3x3 and up the interior cells stay open
+    // (light courts, alleys)
+    if (!o.cell && REAL && o.h < 7) {
+      const cell = Math.max(o.h * 1.5, 6);
+      const nx = Math.min(4, Math.max(1, Math.round(o.w / cell))), nz = Math.min(4, Math.max(1, Math.round(o.d / cell)));
+      if (nx * nz > 1) {
+        const r = o.rotY || 0, cw = o.w / nx, cd = o.d / nz;
+        const ax = [Math.cos(r), -Math.sin(r)], az = [Math.sin(r), Math.cos(r)];
+        for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+          if (nx >= 3 && nz >= 3 && i > 0 && i < nx - 1 && j > 0 && j < nz - 1) continue;
+          const u = (i + 0.5) * cw - o.w / 2, v = (j + 0.5) * cd - o.d / 2;
+          placeBlock({ ...o, cell: true, x: o.x + ax[0] * u + az[0] * v, z: o.z + ax[1] * u + az[1] * v, w: cw, d: cd,
+            h: Math.min(6.9, o.h * (0.85 + Math.random() * 0.3)) });
+        }
+        return;
+      }
     }
     const b = new K.Building(o.x, o.z, aw, ad, o.h, { skipWindows: true, color });
     b._skipBodyIM = true;
