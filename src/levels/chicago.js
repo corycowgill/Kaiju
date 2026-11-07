@@ -155,7 +155,7 @@ const CHICAGO_GENERIC_GLBS = [
   { file: 'gen_low2_bank.glb', bucket: 'low', ready: true },
   { file: 'gen_low2_loft.glb', bucket: 'low', ready: true },
   { file: 'gen_low2_garage_retail.glb', bucket: 'low', maxH: 4, ready: true },
-  { file: 'gen_low2_retail_strip.glb', bucket: 'low', maxH: 2.6, share: 0.7, ready: true },
+  { file: 'gen_low2_retail_strip.glb', bucket: 'low', maxH: 3, share: 2, ready: true }, // weighted up: only ~40 blocks are low enough
   { file: 'gen_low_brick_loft.glb', bucket: 'short', ready: true },
   { file: 'gen_low_limestone_block.glb', bucket: 'short', ready: true },
   { file: 'gen_low_terracotta_office.glb', bucket: 'short', ready: true },
@@ -179,8 +179,10 @@ const CHICAGO_PROP_GLBS = [
 ];
 // Extra traffic (front faces +Z, real-world metres like the Tokyo vehicles).
 const CHICAGO_VEHICLE_GLBS = [
-  // cloud-3d: 12.05 m along Z, front +Z, wheels on y = 0
-  { url: CHI_BASE + 'cta_bus.glb', len: 12.05, weight: 8, parked: false, ready: true },
+  // cloud-3d: 12.05 m along Z, front +Z, wheels on y = 0. albedo 0.69: its
+  // white body (a quarter of the texture) sat over the noon bloom threshold;
+  // pure white now lands at sRGB 0xd8
+  { url: CHI_BASE + 'cta_bus.glb', len: 12.05, weight: 8, parked: false, albedo: 0.69, ready: true },
   { url: CHI_BASE + 'chicago_taxi.glb', len: 4.92, weight: 18, ready: true },
   // v2 has its own lightbar_red/_blue lens materials, which Car flashes
   // (lightBar adds a procedural bar only if a model has none)
@@ -2115,6 +2117,11 @@ export function buildChicago(scene, world, opts, K) {
 
   // ---- street dressing: lamps, signals, trees, shelters, carts ----
   {
+    // High noon: the lamp globes and shelter light boxes are off (their
+    // full emissive palettes bloomed into white halos in daylight)
+    for (const n of ['chi_streetlamp', 'chi_bus_shelter']) {
+      K.propScene(n)?.traverse((o) => { if (o.isMesh && o.material.emissiveMap) o.material.emissiveIntensity = 0.08; });
+    }
     // Washington-style acorn lamp GLB, else the Tokyo kit lamp, else procedural
     const lampName = K.hasProp('chi_streetlamp') ? 'chi_streetlamp' : 'street_lamp';
     const hasLamp = K.hasProp(lampName);

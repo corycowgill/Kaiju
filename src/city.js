@@ -4421,6 +4421,8 @@ function _loadCarList(list, onProgress) {
         reportLoadError('CarGLB', def.url, new Error('no meshes found'));
         return;
       }
+      // albedo: a per-model base-colour scale (a white body over a level's bloom threshold)
+      if (def.albedo) s.traverse((o) => { if (o.isMesh && o.material.color) o.material.color.multiplyScalar(def.albedo); });
       _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1, levels: def.levels, lightBar: !!def.lightBar, flash: _flashMats(s) });
       if (onProgress) onProgress(idx + 1, list.length, def.url.split('/').pop().replace('.glb', ''));
       return _attachLod1(def.url, s);
