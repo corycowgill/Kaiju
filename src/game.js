@@ -187,10 +187,10 @@ renderer.toneMappingExposure = 1.15;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 game.appendChild(renderer.domElement);
 
-// Every parsed GLB's textures are queued for upload and drained by tick()
-// on a ~4 ms per-frame budget, so uploads happen while loading (and behind
-// the menu) without ever freezing a frame; _preuploadTextures flushes what
-// is left before the first gameplay frame.
+// Every parsed GLB's textures are queued for upload: drained while START
+// loads (behind the loading bar) and, in play, by tick() on a ~4 ms
+// per-frame budget; _preuploadTextures flushes what is left before the
+// first gameplay frame.
 const _TEX_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap', 'envMap'];
 const _texQueue = new Set();
 onGLBParsed((root) => {
@@ -4742,7 +4742,10 @@ function tick(now) {
   // Input, gamepad and menu logic above still run every frame.
   const idleScreen = !state.kaiju || state.paused;
   _syncPauseMenu();
-  if (_texQueue.size) _drainTexQueue(4);
+  // Not at the menu: one upload there can block for 0.2-0.4 s while the GPU
+  // process is still busy with boot (a budget can't split a single call);
+  // START uploads what's queued behind the loading bar instead.
+  if (_texQueue.size && state.kaiju) _drainTexQueue(4);
   // No draws behind the (opaque) loading screen: a draw there would link the
   // just-flushed GLB buildings' programs on first use, behind the
   // compileAsync queue (_prewarmShaders).
