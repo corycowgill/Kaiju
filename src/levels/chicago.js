@@ -426,7 +426,10 @@ function _normalizeLayout(L) {
     // a generic block kit piece can't stand in for a 105 m x 10 m wall
     .filter((o) => !(o.podiumOf === 'soldier_field' && !_kit('soldier_field_wing')))
     .filter((o) => o.w > 0.5 && o.d > 0.5 && o.h > 0.5);
-  if (out.real) _clearRoads(out.buildings, out.roads, 1.2 + 0.3);
+  // Facades stop 0.9u past the kerb (the sidewalk's outer part runs under
+  // them): the full 1.2 + 0.3 setback on top of the gameplay-widened roads
+  // left only ~half of the Loop's building area standing
+  if (out.real) _clearRoads(out.buildings, out.roads, 0.9);
   const dus = (L.landmarks || []).find((o) => o.id === 'dusable_bridge');
   out.dusable = dus ? [+dus.x, +dus.z] : null;
   out.landmarks = (L.landmarks || []).filter((o) => !KIT_IDS.has(o.id)).map((o) => ({
@@ -1694,6 +1697,9 @@ export function buildChicago(scene, world, opts, K) {
     }
     const b = new K.Building(o.x, o.z, aw, ad, o.h, { skipWindows: true, color });
     b._skipBodyIM = true;
+    // Repeat a low / short piece across a lot it can't cover alone (city.js);
+    // towers stay single (a twin of a mid-rise reads as a copy-paste)
+    b.fillFootprint = REAL && o.h < 18;
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
     // Neighbours differ: skip models already used in this or the adjacent 24u cells
@@ -2511,7 +2517,7 @@ export function buildChicago(scene, world, opts, K) {
       while (ei < net.edges.length - 1 && r > net.edges[ei].len) { r -= net.edges[ei].len; ei++; }
       const e = net.edges[ei];
       if (!e) break;
-      const off = (Math.random() < 0.5 ? 1 : -1) * (e.laneOff * 2 + 1.5);
+      const off = (Math.random() < 0.5 ? 1 : -1) * (e.laneOff * 2 + (REAL ? 0.6 : 1.5)); // mid-sidewalk
       const x = net.nodes[e.a].x + e.dx * r - e.dz * off, z = net.nodes[e.a].z + e.dz * r + e.dx * off;
       if (!isWater(x, z) && x > B.minX && x < B.maxX && z > B.minZ && z < B.maxZ) return [x, z];
     }

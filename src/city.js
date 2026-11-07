@@ -2677,6 +2677,28 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
   else root.position.set(building.x - centerX, yOffset, building.z - centerZ);
   root.updateMatrixWorld(true);
 
+  // fill: a generic piece fitted by height can cover a fraction of a wide
+  // lot (a narrow tower in a block-sized footprint): repeat it in a grid of
+  // up to 4 x 4 copies across the footprint, all one building
+  if (building.fillFootprint && maxW > 0 && maxD > 0) {
+    const nx = Math.max(1, Math.min(4, Math.floor(maxW / (building.w * 1.08)))), nz = Math.max(1, Math.min(4, Math.floor(maxD / (building.d * 1.08))));
+    if (nx * nz > 1) {
+      const grid = new THREE.Group();
+      const sx = maxW / nx, sz = maxD / nz;
+      for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+        const c = i === 0 && j === 0 ? root : root.clone(true);
+        c.position.set(building.x - maxW / 2 + (i + 0.5) * sx - centerX, yOffset, building.z - maxD / 2 + (j + 0.5) * sz - centerZ);
+        // Each copy a little taller or lower, so the row doesn't read as one stamp
+        if (c !== root) c.scale.y *= 0.82 + Math.random() * 0.3;
+        grid.add(c);
+      }
+      grid.updateMatrixWorld(true);
+      building.w = maxW - (sx - building.w); building.d = maxD - (sz - building.d);
+      _bucketGLBRoot(grid, url, building);
+      return;
+    }
+  }
+
   // Instanced, not added: every mesh of the placed clone becomes one
   // instance of a per-(geometry, material, tile) InstancedMesh built by
   // _buildGLBBuildingInstances (~1 draw per template per tile instead of
