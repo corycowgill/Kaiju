@@ -367,7 +367,10 @@ function _normalizeLayout(L) {
   // Gameplay widths: true-scale streets are only ~1.5 Tokyo cars wide, so
   // real-scale maps get minimum widths per class (landmarks stay exact;
   // ordinary buildings are trimmed back from the wider roads below)
-  const minW = (cls) => (out.real ? (cls === 'lsd' ? 12 : cls === 'minor' ? 6 : 8.5) : 0);
+  // Real scale: major streets two lanes each way at 3.5u (7u), minor ones a
+  // lane each way (4.5u); the old 8.5 / 6 read ~3x a Loop street and cost
+  // ~38% of the building footprints to the road trim
+  const minW = (cls) => (out.real ? (cls === 'lsd' ? 12 : cls === 'minor' ? 4.5 : 7) : 0);
   out.roads = (L.roads || []).map((r) => ({
     id: r.id, name: r.name || '', kind: kindOf(r), expressway: !!r.expressway,
     width: Math.max(minW(r.class), +(r.width || (r.kind === 'lsd' ? 16 : r.kind === 'arterial' ? 12 : r.kind === 'alley' ? 4 : 9))),
@@ -1173,6 +1176,7 @@ export function buildChicago(scene, world, opts, K) {
   const ASPHALT_TILE = L.real ? 2 : STREET_TILE;
   // Real-scale map: narrower sidewalks, smaller markings and street furniture
   const REAL = L.real;
+  const MAJOR_W = 6.9; // real-scale major street width (7u) for markings and furniture
   const SIDEWALK_W = REAL ? 1.2 : 3.0;
   const PS = REAL ? 0.8 : 1; // street-prop scale
 
@@ -1437,7 +1441,7 @@ export function buildChicago(scene, world, opts, K) {
       if (inFest(cx, cz)) continue; // pedestrian promenade: no markings
       // Centre line: double yellow on wide roads, dashed yellow otherwise
       const lw = REAL ? 0.1 : 0.18, dash = REAL ? 1.8 : 3, gap = REAL ? 3.2 : 5;
-      if (w >= (REAL ? 8 : 11)) {
+      if (w >= (REAL ? MAJOR_W : 11)) {
         for (const o of [-lw * 1.4, lw * 1.4]) quadAlong(yel[0], yel[1], yel[2], cx - e.dz * o, cz + e.dx * o, e.dx, e.dz, len, lw, 0.07);
         // White lane dashes between the two lanes each way
         for (const o of [-w / 4, w / 4]) {
@@ -2214,7 +2218,7 @@ export function buildChicago(scene, world, opts, K) {
     const hasLamp = K.hasProp(lampName);
     // Lamps along the wider streets only (each GLB lamp is ~1k tris)
     const lampEvery = lite ? 56 : 34;
-    const lampMinW = REAL ? 8 : 0;
+    const lampMinW = REAL ? MAJOR_W : 0;
     let n = 0;
     for (const e of net.edges) {
       const w = e.laneOff * 4;
@@ -2284,7 +2288,7 @@ export function buildChicago(scene, world, opts, K) {
       }
     }
     // Bus shelters and hot-dog carts on arterial sidewalks
-    const art = net.edges.filter((e) => e.laneOff * 4 >= (REAL ? 8 : 11) && e.len > (REAL ? 15 : 30));
+    const art = net.edges.filter((e) => e.laneOff * 4 >= (REAL ? MAJOR_W : 11) && e.len > (REAL ? 15 : 30));
     const shelterN = lite ? 8 : 18, cartN = lite ? 6 : 14;
     for (let i = 0; i < shelterN + cartN && art.length; i++) {
       const e = art[Math.floor(Math.random() * art.length)];
@@ -2369,7 +2373,7 @@ export function buildChicago(scene, world, opts, K) {
     // first: row along the kerb (+X along the street), bikes (+Z) facing it
     {
       const cap = lite ? 10 : 30;
-      const major = net.edges.filter((e) => e.laneOff * 4 >= (REAL ? 8 : 0) && e.len > 14);
+      const major = net.edges.filter((e) => e.laneOff * 4 >= (REAL ? MAJOR_W : 0) && e.len > 14);
       const mid = (e) => [net.nodes[e.a].x + e.dx * e.len / 2, net.nodes[e.a].z + e.dz * e.len / 2];
       const nearSt = (e) => { const [x, z] = mid(e); return L.stations.some((st) => Math.hypot(st.x - x, st.z - z) < 30); };
       const order = [...major.filter(nearSt), ...major.filter((e) => !nearSt(e)).sort(() => Math.random() - 0.5)];
@@ -2394,7 +2398,7 @@ export function buildChicago(scene, world, opts, K) {
       if (node.edges.length < 4) continue;
       const e = net.edges[node.edges[0]];
       const w = e.laneOff * 4;
-      if (w < (REAL ? 8 : 0)) continue;
+      if (w < (REAL ? MAJOR_W : 0)) continue;
       corner++;
       const co = w / 2 + (REAL ? 0.35 : SIDEWALK_W * 0.5);
       const ry = Math.atan2(e.dx, e.dz);
