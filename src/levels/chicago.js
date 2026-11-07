@@ -626,6 +626,46 @@ function distToPolyline(x, z, pts) {
   return best;
 }
 
+/** Spatial hash over road polyline segments: returns onRoad(x, z, pad), true
+ *  when some road r has distToPolyline(x, z, r.points) < r.width / 2 + base + pad.
+ *  Exactly that predicate (same per-segment distance math), but each query only
+ *  tests segments whose bbox, grown by the largest possible threshold, covers
+ *  the query cell, instead of every segment of every road. pad > maxPad falls
+ *  back to the full scan. */
+function _roadIndex(roads, base, maxPad) {
+  const C = 16, cells = new Map();
+  for (const r of roads) {
+    const T = r.width / 2 + base + maxPad, pts = r.points;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
+      const x0 = Math.floor((Math.min(ax, bx) - T) / C), x1 = Math.floor((Math.max(ax, bx) + T) / C);
+      const z0 = Math.floor((Math.min(az, bz) - T) / C), z1 = Math.floor((Math.max(az, bz) + T) / C);
+      for (let cx = x0; cx <= x1; cx++) {
+        for (let cz = z0; cz <= z1; cz++) {
+          const k = cx * 73856093 ^ cz * 19349663;
+          let list = cells.get(k);
+          if (!list) cells.set(k, list = []);
+          list.push(r, i);
+        }
+      }
+    }
+  }
+  return (x, z, pad) => {
+    if (pad > maxPad) return roads.some((r) => distToPolyline(x, z, r.points) < r.width / 2 + base + pad);
+    const list = cells.get(Math.floor(x / C) * 73856093 ^ Math.floor(z / C) * 19349663);
+    if (!list) return false;
+    for (let j = 0; j < list.length; j += 2) {
+      const r = list[j], i = list[j + 1], pts = r.points;
+      const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
+      const dx = bx - ax, dz = bz - az;
+      const l2 = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      if (Math.hypot(x - ax - dx * t, z - az - dz * t) < r.width / 2 + base + pad) return true;
+    }
+    return false;
+  };
+}
+
 /** Accumulates transformed primitive geometries per material and merges them
  *  into one mesh per material (a landmark costs one draw per material). */
 class Massing {
@@ -1530,7 +1570,8 @@ export function buildChicago(scene, world, opts, K) {
   // ---- parks ----
   // Lawns: mottled grass texture (world-unit UVs). Grant Park also gets its
   // formal path grid lined with allees of trees; other parks a loose scatter.
-  const onRoad = (x, z, pad) => roads.some((r) => distToPolyline(x, z, r.points) < r.width / 2 + SIDEWALK_W + pad);
+  // Spatial-hashed: was a scan of every road segment per call (~half of gen time)
+  const onRoad = _roadIndex(roads, SIDEWALK_W, 2);
   // Park trees keep off landmark sites (the Art Institute, the fountain pool...)
   const lmBoxes = L.landmarks.map((lm) => {
     const c = Math.abs(Math.cos(lm.rotY || 0)), s = Math.abs(Math.sin(lm.rotY || 0));

@@ -193,9 +193,55 @@ export function festClearFence(F, roads) {
   }
 }
 
-/** Inside the festival fence (not on it): closed streets go pedestrian. */
+// Grid index of the fence ring for festInside, rebuilt when F.fence is replaced
+// (festClearFence resamples it). Rows bucket edges by z (the even-odd ray test
+// only needs edges straddling the query z); cells bucket edges by their bbox
+// grown 1u (a superset of the edges within 0.8u of a query). The same
+// per-edge tests as _inPoly / _distToRing on fewer edges: identical results.
+const _FI_ROW = 4, _FI_CELL = 8;
+function _fenceIndex(F) {
+  if (F._fenceIdx && F._fenceIdx.ring === F.fence) return F._fenceIdx;
+  const ring = F.fence, rows = new Map(), cells = new Map();
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  const push = (m, k, i) => { let l = m.get(k); if (!l) m.set(k, l = []); l.push(i); };
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, az] = ring[i], [bx, bz] = ring[(i + 1) % ring.length];
+    minX = Math.min(minX, ax); maxX = Math.max(maxX, ax); minZ = Math.min(minZ, az); maxZ = Math.max(maxZ, az);
+    for (let r = Math.floor(Math.min(az, bz) / _FI_ROW); r <= Math.floor(Math.max(az, bz) / _FI_ROW); r++) push(rows, r, i);
+    for (let cx = Math.floor((Math.min(ax, bx) - 1) / _FI_CELL); cx <= Math.floor((Math.max(ax, bx) + 1) / _FI_CELL); cx++) {
+      for (let cz = Math.floor((Math.min(az, bz) - 1) / _FI_CELL); cz <= Math.floor((Math.max(az, bz) + 1) / _FI_CELL); cz++) push(cells, cx * 73856093 ^ cz * 19349663, i);
+    }
+  }
+  return (F._fenceIdx = { ring, rows, cells, minX, maxX, minZ, maxZ });
+}
+
+/** Inside the festival fence (not on it): closed streets go pedestrian.
+ *  Same as _inPoly(x, z, F.fence) && _distToRing(x, z, F.fence) > 0.8, via
+ *  _fenceIndex. */
 export function festInside(F, x, z) {
-  return _inPoly(x, z, F.fence) && _distToRing(x, z, F.fence) > 0.8;
+  const I = _fenceIndex(F), ring = I.ring;
+  // Outside the bbox (1u margin on x): no edge straddles z, or every
+  // straddling edge's crossing is on the same side -> even count -> outside
+  if (z < I.minZ || z > I.maxZ || x < I.minX - 1 || x > I.maxX + 1) return false;
+  let inside = false;
+  const row = I.rows.get(Math.floor(z / _FI_ROW));
+  if (row) {
+    for (const i of row) {
+      // _inPoly's edge (i, j) pairs are (i, i-1); same edge, same test
+      const [xi, zi] = ring[i], [xj, zj] = ring[(i + 1) % ring.length];
+      if ((zi > z) !== (zj > z) && x < (xi - xj) * (z - zj) / (zi - zj) + xj) inside = !inside;
+    }
+  }
+  if (!inside) return false;
+  const cell = I.cells.get(Math.floor(x / _FI_CELL) * 73856093 ^ Math.floor(z / _FI_CELL) * 19349663);
+  if (!cell) return true;
+  for (const i of cell) {
+    const [ax, az] = ring[i], [bx, bz] = ring[(i + 1) % ring.length];
+    const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+    if (Math.hypot(x - ax - dx * t, z - az - dz * t) <= 0.8) return false;
+  }
+  return true;
 }
 
 /** Car-network polylines with the stretches inside the fence cut out
@@ -203,7 +249,7 @@ export function festInside(F, x, z) {
  *  Michigan, Lake Shore Drive and Roosevelt run along the outside). */
 export function festCutRoads(netRoads, F) {
   const out = [];
-  const closed = (x, z) => _inPoly(x, z, F.fence) && _distToRing(x, z, F.fence) > 0.8;
+  const closed = (x, z) => festInside(F, x, z);
   for (const r of netRoads) {
     let run = [];
     const flush = () => { if (run.length >= 2) out.push({ width: r.width, points: run }); run = []; };

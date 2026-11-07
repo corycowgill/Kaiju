@@ -385,8 +385,8 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST) {
       if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, recv: m.receiveShadow, matrices: [] });
       b.matrices.push(m.matrixWorld.clone());
     });
-    c.parent.remove(c);
   }
+  _removeChildren(new Set(clones));
   const lodPairs = [];
   for (const b of buckets.values()) {
     const ims = [b.geometry, _lod1ByGeom.get(b.geometry)].filter(Boolean).map((geom) => {
@@ -444,7 +444,7 @@ function _mergeStaticMeshes(scene) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(m);
   }
-  const oldGeoms = new Set();
+  const oldGeoms = new Set(), gone = new Set();
   for (const list of groups.values()) {
     if (list.length < 2) continue;
     const merged = mergeGeometries(list.map((m) => m.geometry.clone().applyMatrix4(m.matrix)), false);
@@ -454,9 +454,25 @@ function _mergeStaticMeshes(scene) {
     mesh.receiveShadow = list[0].receiveShadow;
     mesh.matrixAutoUpdate = false;
     scene.add(mesh);
-    for (const m of list) { scene.remove(m); oldGeoms.add(m.geometry); }
+    for (const m of list) { gone.add(m); oldGeoms.add(m.geometry); }
   }
+  _removeChildren(gone);
   for (const g of oldGeoms) g.dispose();
+}
+
+// Detach many children at once: Object3D.remove is an indexOf + splice per
+// call, so removing thousands of a parent's children one by one was O(n^2)
+// (Chicago: ~3.8k buildings' worth of props and strips on the scene). Same
+// result and 'removed' events as remove(); child order is preserved.
+function _removeChildren(set) {
+  const parents = new Set();
+  for (const o of set) { if (o.parent) parents.add(o.parent); }
+  for (const p of parents) p.children = p.children.filter((c) => !set.has(c));
+  for (const o of set) {
+    if (!o.parent) continue;
+    o.parent = null;
+    o.dispatchEvent({ type: 'removed' });
+  }
 }
 
 // Single tree: uses GLB clone if templates loaded, else procedural fallback.
