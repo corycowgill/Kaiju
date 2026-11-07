@@ -230,6 +230,13 @@ const CHICAGO_KIT_GLBS = {
   // BP Pedestrian Bridge (artist-3d v3): compass axes, metres, bbox centred on
   // the origin; placed at (7.17, -142.45) yaw 0, true scale (7.2 m tall)
   bp_bridge: { file: 'bp_bridge.glb', at: [7.17, -142.45], heightM: 7.2, ready: true },
+  // Maggie Daley Park (artist-3d): front +Z, metres; placed in the park block
+  // at cartographer's spots. heightM: the model's true height; fit: w x d (m)
+  // it may stretch toward in plan (the climbing wall's 26 x 24 m site)
+  maggie_climbing_wall: { file: 'maggie_climbing_wall.glb', at: [29.2, -163.3], heightM: 12, fit: [26, 24], ready: true },
+  maggie_net_tower: { file: 'maggie_net_tower.glb', at: [26.8, -129.2], heightM: 13.3, ready: true }, // Cradle Nest zone
+  maggie_play_ship: { file: 'maggie_play_ship.glb', at: [35.1, -137.5], heightM: 9, rot: 0.6, ready: true }, // The Sea zone
+  maggie_fieldhouse: { file: 'maggie_fieldhouse.glb', at: [28.0, -176.1], heightM: 6, rot: 0.018, ready: true }, // glass front +Z, into the park
   planter_bollard: { file: 'planter_bollard.glb', ready: true },
   // Soldier Field north wing wall: 105 x 10 x 20 m limestone, length along X
   soldier_field_wing: { file: 'soldier_field_wing.glb', ready: true },
@@ -1596,6 +1603,14 @@ export function buildChicago(scene, world, opts, K) {
   // Maggie Daley Park: no trees on the skating ribbon or the play garden
   const MD = REAL && L.mill?.maggieDaley;
   if (MD) noTree.push(MD.skatingRibbon.surfacePolygon, ...MD.playGarden.map((g) => g.polygon));
+  // ...nor on the park's pieces (climbing wall, net tower, ship, fieldhouse)
+  const MD_PIECES = ['maggie_climbing_wall', 'maggie_net_tower', 'maggie_play_ship', 'maggie_fieldhouse'];
+  if (MD) {
+    for (const id of MD_PIECES) {
+      const d = CHICAGO_KIT_GLBS[id], hw = id === 'maggie_fieldhouse' ? 8 : 3.5, hd = id === 'maggie_fieldhouse' ? 3 : 3.5;
+      if (d) noTree.push([[d.at[0] - hw, d.at[1] - hd], [d.at[0] + hw, d.at[1] - hd], [d.at[0] + hw, d.at[1] + hd], [d.at[0] - hw, d.at[1] + hd]]);
+    }
+  }
   const onFest = (x, z) => festPolys.some((poly) => pointInPoly(x, z, poly));
   const onLandmark = (x, z) => lmBoxes.some(([lx, lz, hw, hd]) => Math.abs(x - lx) < hw && Math.abs(z - lz) < hd)
     || noTree.some((poly) => pointInPoly(x, z, poly));
@@ -1775,6 +1790,21 @@ export function buildChicago(scene, world, opts, K) {
       if ((q.points || []).length < 2) continue;
       const w = Math.max(0.25, (q.width || 0.6) / 2);
       addBatch(ribbon(q.points, -w, w, 0.04, 1 / SW_TILE), decal(M.path, 4));
+    }
+    // The park's GLB pieces: true height, destructible small buildings whose
+    // collision box is the placed model's footprint
+    const Sc = L.scale || 0.2;
+    for (const id of MD_PIECES) {
+      const d = CHICAGO_KIT_GLBS[id];
+      if (!_kit(id)) continue;
+      const fw = d.fit ? d.fit[0] * Sc : 0, fd = d.fit ? d.fit[1] * Sc : 0;
+      const b = new K.Building(d.at[0], d.at[1], fw || 3, fd || 3, d.heightM * Sc, { skipWindows: true });
+      b._skipBodyIM = true;
+      b.landmarkId = id;
+      b.maxHp = b.hp = id === 'maggie_fieldhouse' ? 120 : 60;
+      b.group.matrixAutoUpdate = false; b.group.updateMatrix();
+      scene.add(b.group); buildings.push(b); grid.add(b);
+      K.queueGLB({ url: _kit(id), h: d.heightM * Sc, building: b, maxW: fw, maxD: fd, rotY: d.rot || 0, landmark: true, stretch: d.fit ? 1.3 : 1 });
     }
   }
 
