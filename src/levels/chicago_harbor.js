@@ -103,9 +103,15 @@ export function buildHarbor(H, ctx) {
       });
       for (const { im } of ims) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     }
-    // Smash: a boat within the kaiju's reach tips over and goes down
+    // Smash: a boat within the kaiju's reach rolls over on its side (1.2 s),
+    // then goes down (2 s), with a white splash burst and a foam ring. The
+    // spray is pooled: one InstancedMesh of droplets and one of rings for the
+    // whole harbour, so a smash adds no draws
     const world = ctx.world;
     const tilt = new THREE.Matrix4(), drop = new THREE.Matrix4();
+    const ROLL_T = 1.2, SINK_T = 2.0;
+    const fx = _splashPool(scene, lite ? 120 : 360, lite ? 12 : 32);
+    animators.push(fx);
     let acc = 0;
     animators.push({
       update(dt) {
@@ -113,22 +119,23 @@ export function buildHarbor(H, ctx) {
         acc += dt;
         let dirty = null;
         for (const b of all) {
-          if (b.alive && kp && acc > 0.1 && Math.abs(kp.x - b.sp.x) < 6 && Math.abs(kp.z - b.sp.z) < 6) {
+          if (b.alive && kp && acc > 0.1 && Math.abs(kp.x - b.sp.x) < 8 && Math.abs(kp.z - b.sp.z) < 8) {
             b.alive = false; b.sinkT = 0;
-            const p = new THREE.Vector3(b.sp.x, 0.4, b.sp.z);
-            world.spawnShockwave?.(p, 0xcfeeff, 4);
-            world.spawnSmoke?.(p, 0.8);
+            fx.burst(b.sp.x, b.sp.z, lite ? 8 : 18);
             world.onCarDestroyed?.();
           }
-          if (b.sinkT >= 0 && b.sinkT < 2.5) {
+          if (b.sinkT >= 0 && b.sinkT < ROLL_T + SINK_T) {
             b.sinkT += dt;
-            const k = Math.min(1, b.sinkT / 2.5);
-            tilt.makeRotationX(k * 1.1);
-            drop.makeTranslation(0, -k * 3 * S * SAIL_SCALE * 4, 0);
+            const r = Math.min(1, b.sinkT / ROLL_T), k = Math.max(0, (b.sinkT - ROLL_T) / SINK_T);
+            // Ease the roll in, then the hull slides under still heeled over
+            tilt.makeRotationX((1 - (1 - r) * (1 - r)) * 1.35);
+            drop.makeTranslation(0, -(Math.min(1, k) ** 1.5) * 3.6, 0);
             const mm = new THREE.Matrix4().multiplyMatrices(drop, b.base).multiply(tilt);
             for (const { im, p } of b.ims) im.setMatrixAt(b.i, m.multiplyMatrices(mm, p.m));
             dirty = dirty || new Set();
             for (const { im } of b.ims) dirty.add(im);
+            // A second, smaller splash as it goes under
+            if (b.sinkT - dt < ROLL_T && b.sinkT >= ROLL_T) fx.burst(b.sp.x, b.sp.z, lite ? 3 : 6, 0.6);
           }
         }
         if (acc > 0.1) acc = 0;
@@ -155,6 +162,64 @@ export function buildHarbor(H, ctx) {
     });
   });
   return spots.length;
+}
+
+/** Pooled water spray: n droplets (ballistic, shrinking) and r foam rings
+ *  (expanding, thinning), each one InstancedMesh; burst() takes the oldest. */
+function _splashPool(scene, n, r) {
+  const white = new THREE.MeshBasicMaterial({ color: 0xf2f8ff, transparent: true, opacity: 0.9, depthWrite: false, fog: true });
+  const drops = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.55, 0), white, n);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xe8f4ff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, fog: true });
+  const ringGeom = new THREE.RingGeometry(0.9, 1, 28, 1);
+  ringGeom.rotateX(-Math.PI / 2);
+  const rings = new THREE.InstancedMesh(ringGeom, ringMat, r);
+  for (const im of [drops, rings]) { im.frustumCulled = false; im.castShadow = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(im); }
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  for (let i = 0; i < n; i++) drops.setMatrixAt(i, zero);
+  for (let i = 0; i < r; i++) rings.setMatrixAt(i, zero);
+  const D = Array.from({ length: n }, () => ({ t: -1, p: new THREE.Vector3(), v: new THREE.Vector3(), s: 1 }));
+  const R = Array.from({ length: r }, () => ({ t: -1, x: 0, z: 0, s: 1 }));
+  let di = 0, ri = 0, live = 0;
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
+  return {
+    burst(x, z, count, size = 1) {
+      for (let k = 0; k < count; k++) {
+        const d = D[di]; di = (di + 1) % n;
+        const a = Math.random() * Math.PI * 2, sp = (0.8 + Math.random() * 1.6) * size;
+        d.t = 0; d.s = (0.7 + Math.random() * 0.8) * size;
+        d.p.set(x + Math.cos(a) * 0.6, 0.3, z + Math.sin(a) * 0.6);
+        d.v.set(Math.cos(a) * sp, (3 + Math.random() * 3) * size, Math.sin(a) * sp);
+      }
+      const g = R[ri]; ri = (ri + 1) % r;
+      g.t = 0; g.x = x; g.z = z; g.s = size;
+      live = 2.2;
+    },
+    update(dt) {
+      if (live <= 0) return;
+      live -= dt;
+      D.forEach((d, i) => {
+        if (d.t < 0) return;
+        d.t += dt;
+        d.v.y -= 9 * dt;
+        d.p.addScaledVector(d.v, dt);
+        if (d.p.y < 0.15 || d.t > 1.6) { d.t = -1; drops.setMatrixAt(i, zero); return; }
+        sc.setScalar(d.s * (1 - d.t / 1.6));
+        drops.setMatrixAt(i, m.compose(d.p, q, sc));
+      });
+      R.forEach((g, i) => {
+        if (g.t < 0) return;
+        g.t += dt;
+        if (g.t > 2) { g.t = -1; rings.setMatrixAt(i, zero); return; }
+        // Spreads out to ~4u, thinning as it goes (scale y unused: flat ring)
+        const rad = (1 + g.t * 1.2) * g.s, fade = 1 - g.t / 2;
+        sc.set(rad, 1, rad);
+        pos.set(g.x, 0.24, g.z);
+        rings.setMatrixAt(i, m.compose(pos, q, sc.multiplyScalar(0.6 + 0.4 * fade)));
+      });
+      drops.instanceMatrix.needsUpdate = true;
+      rings.instanceMatrix.needsUpdate = true;
+    },
+  };
 }
 
 function _distLine(x, z, pts) {
