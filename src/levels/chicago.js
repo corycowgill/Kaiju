@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { isMobile } from '../quality.js';
-import { loadFest, festBuildingGLBs, festClearFence, festCutRoads, festNoTree, buildFest } from './chicago_fest.js';
+import { loadFest, festBuildingGLBs, festClearFence, festCutRoads, festInside, festNoTree, buildFest } from './chicago_fest.js';
 
 const LAYOUT_URL = './assets/levels/chicago_layout.json';
 const SF_SITE_URL = './assets/levels/chicago_soldier_field_site.json';
@@ -1358,7 +1358,32 @@ export function buildChicago(scene, world, opts, K) {
       nodeW[e.a] = Math.max(nodeW[e.a], w); nodeW[e.b] = Math.max(nodeW[e.b], w);
     }
     const yel = [[], [], []], wht = [[], [], []], cross = [[], [], []];
-    for (const r of roads) addBatch(ribbon(r.points, -r.width / 2, r.width / 2, 0.05, uvs), asphalt);
+    // Festival on: the closed streets inside its fence are paved promenade
+    // (no asphalt or lane markings); runs split where a street crosses the fence
+    const inFest = (x, z) => !!L.fest && festInside(L.fest, x, z);
+    for (const r of roads) {
+      if (!L.fest) { addBatch(ribbon(r.points, -r.width / 2, r.width / 2, 0.05, uvs), asphalt); continue; }
+      let run = [], runIn = null;
+      const flush = () => {
+        if (run.length >= 2) addBatch(ribbon(run, -r.width / 2, r.width / 2, 0.05, runIn ? 1 / SW_TILE : uvs), runIn ? swMat : asphalt);
+        run = run.slice(-1);
+      };
+      for (let i = 0; i < r.points.length; i++) {
+        const p = r.points[i];
+        const samples = [p];
+        if (i > 0) {
+          const q = r.points[i - 1], l = Math.hypot(p[0] - q[0], p[1] - q[1]);
+          samples.unshift(...Array.from({ length: Math.floor(l / 2) }, (_, k) => [q[0] + (p[0] - q[0]) * (k + 1) * 2 / l, q[1] + (p[1] - q[1]) * (k + 1) * 2 / l]).filter((s) => Math.hypot(s[0] - q[0], s[1] - q[1]) < l - 0.5));
+        }
+        for (const s of samples) {
+          const f = inFest(s[0], s[1]);
+          if (runIn !== null && f !== runIn) { run.push(s); flush(); }
+          runIn = f;
+          if (run[run.length - 1] !== s) run.push(s);
+        }
+      }
+      flush();
+    }
     for (const e of net.edges) {
       const A = net.nodes[e.a], Bn = net.nodes[e.b];
       const w = e.laneOff * 4;
@@ -1374,6 +1399,7 @@ export function buildChicago(scene, world, opts, K) {
         addBatch(ribbon([p0, p1], s > 0 ? w / 2 - cb : -w / 2 - cb, s > 0 ? w / 2 + cb : -w / 2 + cb, 0.1), M.curb);
       }
       const cx = (p0[0] + p1[0]) / 2, cz = (p0[1] + p1[1]) / 2;
+      if (inFest(cx, cz)) continue; // pedestrian promenade: no markings
       // Centre line: double yellow on wide roads, dashed yellow otherwise
       const lw = REAL ? 0.1 : 0.18, dash = REAL ? 1.8 : 3, gap = REAL ? 3.2 : 5;
       if (w >= (REAL ? 8 : 11)) {
@@ -1405,17 +1431,19 @@ export function buildChicago(scene, world, opts, K) {
     }
     // Junction patches: one asphalt square over each multi-way node hides the
     // overlapping road ribbons beneath it
-    const jp = [], ju = [], ji = [];
+    const jp = [[], [], []], jq = [[], [], []]; // asphalt, festival paving
     net.nodes.forEach((n, i) => {
       if (n.edges.length < 3) return;
       const e = net.edges[n.edges[0]];
-      quadAlong(jp, ju, ji, n.x, n.z, e.dx, e.dz, nodeW[i] + 0.6, nodeW[i] + 0.6, 0.06);
+      const [P, U, I] = inFest(n.x, n.z) ? jq : jp;
+      quadAlong(P, U, I, n.x, n.z, e.dx, e.dz, nodeW[i] + 0.6, nodeW[i] + 0.6, 0.06);
     });
-    if (jp.length) {
-      const g = _geom(jp, ju, ji);
+    for (const [[P, U, I], mat, t] of [[jp, asphalt, uvs], [jq, swMat, 1 / SW_TILE]]) {
+      if (!P.length) continue;
+      const g = _geom(P, U, I);
       const p = g.attributes.position, uv = g.attributes.uv;
-      for (let i = 0; i < p.count; i++) uv.setXY(i, p.getX(i) * uvs, p.getZ(i) * uvs);
-      addBatch(g, asphalt);
+      for (let i = 0; i < p.count; i++) uv.setXY(i, p.getX(i) * t, p.getZ(i) * t);
+      addBatch(g, mat);
     }
     if (yel[0].length) addBatch(_geom(...yel), M.yellow, false);
     if (wht[0].length) addBatch(_geom(...wht), M.whiteLine, false);

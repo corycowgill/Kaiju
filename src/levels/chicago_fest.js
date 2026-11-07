@@ -30,8 +30,10 @@ export function festEnabled() {
 const FEST_MODELS = {
   main_stage: { file: 'fest_main_stage.glb', sizeM: [60, 25, 25] },
   side_stage: { file: 'fest_side_stage.glb', sizeM: [25, 15, 14] },
-  tent_stage: { file: 'fest_tent_stage.glb', sizeM: [30, 25, 15] },
-  entry_gate: { file: 'fest_entry_gate.glb', sizeM: [20, 6, 10] },
+  tent_stage: { file: 'fest_tent_stage.glb', sizeM: [30, 25, 15], ready: true },
+  // signAspect: the sign_panel's true w / h where its bbox misleads (the
+  // gate's strip follows the curved arch: 13.2 x 2 m)
+  entry_gate: { file: 'fest_entry_gate.glb', sizeM: [20, 6, 10], signAspect: 6.6, ready: true },
   fence_panel: { file: 'fest_fence_panel.glb', sizeM: [3.5, 0.22, 2.4], ready: true },
   vendor_tent: { file: 'fest_vendor_tent.glb', sizeM: [9, 3, 3.5], ready: true },
   porta_potty_bank: { file: 'fest_porta_potty_bank.glb', sizeM: [7.6, 1.4, 2.34], ready: true },
@@ -176,6 +178,24 @@ export function festClearFence(F, roads) {
     }
   }
   F.fence = ring;
+  // Gates stand on the fence: follow it in off the street
+  for (const g of F.items) {
+    if (g.kind !== 'gate') continue;
+    let best = null, bd = Infinity;
+    for (let i = 0; i < ring.length; i++) {
+      const [ax, az] = ring[i], [bx, bz] = ring[(i + 1) % ring.length];
+      const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((g.x - ax) * dx + (g.z - az) * dz) / l2));
+      const d = Math.hypot(g.x - ax - dx * t, g.z - az - dz * t);
+      if (d < bd) { bd = d; best = [ax + dx * t, az + dz * t]; }
+    }
+    if (best) [g.x, g.z] = best;
+  }
+}
+
+/** Inside the festival fence (not on it): closed streets go pedestrian. */
+export function festInside(F, x, z) {
+  return _inPoly(x, z, F.fence) && _distToRing(x, z, F.fence) > 0.8;
 }
 
 /** Car-network polylines with the stretches inside the fence cut out
@@ -234,8 +254,9 @@ function _canvas(w, h) {
 }
 const _loadImg = (file, fn) => new THREE.ImageLoader().load(assetURL(TEX_BASE + file), fn, undefined, () => {});
 
-/** The KAIJUPALOOZA! lettering on a navy panel, sized to the panel's aspect. */
-function _signTexture(aspect) {
+/** The KAIJUPALOOZA! lettering on a navy panel, sized to the panel's aspect.
+ *  glb: for a GLB quad (glTF UVs, origin top-left: no flipY). */
+function _signTexture(aspect, glb = true) {
   const wide = aspect > 1.8;
   const W = wide ? 1024 : 512, H = wide ? Math.round(1024 / Math.min(4, aspect)) : Math.round(512 / Math.max(0.5, aspect));
   const cv = _canvas(W, H);
@@ -252,6 +273,7 @@ function _signTexture(aspect) {
   };
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = !glb;
   paint(null);
   _loadImg(wide ? 'kaijupalooza_banner.png' : 'kaijupalooza_stacked.png', paint);
   return tex;
@@ -303,6 +325,7 @@ function _ledScreen(lite) {
   const cx = cv.getContext('2d');
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = false; // GLB led_screen quads: glTF UVs
   let logo = null;
   _loadImg('kaijupalooza_stacked.png', (img) => { logo = img; });
   let acc = 1;
@@ -489,7 +512,7 @@ export function buildFest(scene, F, ctx) {
       if (it.kind === 'gate') {
         // The banner rides on the first tower: it goes when that one falls
         const bw = Math.min(it.w * 0.8, 7), bh = bw / 3;
-        const mat = new THREE.MeshStandardMaterial({ map: _signTexture(3), roughness: 0.6, side: THREE.DoubleSide, emissive: 0xffffff, emissiveIntensity: 0.3 });
+        const mat = new THREE.MeshStandardMaterial({ map: _signTexture(3, false), roughness: 0.6, side: THREE.DoubleSide, emissive: 0xffffff, emissiveIntensity: 0.3 });
         mat.emissiveMap = mat.map;
         const banner = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), mat);
         banner.position.set(it.x - first.x, h * 0.92 - bh / 2, it.z - first.z);
@@ -630,7 +653,7 @@ export function buildFest(scene, F, ctx) {
           o.geometry.computeBoundingBox();
           const bb = o.geometry.boundingBox, sz = bb.getSize(new THREE.Vector3());
           const along = Math.max(sz.x, sz.z), up = Math.max(1e-3, sz.y);
-          mat.map = _signTexture(along / up);
+          mat.map = _signTexture(m.signAspect || along / up);
           mat.color.setRGB(1, 1, 1); mat.metalness = 0;
           mat.emissiveMap = mat.map; mat.emissive?.setRGB(1, 1, 1); mat.emissiveIntensity = 0.35;
           mat.needsUpdate = true;
