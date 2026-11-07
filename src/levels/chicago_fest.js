@@ -28,8 +28,8 @@ export function festEnabled() {
 // file (and its _lod1 twin) is in assets/; until then a box stands in and
 // smoke_test lists the piece as pending.
 const FEST_MODELS = {
-  main_stage: { file: 'fest_main_stage.glb', sizeM: [60, 25, 25] },
-  side_stage: { file: 'fest_side_stage.glb', sizeM: [25, 15, 14] },
+  main_stage: { file: 'fest_main_stage.glb', sizeM: [63, 25.4, 25.3], ready: true },
+  side_stage: { file: 'fest_side_stage.glb', sizeM: [29.8, 16.4, 13.7], ready: true },
   tent_stage: { file: 'fest_tent_stage.glb', sizeM: [30, 25, 15], ready: true },
   // signAspect: the sign_panel's true w / h where its bbox misleads (the
   // gate's strip follows the curved arch: 13.2 x 2 m)
@@ -283,21 +283,18 @@ function _signTexture(aspect, glb = true) {
 // stage_<id>.png); a canvas-lettered fallback for any stage without one
 const STAGE_PNG = new Set(['monster_main', 'kaiju_stage', 'tremor_tent', 'atomic_stage', 'stomp_stage', 'roar_grove']);
 const NAME_COLORS = ['#ff3d8b', '#ff8a1f', '#ffd21f', '#2fd4c0', '#9b5cff', '#4fb3ff'];
-function _nameTexture(id, name) {
-  const cv = _canvas(512, 128);
-  const cx = cv.getContext('2d');
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  cx.fillStyle = '#1b1650'; cx.fillRect(0, 0, 512, 128);
+/** Paint one stage's name into a 512 x 128 slot of cx at (0, oy). */
+function _drawName(cx, oy, id, name, done) {
+  cx.fillStyle = '#1b1650'; cx.fillRect(0, oy, 512, 128);
   if (STAGE_PNG.has(id)) {
     _loadImg(`stage_${id}.png`, (img) => {
       const k = Math.min(492 / img.width, 116 / img.height);
-      cx.drawImage(img, (512 - img.width * k) / 2, (128 - img.height * k) / 2, img.width * k, img.height * k);
-      tex.needsUpdate = true;
+      cx.drawImage(img, (512 - img.width * k) / 2, oy + (128 - img.height * k) / 2, img.width * k, img.height * k);
+      done();
     });
-    return tex;
+    return;
   }
-  // Placeholder: chunky letters, one colour each, navy outline
+  // Fallback: chunky letters, one colour each, navy outline
   const text = name.toUpperCase();
   let size = 78;
   cx.font = `900 ${size}px 'Arial Black', 'Trebuchet MS', sans-serif`;
@@ -309,13 +306,12 @@ function _nameTexture(id, name) {
   [...text].forEach((ch, i) => {
     const w = cx.measureText(ch).width || size * 0.6;
     cx.lineWidth = size * 0.18; cx.strokeStyle = '#0d0a33';
-    cx.strokeText(ch, x + 4, 68); cx.strokeText(ch, x, 64);
+    cx.strokeText(ch, x + 4, oy + 68); cx.strokeText(ch, x, oy + 64);
     cx.fillStyle = NAME_COLORS[i % NAME_COLORS.length];
-    cx.fillText(ch, x, 64);
+    cx.fillText(ch, x, oy + 64);
     x += w;
   });
-  tex.needsUpdate = true;
-  return tex;
+  done();
 }
 
 /** Animated LED wall: colour-cycling visuals on a small canvas, redrawn ~12x a second. */
@@ -401,7 +397,7 @@ function _personGeom() {
   g.computeVertexNormals();
   return g;
 }
-const SHIRTS = [0xff3d8b, 0xff8a1f, 0xffd21f, 0x2fd4c0, 0x9b5cff, 0x4fb3ff, 0xffffff, 0x222222, 0xe23030, 0x44cc55];
+const SHIRTS = [0xff3d8b, 0xff8a1f, 0xffd21f, 0x2fd4c0, 0x9b5cff, 0x4fb3ff, 0xd8d8d8, 0x222222, 0xe23030, 0x44cc55]; // white kept under the noon bloom threshold
 
 function _crowdMaterial(uTime) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
@@ -585,16 +581,54 @@ export function buildFest(scene, F, ctx) {
     flush();
   }
 
-  // ---- stage name boards (ride on the stage: gone when it collapses) ----
-  for (const { it, b } of stages) {
-    const bw = Math.min(it.w * 0.62, 9), bh = bw / 4;
-    const mat = new THREE.MeshStandardMaterial({ map: _nameTexture(it.id, it.name), emissive: 0xffffff, roughness: 0.6 });
-    mat.emissiveMap = mat.map; mat.emissiveIntensity = 0.55;
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), mat);
-    board.position.set(Math.sin(it.rot) * (it.d / 2 + 0.05), it.h * 0.94 + bh / 2, Math.cos(it.rot) * (it.d / 2 + 0.05));
-    board.rotation.y = it.rot;
-    b.group.add(board);
-    b.group.updateMatrixWorld(true);
+  // ---- stage name boards: one mesh for all (a name atlas, one slot per
+  // stage) standing on each stage's roof line; a board folds away when its
+  // stage collapses ----
+  if (stages.length) {
+    const N = stages.length;
+    const cv = _canvas(512, 128 * N);
+    const cx = cv.getContext('2d');
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const pos = [], uv = [], idx = [];
+    stages.forEach(({ it }, i) => {
+      _drawName(cx, i * 128, it.id, it.name, () => { tex.needsUpdate = true; });
+      const bw = Math.min(it.w * 0.62, 9), bh = bw / 4;
+      const c = Math.cos(it.rot), sn = Math.sin(it.rot);
+      const fx = it.x + sn * (it.d / 2 + 0.05), fz = it.z + c * (it.d / 2 + 0.05), y0 = it.h + 0.1;
+      const v0 = 1 - (i + 1) / N, v1 = 1 - i / N;
+      const base = pos.length / 3;
+      for (const [u, v] of [[-0.5, 0], [0.5, 0], [-0.5, 1], [0.5, 1]]) {
+        // local X across the stage front: (cos r, -sin r)
+        pos.push(fx + c * u * bw, y0 + v * bh, fz - sn * u * bw);
+        uv.push(u + 0.5, v ? v1 : v0);
+      }
+      idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.55, roughness: 0.6, side: THREE.DoubleSide });
+    const boards = new THREE.Mesh(g, mat);
+    boards.matrixAutoUpdate = false;
+    scene.add(boards);
+    const gone = new Uint8Array(N);
+    let acc = 0;
+    animators.push({
+      update(dt) {
+        if ((acc += dt) < 0.25) return;
+        acc = 0;
+        const p = g.attributes.position;
+        stages.forEach(({ b }, i) => {
+          if (gone[i] || !b.destroyed) return;
+          gone[i] = 1;
+          for (let k = 0; k < 4; k++) p.setY(i * 4 + k, -1); // folded flat under the ground
+          p.needsUpdate = true;
+        });
+      },
+    });
   }
 
   // ---- crowds: instanced festival-goers on the lawns (phones fewer, LOW minimal) ----

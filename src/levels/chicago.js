@@ -1128,12 +1128,13 @@ export function buildChicago(scene, world, opts, K) {
   const glb = opts.glb !== undefined ? !!opts.glb : !lite;
   const bldgGLB = true;
   K.setBuildingLite(lite);
-  // Static props/kit pieces: phones batch into 160u tiles (fewer draws) and
-  // drop to LOD1 from 125u, just past a tile's half-diagonal so the tile
-  // you stand in stays LOD0 (desktop: 120u tiles, LOD1 from 150u)
+  // Static props/kit pieces: phones batch into 240u tiles (fewer draws: the
+  // festival's parts need the headroom) and drop to LOD1 from 185u, just
+  // past a tile's half-diagonal so the tile you stand in stays LOD0
+  // (desktop: 120u tiles, LOD1 from 150u)
   // (phone LOW: its lamps/trees are procedural, a few dozen tris each, so one
   // tile spans the whole map: one draw per part)
-  const instance = () => K.instanceStaticClones(scene, !glb ? 4000 : lite ? 160 : 120, lite ? 125 : 150);
+  const instance = () => K.instanceStaticClones(scene, !glb ? 4000 : lite ? 240 : 120, lite ? 185 : 150);
   // GLB buildings: the generic kit is a dozen tiny (<300 tri) templates, so
   // big batch tiles keep their draws down at almost no triangle cost
   K.setBuildingTile(!glb ? 600 : lite ? 440 : 300); // phone LOW: one tile per quadrant

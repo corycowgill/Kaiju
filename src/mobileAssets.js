@@ -29,6 +29,8 @@ export const MOBILE_VARIANTS = new Set([
   "buildings/chicago/daley_center.glb",
   "buildings/chicago/fest_entry_gate.glb",
   "buildings/chicago/fest_fence_panel.glb",
+  "buildings/chicago/fest_main_stage.glb",
+  "buildings/chicago/fest_side_stage.glb",
   "buildings/chicago/fest_tent_stage.glb",
   "buildings/chicago/field_museum.glb",
   "buildings/chicago/franklin_center.glb",
