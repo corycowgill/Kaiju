@@ -104,13 +104,7 @@ const CHICAGO_LANDMARK_GLBS = [
   // centre, model +X = south / +Z = west matching the layout rot (no face).
   // Phones get the artist's 9.8k-tri soldier_field_mobile.glb as the
   // assets/m/ variant (pinned in make_mobile_assets), with its own LOD1
-  // tone: the v2 steel skin (214,218,222 @ metal .5) and the bowl / canopy
-  // concrete (172,168,160) read as one flat washed-out white blob under the
-  // noon sun + bloom; their palette swatches are repainted to a mid
-  // silver-grey and a darker warm concrete until the v3 model fixes them
-  { id: 'soldier_field', file: 'soldier_field.glb', trueHeightM: 72.35, exact: true, atOrigin: true,
-    tone: { match: /palette/, metal: 0.7, envI: 0.6,
-      swatches: [[[214, 218, 222], [138, 144, 152]], [[172, 168, 160], [142, 138, 130]]] }, ready: true },
+  { id: 'soldier_field', file: 'soldier_field.glb', trueHeightM: 72.35, exact: true, atOrigin: true, ready: true },
   // Portico (+Z) and grand steps face north
   { id: 'field_museum', file: 'field_museum.glb', trueHeightM: 30, face: 'north', ready: true },
   // Only the 1930 tower (57 x 60 m, statue at 184 m), clock face (+Z) north up
@@ -272,28 +266,6 @@ const _ownBucket = (bucket) => (bucket === 'low' && !CHICAGO_GENERIC_GLBS.some((
 const DIRS = { east: [1, 0], west: [-1, 0], south: [0, 1], north: [0, -1] };
 /** rot + k*90deg whose local +Z (sin r, cos r) points closest to `face`
  *  (or whose local +X (cos r, -sin r) does, for faceX). */
-/** Copy of a palette texture with exact-colour swatches repainted. */
-function _recolorSwatches(tex, swatches) {
-  const img = tex.image;
-  const cv = document.createElement('canvas');
-  cv.width = img.width; cv.height = img.height;
-  const cx = cv.getContext('2d');
-  cx.drawImage(img, 0, 0);
-  const d = cx.getImageData(0, 0, cv.width, cv.height);
-  const px = d.data;
-  for (let i = 0; i < px.length; i += 4) {
-    for (const [from, to] of swatches) {
-      if (Math.abs(px[i] - from[0]) + Math.abs(px[i + 1] - from[1]) + Math.abs(px[i + 2] - from[2]) > 6) continue;
-      px[i] = to[0]; px[i + 1] = to[1]; px[i + 2] = to[2];
-      break;
-    }
-  }
-  cx.putImageData(d, 0, 0);
-  const out = new THREE.CanvasTexture(cv);
-  for (const k of ['flipY', 'colorSpace', 'wrapS', 'wrapT', 'magFilter', 'minFilter', 'channel', 'generateMipmaps']) out[k] = tex[k];
-  return out;
-}
-
 function _faceRot(rot, face, alongX = false) {
   const d = DIRS[face];
   if (!d) return rot;
@@ -1761,21 +1733,6 @@ export function buildChicago(scene, world, opts, K) {
         b.customMesh = new THREE.Object3D(); // AABB hit-test marker until placed
         continue;
       }
-      if (def.tone) {
-        // Per-model material correction on the shared template (all instances)
-        K.onTemplatesReady((sc, get) => {
-          const done = new Set();
-          get(url)?.traverse((o) => {
-            const mat = o.isMesh && o.material;
-            if (!mat || done.has(mat) || !def.tone.match.test(mat.name || '')) return;
-            done.add(mat);
-            mat.metalness *= def.tone.metal;
-            mat.envMapIntensity = def.tone.envI;
-            if (mat.map?.image && def.tone.swatches) mat.map = _recolorSwatches(mat.map, def.tone.swatches);
-            mat.needsUpdate = true;
-          });
-        });
-      }
       if (def.chrome && !scene.environment) {
         // No env map off desktop HIGH: metal 1 would render black
         K.onTemplatesReady((sc, get) => {
@@ -1950,7 +1907,7 @@ export function buildChicago(scene, world, opts, K) {
   }
 
   // ---- Kaijupalooza! (Grant Park festival): buildings too, so before the bodies ----
-  if (L.fest) buildFest(scene, L.fest, { K, buildings, grid, animators, world, lite, glb, addBatch, polygonGeom, M, S: L.scale || 0.2, spawn: L.spawn });
+  if (L.fest) buildFest(scene, L.fest, { K, buildings, grid, animators, world, lite, glb, addBatch, polygonGeom, M, S: L.scale || 0.2 });
 
   const bodiesIM = K.buildGlobalBodies(scene, buildings);
   const windowPulse = K.buildGlobalWindows(scene, CHI_WINDOWS);
@@ -2256,6 +2213,7 @@ export function buildChicago(scene, world, opts, K) {
         // Open water at least 8u from any shore
         if (!isWater(x, z) || !isWater(x + 8, z) || !isWater(x - 8, z) || !isWater(x, z + 8) || !isWater(x, z - 8)) continue;
         if (!lakes.some((w) => pointInPoly(x, z, w.polygon))) continue;
+        if (Math.hypot(x - L.spawn.x, z - L.spawn.z) < 20) continue; // the kaiju wades in here
         if (sailGLB) { moorings.push({ x, z, ry: Math.random() * Math.PI * 2 }); break; }
         // Moored: static, folded into the prop InstancedMeshes
         const bt = makeBoat(false);

@@ -2689,7 +2689,9 @@ function _bucketGLBRoot(root, url, building) {
   root.traverse((m) => {
     if (!m.isMesh) return;
     const e = m.matrixWorld.elements;
-    const key = `${m.geometry.uuid}|${m.material.uuid}|${Math.floor(e[12] / _bldgTile)},${Math.floor(e[14] / _bldgTile)}`;
+    // building.glbBucket: a compact group (a festival) batches as one tile
+    const tile = building.glbBucket || `${Math.floor(e[12] / _bldgTile)},${Math.floor(e[14] / _bldgTile)}`;
+    const key = `${m.geometry.uuid}|${m.material.uuid}|${tile}`;
     let b = _glbBuckets.get(key);
     if (!b) _glbBuckets.set(key, b = { geometry: m.geometry, material: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [], lod1Only: !!building.lod1Only });
     b.items.push({ matrix: m.matrixWorld.clone(), building });

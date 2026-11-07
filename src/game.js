@@ -1794,7 +1794,8 @@ async function _switchLevel(loadingStatus) {
 window.__restartInPlace = restartInPlace;
 // ?debug test hooks (QA scripts): inspect state and trigger abilities
 if (/[?&]debug\b/.test(location.search)) {
-  window.__qa = { state, world, camera, renderer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n) };
+  // composer(): the post chain (bloom, grade) for in-game-look screenshots
+  window.__qa = { state, world, camera, renderer, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n) };
 }
 async function startGame(key) {
   if (_startingGame) return;

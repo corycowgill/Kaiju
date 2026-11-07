@@ -213,7 +213,16 @@ if (level === 'chicago' && res && res.bounds) {
   if (outside.length) fail(`chicago: ${outside.length} buildings outside bounds, e.g. (${outside[0].x.toFixed(1)}, ${outside[0].z.toFixed(1)})`);
   const wet = res.buildings.filter((b) => !b.isBridge && b.h > 4 && res.isWater && res.isWater(b.x, b.z));
   if (wet.length) fail(`chicago: ${wet.length} buildings stand on water, e.g. (${wet[0].x.toFixed(1)}, ${wet[0].z.toFixed(1)})`);
-  if (res.isWater && res.isWater(res.spawn.x, res.spawn.z)) fail(`chicago: kaiju spawn (${res.spawn.x}, ${res.spawn.z}) is on water`);
+  // The kaiju wades in from Lake Michigan: open water, nothing solid (shore,
+  // breakwater, festival) within 10u of the spawn
+  if (res.isWater) {
+    const { x, z } = res.spawn;
+    const dry = [];
+    for (let dx = -10; dx <= 10; dx += 2.5) for (let dz = -10; dz <= 10; dz += 2.5) if (!res.isWater(x + dx, z + dz)) dry.push([x + dx, z + dz]);
+    if (dry.length) fail(`chicago: kaiju spawn (${x}, ${z}) is not in open water (land at ${dry[0].join(', ')})`);
+    const near = res.buildings.filter((b) => !b.destroyed && Math.abs(b.x - x) < b.w / 2 + 10 && Math.abs(b.z - z) < b.d / 2 + 10);
+    if (near.length) fail(`chicago: ${near.length} buildings within 10u of the kaiju spawn`);
+  }
   if (res.spawn.x < B.minX || res.spawn.x > B.maxX || res.spawn.z < B.minZ || res.spawn.z > B.maxZ) fail('chicago: kaiju spawn outside bounds');
   const tooTall = res.buildings.filter((b) => !(b.h > 0 && b.h < 140));
   if (tooTall.length) fail(`chicago: ${tooTall.length} buildings with height outside 0..140u`);

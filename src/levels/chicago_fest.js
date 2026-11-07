@@ -15,7 +15,7 @@ const FEST_URL = './assets/levels/chicago_fest.json';
 const FEST_BASE = './assets/buildings/chicago/';
 const TEX_BASE = './assets/textures/';
 
-const FEST_DEFAULT = false;
+const FEST_DEFAULT = true;
 export function festEnabled() {
   try {
     const q = new URLSearchParams(location.search).get('fest');
@@ -32,16 +32,40 @@ const FEST_MODELS = {
   side_stage: { file: 'fest_side_stage.glb', sizeM: [25, 15, 14] },
   tent_stage: { file: 'fest_tent_stage.glb', sizeM: [30, 25, 15] },
   entry_gate: { file: 'fest_entry_gate.glb', sizeM: [20, 6, 10] },
-  fence_panel: { file: 'fest_fence_panel.glb', sizeM: [3.5, 0.6, 2.4] },
-  vendor_tent: { file: 'fest_vendor_tent.glb', sizeM: [9, 3, 3.5] },
-  porta_potty_bank: { file: 'fest_porta_potty_bank.glb', sizeM: [7.5, 1.3, 2.3] },
-  delay_tower: { file: 'fest_delay_tower.glb', sizeM: [2.5, 2.5, 12] },
-  vip_deck: { file: 'fest_vip_deck.glb', sizeM: [20, 8, 7] },
-  led_wall: { file: 'fest_led_wall.glb', sizeM: [12, 2, 15] },
-  foh_tower: { file: 'fest_foh_tower.glb', sizeM: [10, 8, 7] },
-  trailer: { file: 'fest_trailer.glb', sizeM: [12, 3, 4] },
+  fence_panel: { file: 'fest_fence_panel.glb', sizeM: [3.5, 0.22, 2.4], ready: true },
+  vendor_tent: { file: 'fest_vendor_tent.glb', sizeM: [9, 3, 3.5], ready: true },
+  porta_potty_bank: { file: 'fest_porta_potty_bank.glb', sizeM: [7.6, 1.4, 2.34], ready: true },
+  delay_tower: { file: 'fest_delay_tower.glb', sizeM: [5.4, 2.6, 12.8], ready: true },
+  vip_deck: { file: 'fest_vip_deck.glb', sizeM: [23.6, 7.2, 8.1], ready: true },
+  led_wall: { file: 'fest_led_wall.glb', sizeM: [14.4, 4.2, 18.4], ready: true },
+  foh_tower: { file: 'fest_foh_tower.glb', sizeM: [10.6, 8.6, 7.05], ready: true },
+  trailer: { file: 'fest_trailer.glb', sizeM: [12, 3.6, 4.4], ready: true },
 };
 const _ready = (id) => !!FEST_MODELS[id]?.ready;
+
+// Until a model is delivered, its kind is built from the published props
+// instead (never a box): [model, u, v, w, d, h] with u, v the part's centre
+// and w, d, h its fit box as fractions of the item's w, d, h (front +Z);
+// h-only parts (towers, w = 0) fit by height. The first part carries the
+// stage's name board and lights.
+const STAGE_KIT = [
+  ['vip_deck', 0, 0.12, 0.62, 0.75, 0.34],
+  ['led_wall', 0, -0.3, 0.42, 0.3, 0.95],
+  ['led_wall', -0.4, 0.12, 0.17, 0.25, 0.72],
+  ['led_wall', 0.4, 0.12, 0.17, 0.25, 0.72],
+  ['delay_tower', -0.48, -0.32, 0, 0, 1],
+  ['delay_tower', 0.48, -0.32, 0, 0, 1],
+];
+const STANDIN = {
+  main_stage: STAGE_KIT, side_stage: STAGE_KIT, tent_stage: STAGE_KIT,
+  // Gate: two truss towers carrying a KAIJUPALOOZA! banner, bag-check tents between
+  entry_gate: [
+    ['delay_tower', -0.46, 0, 0, 0, 1],
+    ['delay_tower', 0.46, 0, 0, 0, 1],
+    ['vendor_tent', -0.2, 0.15, 0.32, 0.7, 0.4],
+    ['vendor_tent', 0.2, 0.15, 0.32, 0.7, 0.4],
+  ],
+};
 
 // Layout kind -> model candidates (first ready one wins, else the first is
 // the pending stand-in) and how it fills the item's box: 'fit' scales one
@@ -50,7 +74,7 @@ const KINDS = {
   stage: { models: (it) => [it.id === 'tremor_tent' ? 'tent_stage' : it.tier === 'main' ? 'main_stage' : 'side_stage'], mode: 'fit', color: 0xd23c8c },
   screen: { models: () => ['led_wall', 'delay_tower'], mode: 'fit', color: 0x222428 },
   foh_tower: { models: () => ['foh_tower', 'vip_deck'], mode: 'fit', color: 0x3a3a44 },
-  delay_tower: { models: () => ['delay_tower'], mode: 'fit', color: 0x5a5a66 },
+  delay_tower: { models: () => ['delay_tower'], mode: 'fit', color: 0x5a5a66, fitH: true }, // the boom overhangs its 3 m box
   gate: { models: () => ['entry_gate'], mode: 'tile', color: 0xf0a020 },
   production: { models: () => ['trailer', 'vendor_tent'], mode: 'tile', color: 0x8a8a90 },
   vip: { models: () => ['vip_deck'], mode: 'tile', color: 0x7a3cc8 },
@@ -131,7 +155,7 @@ export function festClearFence(F, roads) {
   }
   const orig = F.fence;
   for (const p of ring) {
-    for (let pass = 0; pass < 2; pass++) {
+    for (let pass = 0; pass < 6; pass++) { // corners: two streets push in turn
       for (const r of roads) {
         for (let i = 0; i + 1 < r.points.length; i++) {
           const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1];
@@ -375,28 +399,30 @@ function _crowdMaterial(uTime) {
   return mat;
 }
 
-/** Instanced crowd on one stage lawn, packed denser toward the stage. */
-function _makeCrowd(scene, it, n, geom, mat, sp) {
-  const poly = it.crowdArea;
-  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-  for (const [x, z] of poly) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
-  const far = Math.hypot(x1 - x0, z1 - z0);
-  const pts = [];
-  for (let tries = 0; pts.length < n && tries < n * 12; tries++) {
-    const x = x0 + Math.random() * (x1 - x0), z = z0 + Math.random() * (z1 - z0);
-    if (!_inPoly(x, z, poly) || (sp && Math.hypot(x - sp.x, z - sp.z) < 7)) continue;
-    const near = 1 - Math.min(1, Math.hypot(x - it.x, z - it.z) / far);
-    if (Math.random() > 0.3 + 0.7 * near * near) continue;
-    pts.push(x, z);
+/** Festival-goers on the stage lawns, packed denser toward each stage:
+ *  one InstancedMesh for every lawn (a single draw). lawns: [{ it, n }]. */
+function _makeCrowd(scene, lawns, geom, mat) {
+  const pts = [], yaw = [];
+  for (const { it, n } of lawns) {
+    const poly = it.crowdArea;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const [x, z] of poly) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    const far = Math.hypot(x1 - x0, z1 - z0);
+    for (let tries = 0, got = 0; got < n && tries < n * 12; tries++) {
+      const x = x0 + Math.random() * (x1 - x0), z = z0 + Math.random() * (z1 - z0);
+      if (!_inPoly(x, z, poly)) continue;
+      const near = 1 - Math.min(1, Math.hypot(x - it.x, z - it.z) / far);
+      if (Math.random() > 0.3 + 0.7 * near * near) continue;
+      pts.push(x, z); yaw.push(Math.atan2(it.x - x, it.z - z)); got++;
+    }
   }
   const count = pts.length / 2;
   if (!count) return null;
   const im = new THREE.InstancedMesh(geom, mat, count);
   const o = new THREE.Object3D(), c = new THREE.Color();
   for (let i = 0; i < count; i++) {
-    const x = pts[i * 2], z = pts[i * 2 + 1];
-    o.position.set(x, 0.04, z);
-    o.rotation.set(0, Math.atan2(it.x - x, it.z - z) + (Math.random() - 0.5) * 0.6, 0);
+    o.position.set(pts[i * 2], 0.04, pts[i * 2 + 1]);
+    o.rotation.set(0, yaw[i] + (Math.random() - 0.5) * 0.6, 0);
     o.scale.setScalar(0.9 + Math.random() * 0.25);
     o.updateMatrix();
     im.setMatrixAt(i, o.matrix);
@@ -424,12 +450,10 @@ export function buildFest(scene, F, ctx) {
   // Picnic-table strip: paving
   for (const it of F.items) if (it.kind === 'food_seating') addBatch(polygonGeom(_rectPoly(it), 0.036, 1 / 6), M.path);
 
-  // The kaiju lands in Butler Field: nothing (but a stage) stands on its spawn
-  const sp = ctx.spawn, CLEAR = 9;
-  const onSpawn = (x, z, aw, ad) => sp && Math.abs(x - sp.x) < aw / 2 + CLEAR && Math.abs(z - sp.z) < ad / 2 + CLEAR;
   const newBuilding = (x, z, aw, ad, h, color, modelId) => {
     const b = new K.Building(x, z, aw, ad, h, { skipWindows: true, color });
     b.fest = true;
+    b.glbBucket = 'fest'; // Grant Park straddles tile lines: one batch per part for the whole festival
     const ok = _ready(modelId);
     if (ok) b._skipBodyIM = true;
     else b.pendingGLB = FEST_MODELS[modelId].file;
@@ -450,12 +474,36 @@ export function buildFest(scene, F, ctx) {
     const mdl = FEST_MODELS[id];
     const url = FEST_BASE + mdl.file;
     const ax = [Math.cos(it.rot), -Math.sin(it.rot)], az = [Math.sin(it.rot), Math.cos(it.rot)];
+    if (!mdl.ready && STANDIN[id]) {
+      const h = it.kind === 'gate' ? mdl.sizeM[2] * S * 1.2 : Math.min(it.h, (kind.maxHM || Infinity) * S);
+      let first = null;
+      for (const [pid, u, v, fw, fd, fh] of STANDIN[id]) {
+        const x = it.x + ax[0] * u * it.w + az[0] * v * it.d, z = it.z + ax[1] * u * it.w + az[1] * v * it.d;
+        const ph = fh * h, byH = !fw;
+        const [aw, ad] = byH ? [0.8, 0.8] : aabb(fw * it.w, fd * it.d, it.rot);
+        const { b } = newBuilding(x, z, aw, ad, ph, kind.color, pid);
+        K.queueGLB({ url: FEST_BASE + FEST_MODELS[pid].file, h: ph, building: b, maxW: byH ? 0 : aw * 1.05, maxD: byH ? 0 : ad * 1.05, rotY: it.rot, landmark: true, stretch: byH ? 1 : 1.15 });
+        first = first || b;
+      }
+      if (it.kind === 'stage') stages.push({ it, b: first });
+      if (it.kind === 'gate') {
+        // The banner rides on the first tower: it goes when that one falls
+        const bw = Math.min(it.w * 0.8, 7), bh = bw / 3;
+        const mat = new THREE.MeshStandardMaterial({ map: _signTexture(3), roughness: 0.6, side: THREE.DoubleSide, emissive: 0xffffff, emissiveIntensity: 0.3 });
+        mat.emissiveMap = mat.map;
+        const banner = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), mat);
+        banner.position.set(it.x - first.x, h * 0.92 - bh / 2, it.z - first.z);
+        banner.rotation.y = it.rot;
+        first.group.add(banner);
+        first.group.updateMatrixWorld(true);
+      }
+      continue;
+    }
     if (kind.mode === 'fit') {
       const h = Math.min(it.h, (kind.maxHM || Infinity) * S);
       const [aw, ad] = aabb(it.w, it.d, it.rot);
-      if (it.kind !== 'stage' && onSpawn(it.x, it.z, aw, ad)) continue;
       const { b, ok } = newBuilding(it.x, it.z, aw, ad, h, kind.color, id);
-      if (ok) K.queueGLB({ url, h, building: b, maxW: aw * 1.05, maxD: ad * 1.05, rotY: it.rot, landmark: true, stretch: 1.15 });
+      if (ok) K.queueGLB({ url, h, building: b, maxW: kind.fitH ? 0 : aw * 1.05, maxD: kind.fitH ? 0 : ad * 1.05, rotY: it.rot, landmark: true, stretch: kind.fitH ? 1 : 1.15 });
       if (it.kind === 'stage') stages.push({ it, b });
       continue;
     }
@@ -469,7 +517,6 @@ export function buildFest(scene, F, ctx) {
       const u = (i + 0.5) * cw - it.w / 2, v = (j + 0.5) * cd - it.d / 2;
       const [aw, ad] = aabb(cw, cd, it.rot);
       const tx = it.x + ax[0] * u + az[0] * v, tz = it.z + ax[1] * u + az[1] * v;
-      if (onSpawn(tx, tz, aw, ad)) continue;
       const { b, ok } = newBuilding(tx, tz, aw, ad, h, kind.color, id);
       if (ok) K.queueGLB({ url, h, building: b, maxW: aw * 1.02, maxD: ad * 1.02, rotY: it.rot, landmark: true });
     }
@@ -538,10 +585,8 @@ export function buildFest(scene, F, ctx) {
     const area = (p) => { let s = 0; for (let i = 0; i < p.length; i++) { const [x0, z0] = p[i], [x1, z1] = p[(i + 1) % p.length]; s += x0 * z1 - x1 * z0; } return Math.abs(s) / 2; };
     const tot = lawns.reduce((s, { it }) => s + area(it.crowdArea), 0);
     const k = Math.min(perU2, cap / Math.max(1, tot));
-    for (const { it, b } of lawns) {
-      const c = _makeCrowd(scene, it, Math.round(area(it.crowdArea) * k), geom, mat, sp);
-      if (c) crowds.push({ ...c, stage: b });
-    }
+    const c = _makeCrowd(scene, lawns.map(({ it }) => ({ it, n: Math.round(area(it.crowdArea) * k) })), geom, mat);
+    if (c) crowds.push(c);
     animators.push({ update(dt, time) { uTime.value = time; } });
     // Stomped / blasted festival-goers: flattened where they stood
     // (game.js damageInRadius calls this like it does for civilians)
