@@ -24,7 +24,7 @@ import {
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
-import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce, onGLBParsed } from './assetCache.js';
+import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce, onGLBParsed, canonMaterialMaps } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
 import vfx, { listBuilders, resetPooledLights } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
@@ -200,6 +200,11 @@ onGLBParsed((root) => {
     }
   });
 });
+
+// Any material built after load gets the shared texture slots (see
+// canonMaterialMaps) on its first draw: Mesh.onBeforeRender runs before three
+// picks the program.
+THREE.Mesh.prototype.onBeforeRender = function (r, s, c, g, material) { canonMaterialMaps(material); };
 function _drainTexQueue(budgetMs) {
   const t0 = performance.now();
   for (const t of _texQueue) {
@@ -1739,6 +1744,8 @@ function _disposeKaijuGLB(glb) {
  *  part of a program's key). Resolves when every program is linked. */
 function _linkAsync(root, target = composer ? composer.readBuffer : null) {
   const lightsFrom = root === scene ? null : scene;
+  // The programs these will draw with (compile() skips Mesh.onBeforeRender)
+  root.traverse((o) => { for (const m of [].concat(o.material || [])) canonMaterialMaps(m); });
   const prev = renderer.getRenderTarget();
   renderer.setRenderTarget(target);
   let p;

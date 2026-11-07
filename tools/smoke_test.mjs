@@ -129,6 +129,7 @@ const city = await imp('city.js');
 const enemies = await imp('enemies.js');
 const { loadKaijuModel } = await imp('kaijuLoader.js');
 const vfx = await imp('vfx.js');
+const assetCache = await imp('assetCache.js');
 const effects = await imp('effects.js');
 
 const scene = new THREE.Scene();
@@ -192,6 +193,27 @@ const sceneTotals = () => {
   scene.traverse((o) => { if (o.onBeforeRender !== base) o.onBeforeRender(null, scene, cam); });
 }
 const totals = sceneTotals();
+// Lit shader programs (a proxy for three's program keys): one per distinct
+// standard-material variant in the scene, after the shared texture slots are
+// filled as game.js does before START links them (assetCache.canonMaterialMaps).
+// Each costs ~150 ms to link at START; the budget catches a new variant axis.
+const litPrograms = (() => {
+  const { canonMaterialMaps } = assetCache;
+  const keys = new Set();
+  scene.traverseVisible((o) => {
+    if (!o.isMesh) return;
+    for (const m of [].concat(o.material || [])) {
+      if (!m || !m.isMeshStandardMaterial) continue;
+      canonMaterialMaps(m);
+      keys.add([m.type, ...['map', 'normalMap', 'emissiveMap', 'metalnessMap', 'roughnessMap', 'aoMap', 'alphaMap', 'lightMap', 'bumpMap', 'displacementMap'].map((k) => (m[k] ? 1 : 0)),
+        m.alphaTest > 0, m.transparent, m.side, m.vertexColors, m.flatShading, m.fog, !!o.isInstancedMesh, !!(o.isInstancedMesh && o.instanceColor),
+        !!o.isSkinnedMesh, !!(o.morphTargetInfluences && o.morphTargetInfluences.length), m.customProgramCacheKey()].join('|'));
+    }
+  });
+  return keys.size;
+})();
+const LIT_PROGRAM_BUDGET = 16; // Tokyo 10, Chicago 13 (Chicago in the browser: 26 lit programs before canonMaterialMaps)
+if (litPrograms > LIT_PROGRAM_BUDGET) fail(`${litPrograms} lit shader programs in the scene, budget ${LIT_PROGRAM_BUDGET} (a new material variant? see assetCache.canonMaterialMaps)`);
 if (process.env.SMOKE_BREAKDOWN) {
   // Top triangle contributors (debug aid): by geometry name / material
   const by = new Map();
@@ -205,7 +227,7 @@ if (process.env.SMOKE_BREAKDOWN) {
   const rank = process.env.SMOKE_BREAKDOWN === 'draws' ? 'draws' : 'tris';
   for (const [k, e] of [...by].sort((a, b) => b[1][rank] - a[1][rank]).slice(0, 25)) log(`${(e.tris / 1e3).toFixed(0)}k tris, ${e.draws} draws: ${k}`);
 }
-summary += `${res && res.buildings ? res.buildings.length : 0} buildings, scene ${totals.draws} meshes (${totals.shadowDraws} cast), ${(totals.tris / 1e6).toFixed(2)}M tris; `;
+summary += `${res && res.buildings ? res.buildings.length : 0} buildings, scene ${totals.draws} meshes (${totals.shadowDraws} cast), ${(totals.tris / 1e6).toFixed(2)}M tris, ${litPrograms} lit programs; `;
 // Chicago budget (desktop): Tokyo's own totals with this counter (desktop HIGH ~710 meshes /
 // ~5.0M tris) plus ~15%; phones: the MED target of ~450 draws and 4-5M tris (Tokyo MED: ~365 / ~2.3M)
 const BUDGET = Q.isMobile ? { draws: 450, tris: 4.5e6 } : { draws: 815, tris: 5.8e6 };

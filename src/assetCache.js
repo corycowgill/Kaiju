@@ -12,6 +12,7 @@
  *   const url = await cachedBlobURL('./assets/tex.jpg');   // blob: URL for loaders
  */
 
+import { DataTexture } from 'three';
 import { isMobile } from './quality.js';
 import { MOBILE_VARIANTS } from './mobileAssets.js';
 import { KTX2_VARIANTS } from './ktx2Assets.js';
@@ -382,18 +383,38 @@ if (_DEBUG_LOADS) {
 let _glbParsedHook = null;
 export function onGLBParsed(fn) { _glbParsedHook = fn; }
 
+// Fewer shader programs: a standard material's program key includes which of
+// these maps it has, so every combination was its own program (26 lit ones in
+// Chicago, ~150 ms each to link). Each missing one gets a shared 1x1 white
+// texture, which multiplies by exactly 1 (colour, emissive, metalness,
+// roughness, AO): same pixels, and every material shares the same few
+// programs (Chicago 26 -> 13). Normal maps are left alone (a flat one would
+// cost per-pixel derivatives). Applied as GLBs parse; game.js applies it to
+// the scene before START links it and to later materials on first draw.
+const _WHITE_TEX = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+_WHITE_TEX.needsUpdate = true;
+const _CANON_SLOTS = ['map', 'emissiveMap', 'metalnessMap', 'roughnessMap', 'aoMap'];
+export function canonMaterialMaps(m) {
+  if (!m || !m.isMeshStandardMaterial || m.userData.canonMaps) return;
+  m.userData.canonMaps = true;
+  let changed = false;
+  for (const k of _CANON_SLOTS) if (!m[k]) { m[k] = _WHITE_TEX; changed = true; }
+  if (changed) m.needsUpdate = true;
+}
+
 export function normalizeGLTFMaterials(root) {
   root.traverse((o) => {
     if (!o.isMesh) return;
     if (o.geometry) o.geometry.userData.template = true;
     for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
       if (!m) continue;
-      if (m.emissiveMap && m.emissiveMap === m.map) {
+      if (m.emissiveMap && m.emissiveMap === m.map && m.map !== _WHITE_TEX) {
         m.emissiveMap = null;
         m.emissive.setRGB(0, 0, 0);
         m.needsUpdate = true;
       }
       if (m.metalness >= 0.9 && !m.metalnessMap) m.metalness = 0.2;
+      canonMaterialMaps(m);
     }
   });
   if (_glbParsedHook) {
