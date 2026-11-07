@@ -4728,7 +4728,8 @@ function _hudPrewarmBegin() {
   const modal = $('upgrade-modal'), cards = $('upgrade-cards'), msg = $('message'), banner = $('wave-banner');
   const extra = [];
   const touchIds = ['joy-zone', 'joystick', 'attack-btn', 'sprint-btn'];
-  _hudPrewarm = { imgs: [], restore: () => {
+  _hudPrewarm = { imgs: [], anim: 0, restore: () => {
+    clearInterval(_hudPrewarm && _hudPrewarm.anim);
     for (const el of extra) el.remove();
     for (const id of ['hud-toasts', 'mini-toasts']) { const w = $(id); if (w) w.innerHTML = ''; }
     hud.classList.add('hidden');
@@ -4775,8 +4776,27 @@ function _hudPrewarmBegin() {
       pwBar.appendChild(c); extra.push(c);
     };
     for (const v of [0, 1]) variant(hudRefs.pw.roar, 'is-cd', '--cd', v);
+    // One power cycles ready -> cooling (sweep running down) -> short of rage
+    // and the ult ring fills, so the state transitions and every sweep angle
+    // are drawn too
+    let tick = 0;
+    _hudPrewarm.anim = setInterval(() => {
+      tick++;
+      const w = hudRefs.pw.beam, u = hudRefs.pw.ult;
+      if (w) {
+        const s = ['is-ready', 'is-cd', 'is-low'][Math.floor(tick / 8) % 3];
+        if (!w.classList.contains(s)) { w.classList.remove('is-ready', 'is-cd', 'is-low'); w.classList.add(s); }
+        w.style.setProperty('--cd', 1 - (tick % 8) / 8);
+      }
+      if (u) u.style.setProperty('--rage', (tick % 20) / 20);
+      // the callouts' fade transitions (ultimate / wave banner)
+      if (tick % 16 === 0) { msg.classList.toggle('show'); banner.classList.toggle('show'); }
+    }, 50);
     for (const v of [0, 0.25, 0.75, 1]) variant(hudRefs.pw.ult, 'is-low', '--rage', v);
     _prewarmMinimap();
+    // Bars part-filled (the rage fill starts at scaleX(0): nothing to raster)
+    if (hudRefs.hpInner) hudRefs.hpInner.style.transform = 'scaleX(0.6)';
+    if (hudRefs.ragInner) hudRefs.ragInner.style.transform = 'scaleX(0.6)';
     obj.style.display = 'flex';
     obj.classList.add('complete');
     boss.style.display = 'block';
@@ -4784,18 +4804,20 @@ function _hudPrewarmBegin() {
     $('vitals')?.classList.add('low');
     hudRefs.lowHp?.classList.add('active');
     if (hudRefs.damageFlash) hudRefs.damageFlash.style.opacity = '0.85';
+    // Toasts keep their real entrance animations (looped), so they raster as
+    // the animated layers they are in play
     for (const kind of ['good', 'bad', '']) {
       const t = document.createElement('div'); t.className = 'toast' + (kind ? ' ' + kind : ''); t.textContent = 'WARM UP';
-      t.style.animation = 'none'; $('hud-toasts')?.appendChild(t);
+      t.style.animation = 'toastIn 0.6s ease-out infinite alternate'; $('hud-toasts')?.appendChild(t);
       const m = document.createElement('div'); m.className = 'mini-toast' + (kind ? ' ' + kind : ''); m.textContent = 'WARM UP';
-      m.style.animation = 'none'; $('mini-toasts')?.appendChild(m);
+      m.style.animation = 'miniToastIn 0.6s ease-out infinite alternate'; $('mini-toasts')?.appendChild(m);
     }
     msg.textContent = '☢︎ WARM UP'; msg.classList.add('show');
     banner.innerHTML = 'WAVE 1<small>WARM UP</small>'; banner.classList.add('show');
-    for (const sc of [1, 1.4]) {
+    for (const color of ['#ffee66', '#ff66aa']) {
       const pop = document.createElement('div');
-      pop.className = 'popup'; pop.textContent = '+1500';
-      pop.style.transform = `translate(50vw, 50vh) scale(${sc})`;
+      pop.className = 'popup'; pop.textContent = '+1500'; pop.style.color = color;
+      pop.style.transform = 'translate(50vw, 50vh) scale(1.2)'; pop.style.opacity = '0.6';
       popupContainer?.appendChild(pop); extra.push(pop);
     }
     const di = $('dmg-indicators');
