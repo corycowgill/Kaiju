@@ -2119,15 +2119,17 @@ function _initStaticHUDRefs() {
 _initStaticHUDRefs();
 
 // Slot icons: 32x32 filled glyphs, drawn for a distinct silhouette at
-// ~40 px. Names differ per monster, the slot meaning doesn't: jaw blast,
+// ~40 px. Names differ per monster, the slot meaning doesn't: snout blast,
 // fanged roar, horned charge, clawed stomp, atomic ultimate. Shapes fill
 // with the slot's accent (currentColor) and a thin dark outline; .d = dark
-// detail, .s = bold accent stroke, .z / .o = dark strokes over the fill.
+// detail, .t = teeth, .s = bold accent stroke, .z / .o = dark strokes over the fill.
 const POWER_ICONS = {
-  beam: '<path d="M14 14.2 L31 8.5 L31 23.5 L14 17.8 Z"/>'
-    + '<path class="z" d="M14.5 16 L18.5 13.8 L21 18 L24.5 13.2 L27 17.6 L30 14.6"/>'
-    + '<path d="M1 7.5 Q6 2.5 12.5 4.5 L16.5 8.5 L12.5 12.5 L7 12.8 Q4.6 13.6 4.6 16 Q4.6 18.4 7 19.2 L12.5 19.5 L16.5 23.5 L12.5 27.5 Q6 29.5 1 24.5 Z"/>'
-    + '<path d="M1.8 7.4 L0.6 2.6 L4.6 5.2 Z M5.4 4.6 L6 0.6 L9 4 Z"/><circle class="d" cx="7.4" cy="8.4" r="1.5"/><path class="d" d="M8 12.6 L9.2 14.6 L10.4 12.6 Z M8 19.4 L9.2 17.4 L10.4 19.4 Z"/>',
+  beam: '<path d="M19.5 14.4 L31.5 8.6 L31.5 23.4 L19.5 17.6 Z"/>'
+    + '<path class="z" d="M20.4 16 L22.6 14.4 L24.4 17.6 L26.6 13.8 L28.6 17.4 L31 14.8"/>'
+    + '<path d="M0.6 12.5 L3.6 7.8 L8.5 5.4 L10.5 3.6 L13 5.6 L20.5 7.8 L23 10.2 L9.5 15.3 L21 21.2 L19.8 23.6 L9 23.6 L3.5 22.6 L0.6 19 Z"/>'
+    + '<path class="t" d="M11.2 14.3 L12.2 12.2 L13.4 13.4 Z M14.2 12.9 L15.2 10.8 L16.4 12 Z M17.2 11.6 L18.2 9.7 L19.2 10.8 Z M19.9 10.6 L20.8 8.9 L21.7 9.8 Z M11.4 16.2 L12.6 18.3 L13.4 16.9 Z M14.4 17.8 L15.6 19.8 L16.4 18.5 Z M17.4 19.3 L18.6 21.3 L19.4 20 Z"/>'
+    + '<path class="d" d="M8.6 7.4 L12.6 7.2 L11 8.8 Z"/><circle class="d" cx="20.4" cy="8.8" r="0.7"/>'
+    + '<path d="M2.6 7.4 L2.2 3.6 L5 5.6 Z M5.8 5.6 L6.2 1.6 L8.4 4.6 Z"/>',
   roar: '<path class="s" d="M4.5 10 Q1.2 16 4.5 22 M27.5 10 Q30.8 16 27.5 22"/>'
     + '<path d="M7.5 9.5 Q16 2.5 24.5 9.5 Q27 16 24.5 22.5 Q16 29.5 7.5 22.5 Q5 16 7.5 9.5 Z"/>'
     + '<path class="d" d="M10 11.5 Q16 7.5 22 11.5 Q23.6 16 22 20.5 Q16 24.5 10 20.5 Q8.4 16 10 11.5 Z"/>'

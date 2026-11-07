@@ -233,6 +233,7 @@
   .power-wrap.ult .power svg { width: 42px; height: 42px; }
   .power svg .d { fill: #1a0006; stroke: none; }
   .power svg .s { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+  .power svg .t { fill: #fff4dc; stroke: none; }
   .power svg .z { fill: none; stroke: #1a0006; stroke-width: 1.6; }
   .power svg .o { fill: none; stroke: #1a0006; stroke-width: 1.5; }
   .power .name {
@@ -248,12 +249,12 @@
   .power:active { transform: scale(0.92); }
   .power-wrap.is-ready .power { border-color: var(--ac); box-shadow: 0 0 14px color-mix(in srgb, var(--ac) 65%, transparent); }
   .power-wrap.is-low .power { border-style: dashed; border-color: rgba(255, 230, 200, 0.35); }
-  .power-wrap.is-low .power svg, .power-wrap.is-cd .power svg { opacity: 0.5; filter: grayscale(0.85); }
+  .power-wrap.is-low .power svg, .power-wrap.is-cd .power svg { opacity: 0.75; filter: grayscale(0.6) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7)); }
   .power-wrap.is-low .power .name { opacity: 0.55; }
   /* Dark radial sweep over the (dimmed) icon while cooling down */
   .cooldown {
     position: absolute; inset: 0; z-index: 1; pointer-events: none; display: none;
-    background: conic-gradient(rgba(0, 0, 0, 0.6) calc(var(--cd, 0) * 360deg), transparent 0);
+    background: conic-gradient(rgba(0, 0, 0, 0.42) calc(var(--cd, 0) * 360deg), transparent 0);
   }
   .power-wrap.is-cd .cooldown { display: block; }
   /* Seconds left: a small corner badge, so the icon stays readable */
@@ -781,7 +782,7 @@
     color: var(--c-cream); text-shadow: var(--txt-outline); pointer-events: none;
   }
   body.touch .power-wrap.is-low .lbl { opacity: 0.6; }
-  body.touch .power-wrap.ult .lbl { top: calc(100% + 7px); color: var(--ac); }
+  body.touch .power-wrap.ult .lbl { top: calc(100% + 11px); color: var(--ac); }
 
   /* Short screens (phones in landscape, small or 200%-zoomed desktop windows):
      the menus compact to fit ~360-430 px of height. `safe center` keeps the
@@ -1451,24 +1452,24 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.34",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.34",
-    "./src/audio.js": "./src/audio.js?v=1.11.34",
-    "./src/city.js": "./src/city.js?v=1.11.34",
-    "./src/effects.js": "./src/effects.js?v=1.11.34",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.34",
-    "./src/game.js": "./src/game.js?v=1.11.34",
-    "./src/intro.js": "./src/intro.js?v=1.11.34",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.34",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.34",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.34",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.34",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.34",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.34",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.34",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.34",
-    "./src/quality.js": "./src/quality.js?v=1.11.34",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.34"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.35",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.35",
+    "./src/audio.js": "./src/audio.js?v=1.11.35",
+    "./src/city.js": "./src/city.js?v=1.11.35",
+    "./src/effects.js": "./src/effects.js?v=1.11.35",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.35",
+    "./src/game.js": "./src/game.js?v=1.11.35",
+    "./src/intro.js": "./src/intro.js?v=1.11.35",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.35",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.35",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.35",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.35",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.35",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.35",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.35",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.35",
+    "./src/quality.js": "./src/quality.js?v=1.11.35",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.35"
   }
 }
 </script>
@@ -1482,7 +1483,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.34"></script>
-<script type="module" async src="./src/intro.js?v=1.11.34"></script>
+<script type="module" src="./src/game.js?v=1.11.35"></script>
+<script type="module" async src="./src/intro.js?v=1.11.35"></script>
 </body>
 </html>
