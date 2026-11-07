@@ -190,16 +190,30 @@ game.appendChild(renderer.domElement);
 // Upload every GLB's textures as it is parsed (while loading), not all at
 // once on the first frame that draws them (texSubImage2D stalls at START).
 const _TEX_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap', 'envMap'];
+// Queued and drained in ~8 ms slices so the page (loading bar, menu) keeps
+// painting between uploads; _preuploadTextures flushes whatever is left.
+const _texQueue = new Set();
+let _texDrain = 0;
+function _drainTexQueue() {
+  _texDrain = 0;
+  const t0 = performance.now();
+  for (const t of _texQueue) {
+    _texQueue.delete(t);
+    try { renderer.initTexture(t); } catch (e) { /* uploads on first use instead */ }
+    if (performance.now() - t0 > 8) break;
+  }
+  if (_texQueue.size && !_texDrain) _texDrain = setTimeout(_drainTexQueue, 0);
+}
 function _uploadTexturesOf(root) {
-  const seen = new Set();
   root.traverse((o) => {
     for (const m of [].concat(o.material || [])) {
       for (const k of _TEX_KEYS) {
         const t = m[k];
-        if (t && t.isTexture && !seen.has(t)) { seen.add(t); renderer.initTexture(t); }
+        if (t && t.isTexture) _texQueue.add(t);
       }
     }
   });
+  if (_texQueue.size && !_texDrain) _texDrain = setTimeout(_drainTexQueue, 0);
 }
 onGLBParsed(_uploadTexturesOf);
 
@@ -978,7 +992,9 @@ function applyLevelLook(level) {
   sun.color.setHex(L.sun); sun.intensity = L.sunI;
   rimLight.color.setHex(L.rim); rimLight.intensity = L.rimI;
   ambient.color.setHex(L.amb); ambient.intensity = L.ambI;
-  _neonLights.forEach((l, i) => { l.intensity = L.neonI[i]; });
+  // A light at intensity 0 still costs every lit shader; invisible lights are
+  // left out of the shaders (Chicago turns all of them off)
+  _neonLights.forEach((l, i) => { l.intensity = L.neonI[i]; l.visible = L.neonI[i] > 0; });
   for (const k of Object.keys(L.sky)) skyMat.uniforms[k].value.fromArray(L.sky[k]);
   skyMat.uniforms.nebula.value = L.nebula;
   _sunOffset.fromArray(L.sunOffset || _TOKYO_SUN);
@@ -1829,7 +1845,9 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
   // Wait for every link and upload (the first gameplay frame must not link
   // or upload anything), reporting linked/total programs; 60 s safety cap.
   let finished = false;
-  const all = Promise.all([_prewarmBg, _bootCompile, run, city, upload]).then(() => { finished = true; });
+  // (The menu-time VFX prewarm keeps linking in the background: effects are
+  // not needed for the first frames, and a quick clicker shouldn't wait.)
+  const all = Promise.all([_bootCompile, run, city, upload]).then(() => { finished = true; });
   const t0 = performance.now();
   while (!finished && performance.now() - t0 < 60000) {
     if (onProgress) {
@@ -1838,6 +1856,16 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
     }
     await Promise.race([all, new Promise((r) => setTimeout(r, 100))]);
   }
+  // One real frame behind the opaque loading screen links what compile()
+  // can't reach: the shadow-depth variants (the stage joins the scene,
+  // unculled, the kaiju included) and anything else first drawn here.
+  if (kaijuRoot) stage.add(kaijuRoot);
+  stage.traverse((o) => { if (o.isMesh) o.frustumCulled = false; });
+  scene.add(stage);
+  try { if (composer) composer.render(); else renderer.render(scene, camera); } catch (e) { warnOnce('prewarm|frame', '[prewarm] warm frame failed:', e && e.message); }
+  scene.remove(stage);
+  if (kaijuRoot) stage.remove(kaijuRoot);
+  stage.traverse((n) => { if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose(); });
   if (onProgress) onProgress(renderer.info.programs.length, renderer.info.programs.length);
   console.log(`[prewarm:start] all linked/uploaded in ${(performance.now() - t0).toFixed(0)} ms (${renderer.info.programs.length} programs)`);
 }
@@ -1849,7 +1877,8 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
 // (initTexture skips textures that are already on the GPU).
 async function _preuploadTextures(roots) {
   const t0 = performance.now();
-  const texs = new Set();
+  const texs = new Set(_texQueue);
+  _texQueue.clear();
   const add = (t) => { if (t && t.isTexture) texs.add(t); };
   for (const r of roots) {
     if (!r) continue;
