@@ -14,7 +14,8 @@ const ua = navigator.userAgent || '';
 const touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 const isIOS = /iPhone|iPad|iPod/i.test(ua);
 const isAndroid = /Android/i.test(ua);
-export const isMobile = isIOS || isAndroid ||
+// ?mobile=1 (QA): the phone path on a desktop browser
+export const isMobile = isIOS || isAndroid || /[?&]mobile=1\b/.test(location.search) ||
   (touch && Math.min(window.innerWidth, window.innerHeight) < 820);
 
 // Tier: ?q= wins, then the player's saved choice, then the default

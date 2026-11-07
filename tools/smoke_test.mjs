@@ -200,7 +200,9 @@ if (process.env.SMOKE_BREAKDOWN) {
     const key = (o.isInstancedMesh ? 'IM ' : '') + (g.name || g.type) + ' / ' + (o.material.name || o.material.type) + ' ' + (o.material.color ? o.material.color.getHexString() : '');
     const e = by.get(key) || { tris: 0, draws: 0 }; e.tris += n / 3 * (o.isInstancedMesh ? o.count : 1); e.draws++; by.set(key, e);
   });
-  for (const [k, e] of [...by].sort((a, b) => b[1].tris - a[1].tris).slice(0, 25)) log(`${(e.tris / 1e3).toFixed(0)}k tris, ${e.draws} draws: ${k}`);
+  // SMOKE_BREAKDOWN=draws ranks by draw count instead
+  const rank = process.env.SMOKE_BREAKDOWN === 'draws' ? 'draws' : 'tris';
+  for (const [k, e] of [...by].sort((a, b) => b[1][rank] - a[1][rank]).slice(0, 25)) log(`${(e.tris / 1e3).toFixed(0)}k tris, ${e.draws} draws: ${k}`);
 }
 summary += `${res && res.buildings ? res.buildings.length : 0} buildings, scene ${totals.draws} meshes (${totals.shadowDraws} cast), ${(totals.tris / 1e6).toFixed(2)}M tris; `;
 // Chicago budget (desktop): Tokyo's own totals with this counter (desktop HIGH ~710 meshes /

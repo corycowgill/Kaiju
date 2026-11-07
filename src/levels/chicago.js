@@ -1653,14 +1653,10 @@ export function buildChicago(scene, world, opts, K) {
     // Kit pieces stretch up to 1.3x per axis to fill the footprint (artist-approved)
     K.queueGLB({ url, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool, stretch: 1.3 });
   };
-  {
-    // Phones: keep every tower but thin out the low infill so the GLB city
-    // stays inside the mobile draw/triangle budget
-    for (const o of L.buildings) {
-      if (lite && o.h < 16 && Math.random() < 0.4) continue;
-      placeBlock(o);
-    }
-  }
+  // Every block on every tier: phones used to skip 40% of the blocks under
+  // 16u (~110 empty grey lots in the Loop), but the kit is instanced per
+  // template and tile, so the infill costs triangles (~0.3M), not draws
+  for (const o of L.buildings) placeBlock(o);
 
   // ---- landmarks ----
   // The theatre's lettered blade sign + marquee ride on the building's group,
