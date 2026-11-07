@@ -26,7 +26,7 @@ import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
 import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce, onGLBParsed, canonMaterialMaps } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
-import vfx, { listBuilders, resetPooledLights } from './vfx.js';
+import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
 // ------------------------- High score (localStorage) -------------------------
@@ -1034,6 +1034,15 @@ function buildWorldCity() {
 }
 buildWorldCity();
 window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
+// The menu backdrop's first flipbook (once its sheet loads, ~0.3 s into the
+// menu) linked on first use: up to a 1 s menu freeze. Its two programs link
+// now, before the first backdrop frame, first-use lookups included.
+const _flipWarm = new THREE.Group();
+for (const m of flipbookWarmMeshes()) _flipWarm.add(m);
+_linkAsync(_flipWarm).then(() => _flipWarm.children.forEach((m) => {
+  const pr = renderer.properties.get(m.material).currentProgram;
+  if (pr) { pr.getUniforms(); pr.getAttributes(); }
+}));
 // Desktop: about a second after the title menu is up (past its own first
 // frames' stall), link the effect set in the background
 // (_linkVfxBehindMenu); a START before then skips this.

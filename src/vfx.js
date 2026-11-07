@@ -409,8 +409,7 @@ const _FLIP_ADD_FS = `
     gl_FragColor = vec4(col * opacity * vNearFade, 1.0);
   }
 `;
-function _flipSpriteAdd(name, size, tint, glow = 1.2) {
-  if (!_flipTex[name]) return null;
+function _flipAddMaterial(name) {
   const key = name + '|add';
   let proto = _flipProtos.get(key);
   if (!proto) {
@@ -429,12 +428,25 @@ function _flipSpriteAdd(name, size, tint, glow = 1.2) {
   }
   const mat = proto.clone();
   mat.uniforms.map.value = _flipTex[name];
+  return mat;
+}
+function _flipSpriteAdd(name, size, tint, glow = 1.2) {
+  if (!_flipTex[name]) return null;
+  const mat = _flipAddMaterial(name);
   mat.uniforms.rot.value = Math.random() * Math.PI * 2;
   mat.uniforms.tint.value.set(tint);
   mat.uniforms.glow.value = glow;
   const m = new THREE.Mesh(_G_FLIP, mat);
   m.scale.setScalar(size);
   return m;
+}
+
+/** One mesh per flipbook material variant (fogged, additive), for linking
+ *  their programs before any sheet has loaded: the sheet is a uniform, not
+ *  part of the program key. Never disposed by the caller (that would
+ *  release the programs again). */
+export function flipbookWarmMeshes() {
+  return [_flipMaterial('__warm'), _flipAddMaterial('__warm')].map((m) => new THREE.Mesh(_G_FLIP, m));
 }
 
 function _disposeFlip(m) {
