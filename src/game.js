@@ -1753,14 +1753,43 @@ function _linkAsync(root, target = composer ? composer.readBuffer : null) {
   return p.catch((e) => warnOnce('prewarm|link', '[prewarm] shader compile failed:', e && e.message));
 }
 
-/** One Group per VFX builder (plus a car and a civilian), for linking one at a time. */
+/** Shadow-depth stand-ins: the shadow pass draws every caster with a shared
+ *  MeshDepthMaterial carrying the caster's side (flipped), map/alphaTest and
+ *  its instancing/skinning, and compile() never builds those programs. One
+ *  proxy per distinct combination under roots, so _linkAsync (with a render
+ *  target bound, as the shadow map is) links them ahead of the shadow pass. */
+const _SHADOW_SIDE = { [THREE.FrontSide]: THREE.BackSide, [THREE.BackSide]: THREE.FrontSide, [THREE.DoubleSide]: THREE.DoubleSide };
+function _depthStandIns(roots) {
+  const g = new THREE.Group(), seen = new Set();
+  for (const r of roots) {
+    r.traverse((o) => {
+      const m = o.material;
+      if (!o.isMesh || !o.castShadow || !m || Array.isArray(m)) return;
+      const side = m.shadowSide != null ? m.shadowSide : _SHADOW_SIDE[m.side];
+      const key = [o.isInstancedMesh, o.isSkinnedMesh, !!o.morphTargetInfluences, side, !!m.map, m.alphaTest > 0, !!m.alphaMap,
+        !!(m.displacementMap && m.displacementScale), o.receiveShadow, o.geometry.attributes.uv ? 1 : 0].join('|');
+      if (seen.has(key)) return;
+      seen.add(key);
+      const d = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+      d.side = side; d.map = m.map; d.alphaTest = m.alphaTest; d.alphaMap = m.alphaMap;
+      d.displacementMap = m.displacementMap; d.displacementScale = m.displacementScale; d.displacementBias = m.displacementBias;
+      let px;
+      if (o.isInstancedMesh) px = new THREE.InstancedMesh(o.geometry, d, 1);
+      else if (o.isSkinnedMesh) { px = new THREE.SkinnedMesh(o.geometry, d); px.bind(o.skeleton, o.bindMatrix); }
+      else px = new THREE.Mesh(o.geometry, d);
+      px.morphTargetInfluences = o.morphTargetInfluences;
+      px.receiveShadow = o.receiveShadow;
+      px.frustumCulled = false;
+      g.add(px);
+    });
+  }
+  return g;
+}
+
+/** One Group per VFX builder, for linking one at a time. */
 function _stageVfx() {
   const groups = [];
   const P = new THREE.Vector3(0, 2, 0), D = new THREE.Vector3(0, 0, 1), B = new THREE.Vector3(0, 2, 10);
-  const g0 = new THREE.Group();
-  try { spawnCars(g0, 1, 10, 40); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
-  try { spawnCivilians(g0, 1, 10); } catch (e) { warnOnce('prewarm|civs', '[prewarm] civilian spawn failed:', e); }
-  groups.push(g0);
   for (const name of listBuilders()) {
     const stage = new THREE.Group();
     const stubWorld = Object.create(world);
@@ -1800,14 +1829,23 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
       warnOnce('prewarm|' + C.name, `[prewarm] ${C.name} not prewarmed (template missing?):`, e.message);
     }
   }
+  // Traffic and pedestrians spawn right after this, in the first frames
+  try { spawnCars(stage, 16, 10, 40); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
+  try { spawnCivilians(stage, 2, 10); } catch (e) { warnOnce('prewarm|civs', '[prewarm] civilian spawn failed:', e); }
   // Gameplay set first: kaiju + enemies, and the whole scene (the GLB
   // buildings were just flushed in; after a level switch nothing of the new
   // city is linked yet). Awaited in full, with linked/total on the bar.
   const run = _linkAsync(stage);
   if (kaijuRoot) stage.remove(kaijuRoot); // compile() already ran synchronously
   const city = _linkAsync(scene);
+  // ...and the shadow pass's depth variants of all of it. That pass draws
+  // with the scene's lights but a null scene, so no fog in their keys.
+  const fog = scene.fog;
+  scene.fog = null;
+  const depth = _linkAsync(_depthStandIns([scene, stage, kaijuRoot].filter(Boolean)));
+  scene.fog = fog;
   let finished = false;
-  const all = Promise.all([run, city]).then(() => { finished = true; });
+  const all = Promise.all([run, city, depth]).then(() => { finished = true; });
   while (!finished && performance.now() - t0 < 60000) {
     if (onProgress) {
       const progs = renderer.info.programs;
