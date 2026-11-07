@@ -11,7 +11,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, loadLevelTemplates, loadLevelData, flushPendingGLBBuildings, enableKTX2 } from './city.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, loadLevelTemplates, loadLevelData, flushPendingGLBBuildings, enableKTX2, templateWarmStage } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
@@ -24,7 +24,7 @@ import {
 } from './effects.js';
 import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
-import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce } from './assetCache.js';
+import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce, onGLBParsed } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
 import vfx, { listBuilders, resetPooledLights } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
@@ -186,6 +186,22 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 game.appendChild(renderer.domElement);
+
+// Upload every GLB's textures as it is parsed (while loading), not all at
+// once on the first frame that draws them (texSubImage2D stalls at START).
+const _TEX_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap', 'envMap'];
+function _uploadTexturesOf(root) {
+  const seen = new Set();
+  root.traverse((o) => {
+    for (const m of [].concat(o.material || [])) {
+      for (const k of _TEX_KEYS) {
+        const t = m[k];
+        if (t && t.isTexture && !seen.has(t)) { seen.add(t); renderer.initTexture(t); }
+      }
+    }
+  });
+}
+onGLBParsed(_uploadTexturesOf);
 
 // iPhone Safari drops the WebGL context under memory pressure (unified
 // memory, ~1-1.5 GB per tab). Instead of a frozen black canvas: tell the
@@ -1007,6 +1023,15 @@ function buildWorldCity() {
 }
 buildWorldCity();
 window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
+// Link the menu scene's shader programs in parallel (KHR_parallel_shader_compile)
+// before its first draw: a first draw links each program on use, serially
+// (~110-200 ms each on ANGLE/D3D11, ~50 for Chicago: a 2.5-5 s freeze). The
+// menu HTML stays live meanwhile; the 3D backdrop starts drawing once they
+// are ready (or after 15 s at worst). Then, on desktop, the level's
+// building / debris / enemy templates start loading behind the menu.
+let _sceneLinked = false;
+const _bootCompile = _linkAsync(scene).then(() => { _sceneLinked = true; _startWorldPreload(); });
+setTimeout(() => { _sceneLinked = true; }, 15000);
 // Compile VFX/prop shaders in the background while the title menu is up
 // (see _prewarmShaders). Deferred so the menu paints first.
 setTimeout(() => { if (!_prewarmBg) _prewarmBg = _prewarmBackground(); }, 300);
@@ -1706,21 +1731,56 @@ function _disposeKaijuGLB(glb) {
 // compiles in parallel and the main thread only polls. compile() builds
 // programs only (no buffer/texture uploads). Staged throwaways are dropped
 // without disposing their materials, since disposing would release the
-// programs again. Two phases:
-//  - background, started while the title/menu is up: one of every VFX
-//    effect, a car and a civilian (their templates load at boot);
-//  - at game start: the kaiju and one of each enemy (their templates load
-//    with the run). Blocks at most PREWARM_BLOCK_MS; anything still
-//    compiling after that finishes in the background.
-const PREWARM_BLOCK_MS = 2000;
+// programs again. Phases:
+//  - boot: the menu scene itself, before its first draw (_bootCompile);
+//  - background, while the title/menu is up: one of every VFX effect, a car
+//    and a civilian; on desktop also the level's templates (_worldPreload);
+//  - at game start: the kaiju, one of each enemy and the whole scene (GLB
+//    buildings now flushed in), awaited in full behind the loading bar so
+//    the first gameplay frame links and uploads nothing.
 let _prewarmBg = null;
+
+/** renderer.compileAsync(root) against the live scene's lights; resolves when
+ *  every program is linked (never rejects). */
+function _linkAsync(root) {
+  const target = root === scene ? null : scene;
+  // Compile against the render target the scene is really drawn into: with
+  // the post composer that's its (linear, untonemapped) read buffer, and
+  // tone mapping / output colour space are part of the program key, so a
+  // canvas-targeted compile built programs the composer never used.
+  const prev = renderer.getRenderTarget();
+  if (composer) renderer.setRenderTarget(composer.readBuffer);
+  let p;
+  try {
+    p = renderer.compileAsync ? renderer.compileAsync(root, camera, target)
+      : Promise.resolve(renderer.compile(root, camera, target));
+  } catch (e) {
+    p = Promise.reject(e);
+  } finally {
+    renderer.setRenderTarget(prev);
+  }
+  return p.catch((e) => warnOnce('prewarm|link', '[prewarm] shader compile failed:', e && e.message));
+}
+
+// Desktop: load the level's building / debris / enemy templates while the
+// menu is up (phones wait for the data warning), then link their program
+// variants via instanced stand-ins. START awaits this instead of loading.
+let _worldPreload = null;
+function _startWorldPreload() {
+  if (isMobile || !GLB_CONTENT || _worldTemplatesLoaded || _worldPreload) return;
+  const level = world.level;
+  _worldPreload = Promise.all([loadBuildingTemplates(undefined, level), loadDebrisTemplates(), loadEnemyTemplates()])
+    .then(() => {
+      _worldTemplatesLoaded = true;
+      _bldgLevelsLoaded.add(level);
+      return _linkAsync(templateWarmStage());
+    })
+    .catch((e) => { reportLoadError('preload', level, e); _worldPreload = null; });
+}
 
 function _compileStaged(stage, label) {
   const t0 = performance.now();
-  const done = (renderer.compileAsync
-    ? renderer.compileAsync(stage, camera, scene)
-    : Promise.resolve(renderer.compile(stage, camera, scene)))
-    .catch((e) => console.warn('[prewarm] shader compile failed', e))
+  const done = _linkAsync(stage)
     .then(() => {
       stage.traverse((n) => { if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose(); });
       console.log(`[prewarm:${label}] ${renderer.info.programs.length} programs ready in ${(performance.now() - t0).toFixed(0)} ms`);
@@ -1749,7 +1809,7 @@ function _prewarmBackground() {
   return _compileStaged(stage, 'menu');
 }
 
-async function _prewarmShaders(kaijuRoot) {
+async function _prewarmShaders(kaijuRoot, onProgress) {
   const stage = new THREE.Group();
   if (kaijuRoot) stage.add(kaijuRoot);
   for (const C of [Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech]) {
@@ -1762,11 +1822,24 @@ async function _prewarmShaders(kaijuRoot) {
   // leave the stage now (and must not have its skeleton disposed later).
   if (kaijuRoot) stage.remove(kaijuRoot);
   if (!_prewarmBg) _prewarmBg = _prewarmBackground();
+  // The whole scene too: the GLB buildings were just flushed into it, and
+  // after a level switch nothing of the new city is linked yet
+  const city = _linkAsync(scene);
   const upload = _preuploadTextures([scene, stage, kaijuRoot]);
-  await Promise.race([
-    Promise.all([_prewarmBg, run, upload]),
-    new Promise((r) => setTimeout(r, PREWARM_BLOCK_MS)),
-  ]);
+  // Wait for every link and upload (the first gameplay frame must not link
+  // or upload anything), reporting linked/total programs; 60 s safety cap.
+  let finished = false;
+  const all = Promise.all([_prewarmBg, _bootCompile, run, city, upload]).then(() => { finished = true; });
+  const t0 = performance.now();
+  while (!finished && performance.now() - t0 < 60000) {
+    if (onProgress) {
+      const progs = renderer.info.programs;
+      onProgress(progs.filter((p) => p.isReady()).length, progs.length);
+    }
+    await Promise.race([all, new Promise((r) => setTimeout(r, 100))]);
+  }
+  if (onProgress) onProgress(renderer.info.programs.length, renderer.info.programs.length);
+  console.log(`[prewarm:start] all linked/uploaded in ${(performance.now() - t0).toFixed(0)} ms (${renderer.info.programs.length} programs)`);
 }
 
 // Upload every texture the run samples (city, kaiju, staged enemies, and
@@ -1774,7 +1847,6 @@ async function _prewarmShaders(kaijuRoot) {
 // gameplay frame uploads them all at once (a 200-600 ms stall). Chunked with
 // yields so the loading screen keeps painting; idempotent across restarts
 // (initTexture skips textures that are already on the GPU).
-const _TEX_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap', 'envMap'];
 async function _preuploadTextures(roots) {
   const t0 = performance.now();
   const texs = new Set();
@@ -1959,6 +2031,18 @@ async function _startGameInner(key) {
       progress.kaijuLoaded = progress.kaijuTotal = 1;
       progress.bldgTotal = 0; progress.enemyTotal = 0;
       updateLoadingUI();
+    } else if (_worldPreload && !_worldTemplatesLoaded) {
+      // Desktop: the world templates are already loading behind the menu
+      progress.bldgTotal = 0; progress.enemyTotal = 0;
+      [glb] = await Promise.all([
+        loadKaijuModel(key, (loaded, total, label) => {
+          progress.kaijuLoaded = loaded;
+          progress.kaijuTotal = total;
+          loadingStatus.textContent = label.toUpperCase();
+          updateLoadingUI();
+        }),
+        _worldPreload,
+      ]);
     } else if (!GLB_CONTENT || _worldTemplatesLoaded) {
       // The procedural-only path never loads world templates; on restarts the
       // building / debris / enemy templates are already parsed and only
@@ -2014,7 +2098,12 @@ async function _startGameInner(key) {
       : 'KAIJU READY';
     await new Promise(r => setTimeout(r, cs.hits > 0 ? 600 : 400));
     loadingStatus.textContent = 'WARMING UP SHADERS';
-    await _prewarmShaders(glb.root);
+    await _prewarmShaders(glb.root, (ready, total) => {
+      const pct = total ? Math.round((ready / total) * 100) : 100;
+      loadingBar.style.width = pct + '%';
+      loadingPct.textContent = pct + '%';
+      loadingStatus.textContent = `WARMING UP SHADERS • ${ready}/${total}`;
+    });
     loadingScreen.classList.remove('visible');
 
     k = { root: glb.root, head: glb.head, tail: glb.tail, mixer: glb.mixer, glb };
@@ -4612,7 +4701,11 @@ function tick(now) {
   // Input, gamepad and menu logic above still run every frame.
   const idleScreen = !state.kaiju || state.paused;
   _syncPauseMenu();
-  if (!idleScreen || now - _lastIdleRender >= IDLE_RENDER_MS) {
+  // No draws until the boot link is done, nor behind the (opaque) loading
+  // screen: a draw there would link the just-flushed GLB buildings' programs
+  // one by one on first use, ahead of the parallel _prewarmShaders link.
+  const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible');
+  if (_sceneLinked && !loadingUp && (!idleScreen || now - _lastIdleRender >= IDLE_RENDER_MS)) {
     _lastIdleRender = now;
     if (composer) composer.render();
     else renderer.render(scene, camera);
@@ -4620,5 +4713,6 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 const IDLE_RENDER_MS = 66;
+const _loadingScreenEl = document.getElementById('loading-screen');
 let _lastIdleRender = -Infinity;
 requestAnimationFrame(tick);
