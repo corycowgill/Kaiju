@@ -83,7 +83,9 @@
   #hud {
     position: fixed; top: 0; left: 0; right: 0;
     padding: var(--safe-t) var(--safe-r) 0 var(--safe-l);
-    display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    /* side clusters size to content, the centre column takes what's left
+       (and its chip ellipsizes) so narrow windows can't overlap them */
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
     gap: var(--sp-3); align-items: start;
     pointer-events: none; z-index: 10;
     text-shadow: var(--txt-outline);
@@ -96,7 +98,7 @@
   .hud-left { display: flex; flex-direction: column; gap: var(--sp-2); align-items: flex-start; min-width: 0; }
   .hud-center {
     display: flex; flex-direction: column; gap: var(--sp-2); align-items: center;
-    max-width: min(44vw, 520px); min-width: 0;
+    justify-self: center; max-width: min(100%, 520px); min-width: 0;
   }
   .hud-right {
     justify-self: end; min-width: 0;
@@ -120,7 +122,7 @@
   .value { font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 2px; color: var(--c-cream); }
 
   /* Vitals */
-  .vitals { width: clamp(150px, 22vw, 260px); display: grid; gap: var(--sp-1); }
+  .vitals { width: clamp(128px, 22vw, 260px); display: grid; gap: var(--sp-1); }
   .meter-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-2); }
   .meter-num { font-family: var(--f-display); font-size: var(--fs-cap); letter-spacing: 1px; color: var(--c-cream); }
   .bar {
@@ -178,8 +180,9 @@
     background: var(--glass); border: var(--stroke);
     -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
     font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 2px; color: var(--c-cream);
-    white-space: nowrap; transition: opacity 0.5s, border-color 0.3s;
+    white-space: nowrap; transition: opacity 0.5s, border-color 0.3s; max-width: 100%;
   }
+  #wave-objective-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   #wave-objective .obj-tag { font-family: var(--f-jp); font-weight: 700; font-size: 0.8em; color: var(--c-kanji); letter-spacing: 0; }
   #wave-objective-count { color: var(--c-gold); font-variant-numeric: tabular-nums; }
   .obj-prog { position: absolute; left: var(--sp-3); right: var(--sp-3); bottom: 3px; height: 2px; background: rgba(255, 230, 200, 0.15); border-radius: 1px; }
@@ -737,6 +740,7 @@
      the menus compact to fit ~360-430 px of height. `safe center` keeps the
      top reachable (scrolls) instead of clipping the title when it still overflows. */
   .overlay { justify-content: safe center; }
+  #highscore-display { font-family: var(--f-display); font-size: 14px; color: var(--c-gold); letter-spacing: 6px; margin-bottom: 14px; }
   @media (max-height: 540px) {
     .overlay {
       padding-top: max(8px, env(safe-area-inset-top));
@@ -784,19 +788,30 @@
     #gameover #goTitle { font-size: 34px; }
     #gameover .go-score-big { font-size: 30px; margin: 2px 0 0; }
     #gameover #goSubtitle { margin-bottom: 4px; }
-    #gameover .stats-grid { gap: 0 24px; margin: 4px auto; }
+    #gameover .stats-grid { gap: 0 36px; margin: 4px auto; max-width: 480px; }
+    #gameover .stats-row { gap: 12px; }
     #gameover .stats-row { font-size: 13px; padding: 2px 0; }
     #gameover .stats-row b { font-size: 14px; }
     #gameover .stats-divider { margin: 4px auto; }
-    #upgrade-modal { gap: 10px; }
-    #upgrade-modal h2 { font-size: 22px; }
-    .ucard { width: 30%; min-width: 130px; padding: 10px; }
-    .ucard h3 { font-size: 14px; }
-    .ucard p { font-size: 10px; }
-    .levels { gap: 8px; margin: 0 0 4px 0; }
-    .level-card { min-width: 0; padding: 3px 12px; }
-    .level-card b { font-size: 12px; letter-spacing: 2px; }
-    .level-card span { display: none; }
+    /* body-prefixed: these base rules come later in the sheet */
+    body #upgrade-modal { gap: 10px; }
+    body #upgrade-modal h2 { font-size: 22px; }
+    body .ucard { width: 30%; min-width: 130px; padding: 10px; }
+    body .ucard h3 { font-size: 14px; }
+    body .ucard p { font-size: 10px; }
+    body .levels { gap: 8px; margin: 0 0 4px 0; }
+    body .level-card { min-width: 0; padding: 3px 14px; }
+    body .level-card b { font-size: 13px; letter-spacing: 2px; }
+    body .level-card b .jp { display: inline; font-size: 0.85em; margin: 0 6px 0 0; }
+    body .level-card > span { display: none; }
+  }
+  /* Very short (360 px: 200% zoom on a 720 p window) */
+  @media (max-height: 380px) {
+    .overlay h1 { font-size: 26px; }
+    .overlay h2 { margin: 2px 0; }
+    .monster-card .preview { height: 34px; }
+    button.start-btn { margin-top: 4px; padding: 6px 22px; }
+    #highscore-display { margin-bottom: 2px; }
   }
   body.touch #menu .menu-hint { display: none; }
 
@@ -1187,7 +1202,7 @@
   <h1><span class="kanji">怪獣</span><span>HAVOC</span></h1>
   <h2 id="levelTitle"><span class="jp-line">東京破壊</span>TOKYO DESTRUCTION</h2>
   <div class="levels" id="levelCards"></div>
-  <div id="highscore-display" style="font-family:'Bebas Neue', sans-serif; font-size:14px; color:#ffcc66; letter-spacing:6px; margin-bottom:14px;"></div>
+  <div id="highscore-display"></div>
   <div class="starring">STARRING · 出演</div>
   <div class="monsters" id="monsterCards"></div>
   <button class="start-btn" id="startBtn" disabled>UNLEASH HAVOC</button>
@@ -1389,24 +1404,24 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.27",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.27",
-    "./src/audio.js": "./src/audio.js?v=1.11.27",
-    "./src/city.js": "./src/city.js?v=1.11.27",
-    "./src/effects.js": "./src/effects.js?v=1.11.27",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.27",
-    "./src/game.js": "./src/game.js?v=1.11.27",
-    "./src/intro.js": "./src/intro.js?v=1.11.27",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.27",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.27",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.27",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.27",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.27",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.27",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.27",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.27",
-    "./src/quality.js": "./src/quality.js?v=1.11.27",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.27"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.28",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.28",
+    "./src/audio.js": "./src/audio.js?v=1.11.28",
+    "./src/city.js": "./src/city.js?v=1.11.28",
+    "./src/effects.js": "./src/effects.js?v=1.11.28",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.28",
+    "./src/game.js": "./src/game.js?v=1.11.28",
+    "./src/intro.js": "./src/intro.js?v=1.11.28",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.28",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.28",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.28",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.28",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.28",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.28",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.28",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.28",
+    "./src/quality.js": "./src/quality.js?v=1.11.28",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.28"
   }
 }
 </script>
@@ -1420,7 +1435,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.27"></script>
-<script type="module" async src="./src/intro.js?v=1.11.27"></script>
+<script type="module" src="./src/game.js?v=1.11.28"></script>
+<script type="module" async src="./src/intro.js?v=1.11.28"></script>
 </body>
 </html>

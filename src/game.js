@@ -1832,7 +1832,7 @@ window.__restartInPlace = restartInPlace;
 // ?debug test hooks (QA scripts): inspect state and trigger abilities
 if (/[?&]debug\b/.test(location.search)) {
   // composer(): the post chain (bloom, grade) for in-game-look screenshots
-  window.__qa = { state, world, camera, renderer, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on) };
+  window.__qa = { state, world, camera, renderer, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on), gameOver: (v) => gameOver(!!v) };
 }
 async function startGame(key) {
   if (_startingGame) return;
