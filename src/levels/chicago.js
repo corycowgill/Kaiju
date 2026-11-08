@@ -1780,6 +1780,55 @@ export function buildChicago(scene, world, opts, K) {
         }
       }
     }
+    // Minor streets aren't in the car graph, so the edges above gave them no
+    // sidewalks, curbs or centre line: at distance they read as bare asphalt
+    // on the grey ground. Each gets its own from its polyline, resampled every
+    // 2u: a side's piece is left out where it would lie on another road's
+    // asphalt (junctions, crossings) or inside the festival, runs of kept
+    // pieces are one ribbon, and the dashes go where both sides are kept.
+    // All in the existing batches (no new draws)
+    {
+      const onAnyRoad = _roadIndex(roads, 0, 0);
+      const lw = REAL ? 0.1 : 0.18, dash = REAL ? 1.8 : 3, gap = REAL ? 3.2 : 5, cb = REAL ? 0.1 : 0.2;
+      for (const r of roads) {
+        if (r.kind !== 'minor') continue;
+        const w = r.width, pts = [r.points[0]];
+        for (let i = 1; i < r.points.length; i++) {
+          const a = r.points[i - 1], b = r.points[i], k = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 2));
+          for (let j = 1; j <= k; j++) pts.push([a[0] + (b[0] - a[0]) * j / k, a[1] + (b[1] - a[1]) * j / k]);
+        }
+        const keep = [[], []]; // per side, per piece
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const a = pts[i], b = pts[i + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+          const dx = (b[0] - a[0]) / l, dz = (b[1] - a[1]) / l, mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+          const fest = inFest(mx, mz), o = w / 2 + SIDEWALK_W / 2;
+          keep[0].push(!fest && !onAnyRoad(mx + dz * o, mz - dx * o, 0));
+          keep[1].push(!fest && !onAnyRoad(mx - dz * o, mz + dx * o, 0));
+        }
+        keep.forEach((side, si) => {
+          const s = si ? 1 : -1;
+          for (let i = 0; i < side.length;) {
+            if (!side[i]) { i++; continue; }
+            let j = i;
+            while (j < side.length && side[j]) j++;
+            const run = pts.slice(i, j + 1);
+            addBatch(ribbon(run, s > 0 ? w / 2 : -w / 2 - SIDEWALK_W, s > 0 ? w / 2 + SIDEWALK_W : -w / 2, 0.09, 1 / SW_TILE), swMat);
+            addBatch(ribbon(run, s > 0 ? w / 2 - cb : -w / 2 - cb, s > 0 ? w / 2 + cb : -w / 2 + cb, 0.1), M.curb);
+            i = j;
+          }
+        });
+        // Dashed yellow centre line along the stretches clear on both sides
+        let t = 0.5;
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const a = pts[i], b = pts[i + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+          if (keep[0][i] && keep[1][i]) {
+            const dx = (b[0] - a[0]) / l, dz = (b[1] - a[1]) / l;
+            for (; t + dash <= l; t += dash + gap) quadAlong(yel[0], yel[1], yel[2], a[0] + dx * (t + dash / 2), a[1] + dz * (t + dash / 2), dx, dz, dash, lw * 1.1, 0.07);
+          }
+          t = Math.max(0, t - l);
+        }
+      }
+    }
     // Junction patches: one asphalt square over each multi-way node hides the
     // overlapping road ribbons beneath it
     const jp = [[], [], []], jq = [[], [], []]; // asphalt, festival paving
@@ -3054,6 +3103,61 @@ export function buildChicago(scene, world, opts, K) {
     mesh.userData.backdrop = true;
     mesh.matrixAutoUpdate = false; mesh.updateMatrix();
     scene.add(mesh);
+  }
+
+  // ---- outer ground: a street grid from the map edge out to the backdrop ----
+  // Past the bounds there's no street data, and the backdrop towers stood on
+  // the bare paving plane. Three strips (west, north, south; the lake is east)
+  // just above the ground plane, under the lake planes and the mapped roads
+  // that run past the edge, with a baked grid tile (dark asphalt, lighter
+  // block pads with a sidewalk rim, scattered roofs): unlit like the backdrop
+  // and fogged, one draw, no lit program
+  if (REAL) {
+    const T = 48; // world units per tile: two 20u-deep blocks by one 44u-wide, 4u streets
+    const S = 256, px = S / T;
+    const cv = document.createElement('canvas'); cv.width = cv.height = S;
+    const g2 = cv.getContext('2d');
+    g2.fillStyle = '#5e5c58'; g2.fillRect(0, 0, S, S); // asphalt
+    for (const bz of [0, 24]) {
+      const x0 = 2 * px, z0 = (bz + 2) * px, w = 44 * px, d = 20 * px;
+      g2.fillStyle = '#b4b0a8'; g2.fillRect(x0, z0, w, d); // sidewalk rim
+      g2.fillStyle = '#9a978f'; g2.fillRect(x0 + px, z0 + px, w - 2 * px, d - 2 * px); // block pad
+      // Roofs: a row of lots along each long side, varied greys and browns
+      for (const side of [0, 1]) {
+        let x = x0 + 1.5 * px;
+        while (x < x0 + w - 4 * px) {
+          const lw = (4 + Math.random() * 7) * px, ld = (5 + Math.random() * 3) * px;
+          const k = 70 + Math.random() * 70, warm = Math.random() < 0.4 ? 18 : 0;
+          g2.fillStyle = `rgb(${(k + warm) | 0},${(k + warm * 0.5) | 0},${k | 0})`;
+          g2.fillRect(x, side ? z0 + d - 1.5 * px - ld : z0 + 1.5 * px, Math.min(lw, x0 + w - 1.5 * px - x), ld);
+          x += lw + 0.6 * px;
+        }
+      }
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 8;
+    // The ground plane's extent, minus the play bounds; nothing east of them
+    const gx = (B.minX + B.maxX) / 2 - 200, gz = (B.minZ + B.maxZ) / 2;
+    const RX0 = gx - 800, RZ0 = gz - 800, RZ1 = gz + 800;
+    const rects = [[RX0, B.minX, RZ0, RZ1], [B.minX, B.maxX, RZ0, B.minZ], [B.minX, B.maxX, B.maxZ, RZ1]];
+    const pos = [], uv = [], idx = [];
+    for (const [x0, x1, z0, z1] of rects) {
+      if (x1 <= x0 || z1 <= z0) continue;
+      const v = pos.length / 3;
+      for (const [x, z] of [[x0, z0], [x0, z1], [x1, z1], [x1, z0]]) { pos.push(x, 0.03, z); uv.push(x / T, -z / T); }
+      idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    geo.computeBoundingSphere();
+    const ring = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, fog: true }));
+    ring.userData.outerGround = true;
+    ring.matrixAutoUpdate = false; ring.updateMatrix();
+    scene.add(ring);
   }
 
   // ---- play-area barrier: a faint rectangle at the bounds ----
