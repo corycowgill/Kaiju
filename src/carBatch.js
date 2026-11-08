@@ -1,12 +1,13 @@
-// Moving traffic drawn as instanced batches: one draw per (geometry,
-// material) pair instead of one per car part (~135 draws -> ~20 in the
-// Loop). Each Car keeps its own scene graph (position, LOD swaps, explode,
+// Moving traffic and flying debris drawn as instanced batches: one draw per
+// (geometry, material) pair instead of one per part (~135 car draws -> ~20 in
+// the Loop; an ult's ~140 debris chunks -> ~12). Each Car keeps its own scene graph (position, LOD swaps, explode,
 // gameplay reads), but its part meshes are hidden and their world matrices
 // are copied into shared InstancedMeshes every frame, culled per part with
 // the same frustum test three applies to a Mesh, so the same parts are
 // drawn with the same transforms and materials.
-// Transparent parts stay individual meshes (their sort order matters), and
-// so does any part hidden by other code.
+// Transparent and skinned parts stay individual meshes (sort order;
+// per-mesh skeletons), and so does any part hidden by other code. Works for
+// any list of { root, dead } movers (cars; the phone-LOW box civilians).
 import * as THREE from 'three';
 
 const _frustum = new THREE.Frustum();
@@ -41,35 +42,49 @@ function _batchFor(part, root) {
   return b;
 }
 
-/** Copy every live car's visible parts into the batches. Call once per
- *  frame before rendering, after the cars and the camera have moved.
+const _parts = (c, r) => {
+  if (!c._batchParts) {
+    c._batchParts = [];
+    // Template-shared materials only: a mesh that owns its material (the
+    // procedural debris boxes) would get a batch of its own
+    r.traverse((o) => {
+      if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && o.material && !Array.isArray(o.material)
+        && !o.material.transparent && !o.userData._ownedMat) c._batchParts.push(o);
+    });
+  }
+  return c._batchParts;
+};
+
+/** Copy every live mover's visible parts into the batches. Call once per
+ *  frame before rendering, after the movers and the camera have moved.
+ *  sets: [[items, rootOf], ...] (rootOf(item) -> its root Object3D; an item
+ *  is gone once item.dead or its root has no parent).
  *  cull=false (shader prewarm): batch every part, in view or not. */
-export function batchCars(cars, root, camera, cull = true) {
+export function batchMovers(sets, root, camera, cull = true) {
   for (const b of _batches.values()) b.n = 0;
   if (cull) {
     camera.updateMatrixWorld();
     _pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     _frustum.setFromProjectionMatrix(_pm);
   }
-  for (const c of cars) {
-    const r = c.root;
-    if (c.dead || !r.parent || !r.visible) continue;
-    if (!c._batchParts) {
-      c._batchParts = [];
-      r.traverse((o) => { if (o.isMesh && !o.isInstancedMesh && o.material && !Array.isArray(o.material) && !o.material.transparent) c._batchParts.push(o); });
-    }
-    r.updateMatrixWorld(true);
-    for (const p of c._batchParts) {
-      if (!p.visible && !p.userData.batched) continue; // hidden by someone else
-      if (!p.geometry.boundingSphere) p.geometry.computeBoundingSphere();
-      p.visible = false;
-      p.userData.batched = true;
-      if (cull && p.frustumCulled) {
-        _sphere.copy(p.geometry.boundingSphere).applyMatrix4(p.matrixWorld);
-        if (!_frustum.intersectsSphere(_sphere)) continue;
+  for (const [items, rootOf] of sets) {
+    if (!items) continue;
+    for (const c of items) {
+      const r = rootOf(c);
+      if (c.dead || !r.parent || !r.visible) continue;
+      r.updateMatrixWorld(true);
+      for (const p of _parts(c, r)) {
+        if (!p.visible && !p.userData.batched) continue; // hidden by someone else
+        if (!p.geometry.boundingSphere) p.geometry.computeBoundingSphere();
+        p.visible = false;
+        p.userData.batched = true;
+        if (cull && p.frustumCulled) {
+          _sphere.copy(p.geometry.boundingSphere).applyMatrix4(p.matrixWorld);
+          if (!_frustum.intersectsSphere(_sphere)) continue;
+        }
+        const b = _batchFor(p, root);
+        b.im.setMatrixAt(b.n++, p.matrixWorld);
       }
-      const b = _batchFor(p, root);
-      b.im.setMatrixAt(b.n++, p.matrixWorld);
     }
   }
   for (const b of _batches.values()) {
@@ -78,3 +93,7 @@ export function batchCars(cars, root, camera, cull = true) {
     if (b.n) b.im.instanceMatrix.needsUpdate = true;
   }
 }
+
+const _carRoot = (c) => c.root;
+/** Cars only (the START shader prewarm's staged traffic). */
+export function batchCars(cars, root, camera, cull = true) { batchMovers([[cars, _carRoot]], root, camera, cull); }

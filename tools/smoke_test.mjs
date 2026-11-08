@@ -130,6 +130,7 @@ const enemies = await imp('enemies.js');
 const { loadKaijuModel } = await imp('kaijuLoader.js');
 const vfx = await imp('vfx.js');
 const assetCache = await imp('assetCache.js');
+const carBatch = await imp('carBatch.js');
 const effects = await imp('effects.js');
 
 const scene = new THREE.Scene();
@@ -368,6 +369,28 @@ if (Q.GLB_CONTENT) {
     + `LOD1 ${s.lod1.loaded.length}/${s.lod1.expected.length}, ped clips ${s.pedestrian.loaded.join('+')} (${trisOf(spawned.Civilian && spawned.Civilian.root)} tris), `
     + `soldier clips ${en.soldier.loaded.join('+')} (${trisOf(spawned.Soldier && spawned.Soldier.root)} tris), mech clips ${en.mech.loaded.length}/${en.mech.expected.length}`;
 }
+
+// Rampage: collapses, car smashes and a traffic refill, then frames of
+// traffic, traffic/debris batching and rubble packing as play runs them. A
+// throw in that path stalled the game loop mid-run while smoke was green
+// (e0af72e); this runs it headless.
+await step('rampage', () => {
+  const cam = new THREE.PerspectiveCamera(60, 16 / 9, 0.5, 2000);
+  const live = ((res && res.buildings) || []).filter((b) => !b.destroyed && !b.isBridge).slice(0, 12);
+  if (live.length) cam.position.set(live[0].group.position.x, 80, live[0].group.position.z + 120);
+  cam.lookAt(cam.position.x, 0, cam.position.z - 120);
+  for (const b of live) b.collapse(world);
+  for (const c of traffic.cars.slice(0, 4)) c.explode(world);
+  traffic.cars.push(...city.spawnCars(scene, 2, 380, 40));
+  const far = new THREE.Vector3(1e4, 0, 1e4);
+  for (let f = 0; f < 30; f++) {
+    for (const c of traffic.cars) c.update(1 / 60, world, far, 380, 40);
+    carBatch.batchMovers([[traffic.cars, (c) => c.root], [world.debris, (d) => d]], scene, cam);
+    city.cullRubble(cam);
+  }
+  if (live.length && !world.debris.length) fail('rampage: 12 collapses spawned no flying debris');
+  summary += `rampage ${live.length} collapses, ${world.debris.length} debris; `;
+});
 
 const label = `[${device} ${tier} ${level}]`;
 finished = true;

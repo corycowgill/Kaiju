@@ -11,7 +11,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, loadLevelTemplates, loadLevelData, flushPendingGLBBuildings, enableKTX2 } from './city.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, loadLevelTemplates, loadLevelData, flushPendingGLBBuildings, enableKTX2, cullRubble } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
@@ -26,7 +26,7 @@ import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
 import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce, onGLBParsed, canonMaterialMaps } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
-import { batchCars } from './carBatch.js';
+import { batchCars, batchMovers } from './carBatch.js';
 import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
@@ -889,6 +889,11 @@ const world = {
   // directly.
   _fxSpawned: 0,
   _fxRoom: function () { return this._fxSpawned++ < MAX_EFFECTS; },
+  // Flying debris likewise: Building.collapse asks for its chunk count and
+  // gets what's left of this frame's MAX_DEBRIS (an ult cloned ~1,870 chunks
+  // to keep 140; a lone collapse still gets all of its own).
+  _dbSpawned: 0,
+  debrisRoom: function (n) { const k = Math.max(0, Math.min(n, MAX_DEBRIS - this._dbSpawned)); this._dbSpawned += k; return k; },
   spawnExplosion: function (pos, scale = 1) {
     // Missile / shell impacts that land on water also splash
     if (pos.y < 3) waterImpact(this, pos.x, pos.z, 0.4 + 0.5 * scale, 'missile');
@@ -4374,6 +4379,7 @@ function _disposeDebris(d) {
 
 function updateWorld(dt) {
   world._fxSpawned = 0;
+  world._dbSpawned = 0;
   // Shared instanced sparks/shrapnel/embers (one draw for all of them).
   vfx.tickParticles(dt);
   // Effects
@@ -5110,13 +5116,17 @@ function tick(now) {
       _shadowFrame = 0;
       renderer.shadowMap.needsUpdate = true;
     }
-    if (state.cars) batchCars(state.cars, scene, camera);
+    _batchSets[0][0] = state.cars; _batchSets[1][0] = world.debris;
+    batchMovers(_batchSets, scene, camera);
+    cullRubble(camera);
     if (composer) composer.render();
     else renderer.render(scene, camera);
   }
   requestAnimationFrame(tick);
 }
 const IDLE_RENDER_MS = 66;
+// Traffic and flying debris, drawn batched (carBatch.js); items set per frame
+const _batchSets = [[null, (c) => c.root], [null, (d) => d]];
 const _loadingScreenEl = document.getElementById('loading-screen');
 let _lastIdleRender = -Infinity;
 requestAnimationFrame(tick);

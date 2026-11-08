@@ -2361,7 +2361,11 @@ export class Building {
     // Lots of debris chunks for satisfying spray
     const useGLBDebris = _debrisTemplates.length > 0;
     // More, smaller pieces with the v2 kit (facade panels, rebar, beams, glass)
-    const chunks = 10 + Math.floor(Math.random() * 4) + Math.min(6, Math.floor(this.h / 15)) + (useGLBDebris ? 6 : 0);
+    let chunks = 10 + Math.floor(Math.random() * 4) + Math.min(6, Math.floor(this.h / 15)) + (useGLBDebris ? 6 : 0);
+    // A frame's flying debris is capped (world.debrisRoom: the world keeps
+    // only that many anyway); a lone collapse still gets every chunk
+    const room = world && typeof world.debrisRoom === 'function' ? world.debrisRoom(chunks) : chunks;
+    if (Number.isFinite(room)) chunks = room;
     for (let i = 0; i < chunks; i++) {
       // Capped in world units so wide GLB footprints don't throw kaiju-sized chunks
       const targetSize = useGLBDebris
@@ -2608,12 +2612,17 @@ function _cloneDebris(targetSize) {
 }
 
 // Permanent ground rubble, instanced per debris template: one
-// InstancedMesh per template sub-mesh (shared geometry + material, so the
-// template stays the owner). Rubble used to be 3-4 cloned meshes per
-// collapse that never went away (and cast shadows). Each instance matrix
-// is rubbleTransform x the sub-mesh's transform inside the template.
-// After an in-place restart sweeps the IMs out of the scene, the next
-// placement re-adds them with count reset to 0.
+// InstancedMesh per template sub-mesh (shared geometry, so the template
+// stays its owner; its own copy of the material, since flying debris draws
+// the template's material un-instanced and a material drawn both ways has
+// its program re-resolved on every draw). Rubble used to be 3-4 cloned
+// meshes per collapse that never went away (and cast shadows). Each
+// instance matrix is rubbleTransform x the sub-mesh's transform inside the
+// template. Every instance is kept in pool.all; cullRubble() packs the ones
+// in view into the InstancedMeshes each frame (late game: ~960 pieces of
+// ~4k tris city-wide, mostly off screen). After an in-place restart sweeps
+// the IMs out of the scene, the next placement re-adds them with count
+// reset to 0.
 const RUBBLE_CAP = 160; // instances per template (oldest overwritten)
 const _rubblePools = new Map(); // tpl -> { parts: [{ im, local }], next, count }
 const _rubM = new THREE.Matrix4();
@@ -2621,6 +2630,8 @@ const _rubQ = new THREE.Quaternion();
 const _rubE = new THREE.Euler();
 const _rubP = new THREE.Vector3();
 const _rubS = new THREE.Vector3();
+const _rubW = new THREE.Matrix4();
+const _rubSph = new THREE.Sphere();
 function _rubblePool(tpl, scene) {
   let pool = _rubblePools.get(tpl);
   if (!pool) {
@@ -2628,19 +2639,22 @@ function _rubblePool(tpl, scene) {
     const parts = [];
     tpl.scene.traverse((o) => {
       if (!o.isMesh) return;
-      const im = new THREE.InstancedMesh(o.geometry, o.material, RUBBLE_CAP);
+      const im = new THREE.InstancedMesh(o.geometry, o.material.clone(), RUBBLE_CAP);
       im.count = 0;
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       im.castShadow = false;   // permanent, low and static: receive only
       im.receiveShadow = true;
       im.frustumCulled = false; // instances span the whole city
       im.userData.rubblePool = true;
-      parts.push({ im, local: o.matrixWorld.clone() });
+      parts.push({ im, local: o.matrixWorld.clone(), all: new Float32Array(RUBBLE_CAP * 16) });
     });
-    pool = { parts, next: 0, count: 0 };
+    // Bounding sphere of the whole template, for the per-instance cull
+    const sphere = tpl.box.getBoundingSphere(new THREE.Sphere());
+    pool = { parts, next: 0, count: 0, sphere, at: new Float32Array(RUBBLE_CAP * 4) };
     _rubblePools.set(tpl, pool);
   }
   if (pool.parts.length && pool.parts[0].im.parent !== scene) {
-    pool.next = 0; pool.count = 0;
+    pool.next = 0; pool.count = 0; pool.dirty = true;
     for (const pt of pool.parts) { pt.im.count = 0; scene.add(pt.im); }
   }
   return pool;
@@ -2662,12 +2676,47 @@ function _placeRubbleInstanced(scene, targetSize, x, y, z, rx, ry, rz) {
   pool.next = (pool.next + 1) % RUBBLE_CAP;
   pool.count = Math.min(RUBBLE_CAP, pool.count + 1);
   for (const pt of pool.parts) {
-    const m = new THREE.Matrix4().multiplyMatrices(_rubM, pt.local);
-    pt.im.setMatrixAt(idx, m);
-    pt.im.count = pool.count;
-    pt.im.instanceMatrix.needsUpdate = true;
+    _rubW.multiplyMatrices(_rubM, pt.local);
+    _rubW.toArray(pt.all, idx * 16);
   }
+  // World-space bounding sphere of this piece
+  _rubSph.copy(pool.sphere).applyMatrix4(_rubM);
+  pool.at[idx * 4] = _rubSph.center.x; pool.at[idx * 4 + 1] = _rubSph.center.y;
+  pool.at[idx * 4 + 2] = _rubSph.center.z; pool.at[idx * 4 + 3] = _rubSph.radius;
+  pool.dirty = true;
   return true;
+}
+
+/** Pack the rubble pieces in the camera's view into the pools'
+ *  InstancedMeshes (same per-piece frustum test three applies to a Mesh,
+ *  on the whole debris template's sphere). Call once per frame before
+ *  rendering; skips the work while neither the camera nor the rubble moved.
+ *  all: every piece, in view or not. */
+const _rubFr = new THREE.Frustum();
+const _rubPM = new THREE.Matrix4();
+const _rubLastPM = new THREE.Matrix4();
+export function cullRubble(camera, all = false) {
+  if (!_rubblePools.size) return;
+  camera.updateMatrixWorld();
+  _rubPM.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  const camMoved = !_rubPM.equals(_rubLastPM);
+  _rubLastPM.copy(_rubPM);
+  if (camMoved) _rubFr.setFromProjectionMatrix(_rubPM);
+  for (const pool of _rubblePools.values()) {
+    if (!camMoved && !pool.dirty && !all) continue;
+    pool.dirty = false;
+    let n = 0;
+    for (let i = 0; i < pool.count; i++) {
+      _rubSph.center.fromArray(pool.at, i * 4); _rubSph.radius = pool.at[i * 4 + 3];
+      if (!all && !_rubFr.intersectsSphere(_rubSph)) continue;
+      for (const pt of pool.parts) pt.im.instanceMatrix.array.set(pt.all.subarray(i * 16, i * 16 + 16), n * 16);
+      n++;
+    }
+    for (const pt of pool.parts) {
+      pt.im.count = n;
+      pt.im.instanceMatrix.needsUpdate = true;
+    }
+  }
 }
 
 // ---- Clone-free GLB placement ----
