@@ -37,23 +37,31 @@ export function bakeShoreField(polys, rects, box, cell = 2) {
   for (const p of polys) for (const h of p.holes || []) fill(h, 0);
   const river = new Uint8Array(nx * nz);
   for (const p of polys) if (p.kind === 'river' || p.kind === 'pond') fill(p.polygon, 255, river);
-  // Two-pass chamfer (3/4) distance to the nearest land texel
-  const INF = 1e9, d = new Float32Array(nx * nz);
-  for (let k = 0; k < d.length; k++) d[k] = wet[k] ? INF : 0;
-  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    const k = j * nx + i; if (!d[k]) continue;
-    let v = d[k];
-    if (i > 0) v = Math.min(v, d[k - 1] + 3);
-    if (j > 0) { v = Math.min(v, d[k - nx] + 3); if (i > 0) v = Math.min(v, d[k - nx - 1] + 4); if (i < nx - 1) v = Math.min(v, d[k - nx + 1] + 4); }
-    d[k] = v;
-  }
-  for (let j = nz - 1; j >= 0; j--) for (let i = nx - 1; i >= 0; i--) {
-    const k = j * nx + i; if (!d[k]) continue;
-    let v = d[k];
-    if (i < nx - 1) v = Math.min(v, d[k + 1] + 3);
-    if (j < nz - 1) { v = Math.min(v, d[k + nx] + 3); if (i < nx - 1) v = Math.min(v, d[k + nx + 1] + 4); if (i > 0) v = Math.min(v, d[k + nx - 1] + 4); }
-    d[k] = v;
-  }
+  // Two-pass chamfer (3/4) distance to the nearest texel of the other kind:
+  // water texels -> nearest land (depth colour, foam, depthAt), land texels
+  // -> nearest water (CPU only: shoreDist on the land side, for audio)
+  const INF = 1e9;
+  const chamfer = (seedIsZero) => {
+    const d = new Float32Array(nx * nz);
+    for (let k = 0; k < d.length; k++) d[k] = seedIsZero(k) ? 0 : INF;
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i; if (!d[k]) continue;
+      let v = d[k];
+      if (i > 0) v = Math.min(v, d[k - 1] + 3);
+      if (j > 0) { v = Math.min(v, d[k - nx] + 3); if (i > 0) v = Math.min(v, d[k - nx - 1] + 4); if (i < nx - 1) v = Math.min(v, d[k - nx + 1] + 4); }
+      d[k] = v;
+    }
+    for (let j = nz - 1; j >= 0; j--) for (let i = nx - 1; i >= 0; i--) {
+      const k = j * nx + i; if (!d[k]) continue;
+      let v = d[k];
+      if (i < nx - 1) v = Math.min(v, d[k + 1] + 3);
+      if (j < nz - 1) { v = Math.min(v, d[k + nx] + 3); if (i < nx - 1) v = Math.min(v, d[k + nx + 1] + 4); if (i > 0) v = Math.min(v, d[k + nx - 1] + 4); }
+      d[k] = v;
+    }
+    return d;
+  };
+  const d = chamfer((k) => !wet[k]);
+  const dLand = chamfer((k) => !!wet[k]);
   const data = new Uint8Array(nx * nz * 2);
   for (let k = 0; k < nx * nz; k++) {
     data[k * 2 + 1] = river[k];
@@ -65,14 +73,19 @@ export function bakeShoreField(polys, rects, box, cell = 2) {
   tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.needsUpdate = true;
-  /** World units from (x, z) to the nearest shore; 0 on land, DMAX beyond the box */
-  const shoreDist = (x, z) => {
+  /** World units from (x, z) to the shoreline, on either side (>= 0); off
+   *  the box: DMAX. inWater(x, z) says which side. */
+  const idx = (x, z) => {
     const i = Math.floor((x - box.x0) / cell), j = Math.floor((z - box.z0) / cell);
-    if (i < 0 || j < 0 || i >= nx || j >= nz) return DMAX;
-    const v = data[(j * nx + i) * 2];
-    return v ? ((v - 1) / 254) * DMAX : 0;
+    return i < 0 || j < 0 || i >= nx || j >= nz ? -1 : j * nx + i;
   };
-  return { tex, box: new THREE.Vector4(box.x0, box.z0, 1 / (nx * cell), 1 / (nz * cell)), shoreDist };
+  const shoreDist = (x, z) => {
+    const k = idx(x, z);
+    if (k < 0) return DMAX;
+    return Math.min(DMAX, ((wet[k] ? d[k] : dLand[k]) / 3) * cell);
+  };
+  const inWater = (x, z) => { const k = idx(x, z); return k >= 0 && !!wet[k]; };
+  return { tex, box: new THREE.Vector4(box.x0, box.z0, 1 / (nx * cell), 1 / (nz * cell)), shoreDist, inWater };
 }
 
 /** Tileable wave normal map (RG = slope x/z, B unused) with height in A,
@@ -348,7 +361,11 @@ export function waterFX(mat, field, splash, lite = false) {
   const add = (x, z, s) => { U.uRings.value[ring].set(x, z, now(), s); ring = (ring + 1) % NRING; };
   return {
     surfaceY: 0.2,
-    depthAt(x, z) { return Math.min(1, field.shoreDist(x, z) / 24); },
+    // 0 on land, rising to 1 ('full', the wade feel) 24u out from the shore
+    depthAt(x, z) { return field.inWater(x, z) ? Math.min(1, field.shoreDist(x, z) / 24) : 0; },
+    // World units to the shoreline, either side (audio's updateShore);
+    // isWater / depthAt > 0 tells the side
+    shoreDist(x, z) { return field.shoreDist(x, z); },
     ripple(x, z, strength = 1) { add(x, z, Math.max(0.05, Math.min(1.2, strength))); },
     surge(x, z, strength = 1) { add(x, z, -Math.max(0.1, Math.min(1, strength))); },
     wake(x, z, dx, dz, speed) {
