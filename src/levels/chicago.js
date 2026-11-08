@@ -167,7 +167,7 @@ const CHICAGO_LANDMARK_GLBS = [
   { id: 'northern_trust_50_s_lasalle', file: 'northern_trust_50_s_lasalle.glb', trueHeightM: 53.2, face: 'east', ready: true },
   { id: 'manhattan_building', file: 'manhattan_building.glb', trueHeightM: 60.8, face: 'west', ready: true },
   { id: 'lakeview_building_116_s_michigan', file: 'lakeview_building_116_s_michigan.glb', trueHeightM: 64.6, ready: true },
-  { id: 'johnson_publishing_820_s_michigan', file: 'johnson_publishing_820_s_michigan.glb', trueHeightM: 45.6, ready: true },
+  { id: 'johnson_publishing_820_s_michigan', file: 'johnson_publishing_820_s_michigan.glb', trueHeightM: 45.6, face: 'east', ready: true }, // refit: +Z the 21 m Michigan end
   { id: 'renelle_403_n_wabash', file: 'renelle_403_n_wabash.glb', trueHeightM: 68.4, face: 'west', ready: true },
   { id: 'chicago_motor_club', file: 'chicago_motor_club.glb', trueHeightM: 68.4, face: 'west', ready: true },
   { id: 'pontiac_building', file: 'pontiac_building.glb', trueHeightM: 53.2, face: 'east', ready: true },
@@ -242,8 +242,9 @@ const CHICAGO_VEHICLE_GLBS = [
   { url: CHI_BASE + 'sedan_blue.glb', len: 4.82, weight: 12, ready: true },
   { url: CHI_BASE + 'sedan_silver.glb', len: 4.82, weight: 12, ready: true },
   // Plain white box truck (artist-3d): 7.56 m, a full 6u kerb slot, so never
-  // parked; white body at the bus's 0.69 albedo for the noon bloom
-  { url: CHI_BASE + 'box_truck.glb', len: 7.5, weight: 8, parked: false, albedo: 0.69, ready: true },
+  // parked; white body at the bus's 0.69 albedo for the noon bloom; major
+  // streets only like the bus (2.1u wide: its kerb wheels rode the sidewalk)
+  { url: CHI_BASE + 'box_truck.glb', len: 7.5, weight: 8, parked: false, albedo: 0.69, minRoadW: 6.5, ready: true },
 ];
 // Kit pieces placed many times: the generic bascule bridge (scaled to each
 // bridges[] entry, spans along its local X) and the L track segment (tiled

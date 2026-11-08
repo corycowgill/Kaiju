@@ -4571,7 +4571,7 @@ function _loadCarList(list, onProgress) {
       }
       // albedo: a per-model base-colour scale (a white body over a level's bloom threshold)
       if (def.albedo) s.traverse((o) => { if (o.isMesh && o.material.color) o.material.color.multiplyScalar(def.albedo); });
-      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1, levels: def.levels, lightBar: !!def.lightBar, flash: _flashMats(s) });
+      _carTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), len: def.len, parked: def.parked !== false, weight: def.weight || 1, levels: def.levels, minRoadW: def.minRoadW, lightBar: !!def.lightBar, flash: _flashMats(s) });
       if (onProgress) onProgress(idx + 1, list.length, def.url.split('/').pop().replace('.glb', ''));
       return _attachLod1(def.url, s);
     }).catch((err) => {
@@ -4635,9 +4635,10 @@ export class Car {
       let tpl = tpls[tpls.length - 1];
       for (const t of tpls) { pick -= t.weight; if (pick < 0) { tpl = t; break; } }
       const clone = _cloneCarScene(tpl);
-      // Long vehicles (buses, 10 m+) keep to the major streets: Loop bus
-      // routes run on State, Michigan, Madison, Jackson... not 4.5u side streets
-      this.minRoadW = tpl.len && tpl.len >= 10 ? 6.5 : 0;
+      // Long vehicles (buses, 10 m+; or a model's own minRoadW) keep to the
+      // major streets: Loop bus routes run on State, Michigan, Madison,
+      // Jackson... not 4.5u side streets
+      this.minRoadW = tpl.minRoadW ?? (tpl.len && tpl.len >= 10 ? 6.5 : 0);
       const size = tpl.box.getSize(new THREE.Vector3());
       const targetLen = _carTargetLen(tpl); // old cars: ~3.6u to match procedural size
       const s = targetLen / Math.max(size.x, size.y, size.z);
