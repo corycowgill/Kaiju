@@ -144,6 +144,17 @@ const CHICAGO_LANDMARK_GLBS = [
   // One glass tower (the layout's is the south one); its twin stands 51 m
   // north across the reflecting pool, the two screens facing (cartographer)
   { id: 'crown_fountain', file: 'crown_fountain.glb', trueHeightM: 15.2, face: 'north', pair: -10.2, ready: true },
+  // Tier A heroes (artist-3d, fitted to cartographer's tierA_notes). The
+  // Thompson Center's curve (+Z front, +X side) goes on the Randolph / Clark
+  // corner; its 113 x 99 m model is turned to face south and filled to the
+  // block (stretch: per-axis fit, within that factor of the uniform scale)
+  { id: 'thompson_center', file: 'thompson_center.glb', trueHeightM: 94, face: 'south', fit: 'footprint', maxH: 1.0, stretch: 1.3, ready: true },
+  { id: 'sky55_1255_s_michigan', file: 'sky55_1255_s_michigan.glb', trueHeightM: 129.4, face: 'east', ready: true },
+  // Taller tower (+X) at the north end, on the river
+  { id: 'michigan_333_n', file: 'michigan_333_n.glb', trueHeightM: 130, face: 'east', ready: true },
+  // Crown bays on the narrow (+-X) ends: long axis east-west on the layout's
+  // 56 x 25 m outline, filled to it
+  { id: 'lasalle_120_n', file: 'lasalle_120_n.glb', trueHeightM: 152.7, fit: 'footprint', maxH: 1.0, stretch: 1.6, ready: true },
 ];
 // Generic downtown blocks, picked by height bucket like Tokyo's pools.
 // share: fraction of that bucket's blocks that use it (the rest stay boxes),
@@ -2097,7 +2108,7 @@ export function buildChicago(scene, world, opts, K) {
       } else if (def.fit === 'footprint') {
         // Model's plan is undersized for the site (AI proportions run tall):
         // fill the layout outline instead, height capped at maxH x layout
-        K.queueGLB({ url, h: lm.h * (def.maxH || 1.6), building: b, maxW: aw, maxD: ad, rotY, landmark: true, stretch: 1.3 });
+        K.queueGLB({ url, h: lm.h * (def.maxH || 1.6), building: b, maxW: aw, maxD: ad, rotY, landmark: true, stretch: def.stretch || 1.3 });
       } else {
         // Exact layout height: no footprint clamp (maxW/maxD 0)
         K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY, landmark: true });
