@@ -431,30 +431,38 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST) {
       lodPairs.push({ near: ims[0], far: ims[1], center: ims[0].boundingSphere.center });
     }
   }
-  if (lodPairs.length) scene.add(_makeLodController(lodPairs, lodDist));
+  if (lodPairs.length) _makeLodController(scene, lodPairs, lodDist);
 }
 
-/** Invisible, zero-vertex mesh whose onBeforeRender (main camera only; it
- *  casts no shadow) flips each tile pair between LOD0 and LOD1. Its empty
- *  geometry means the renderer issues no draw call for it. */
-function _makeLodController(pairs, dist = LOD1_DIST) {
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
-  const ctl = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
-  ctl.frustumCulled = false;
-  ctl.castShadow = false;
-  ctl.receiveShadow = false;
+/** Run fn(camera) once per render() of scene, with its camera, before the
+ *  shadow pass and the render list are built (three calls Scene.onBeforeRender
+ *  first). Replaces the invisible 'camera probe' meshes, which cost a
+ *  program bind and uniform setup in the main pass every frame. */
+function _onCamera(scene, fn) {
+  if (!scene.userData.camHooks) {
+    const hooks = scene.userData.camHooks = [];
+    const prev = scene.onBeforeRender;
+    scene.onBeforeRender = (renderer, s, camera, target) => {
+      prev.call(scene, renderer, s, camera, target);
+      for (const h of hooks) h(camera);
+    };
+  }
+  scene.userData.camHooks.push(fn);
+}
+
+/** Flips each tile pair between LOD0 and LOD1 by the main camera's distance
+ *  (before the frame's draw calls). */
+function _makeLodController(scene, pairs, dist = LOD1_DIST) {
   const camPos = new THREE.Vector3();
   const d2 = dist * dist;
-  ctl.onBeforeRender = (renderer, scene, camera) => {
+  _onCamera(scene, (camera) => {
     camera.getWorldPosition(camPos);
     for (const p of pairs) {
       const far = p.center.distanceToSquared(camPos) > d2;
       p.near.visible = !far;
       p.far.visible = far;
     }
-  };
-  return ctl;
+  });
 }
 
 function _mergeStaticMeshes(scene) {
@@ -2933,7 +2941,7 @@ function _buildGLBBuildingInstances(scene) {
       lodPairs.push({ near: ims[0], far: ims[1], center: ims[0].boundingSphere.center });
     }
   }
-  if (lodPairs.length) scene.add(_makeLodController(lodPairs));
+  if (lodPairs.length) _makeLodController(scene, lodPairs);
   _glbBuckets.clear();
 }
 
@@ -3011,6 +3019,8 @@ export function buildCity(scene, world, opts = {}) {
   // must not leave its GLB placeholders or windows queued for the new one
   _pendingGLBBuildings.length = 0;
   _flushHooks.length = 0;
+  // ...nor its camera hooks (LOD flips, harbour bands) on the reused scene
+  if (scene.userData.camHooks) scene.userData.camHooks.length = 0;
   _glbBuckets.clear();
   _windowQueue = [];
   _pedCfg = null;
@@ -5166,7 +5176,7 @@ export function getTemplateStats(level = 'tokyo') {
 const CITY_KIT = {
   Building, BuildingGrid, setBuildingLite, buildGlobalBodies, buildGlobalWindows,
   instanceStaticClones: _instanceStaticClones, mergeStaticMeshes: _mergeStaticMeshes,
-  makeTree, makePigeonFlock, lod1Of: (geom) => _lod1ByGeom.get(geom) || null, cloneProp: _cloneProp, hasProp: (n) => _propTemplates.has(n),
+  makeTree, makePigeonFlock, onCamera: _onCamera, lod1Of: (geom) => _lod1ByGeom.get(geom) || null, cloneProp: _cloneProp, hasProp: (n) => _propTemplates.has(n),
   propSize: (n) => _propTemplates.get(n)?.size || null,
   propScene: (n) => _propTemplates.get(n)?.scene || null,
   loadTileTex: _loadTileTex, loadDataTex: _loadDataTex,

@@ -141,14 +141,11 @@ export function buildHarbor(H, ctx) {
       }
     };
     band();
-    // The camera, read where three hands it over (like city.js's LOD controller).
-    // The re-pack itself runs in an animator, before the next frame's draw
-    // calls: done mid-render, sets drawn before and after the probe could
-    // briefly miss or double a boat
-    const probe = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
-    probe.frustumCulled = false;
-    probe.onBeforeRender = (r, s, cam) => { cam.getWorldPosition(camPos); };
-    scene.add(probe);
+    // The camera, read where three hands it over (K.onCamera, like city.js's
+    // LOD controller). The re-pack itself runs in an animator, before the
+    // next frame's draw calls: done mid-render, sets drawn before and after
+    // the read could briefly miss or double a boat
+    K.onCamera(scene, (cam) => { cam.getWorldPosition(camPos); });
     animators.push({
       update() {
         if (Math.hypot(camPos.x - lastBand.x, camPos.z - lastBand.z) > 4) { lastBand.copy(camPos); band(); }
