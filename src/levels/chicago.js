@@ -7,8 +7,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { isMobile, Q_HIGH } from '../quality.js';
-import { buildHarbor } from './chicago_harbor.js';
-import { bakeShoreField, makeWaterMaterial, waterUniforms, swellGrid } from './chicago_water.js';
+import { buildHarbor, splashPool } from './chicago_harbor.js';
+import { bakeShoreField, makeWaterMaterial, waterUniforms, swellGrid, waterFX } from './chicago_water.js';
 import { loadFest, festBuildingGLBs, festClearFence, festCutRoads, festInside, festNoTree, buildFest } from './chicago_fest.js';
 
 const LAYOUT_URL = './assets/levels/chicago_layout.json';
@@ -1506,6 +1506,7 @@ export function buildChicago(scene, world, opts, K) {
     scene.add(ground);
   }
 
+  let waterSplash = null; // the level's pooled water spray (water block below)
   // ---- water: lake, river, ponds ----
   const rivers = L.rivers;
   // Water lookup grid (4u cells), scanline-filled from the polygons; holes
@@ -1621,6 +1622,14 @@ export function buildChicago(scene, world, opts, K) {
       const grid = swellGrid(scene, waterMat);
       K.onCamera(scene, (cam) => grid.update(0, 0, cam));
     }
+    // Kaiju interaction (gameplay calls world.water: ripple / wake / surge /
+    // splash / depthAt, see waterPlay.js). One splash pool for the whole
+    // level, shared with the harbours (their boat smashes burst into it)
+    waterSplash = splashPool(scene, lite ? 200 : 600, lite ? 12 : 32);
+    animators.push(waterSplash);
+    const wfx = waterFX(waterMat, field, waterSplash, lite);
+    animators.push(wfx);
+    if (world) world.water = wfx;
     // Later water (fountain pools, dev-layout river ribbons) shares it too
     M.water = M.lake = waterMat;
   }
@@ -2844,7 +2853,7 @@ export function buildChicago(scene, world, opts, K) {
   // Real harbours: Monroe's mooring field and DuSable's slips (instanced,
   // smashable); the random scatter below is the fallback without that data
   const harbor = !!(sailGLB && L.mill?.harbors);
-  if (harbor) buildHarbor(L.mill.harbors, { K, world, scene, lite, spawn: L.spawn, animators, kit: { sail: sailGLB, extra: ['boat_cruiser_sail', 'boat_motor_yacht', 'boat_center_console'].filter((k) => _kit(k)).map((k) => [k, _kit(k), CHICAGO_KIT_GLBS[k].len, CHICAGO_KIT_GLBS[k].sinkM]) }, S: L.scale || 0.2 });
+  if (harbor) buildHarbor(L.mill.harbors, { K, world, scene, lite, spawn: L.spawn, animators, splash: waterSplash, kit: { sail: sailGLB, extra: ['boat_cruiser_sail', 'boat_motor_yacht', 'boat_center_console'].filter((k) => _kit(k)).map((k) => [k, _kit(k), CHICAGO_KIT_GLBS[k].len, CHICAGO_KIT_GLBS[k].sinkM]) }, S: L.scale || 0.2 });
   if (lakes.length && !harbor) {
     for (let i = 0; i < (lite ? 5 : 12) * (sailGLB ? 2 : 1); i++) {
       for (let tries = 0; tries < 30; tries++) {

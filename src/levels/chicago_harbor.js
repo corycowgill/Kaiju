@@ -158,8 +158,10 @@ export function buildHarbor(H, ctx) {
     const world = ctx.world;
     const tilt = new THREE.Matrix4(), drop = new THREE.Matrix4();
     const ROLL_T = 1.2, SINK_T = 2.0;
-    const fx = _splashPool(scene, lite ? 200 : 600, lite ? 12 : 32);
-    animators.push(fx);
+    // The level's shared water splash pool when it has one (chicago_water's
+    // world.water uses the same pool, ticked by the level); else our own
+    const fx = ctx.splash || _splashPool(scene, lite ? 200 : 600, lite ? 12 : 32);
+    if (!ctx.splash) animators.push(fx);
     let acc = 0;
     animators.push({
       update(dt) {
@@ -215,19 +217,24 @@ export function buildHarbor(H, ctx) {
 /** Pooled water spray: n droplets (soft round sprites, one Points draw,
  *  fading as they fall) and r foam rings (one InstancedMesh); burst() takes
  *  the oldest. */
+/** Pooled water spray: one Points draw of droplets plus one InstancedMesh of
+ *  foam rings. burst(x, z, count, size, ring); update(dt) as an animator. */
+export function splashPool(scene, n, r) { return _splashPool(scene, n, r); }
 function _splashPool(scene, n, r) {
   const dpos = new Float32Array(n * 3).fill(-1000), dcol = new Float32Array(n * 3);
   const dgeo = new THREE.BufferGeometry();
   dgeo.setAttribute('position', new THREE.BufferAttribute(dpos, 3).setUsage(THREE.DynamicDrawUsage));
   dgeo.setAttribute('color', new THREE.BufferAttribute(dcol, 3).setUsage(THREE.DynamicDrawUsage));
-  // Additive, so a droplet fades by its colour; camera-facing by nature
-  const dmat = new THREE.PointsMaterial({ size: 0.5, map: _dropTex(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+  // Additive, so a droplet fades by its colour; camera-facing by nature.
+  // fog: false: fog mixes even black texels toward the fog colour, which
+  // additive blending then adds (a grey disc / square over the water)
+  const dmat = new THREE.PointsMaterial({ size: 0.5, map: _dropTex(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
   const drops = new THREE.Points(dgeo, dmat);
   drops.frustumCulled = false;
   scene.add(drops);
   // Foam: one soft, broken ring per smash (a feathered radial band with
   // noise in a small canvas texture), additive so it fades by colour
-  const ringMat = new THREE.MeshBasicMaterial({ map: _foamTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+  const ringMat = new THREE.MeshBasicMaterial({ map: _foamTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
   const ringGeom = new THREE.PlaneGeometry(2, 2);
   ringGeom.rotateX(-Math.PI / 2);
   const rings = new THREE.InstancedMesh(ringGeom, ringMat, r);

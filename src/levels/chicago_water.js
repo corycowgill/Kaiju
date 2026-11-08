@@ -6,6 +6,8 @@
 import * as THREE from 'three';
 
 const DMAX = 120; // shore distance (u) that maps to the deepest colour
+const NRING = 12;  // ripple / surge sources (analytic rings, no render target)
+const NTRAIL = 6;  // wake trail points
 
 /** Shore-distance texture over a box. polys: [{ polygon, holes, kind }]
  *  filled as water (holes cut back to land); rects: [[x0, z0, x1, z1]] extra
@@ -63,7 +65,14 @@ export function bakeShoreField(polys, rects, box, cell = 2) {
   tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.needsUpdate = true;
-  return { tex, box: new THREE.Vector4(box.x0, box.z0, 1 / (nx * cell), 1 / (nz * cell)) };
+  /** World units from (x, z) to the nearest shore; 0 on land, DMAX beyond the box */
+  const shoreDist = (x, z) => {
+    const i = Math.floor((x - box.x0) / cell), j = Math.floor((z - box.z0) / cell);
+    if (i < 0 || j < 0 || i >= nx || j >= nz) return DMAX;
+    const v = data[(j * nx + i) * 2];
+    return v ? ((v - 1) / 254) * DMAX : 0;
+  };
+  return { tex, box: new THREE.Vector4(box.x0, box.z0, 1 / (nx * cell), 1 / (nz * cell)), shoreDist };
 }
 
 /** Tileable wave normal map (RG = slope x/z, B unused) with height in A,
@@ -153,7 +162,7 @@ const SWELL_GLSL = `
 
 /** The shared water material. field: bakeShoreField() result. */
 export function makeWaterMaterial(field, opts = {}) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.22, metalness: 0.0 });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.38, metalness: 0.0 });
   const uniforms = {
     uWave: { value: _waveTexture() },
     uField: { value: field.tex },
@@ -173,6 +182,11 @@ export function makeWaterMaterial(field, opts = {}) {
     uSunCol: { value: new THREE.Color(0xfff3e2) },
     uWaveAmp: { value: 0.55 },
     uGrid: { value: new THREE.Vector3(0, 0, 0) },
+    // Kaiju interaction (waterFX): ripple / surge sources, the wake, its trail
+    uRings: { value: Array.from({ length: NRING }, () => new THREE.Vector4(0, 0, -1e4, 0)) },
+    uWake: { value: new THREE.Vector4(0, 0, 1, 0) },
+    uWakeAmt: { value: 0 },
+    uTrail: { value: Array.from({ length: NTRAIL }, () => new THREE.Vector4(0, 0, -1e4, 0)) },
   };
   // Kept off userData: Material.clone() JSON-copies userData, which would
   // serialise the textures' pixel arrays
@@ -201,6 +215,66 @@ export function makeWaterMaterial(field, opts = {}) {
       uniform vec3 uDeep, uMid, uShallow, uShore, uRiver, uRiverEdge, uSky, uSunDir, uSunCol;
       float wShore, wPool, wFoam, wRiver;
       vec3 wN;
+      vec2 wFxSlope;
+      uniform vec4 uRings[${NRING}];
+      uniform vec4 uWake;
+      uniform float uWakeAmt;
+      uniform vec4 uTrail[${NTRAIL}];
+      // Kaiju interaction: returns foam; writes the ripple slope to wFxSlope.
+      // Rings: (x, z, start time, strength); strength < 0 is a shore surge
+      // (a foam pulse where the water meets a wall, no ring).
+      float waterFx(vec2 p, float shore) {
+        float foam = 0.0;
+        wFxSlope = vec2(0.0);
+        for (int i = 0; i < ${NRING}; i++) {
+          vec4 R = uRings[i];
+          float age = uTime - R.z;
+          if (age < 0.0 || age > 3.5) continue;
+          vec2 dv = p - R.xy;
+          float r = length(dv);
+          if (R.w < 0.0) {
+            // surge: 1.2 s pulse within ~22u along the shore
+            if (age > 1.2 || r > 30.0) continue;
+            foam += -R.w * exp(-r * r / 300.0) * (1.0 - age / 1.2) * (1.0 - smoothstep(1.0, 9.0, shore));
+            continue;
+          }
+          float front = age * 9.0;
+          float dr = r - front, w = 1.2 + age * 1.3;
+          if (abs(dr) > 3.0 * w) continue;
+          float env = exp(-dr * dr / (w * w)) * pow(1.0 - age / 3.5, 1.5) * R.w;
+          float k = 6.2832 / 3.5;
+          wFxSlope += (dv / max(r, 0.01)) * (0.9 * env * cos(dr * k) * k * 0.45);
+          foam += env * smoothstep(0.3, 1.0, sin(dr * k)) * 0.28 * smoothstep(0.0, 0.35, age);
+        }
+        // V-wake: two arms at ~19.5 deg behind the wading kaiju, plus a
+        // foam collar around its legs
+        if (uWakeAmt > 0.01) {
+          vec2 rel = p - uWake.xy, dir = uWake.zw;
+          float sBack = -dot(rel, dir), l = dot(rel, vec2(-dir.y, dir.x));
+          if (sBack > -6.0 && sBack < 48.0) {
+            float arm = abs(abs(l) - max(sBack, 0.0) * 0.36), aw = 0.9 + 0.05 * max(sBack, 0.0);
+            foam += uWakeAmt * exp(-arm * arm / (aw * aw)) * (1.0 - clamp(sBack / 48.0, 0.0, 1.0)) * step(0.0, sBack) * 0.7;
+            float rr = length(rel);
+            foam += uWakeAmt * exp(-(rr - 5.0) * (rr - 5.0) / 3.0) * 0.5;
+            wFxSlope += normalize(rel + 1e-4) * uWakeAmt * exp(-(rr - 6.0) * (rr - 6.0) / 8.0) * 0.25;
+          }
+        }
+        // Trail: fading, widening foam along the recent path
+        for (int i = 0; i < ${NTRAIL} - 1; i++) {
+          vec4 A = uTrail[i], B = uTrail[i + 1];
+          float ageA = uTime - A.z;
+          if (ageA > 4.0 || B.z < -1e3) continue;
+          vec2 ab = B.xy - A.xy;
+          float t = clamp(dot(p - A.xy, ab) / max(dot(ab, ab), 1e-3), 0.0, 1.0);
+          vec2 q = A.xy + ab * t;
+          float age = mix(ageA, uTime - B.z, t), tw = 1.5 + age * 1.6;
+          vec2 dq = p - q;
+          float dd = dot(dq, dq);
+          if (dd > 9.0 * tw * tw) continue;
+          foam += mix(A.w, B.w, t) * exp(-dd / (tw * tw)) * (1.0 - age / 4.0) * (1.0 - age / 4.0) * 0.32;
+        }
+        return clamp(foam, 0.0, 1.0);
+      }
     ` + sh.fragmentShader
       // Depth colour + foam (replaces the plain material colour)
       .replace('#include <color_fragment>', `#include <color_fragment>
@@ -227,6 +301,9 @@ export function makeWaterMaterial(field, opts = {}) {
           // Calmer river / pond edges: a thin lapping line only
           band *= mix(1.0, 0.45, fld.g);
           wFoam = clamp(band * smoothstep(0.38, 0.68, fn2 * 0.6 + fn * 0.5), 0.0, 1.0) * (1.0 - wPool);
+          // Kaiju ripples, wake and shore surges: foam broken up by the same noise
+          float fx = waterFx(vWXZ, d) * (1.0 - wPool);
+          wFoam = clamp(wFoam + fx * smoothstep(0.25, 0.6, fn2 * 0.7 + 0.3), 0.0, 1.0);
           diffuseColor.rgb = mix(c, vec3(0.90, 0.94, 0.95), wFoam * 0.75);
         }`)
       // Wave normal: two scrolling octaves of the tileable map, world space
@@ -236,7 +313,7 @@ export function makeWaterMaterial(field, opts = {}) {
           vec2 s2 = texture2D(uWave, vWXZ * 0.067 + vec2(-uTime * 0.017, uTime * 0.013)).rg * 2.0 - 1.0;
           // Calmer near walls (harbours sit behind breakwaters) and on the river
           float calm = mix(1.0, 0.45, wPool) * (1.0 - wFoam * 0.6) * mix(0.55, 1.0, smoothstep(8.0, 60.0, wShore)) * mix(1.0, 0.55, wRiver);
-          vec2 sl = (s1 * 0.6 + s2 * 0.4) * uWaveAmp * calm;
+          vec2 sl = (s1 * 0.6 + s2 * 0.4) * uWaveAmp * calm + wFxSlope;
           if (uSwellOn > 0.5) sl += swell(vWXZ, uTime).yz * swellMask(vWXZ);
           wN = normalize(vec3(-sl.x, 1.0, -sl.y));
           normal = normalize((viewMatrix * vec4(wN, 0.0)).xyz);
@@ -247,13 +324,57 @@ export function makeWaterMaterial(field, opts = {}) {
           float fres = 0.04 + 0.96 * pow(1.0 - max(dot(wN, V), 0.0), 5.0);
           outgoingLight = mix(outgoingLight, uSky * 0.85, fres * 0.45 * (1.0 - wFoam));
           vec3 R = reflect(-V, wN);
-          float g = pow(max(dot(R, uSunDir), 0.0), 220.0);
-          outgoingLight += uSunCol * g * 2.2 * (1.0 - wFoam);
+          float g = pow(max(dot(R, uSunDir), 0.0), 380.0);
+          outgoingLight += uSunCol * g * 1.0 * (1.0 - wFoam);
         }
         #include <opaque_fragment>`);
   };
   mat.customProgramCacheKey = () => 'chi-water';
   return mat;
+}
+
+/**
+ * world.water: the kaiju interaction API (gameplay calls it, waterPlay.js).
+ * ripple(x, z, strength 0..1), wake(x, z, dirX, dirZ, speed) per frame while
+ * wading, surge(x, z, strength) at the shore, splash(x, z, size, kind)
+ * through the shared splash pool, depthAt(x, z) 0..1. No allocations; the
+ * rings and the wake are analytic in the water shader (no render target),
+ * so every tier gets them. update(dt) runs as a city animator.
+ */
+export function waterFX(mat, field, splash, lite = false) {
+  const U = _uniforms.get(mat);
+  let ring = 0, wakeSeen = -1e4, trailT = -1e4;
+  const now = () => U.uTime.value;
+  const add = (x, z, s) => { U.uRings.value[ring].set(x, z, now(), s); ring = (ring + 1) % NRING; };
+  return {
+    surfaceY: 0.2,
+    depthAt(x, z) { return Math.min(1, field.shoreDist(x, z) / 24); },
+    ripple(x, z, strength = 1) { add(x, z, Math.max(0.05, Math.min(1.2, strength))); },
+    surge(x, z, strength = 1) { add(x, z, -Math.max(0.1, Math.min(1, strength))); },
+    wake(x, z, dx, dz, speed) {
+      wakeSeen = now();
+      U.uWake.value.set(x, z, dx, dz);
+      const target = Math.min(1, speed / 28);
+      U.uWakeAmt.value += (target - U.uWakeAmt.value) * 0.15;
+      // Trail point every 0.3 s: shift older points down (newest first)
+      if (now() - trailT > 0.3) {
+        trailT = now();
+        const T = U.uTrail.value;
+        for (let i = T.length - 1; i > 0; i--) T[i].copy(T[i - 1]);
+        T[0].set(x, z, now(), U.uWakeAmt.value);
+      }
+    },
+    splash(x, z, size = 1, kind = '') {
+      if (!splash) return;
+      const big = Math.min(3, Math.max(0.3, size));
+      const n = Math.round((kind === 'foot' ? 8 : 10 + 12 * big) * (lite ? 0.5 : 1));
+      splash.burst(x, z, n, 0.6 + 0.45 * big, true);
+    },
+    update(dt) {
+      // The wake fades out when nobody is wading (no wake() this frame)
+      if (now() - wakeSeen > 0.2) U.uWakeAmt.value *= Math.exp(-dt / 0.5);
+    },
+  };
 }
 
 /** Desktop HIGH: the camera-following swell grid (one draw). Uses a clone
