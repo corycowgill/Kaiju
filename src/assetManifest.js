@@ -555,7 +555,7 @@ export const ASSET_HASHES = {
   "assets/m/buildings/chicago/sky55_1255_s_michigan.glb": "6df74082c5",
   "assets/m/buildings/chicago/sky55_1255_s_michigan_lod1.glb": "fb6e2fcc53",
   "assets/m/buildings/chicago/soldier_field.glb": "127cb93f1f",
-  "assets/m/buildings/chicago/soldier_field_lod1.glb": "127cb93f1f",
+  "assets/m/buildings/chicago/soldier_field_lod1.glb": "b9b3d3719e",
   "assets/m/buildings/chicago/soldier_field_wing.glb": "9cb4116032",
   "assets/m/buildings/chicago/soldier_field_wing_lod1.glb": "7fe5b901f1",
   "assets/m/buildings/chicago/st_peters_in_the_loop.glb": "6de232ccf6",
