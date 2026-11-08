@@ -2472,9 +2472,14 @@ export function buildChicago(scene, world, opts, K) {
           pal.emissive.setRGB(1, 1, 1); pal.emissiveIntensity = 1.6;
           pal.onBeforeCompile = (sh) => {
             sh.uniforms.uLens = uLens;
-            sh.fragmentShader = 'uniform vec3 uLens;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#ifdef USE_EMISSIVEMAP
+            // Off lenses: base colour x0.25 so they read unlit, not half-lit
+            sh.fragmentShader = 'uniform vec3 uLens;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+            #ifdef USE_EMISSIVEMAP
+              vec3 lensOff = texture2D( emissiveMap, vEmissiveMapUv ).rbg * ( 1.0 - step( 0.5, uLens ) );
+              diffuseColor.rgb *= 1.0 - 0.75 * clamp( lensOff.x + lensOff.y + lensOff.z, 0.0, 1.0 );
+            #endif`).replace('#include <emissivemap_fragment>', `#ifdef USE_EMISSIVEMAP
               vec4 lensMask = texture2D( emissiveMap, vEmissiveMapUv );
-              totalEmissiveRadiance *= vec3( 1.0, 0.024, 0.01 ) * lensMask.r * uLens.x + vec3( 1.0, 0.4, 0.016 ) * lensMask.b * uLens.y + vec3( 0.03, 1.0, 0.25 ) * lensMask.g * uLens.z;
+              totalEmissiveRadiance *= vec3( 1.0, 0.024, 0.01 ) * lensMask.r * uLens.x + vec3( 1.0, 0.4, 0.016 ) * lensMask.b * uLens.y + vec3( 0.02, 0.62, 0.16 ) * lensMask.g * uLens.z;
             #endif`);
           };
           pal.customProgramCacheKey = () => 'chi-signal-lens';
