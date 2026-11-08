@@ -155,9 +155,9 @@ const CHICAGO_LANDMARK_GLBS = [
   // Front (+Z) west on Michigan Ave; mirrored model, taller tower (-X) at the
   // north end on the river
   { id: 'michigan_333_n', file: 'michigan_333_n.glb', trueHeightM: 130, face: 'west', ready: true },
-  // Crown bays on the narrow (+-X) ends: long axis east-west on the layout's
-  // 56 x 25 m outline, filled to it
-  { id: 'lasalle_120_n', file: 'lasalle_120_n.glb', trueHeightM: 152.7, fit: 'footprint', maxH: 1.0, stretch: 1.6, ready: true },
+  // Native 56 x 25 m (cloud-3d refit to the layout outline), long axis
+  // east-west at the layout rot; the crown bay on the narrow east end over LaSalle
+  { id: 'lasalle_120_n', file: 'lasalle_120_n.glb', trueHeightM: 152.7, ready: true },
 ];
 // Generic downtown blocks, picked by height bucket like Tokyo's pools.
 // share: fraction of that bucket's blocks that use it (the rest stay boxes),
