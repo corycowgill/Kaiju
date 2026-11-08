@@ -227,6 +227,28 @@ if (process.env.SMOKE_BREAKDOWN) {
   const rank = process.env.SMOKE_BREAKDOWN === 'draws' ? 'draws' : 'tris';
   for (const [k, e] of [...by].sort((a, b) => b[1][rank] - a[1][rank]).slice(0, 25)) log(`${(e.tris / 1e3).toFixed(0)}k tris, ${e.draws} draws: ${k}`);
 }
+if (process.env.SMOKE_ASSETS) {
+  // Per-material instance / draw / triangle table (asset audits): every mesh
+  // in the scene, visible ones split from hidden LOD twins, appended as JSON
+  // lines to $SMOKE_ASSETS (tools/asset_instances.mjs folds them per GLB)
+  const by = new Map();
+  scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry, n = (g.index ? g.index.count : g.attributes.position?.count || 0) / 3;
+    for (const m of [].concat(o.material || [])) {
+      const k = m?.name || m?.type || '?';
+      const e = by.get(k) || { vis: 0, hid: 0, draws: 0, tris: 0, triEach: new Set() };
+      const c = o.isInstancedMesh ? o.count : 1;
+      let vis = true;
+      for (let p = o; p; p = p.parent) if (!p.visible) { vis = false; break; }
+      if (vis) { e.vis += c; e.draws++; e.tris += n * c; } else e.hid += c;
+      e.triEach.add(Math.round(n));
+      by.set(k, e);
+    }
+  });
+  const rows = [...by].map(([k, e]) => ({ material: k, instancesVisible: e.vis, instancesHiddenLodTwin: e.hid, draws: e.draws, tris: Math.round(e.tris), trisPerCopy: [...e.triEach] }));
+  fs.appendFileSync(process.env.SMOKE_ASSETS, JSON.stringify({ config: `${device} ${tier} ${level}`, rows }) + '\n');
+}
 summary += `${res && res.buildings ? res.buildings.length : 0} buildings, scene ${totals.draws} meshes (${totals.shadowDraws} cast), ${(totals.tris / 1e6).toFixed(2)}M tris, ${litPrograms} lit programs; `;
 // Chicago budget (desktop): Tokyo's own totals with this counter (desktop HIGH ~710 meshes /
 // ~5.0M tris) plus ~15%; phones: the MED target of ~450 draws and 4-5M tris (Tokyo MED: ~365 / ~2.3M)
