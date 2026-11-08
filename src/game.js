@@ -2991,6 +2991,7 @@ function progressObjective(kind) {
 }
 
 world.onBuildingDestroyed = (b) => {
+  _miniDirty = true; // its minimap dot goes
   state.buildingsDestroyed++;
   audio.collapse();
   progressObjective('buildings');
@@ -4677,6 +4678,46 @@ const minimapCanvas = document.getElementById('minimap');
 const minimapCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null;
 const MINIMAP_RANGE = 380; // world units shown half-extent
 
+let _mini = null, _miniDirty = true;
+function _miniLayer(scale) {
+  if (_mini && !_miniDirty && _mini.buildings === world.buildings && _mini.water === world.mapWater && _mini.scale === scale) return _mini;
+  _miniDirty = false;
+  // Cover every point the minimap can show: the play area (and the city)
+  // plus the view's half-extent, at the minimap's own scale
+  const bd = world.bounds || { minX: -330, maxX: 330, minZ: -330, maxZ: 330 };
+  let x0 = bd.minX, x1 = bd.maxX, z0 = bd.minZ, z1 = bd.maxZ;
+  for (const b of world.buildings) { const p = b.group.position; x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+  const pad = MINIMAP_RANGE * 1.5;
+  x0 -= pad; z0 -= pad; x1 += pad; z1 += pad;
+  const canvas = (_mini && _mini.canvas) || document.createElement('canvas');
+  canvas.width = Math.ceil((x1 - x0) * scale); canvas.height = Math.ceil((z1 - z0) * scale);
+  const c = canvas.getContext('2d');
+  // Water (levels that carry outlines): lake, river, ponds; holes cut out
+  if (world.mapWater) {
+    c.fillStyle = 'rgba(40, 110, 170, 0.55)';
+    // One path per body so overlaps (river mouth into the lake) don't cancel
+    for (const w of world.mapWater) {
+      c.beginPath();
+      for (const ring of [w.polygon, ...(w.holes || [])]) {
+        for (let i = 0; i < ring.length; i++) {
+          const x = (ring[i][0] - x0) * scale, y = (ring[i][1] - z0) * scale;
+          if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+        }
+        c.closePath();
+      }
+      c.fill('evenodd');
+    }
+  }
+  // Buildings (simple dots, sampled)
+  c.fillStyle = 'rgba(180, 180, 200, 0.35)';
+  for (let i = 0; i < world.buildings.length; i += 3) {
+    const b = world.buildings[i];
+    if (b.destroyed) continue;
+    c.fillRect((b.group.position.x - x0) * scale - 1, (b.group.position.z - z0) * scale - 1, 2, 2);
+  }
+  _mini = { canvas, x0, z0, scale, buildings: world.buildings, water: world.mapWater };
+  return _mini;
+}
 function drawMinimap() {
   if (!minimapCtx || !state.kaiju) return;
   const cw = minimapCanvas.width, ch = minimapCanvas.height;
@@ -4698,32 +4739,11 @@ function drawMinimap() {
   const scale = (cw / 2) / MINIMAP_RANGE;
   function w2m(x, z) { return [cw / 2 + (x - kx) * scale, ch / 2 + (z - kz) * scale]; }
 
-  // Water (levels that carry outlines): lake, river, ponds; holes cut out
-  if (world.mapWater) {
-    ctx.fillStyle = 'rgba(40, 110, 170, 0.55)';
-    // One path per body so overlaps (river mouth into the lake) don't cancel
-    for (const w of world.mapWater) {
-      ctx.beginPath();
-      for (const ring of [w.polygon, ...(w.holes || [])]) {
-        for (let i = 0; i < ring.length; i++) {
-          const [x, y] = w2m(ring[i][0], ring[i][1]);
-          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-      }
-      ctx.fill('evenodd');
-    }
-  }
-
-  // Buildings (simple dots, sampled)
-  ctx.fillStyle = 'rgba(180, 180, 200, 0.35)';
-  for (let i = 0; i < world.buildings.length; i += 3) {
-    const b = world.buildings[i];
-    if (b.destroyed) continue;
-    const [x, y] = w2m(b.group.position.x, b.group.position.z);
-    if (x < 0 || y < 0 || x > cw || y > ch) continue;
-    ctx.fillRect(x - 1, y - 1, 2, 2);
-  }
+  // Water and building dots: one cached world-space layer at the minimap's
+  // scale, blitted around the kaiju (redrawn only when a building falls or
+  // the city changes; drawing them every refresh was ~11 ms at 4x CPU)
+  const L = _miniLayer(scale);
+  ctx.drawImage(L.canvas, cw / 2 - (kx - L.x0) * scale, ch / 2 - (kz - L.z0) * scale);
 
   // Pickups (gold)
   ctx.fillStyle = '#ffcc44';
