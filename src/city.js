@@ -4657,6 +4657,8 @@ export class Car {
     this.dead = false;
     this.axis = axis; this.dir = dir;
     this.speed = 12 + Math.random() * 8;
+    this.cruise = this.speed; // the speed it eases back to behind a clear road
+    this.len = 3.6; // length (u) for following gaps; GLB cars set their own
     const root = new THREE.Group();
     root.position.set(x, 0.6, z);
 
@@ -4673,6 +4675,7 @@ export class Car {
       this.minRoadW = tpl.minRoadW ?? (tpl.len && tpl.len >= 10 ? 6.5 : 0);
       const size = tpl.box.getSize(new THREE.Vector3());
       const targetLen = _carTargetLen(tpl); // old cars: ~3.6u to match procedural size
+      this.len = targetLen;
       const s = targetLen / Math.max(size.x, size.y, size.z);
       clone.scale.setScalar(s);
       clone.updateMatrixWorld(true);
@@ -4734,7 +4737,43 @@ export class Car {
     this.edge = ei;
     this.from = from;
     this.t = t;
+    this._occupy(ei);
     this._netPose();
+  }
+
+  /** Move this car to edge ei's list in net._occ (the cars on each edge, for
+   *  following gaps): touched only on an edge change, never per frame. */
+  _occupy(ei) {
+    const occ = this.net._occ || (this.net._occ = new Map());
+    if (this._occEdge !== undefined) {
+      const l = occ.get(this._occEdge), k = l ? l.indexOf(this) : -1;
+      if (k >= 0) l.splice(k, 1);
+    }
+    let l = occ.get(ei);
+    if (!l) occ.set(ei, l = []);
+    l.push(this);
+    this._occEdge = ei;
+  }
+
+  /** Following distance: ease toward the speed of the nearest car ahead on
+   *  this edge in this direction, slowing as the bumper gap drops under 1.5
+   *  car lengths and stopping under 0.3 (one short list per edge, no
+   *  all-pairs). Back to cruise speed on a clear road. */
+  _follow(dt) {
+    const list = this.net._occ.get(this.edge);
+    let lead = null, gap = Infinity;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const c = list[i];
+      if (c.dead) { list.splice(i, 1); continue; }
+      if (c === this || c.from !== this.from || c.t <= this.t) continue;
+      if (c.t - this.t < gap) { gap = c.t - this.t; lead = c; }
+    }
+    let v = this.cruise;
+    if (lead) {
+      const bump = gap - (this.len + lead.len) / 2, stop = 0.3 * this.len, near = 1.5 * this.len;
+      if (bump < near) v = Math.min(v, lead.speed) * Math.max(0, Math.min(1, (bump - stop) / (near - stop)));
+    }
+    this.speed += (v - this.speed) * Math.min(1, dt * 4);
   }
 
   _netPose() {
@@ -4751,6 +4790,7 @@ export class Car {
 
   _updateNet(dt) {
     const net = this.net;
+    this._follow(dt);
     this.t += this.speed * dt;
     let e = net.edges[this.edge];
     let guard = 0;
@@ -4769,6 +4809,7 @@ export class Car {
       this.from = node;
       e = net.edges[next];
     }
+    if (this._occEdge !== this.edge) this._occupy(this.edge);
     this._netPose();
   }
 
@@ -4894,6 +4935,7 @@ export function spawnCars(scene, count, cityRadius = 380, blockSize = 36) {
   const cars = [];
   if (_carNet && _carNet.edges.length) {
     const net = _carNet;
+    net._occ = new Map(); // a respawn starts the per-edge following lists over
     for (let i = 0; i < count; i++) {
       // Edge picked by length, so traffic density is even along the roads
       let r = Math.random() * net.total, ei = 0;
