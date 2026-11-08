@@ -6,9 +6,9 @@
 // bascule bridges, landmark massing, props) lives here.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { isMobile } from '../quality.js';
+import { isMobile, Q_HIGH } from '../quality.js';
 import { buildHarbor } from './chicago_harbor.js';
-import { bakeShoreField, makeWaterMaterial } from './chicago_water.js';
+import { bakeShoreField, makeWaterMaterial, waterUniforms, swellGrid } from './chicago_water.js';
 import { loadFest, festBuildingGLBs, festClearFence, festCutRoads, festInside, festNoTree, buildFest } from './chicago_fest.js';
 
 const LAYOUT_URL = './assets/levels/chicago_layout.json';
@@ -1610,6 +1610,15 @@ export function buildChicago(scene, world, opts, K) {
     const field = bakeShoreField(L.water, waterRects, { x0: B.minX - 100, z0: B.minZ - 100, x1: B.maxX + 100, z1: B.maxZ + 100 });
     const waterMat = makeWaterMaterial(field);
     for (const wm of waterMeshes) wm.material = waterMat;
+    // Waves: the normal maps and foam scroll with time; on desktop HIGH a
+    // camera-following grid adds a low swell on the open lake (one draw,
+    // same program); phones keep flat geometry
+    const WU = waterUniforms(waterMat);
+    animators.push({ update(dt, time) { WU.uTime.value = time; } });
+    if (Q_HIGH && !isMobile && lakes.length) {
+      const grid = swellGrid(scene, waterMat);
+      K.onCamera(scene, (cam) => grid.update(0, 0, cam));
+    }
     // Later water (fountain pools, dev-layout river ribbons) shares it too
     M.water = M.lake = waterMat;
   }

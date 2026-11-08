@@ -111,6 +111,46 @@ function _waveTexture(size = 256) {
   return tex;
 }
 
+const _uniforms = new WeakMap(); // water material -> its shared uniforms
+const _SWELL_OFF = { value: 0 };
+/** The shared uniforms of a water material (uTime etc.). */
+export const waterUniforms = (mat) => _uniforms.get(mat);
+
+// Open-lake swell (desktop HIGH): a few long, world-anchored directional
+// waves, masked to deep open water by the shore field (nothing in the
+// harbours behind the breakwaters, on the river or near a wall) and faded
+// to zero at the edge of the camera-following swell grid. The same mask
+// splits the flat water from the grid per fragment, so they never overlap.
+const SWELL_GLSL = `
+  uniform sampler2D uField;
+  uniform vec4 uFieldBox;
+  uniform vec3 uGrid; // centre x, z, half size (0: no grid)
+  float swellMask(vec2 p) {
+    if (uGrid.z <= 0.0) return 0.0;
+    vec2 e = abs(p - uGrid.xy) / uGrid.z;
+    float edge = 1.0 - smoothstep(0.7, 0.98, max(e.x, e.y));
+    vec2 f = texture(uField, (p - uFieldBox.xy) * uFieldBox.zw).rg;
+    float d = max(0.0, f.r * 255.0 - 1.0) / 254.0 * ${DMAX.toFixed(1)};
+    return edge * smoothstep(24.0, 60.0, d) * (1.0 - f.g);
+  }
+  // height (y) and slope (xz) of the swell at p
+  vec3 swell(vec2 p, float t) {
+    vec3 r = vec3(0.0);
+    vec4 W[4];
+    W[0] = vec4(normalize(vec2(-0.9, 0.35)), 0.18, 0.80); // dir, amp, rad/u... (k)
+    W[1] = vec4(normalize(vec2(-0.6, -0.7)), 0.10, 0.13);
+    W[2] = vec4(normalize(vec2(-1.0, 0.1)), 0.07, 0.27);
+    W[3] = vec4(normalize(vec2(-0.3, 0.9)), 0.05, 0.41);
+    for (int i = 0; i < 4; i++) {
+      float k = W[i].w * 0.25, a = W[i].z;
+      float ph = dot(W[i].xy, p) * k - t * sqrt(9.8 * k) * 0.55;
+      r.x += a * sin(ph);
+      r.yz += W[i].xy * (a * k * cos(ph));
+    }
+    return r;
+  }
+`;
+
 /** The shared water material. field: bakeShoreField() result. */
 export function makeWaterMaterial(field, opts = {}) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.22, metalness: 0.0 });
@@ -132,25 +172,45 @@ export function makeWaterMaterial(field, opts = {}) {
     uSunDir: { value: new THREE.Vector3(6, 140, 50).normalize() },
     uSunCol: { value: new THREE.Color(0xfff3e2) },
     uWaveAmp: { value: 0.55 },
+    uGrid: { value: new THREE.Vector3(0, 0, 0) },
   };
-  mat.userData.water = uniforms;
-  mat.onBeforeCompile = (sh) => {
+  // Kept off userData: Material.clone() JSON-copies userData, which would
+  // serialise the textures' pixel arrays
+  _uniforms.set(mat, uniforms);
+  mat.onBeforeCompile = function (sh) {
     Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = 'varying vec2 vWXZ;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+    // Per material, not shared: 1 only on the swell grid's clone
+    sh.uniforms.uSwellOn = this._swellOn || _SWELL_OFF;
+    sh.vertexShader = 'varying vec2 vWXZ;\nvarying float vSwellH;\nuniform float uTime, uSwellOn;\n' + SWELL_GLSL + sh.vertexShader
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+      vSwellH = 0.0;
+      if (uSwellOn > 0.5) {
+        vec2 wp = (modelMatrix * vec4(transformed, 1.0)).xz;
+        float m = swellMask(wp);
+        vec3 sw = swell(wp, uTime) * m;
+        transformed.y += sw.x;
+        vSwellH = sw.x;
+      }`)
+      .replace('#include <project_vertex>', `#include <project_vertex>
       vWXZ = (modelMatrix * vec4(transformed, 1.0)).xz;`);
     sh.fragmentShader = `varying vec2 vWXZ;
-      uniform sampler2D uWave, uField;
-      uniform vec4 uFieldBox;
-      uniform float uTime, uWaveAmp;
+      varying float vSwellH;
+      uniform sampler2D uWave;
+      uniform float uTime, uWaveAmp, uSwellOn;
+      ${SWELL_GLSL}
       uniform vec3 uDeep, uMid, uShallow, uShore, uRiver, uRiverEdge, uSky, uSunDir, uSunCol;
-      float wShore, wPool, wFoam;
+      float wShore, wPool, wFoam, wRiver;
       vec3 wN;
     ` + sh.fragmentShader
       // Depth colour + foam (replaces the plain material colour)
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
+          // Flat water and the swell grid split the surface by the swell mask
+          float sm = swellMask(vWXZ);
+          if (uSwellOn > 0.5 ? sm < 0.01 : sm >= 0.01) discard;
           vec2 fld = texture2D(uField, (vWXZ - uFieldBox.xy) * uFieldBox.zw).rg;
           float raw = fld.r * 255.0;
+          wRiver = fld.g;
           wPool = 1.0 - smoothstep(0.15, 0.45, raw);         // outside every water polygon (fountain pools)
           float d = max(0.0, raw - 1.0) / 254.0 * ${DMAX.toFixed(1)}; // world units to the shore
           wShore = d;
@@ -174,8 +234,10 @@ export function makeWaterMaterial(field, opts = {}) {
         {
           vec2 s1 = texture2D(uWave, vWXZ * 0.021 + vec2(uTime * 0.010, uTime * 0.006)).rg * 2.0 - 1.0;
           vec2 s2 = texture2D(uWave, vWXZ * 0.067 + vec2(-uTime * 0.017, uTime * 0.013)).rg * 2.0 - 1.0;
-          float calm = mix(1.0, 0.45, wPool) * (1.0 - wFoam * 0.6);
+          // Calmer near walls (harbours sit behind breakwaters) and on the river
+          float calm = mix(1.0, 0.45, wPool) * (1.0 - wFoam * 0.6) * mix(0.55, 1.0, smoothstep(8.0, 60.0, wShore)) * mix(1.0, 0.55, wRiver);
           vec2 sl = (s1 * 0.6 + s2 * 0.4) * uWaveAmp * calm;
+          if (uSwellOn > 0.5) sl += swell(vWXZ, uTime).yz * swellMask(vWXZ);
           wN = normalize(vec3(-sl.x, 1.0, -sl.y));
           normal = normalize((viewMatrix * vec4(wN, 0.0)).xyz);
         }`)
@@ -192,4 +254,38 @@ export function makeWaterMaterial(field, opts = {}) {
   };
   mat.customProgramCacheKey = () => 'chi-water';
   return mat;
+}
+
+/** Desktop HIGH: the camera-following swell grid (one draw). Uses a clone
+ *  of the water material that shares its program (same hook and cache key)
+ *  with uSwellOn = 1. Returns an animator: update(dt, time, camera). */
+export function swellGrid(scene, mat, half = 130, seg = 128) {
+  const gm = mat.clone();
+  gm._swellOn = { value: 1 };
+  gm.onBeforeCompile = mat.onBeforeCompile;
+  gm.customProgramCacheKey = mat.customProgramCacheKey;
+  const geo = new THREE.PlaneGeometry(half * 2, half * 2, seg, seg).rotateX(-Math.PI / 2);
+  geo.translate(0, 0.2, 0);
+  const mesh = new THREE.Mesh(geo, gm);
+  mesh.frustumCulled = false; // follows the camera; displaced in the shader
+  mesh.receiveShadow = true;
+  mesh.matrixAutoUpdate = false;
+  scene.add(mesh);
+  const U = _uniforms.get(mat), step = (half * 2) / seg;
+  U.uGrid.value.set(0, 0, half);
+  return {
+    mesh,
+    update(dt, time, camera) {
+      if (!camera) return;
+      // Snapped to the vertex spacing so the mesh never swims
+      const x = Math.round(camera.position.x / step) * step, z = Math.round(camera.position.z / step) * step;
+      if (x !== mesh.position.x || z !== mesh.position.z) {
+        // This runs in Scene.onBeforeRender, after three's world-matrix
+        // update: write matrixWorld directly (parent is the scene) so the
+        // mesh and uGrid (the flat water's cut-out) move in the same frame
+        mesh.position.set(x, 0, z); mesh.updateMatrix(); mesh.matrixWorld.copy(mesh.matrix);
+        U.uGrid.value.set(x, z, mesh.visible ? half : 0);
+      }
+    },
+  };
 }
