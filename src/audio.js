@@ -264,12 +264,20 @@ class Audio {
     this._setAmbience(Math.min(1, heli * 1.2) * 0.9, Math.min(1, tank * 0.9) * 0.7, 0.5);
   }
 
+  // Called every frame: a gain only gets a new target when it moved by more
+  // than 0.005 (each setTargetAtTime queues an automation event; an
+  // exponential approach to the same target is the same curve anyway)
   _setAmbience(heli, tank, city) {
     const t = this._now();
     const a = this._amb;
-    a.loop_heli.g.gain.setTargetAtTime(heli, t, 0.35);
-    a.loop_tank.g.gain.setTargetAtTime(tank, t, 0.35);
-    a.loop_city.g.gain.setTargetAtTime(city, t, 0.8);
+    const set = (loop, v, tc) => {
+      if (loop._target !== undefined && Math.abs(loop._target - v) <= 0.005) return;
+      loop._target = v;
+      loop.g.gain.setTargetAtTime(v, t, tc);
+    };
+    set(a.loop_heli, heli, 0.35);
+    set(a.loop_tank, tank, 0.35);
+    set(a.loop_city, city, 0.8);
   }
 
   // ============ Water (Chicago lake / harbour) ============
