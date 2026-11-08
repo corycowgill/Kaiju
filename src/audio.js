@@ -54,14 +54,26 @@ const SFX = {
   loop_heli:       [1, 1.0,  1, 0,    0],
   loop_tank:       [1, 1.0,  1, 0,    0],
   loop_city:       [1, 1.0,  1, 0,    0],
+  // Chicago lake / harbour water (OGG + M4A only, see M4A_SFX)
+  water_step:      [4, 0.8,  2, 0.08, 0.08],
+  water_splash:    [3, 0.9,  3, 0.10, 0.08],
+  water_splash_sm: [2, 0.6,  4, 0.05, 0.12],
+  boat_sink:       [2, 0.7,  2, 0.30, 0.05],
+  loop_lapping:    [1, 1.0,  1, 0,    0],
 };
 
 // Exact loop lengths (samples at 44.1 kHz). Decoders that ignore the MP3
 // encoder-delay header (older Safari) hand back 1105 samples of LAME priming
 // up front plus tail padding, which would click/gap at the loop point; when
 // the decoded buffer is longer than this, loop only the real content.
-const LOOP_SAMPLES = { loop_heli: 185220, loop_tank: 194040, loop_city: 348390 };
+const LOOP_SAMPLES = { loop_heli: 185220, loop_tank: 194040, loop_city: 348390, loop_lapping: 0 };
 const MP3_PRIMING = 1105;
+const AAC_PRIMING = 1024;
+// Newer SFX ship as OGG + AAC (.m4a) instead of OGG + MP3
+const M4A_SFX = new Set(['water_step', 'water_splash', 'water_splash_sm', 'boat_sink', 'loop_lapping']);
+// Water samples aren't generated yet: until they land in assets/sfx/ (then flip
+// this) the water API plays its procedural fallbacks and nothing is fetched.
+const WATER_SAMPLES = false;
 
 // Kaijupalooza! stage music (Chicago level). One looping mono track per stage,
 // keyed by the chicago_fest.js stage id; positional around the kaiju.
@@ -76,7 +88,6 @@ const STAGE_LOOP_SAMPLES = {
   monster_main: 3051290, kaiju_stage: 2645876, tremor_tent: 2776133,
   atomic_stage: 2965302, stomp_stage: 2721569, roar_grove: 3044854,
 };
-const AAC_PRIMING = 1024;
 const STAGE_NEAR = 14;          // full volume inside this (u, beyond the stage's half-size)
 const STAGE_FAR = 80;           // silent beyond this (u); the main stage carries further
 const STAGE_FAR_MAIN = 95;
@@ -123,6 +134,8 @@ class Audio {
     setInterval(() => {
       if (this._amb && this.ctx && this._now() - this._ambT > 0.5) this._setAmbience(0, 0, 0);
       if (this.stageBus && this.ctx && this._now() - this._stageT > 0.5) this._fadeStages();
+      if (this._shore && this.ctx && this._now() - this._shoreT > 0.5) this._shore.g.gain.setTargetAtTime(0, this._now(), 0.4);
+      if (this._wade && this.ctx && this._now() - this._wadeT > 0.5) this._wade.g.gain.setTargetAtTime(0, this._now(), 0.3);
     }, 250);
   }
 
@@ -146,21 +159,25 @@ class Audio {
     if (!this.ctx || this._sfxLoading) return;
     this._sfxLoading = true;
     const probe = document.createElement('audio');
-    const exts = probe.canPlayType && probe.canPlayType('audio/ogg; codecs="vorbis"') ? ['ogg', 'mp3'] : ['mp3', 'ogg'];
+    const ogg = !!(probe.canPlayType && probe.canPlayType('audio/ogg; codecs="vorbis"'));
+    const exts = ogg ? ['ogg', 'mp3'] : ['mp3', 'ogg'];
+    const extsM4a = ogg ? ['ogg', 'm4a'] : ['m4a', 'ogg'];
     const jobs = [];
     for (const name of Object.keys(SFX)) {
+      if (M4A_SFX.has(name) && !WATER_SAMPLES) continue;
       const n = SFX[name][0];
       for (let i = 0; i < n; i++) jobs.push([name, i, n > 1 ? `${name}_${i + 1}` : name]);
     }
     const worker = async () => {
       while (jobs.length) {
         const [name, i, base] = jobs.shift();
-        for (const ext of exts) {
+        for (const ext of M4A_SFX.has(name) ? extsM4a : exts) {
           try {
             const arr = await cachedFetch(SFX_DIR + base + '.' + ext);
             const buf = await new Promise((resolve, reject) => {
               this.ctx.decodeAudioData(arr, resolve, reject);
             });
+            buf._ext = ext;
             (this.sfx[name] || (this.sfx[name] = []))[i] = buf;
             break;
           } catch (e) { /* try next format */ }
@@ -253,6 +270,97 @@ class Audio {
     a.loop_heli.g.gain.setTargetAtTime(heli, t, 0.35);
     a.loop_tank.g.gain.setTargetAtTime(tank, t, 0.35);
     a.loop_city.g.gain.setTargetAtTime(city, t, 0.8);
+  }
+
+  // ============ Water (Chicago lake / harbour) ============
+  // Wading step in place of footstep(); depth01 0..1 scales weight and pitch
+  waterStep(depth01 = 1, sprint = false) {
+    const d = Math.max(0, Math.min(1, depth01));
+    if (this._play('water_step', (0.55 + 0.45 * d) * (sprint ? 1.15 : 1), (1.08 - 0.12 * d) * (sprint ? 1.05 : 1))) return;
+    this.noise(0.35, 900, 0.25 + 0.2 * d);
+    this.tone(70, 0.25, 'sine', 0.3 * d, -25);
+  }
+
+  // Debris / impact / body into water. size 0..1: small plop .. heavy crash
+  splash(size = 1) {
+    const s = Math.max(0, Math.min(1, size));
+    if (s < 0.45) { if (this._play('water_splash_sm', 0.6 + s, 1.1 - s * 0.2)) return; }
+    else if (this._play('water_splash', 0.6 + 0.4 * s, 1.15 - 0.25 * s)) return;
+    this.noise(0.25 + 0.6 * s, 1400, 0.25 + 0.3 * s);
+  }
+
+  // Gameplay impact hook. size 0.5..3 (beam/missile/stomp/ult/debris/collapse/boat)
+  waterSplash(size = 1, kind = '') {
+    if (kind === 'boat') { this.boatSink(); this.splash(0.3); return; }
+    const big = kind === 'ult' || kind === 'collapse' || kind === 'stomp' || size >= 1.2;
+    this.splash(big ? Math.min(1, 0.55 + (size - 1) * 0.25) : Math.min(0.44, size * 0.4));
+  }
+
+  // A boat swamped / going under
+  boatSink() {
+    if (this._play('boat_sink')) return;
+    this.noise(1.0, 500, 0.3);
+    this.tone(160, 0.8, 'sine', 0.15, -110);
+  }
+
+  // Quiet wash around the legs while the kaiju stands / wades in water.
+  // Called every frame: just sets a gain target (lapping loop, slowed and darkened).
+  waterWade(on, depth01 = 1) {
+    if (!this.ctx) return;
+    const t = this._now();
+    const target = on && !this._ambOff ? 0.25 + 0.35 * Math.max(0, Math.min(1, depth01)) : 0;
+    if (!this._wade) {
+      const bank = this.sfx.loop_lapping;
+      if (!target || !bank || !bank[0]) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = bank[0];
+      src.loop = true;
+      src.playbackRate.value = 0.8;
+      this._setLoopPoints(src, LOOP_SAMPLES.loop_lapping);
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 1800;
+      const g = this.ctx.createGain();
+      g.gain.value = 0;
+      src.connect(lp); lp.connect(g); g.connect(this.master);
+      src.start(0, src.loopStart + (t % 5));
+      this._wade = { src, g };
+    }
+    this._wadeT = t;
+    this._wade.g.gain.setTargetAtTime(target, t, 0.3);
+  }
+
+  // Shore lapping bed. Call once per frame with the kaiju's distance to the
+  // shoreline (world units), or null away from water / on levels without it.
+  updateShore(dist) {
+    if (!this.ctx) return;
+    const t = this._now();
+    let target = 0;
+    if (dist != null && !this._ambOff) target = 0.55 * Math.max(0, Math.min(1, (45 - dist) / 30));
+    if (!this._shore) {
+      if (!target || !this.sfx.loop_lapping || !this.sfx.loop_lapping[0]) return;
+      const buf = this.sfx.loop_lapping[0];
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      this._setLoopPoints(src, LOOP_SAMPLES.loop_lapping);
+      const g = this.ctx.createGain();
+      g.gain.value = 0;
+      src.connect(g); g.connect(this.master);
+      src.start(0, src.loopStart);
+      this._shore = { src, g };
+    }
+    this._shoreT = t;
+    this._shore.g.gain.setTargetAtTime(target, t, 0.6);
+  }
+
+  // Trim codec padding at a loop point: any extra decoded length is padding;
+  // decoders that ignore the encoder-delay info also keep the priming up front.
+  _setLoopPoints(src, samples) {
+    const len = samples / 44100, extra = src.buffer.duration - len;
+    if (!samples || extra <= 0.0005) return;
+    const prime = src.buffer._ext === 'm4a' ? AAC_PRIMING : src.buffer._ext === 'mp3' ? MP3_PRIMING : 0;
+    src.loopStart = prime && extra >= (prime - 8) / 44100 ? prime / 44100 : 0;
+    src.loopEnd = src.loopStart + len;
   }
 
   // ============ Kaijupalooza! stage music ============
@@ -492,7 +600,9 @@ class Audio {
     this.noise(0.18, 250, 0.35);
   }
 
-  footstep() {
+  // inWater (optional, 0..1 or true): the step lands in water -> wading splash
+  footstep(inWater) {
+    if (inWater) { this.waterStep(inWater === true ? 1 : inWater); return; }
     if (this._play('footstep')) return;
     this.noise(0.1, 220, 0.18);
   }
