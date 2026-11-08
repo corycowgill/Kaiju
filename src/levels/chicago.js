@@ -149,7 +149,9 @@ const CHICAGO_LANDMARK_GLBS = [
   // corner; its 113 x 99 m model is turned to face south and filled to the
   // block (stretch: per-axis fit, within that factor of the uniform scale)
   { id: 'thompson_center', file: 'thompson_center.glb', trueHeightM: 94, face: 'south', fit: 'footprint', maxH: 1.0, stretch: 1.3, ready: true },
-  { id: 'sky55_1255_s_michigan', file: 'sky55_1255_s_michigan.glb', trueHeightM: 129.4, face: 'east', ready: true },
+  // Front (+Z, the podium side) west on Michigan Ave: 1255 is the avenue's
+  // east side here (the notes' 'east' / Grant Park front is north of Roosevelt)
+  { id: 'sky55_1255_s_michigan', file: 'sky55_1255_s_michigan.glb', trueHeightM: 129.4, face: 'west', ready: true },
   // Taller tower (+X) at the north end, on the river
   { id: 'michigan_333_n', file: 'michigan_333_n.glb', trueHeightM: 130, face: 'east', ready: true },
   // Crown bays on the narrow (+-X) ends: long axis east-west on the layout's
