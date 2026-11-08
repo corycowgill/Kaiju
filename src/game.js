@@ -26,6 +26,7 @@ import { Pickup, rollDrop } from './pickups.js';
 import audio from './audio.js';
 import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce, onGLBParsed, canonMaterialMaps } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
+import { batchCars } from './carBatch.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
@@ -1926,7 +1927,8 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
     }
   }
   // Traffic and pedestrians spawn right after this, in the first frames
-  try { spawnCars(stage, 16, 10, 40); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
+  // (drawn batched: the batches' instanced programs are what links)
+  try { batchCars(spawnCars(stage, 16, 10, 40), stage, camera, false); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
   try { spawnCivilians(stage, 2, 10); } catch (e) { warnOnce('prewarm|civs', '[prewarm] civilian spawn failed:', e); }
   // Gameplay set first: kaiju + enemies, and the whole scene (the GLB
   // buildings were just flushed in; after a level switch nothing of the new
@@ -5047,6 +5049,7 @@ function tick(now) {
       _shadowFrame = 0;
       renderer.shadowMap.needsUpdate = true;
     }
+    if (state.cars) batchCars(state.cars, scene, camera);
     if (composer) composer.render();
     else renderer.render(scene, camera);
   }
