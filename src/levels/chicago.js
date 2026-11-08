@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { isMobile } from '../quality.js';
 import { buildHarbor } from './chicago_harbor.js';
+import { bakeShoreField, makeWaterMaterial } from './chicago_water.js';
 import { loadFest, festBuildingGLBs, festClearFence, festCutRoads, festInside, festNoTree, buildFest } from './chicago_fest.js';
 
 const LAYOUT_URL = './assets/levels/chicago_layout.json';
@@ -996,6 +997,8 @@ function decal(mat, n) {
   const k = mat.uuid + '|' + n;
   if (!_decals.has(k)) {
     const m = mat.clone();
+    // clone() drops shader hooks (the shared water material is one)
+    if (mat.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) { m.onBeforeCompile = mat.onBeforeCompile; m.customProgramCacheKey = mat.customProgramCacheKey; }
     m.polygonOffset = true; m.polygonOffsetFactor = 0; m.polygonOffsetUnits = -n;
     m.userData.shared = true;
     _decals.set(k, m);
@@ -1542,6 +1545,9 @@ export function buildChicago(scene, world, opts, K) {
   {
     let east = -Infinity;
     const shore = [[], [], []];
+    // Every water surface gets the shared water material once the shore
+    // field is baked (below), from the polygons plus the horizon planes
+    const waterMeshes = [], waterRects = [];
     // On or past the map edge (the lake is clipped to the bounds + 60u): no seawall there
     const onEdge = (p) => p[0] >= B.maxX - 0.5 || p[0] <= B.minX + 0.5 || p[1] <= B.minZ + 0.5 || p[1] >= B.maxZ - 0.5;
     for (const w of L.water) {
@@ -1555,6 +1561,7 @@ export function buildChicago(scene, world, opts, K) {
       wm.matrixAutoUpdate = false; wm.updateMatrix();
       wm.userData.batch = true;
       scene.add(wm);
+      waterMeshes.push(wm);
       if (w.kind === 'lake') for (const [x] of w.polygon) east = Math.max(east, x);
       if (w.kind === 'pond') continue;
       // Seawall / embankment along every shore edge that isn't a map edge
@@ -1576,6 +1583,8 @@ export function buildChicago(scene, world, opts, K) {
       far.position.set(Math.max(east, B.maxX) + 900 - 0.5, 0.19, (B.minZ + B.maxZ) / 2);
       far.matrixAutoUpdate = false; far.updateMatrix();
       scene.add(far);
+      waterMeshes.push(far);
+      waterRects.push([far.position.x - 900, far.position.z - 1500, far.position.x + 900, far.position.z + 1500]);
       // ...and north and south past the clipped lake: from the westmost
       // shoreline of any lake polygon (harbours too) at the clipped edge
       // eastward, out to the horizon
@@ -1591,8 +1600,18 @@ export function buildChicago(scene, world, opts, K) {
         pl.position.set(xs + 1500, 0.19, edge + dir * 750 - dir * 0.5);
         pl.matrixAutoUpdate = false; pl.updateMatrix();
         scene.add(pl);
+        waterMeshes.push(pl);
+        waterRects.push([pl.position.x - 1500, pl.position.z - 750, pl.position.x + 1500, pl.position.z + 750]);
       }
     }
+    // Shore-distance field over the map (+100u), 2u texels: depth colour,
+    // shallow band and shore / breakwater foam in the shared water material.
+    // Lake holes (breakwaters) are land here, so they get foam too.
+    const field = bakeShoreField(L.water, waterRects, { x0: B.minX - 100, z0: B.minZ - 100, x1: B.maxX + 100, z1: B.maxZ + 100 });
+    const waterMat = makeWaterMaterial(field);
+    for (const wm of waterMeshes) wm.material = waterMat;
+    // Later water (fountain pools, dev-layout river ribbons) shares it too
+    M.water = M.lake = waterMat;
   }
   const sidewalkMat = (rep) => new THREE.MeshStandardMaterial({
     map: K.loadTileTex('sidewalk_color.jpg', rep, rep), normalMap: K.loadDataTex('sidewalk_normal.jpg', rep, rep),
