@@ -1001,6 +1001,12 @@ function applyLevelLook(level) {
   rimLight.color.setHex(L.rim); rimLight.intensity = L.rimI;
   ambient.color.setHex(L.amb); ambient.intensity = L.ambI;
   _neonLights.forEach((l, i) => { l.intensity = L.neonI[i]; });
+  // Phones: Chicago's neon is off (intensity 0) but a visible point light
+  // still sits in every lit shader (NUM_POINT_LIGHTS) and in per-program
+  // light-uniform uploads. Hide them outside Tokyo; the lit programs relink
+  // once on a level switch (accepted on phones). A/B, emulated phone MED at
+  // 4x CPU: composer CPU p50 17.7 -> 16.9 ms, frame p50 22.5 -> 21.9 ms.
+  if (isMobile) _neonLights.forEach((l) => { l.visible = level === 'tokyo'; });
   for (const k of Object.keys(L.sky)) skyMat.uniforms[k].value.fromArray(L.sky[k]);
   skyMat.uniforms.nebula.value = L.nebula;
   _sunOffset.fromArray(L.sunOffset || _TOKYO_SUN);
@@ -1045,6 +1051,25 @@ function buildWorldCity() {
 }
 buildWorldCity();
 window.__dbg && window.__dbg('DBG · buildCity OK', '#9f9');
+
+/** Building groups with nothing under them once the GLB buildings are placed
+ *  (their visuals are per-tile InstancedMeshes; the group only carries the
+ *  position gameplay reads) still cost every frame's matrix update and
+ *  render traversal: ~4,000 of Chicago's ~9,000 scene objects. Taken out of
+ *  the scene graph after each flush; Building.collapse only ever removes its
+ *  group from its parent, and nothing adds to one after the flush. */
+function _detachEmptyBuildingGroups() {
+  const gone = new Set();
+  for (const b of world.buildings || []) {
+    const g = b.group;
+    if (g && g.parent && g.children.length === 0) gone.add(g);
+  }
+  // One pass per parent (Object3D.remove one by one splices ~4,000 times)
+  for (const parent of new Set([...gone].map((g) => g.parent))) {
+    parent.children = parent.children.filter((c) => !gone.has(c));
+  }
+  for (const g of gone) { g.parent = null; g.dispatchEvent({ type: 'removed' }); }
+}
 // The menu backdrop's first flipbook (once its sheet loads, ~0.3 s into the
 // menu) linked on first use: up to a 1 s menu freeze. Its two programs link
 // now, before the first backdrop frame, first-use lookups included.
@@ -2035,7 +2060,7 @@ function restartInPlace() {
   _hudLastScore = -1;
   _hudKey = {};
   buildWorldCity();
-  if (_bldgLevelsLoaded.has(world.level)) flushPendingGLBBuildings(scene);
+  if (_bldgLevelsLoaded.has(world.level)) { flushPendingGLBBuildings(scene); _detachEmptyBuildingGroups(); }
   document.getElementById('gameover').classList.add('hidden');
   document.getElementById('minimap').classList.add('hidden');
   document.getElementById('boss-bar').style.display = 'none';
@@ -2221,6 +2246,7 @@ async function _startGameInner(key) {
     if (bldgGLB) {
       loadingStatus.textContent = 'BUILDING ' + LEVELS[world.level].name;
       flushPendingGLBBuildings(scene);
+      _detachEmptyBuildingGroups();
     }
 
     // Brief pause at 100% so it feels complete
