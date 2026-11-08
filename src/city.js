@@ -5075,6 +5075,7 @@ function _clonePedestrian() {
   return { root: clone, mixer, actions };
 }
 
+let _civFallback = null; // shared look of the procedural fallback civilian (see Civilian)
 export class Civilian {
   constructor(x, z) {
     this.dead = false;
@@ -5103,14 +5104,20 @@ export class Civilian {
       this._actions = ped.actions;
       if (ped.actions.walk) { ped.actions.walk.play(); this._currentAnim = 'walk'; }
     } else {
-      // Minimal procedural fallback
-      const torsoMat = new THREE.MeshStandardMaterial({ color: 0x55aaff, roughness: 0.85 });
-      const legMat = new THREE.MeshStandardMaterial({ color: 0x223344, roughness: 0.95 });
-      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.2), legMat);
+      // Minimal procedural fallback (phone LOW: no pedestrian GLB). Every
+      // fallback civilian shares one set of materials and boxes, so the
+      // crowd draws as 2 batches (carBatch) instead of 3 meshes each.
+      const fb = _civFallback || (_civFallback = {
+        torsoMat: new THREE.MeshStandardMaterial({ color: 0x55aaff, roughness: 0.85 }),
+        legMat: new THREE.MeshStandardMaterial({ color: 0x223344, roughness: 0.95 }),
+        legGeom: markSharedGeom(new THREE.BoxGeometry(0.18, 0.7, 0.2)),
+        torsoGeom: markSharedGeom(new THREE.BoxGeometry(0.5, 0.7, 0.3)),
+      });
+      const legL = new THREE.Mesh(fb.legGeom, fb.legMat);
       legL.position.set(-0.12, 0.35, 0); root.add(legL);
       const legR = legL.clone(); legR.position.x = 0.12; root.add(legR);
       this.legL = legL; this.legR = legR;
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), torsoMat);
+      const torso = new THREE.Mesh(fb.torsoGeom, fb.torsoMat);
       torso.position.y = 1.05; root.add(torso);
       this.walkPhase = Math.random() * Math.PI * 2;
     }

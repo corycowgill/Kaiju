@@ -5116,7 +5116,7 @@ function tick(now) {
       _shadowFrame = 0;
       renderer.shadowMap.needsUpdate = true;
     }
-    _batchSets[0][0] = state.cars; _batchSets[1][0] = world.debris;
+    _batchSets[0][0] = state.cars; _batchSets[1][0] = world.debris; _batchSets[2][0] = state.civilians;
     batchMovers(_batchSets, scene, camera);
     cullRubble(camera);
     if (composer) composer.render();
@@ -5125,8 +5125,9 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 const IDLE_RENDER_MS = 66;
-// Traffic and flying debris, drawn batched (carBatch.js); items set per frame
-const _batchSets = [[null, (c) => c.root], [null, (d) => d]];
+// Traffic, flying debris and civilians (the phone-LOW box crowd; skinned
+// pedestrians stay individual), drawn batched (carBatch.js); items set per frame
+const _batchSets = [[null, (c) => c.root], [null, (d) => d], [null, (c) => c.root]];
 const _loadingScreenEl = document.getElementById('loading-screen');
 let _lastIdleRender = -Infinity;
 requestAnimationFrame(tick);
