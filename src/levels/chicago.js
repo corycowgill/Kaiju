@@ -462,13 +462,30 @@ function _normalizeLayout(L) {
     width: Math.max(minW(r.class), +(r.width || (r.kind === 'lsd' ? 16 : r.kind === 'arterial' ? 12 : r.kind === 'alley' ? 4 : 9))),
     points: (r.points || r.polyline || []).map(_pt),
   })).filter((r) => r.points.length >= 2);
+  // Lake Shore Drive's other carriageway and its ramps are separate OSM ways
+  // a few metres off the 'lsd' line: inside the widened 12u drive they drew
+  // a second centre line and ran traffic across it. Drop any road running
+  // along an LSD line (within 20 deg) that lies mostly inside its ribbon
+  const swallowed = out.real ? _lsdSwallowed(out.roads) : new Set();
+  out.roads = out.roads.filter((r) => !swallowed.has(r.id));
+  // Divided roads (LSD, Michigan, Columbus...) are two one-way OSM ways a few
+  // metres apart; widened to two-way gameplay roads they overlapped, each with
+  // its own centre line, and traffic on one rode the other's double yellow.
+  // Each overlapping parallel pair is pulled onto its shared midline (road
+  // polylines and car graph alike, by vertex, so junctions stay joined) and
+  // drawn once
+  const expressway = new Set(out.roads.filter((r) => r.expressway).map((r) => r.id));
+  const carriage = out.real ? _mergeCarriageways(out.roads) : { partner: new Map(), moved: new Map(), dropped: new Set() };
+  const onMid = (pts, id) => (carriage.partner.has(id) ? _onMidline(pts, carriage.partner.get(id), carriage.moved)
+    : pts.map((p) => carriage.moved.get(_vkey(p)) || p));
+  for (const r of out.roads) r.points = onMid(r.points, r.id);
+  out.roads = out.roads.filter((r) => !carriage.dropped.has(r.id));
   // Car network: the explicit road graph when there is one. Minor roads are
   // left out, and so are expressways: planar noding makes false junctions
   // where they fly over the street grid.
-  const expressway = new Set(out.roads.filter((r) => r.expressway).map((r) => r.id));
   out.netRoads = L.roadGraph
-    ? L.roadGraph.edges.filter((e) => e.class !== 'minor' && !expressway.has(e.road))
-      .map((e) => ({ width: Math.max(minW(e.class), +e.width), points: e.points.map(_pt) }))
+    ? L.roadGraph.edges.filter((e) => e.class !== 'minor' && !expressway.has(e.road) && !swallowed.has(e.road))
+      .map((e) => ({ width: Math.max(minW(e.class), +e.width), points: onMid(e.points.map(_pt), e.road) }))
     : out.roads.filter((r) => r.kind !== 'alley');
   const W = L.water || {};
   const waters = Array.isArray(W) ? W : [
@@ -535,6 +552,117 @@ function _normalizeLayout(L) {
     id: o.id, name: o.name || o.id, h: +(o.h ?? o.height ?? 30), hp: o.hp, kind: o.kind || 'building',
     heightM: o.heightMetres ? +o.heightMetres : 0,
   }));
+  return out;
+}
+
+const _vkey = (p) => Math.round(p[0] * 20) + ':' + Math.round(p[1] * 20);
+/** Nearest point on polyline pts to (x, z): { d, p, dir, end (past an end) }. */
+function _nearestOn(x, z, pts) {
+  let best = null;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / l2));
+    const px = a[0] + t * dx, pz = a[1] + t * dz, d = Math.hypot(x - px, z - pz);
+    if (!best || d < best.d) best = { d, p: [px, pz], dir: [dx / Math.sqrt(l2), dz / Math.sqrt(l2)], end: (t <= 0 && i === 1) || (t >= 1 && i === pts.length - 1) };
+  }
+  return best;
+}
+/** Overlapping parallel road pairs (same kind; sampled every 2u, 60%+ of the
+ *  shorter beside the other within 20 deg with their ribbons overlapping).
+ *  Returns partner (id -> the other road's original points and the pair's
+ *  reach), the moves of every original vertex of both to the midpoint with
+ *  the other line (by _vkey: junctions shared with cross streets move too)
+ *  and the ids not drawn (the shorter of each pair; the kept one takes the
+ *  wider width). */
+function _mergeCarriageways(roads) {
+  const len = (r) => r.points.slice(1).reduce((t, p, i) => t + Math.hypot(p[0] - r.points[i][0], p[1] - r.points[i][1]), 0);
+  const along = (r, s) => {
+    let n = 0, hit = 0;
+    for (let i = 1; i < r.points.length; i++) {
+      const [x0, z0] = r.points[i - 1], [x1, z1] = r.points[i], l = Math.hypot(x1 - x0, z1 - z0) || 1;
+      const k = Math.max(1, Math.ceil(l / 2));
+      for (let j = 0; j <= k; j++) {
+        n++;
+        const q = _nearestOn(x0 + (x1 - x0) * j / k, z0 + (z1 - z0) * j / k, s.points);
+        if (q && !q.end && q.d < (r.width + s.width) / 2 - 0.5 && Math.abs(((x1 - x0) * q.dir[0] + (z1 - z0) * q.dir[1]) / l) > Math.cos(Math.PI / 9)) hit++;
+      }
+    }
+    return hit / n;
+  };
+  const cand = roads.filter((r) => r.kind === 'lsd' || r.kind === 'major');
+  const box = (r) => { const xs = r.points.map((p) => p[0]), zs = r.points.map((p) => p[1]); return [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)]; };
+  const bb = new Map(cand.map((r) => [r, box(r)]));
+  const partner = new Map(), moved = new Map(), dropped = new Set(), done = new Set();
+  for (const r of cand) {
+    if (done.has(r)) continue;
+    const [ax0, ax1, az0, az1] = bb.get(r);
+    for (const s of cand) {
+      if (s === r || done.has(s) || s.kind !== r.kind) continue;
+      const [bx0, bx1, bz0, bz1] = bb.get(s), m = (r.width + s.width) / 2;
+      if (bx0 > ax1 + m || bx1 < ax0 - m || bz0 > az1 + m || bz1 < az0 - m) continue;
+      const [sh, lo] = len(r) <= len(s) ? [r, s] : [s, r];
+      if (along(sh, lo) < 0.6) continue;
+      for (const [a, b] of [[r, s], [s, r]]) {
+        partner.set(a.id, { pts: b.points.map((p) => p.slice()), reach: m });
+        for (const p of a.points) {
+          const k = _vkey(p), q = _nearestOn(p[0], p[1], b.points);
+          if (!moved.has(k) && q && q.d < m) moved.set(k, [(p[0] + q.p[0]) / 2, (p[1] + q.p[1]) / 2]);
+        }
+      }
+      lo.width = Math.max(lo.width, sh.width);
+      dropped.add(sh.id); done.add(r); done.add(s);
+      break;
+    }
+  }
+  return { partner, moved, dropped };
+}
+/** pts (original coordinates) of a paired road on its midline: vertices by
+ *  the move map, plus a point every 3u between them pulled to the midpoint
+ *  with the partner line, so both halves of the pair coincide. */
+function _onMidline(pts, mate, moved) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (i > 0) {
+      const o = pts[i - 1], k = Math.floor(Math.hypot(p[0] - o[0], p[1] - o[1]) / 3);
+      for (let j = 1; j < k; j++) {
+        const x = o[0] + (p[0] - o[0]) * j / k, z = o[1] + (p[1] - o[1]) * j / k, q = _nearestOn(x, z, mate.pts);
+        out.push(q && q.d < mate.reach ? [(x + q.p[0]) / 2, (z + q.p[1]) / 2] : [x, z]);
+      }
+    }
+    out.push(moved.get(_vkey(p)) || p);
+  }
+  return out;
+}
+/** Ids of non-LSD roads that run along an LSD road (within 20 deg) with
+ *  at least 70% of their length inside its ribbon. */
+function _lsdSwallowed(roads) {
+  const lsd = roads.filter((r) => r.kind === 'lsd'), out = new Set();
+  const segs = lsd.flatMap((l) => l.points.slice(1).map((b, i) => [l.points[i], b, l.width]));
+  const near = (x, z, w) => {
+    let best = null;
+    for (const [a, b, lw] of segs) {
+      const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / l2));
+      const d = Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz);
+      if (d < lw / 2 + w / 2 - 1 && (!best || d < best.d)) best = { d, dx, dz, l: Math.sqrt(l2) };
+    }
+    return best;
+  };
+  for (const r of roads) {
+    if (r.kind === 'lsd' || r.kind === 'minor') continue;
+    let n = 0, hit = 0;
+    for (let i = 1; i < r.points.length; i++) {
+      const [x0, z0] = r.points[i - 1], [x1, z1] = r.points[i], len = Math.hypot(x1 - x0, z1 - z0);
+      const k = Math.max(1, Math.ceil(len / 2));
+      for (let j = 0; j <= k; j++) {
+        n++;
+        const s = near(x0 + (x1 - x0) * j / k, z0 + (z1 - z0) * j / k, r.width);
+        if (s && Math.abs((x1 - x0) * s.dx + (z1 - z0) * s.dz) / (len * s.l || 1) > Math.cos(Math.PI / 9)) hit++;
+      }
+    }
+    if (hit / n >= 0.7) out.add(r.id);
+  }
   return out;
 }
 
