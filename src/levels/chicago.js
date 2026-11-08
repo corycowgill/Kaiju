@@ -152,8 +152,9 @@ const CHICAGO_LANDMARK_GLBS = [
   // Front (+Z, the podium side) west on Michigan Ave: 1255 is the avenue's
   // east side here (the notes' 'east' / Grant Park front is north of Roosevelt)
   { id: 'sky55_1255_s_michigan', file: 'sky55_1255_s_michigan.glb', trueHeightM: 129.4, face: 'west', ready: true },
-  // Taller tower (+X) at the north end, on the river
-  { id: 'michigan_333_n', file: 'michigan_333_n.glb', trueHeightM: 130, face: 'east', ready: true },
+  // Front (+Z) west on Michigan Ave; mirrored model, taller tower (-X) at the
+  // north end on the river
+  { id: 'michigan_333_n', file: 'michigan_333_n.glb', trueHeightM: 130, face: 'west', ready: true },
   // Crown bays on the narrow (+-X) ends: long axis east-west on the layout's
   // 56 x 25 m outline, filled to it
   { id: 'lasalle_120_n', file: 'lasalle_120_n.glb', trueHeightM: 152.7, fit: 'footprint', maxH: 1.0, stretch: 1.6, ready: true },
@@ -184,7 +185,9 @@ const CHICAGO_GENERIC_GLBS = [
   { file: 'gen_low_limestone_block.glb', bucket: 'short', ready: true },
   { file: 'gen_low_terracotta_office.glb', bucket: 'short', ready: true },
   { file: 'gen_short_brick_hotel.glb', bucket: 'short', ready: true },
-  { file: 'parking_deck.glb', bucket: 'short', share: 0.4, ready: true },
+  // trueM [w, h, d]: only on lots within +-25% of the deck's true size (it
+  // was picked for big blocks and blown up 2.5-3x); bigger lots take others
+  { file: 'parking_deck.glb', bucket: 'low', share: 0.4, trueM: [76, 20.3, 40], ready: true },
   { file: 'gen_mid_deco_setback.glb', bucket: 'medium', ready: true },
   { file: 'gen_mid_mies_box.glb', bucket: 'medium', ready: true },
   { file: 'gen_mid_glass_condo.glb', bucket: 'medium', ready: true },
@@ -290,11 +293,19 @@ function _fillPool(h) {
   return CHICAGO_GENERIC_GLBS.filter((g) => _genericOK(g) && (g.bucket === b || g.bucket === 'low' || g.bucket === 'short') && (!g.maxH || h <= g.maxH * 1.5) && g.file !== 'parking_deck.glb')
     .map((g) => CHI_BASE + g.file);
 }
+/** A piece with trueM ([w, h, d] metres) fits a w x d x h lot (u; sc u/m)
+ *  only within +-25% of that size, either way round in plan */
+function _trueFit(g, w, d, h, sc) {
+  if (!g.trueM) return true;
+  const [tw, th, td] = g.trueM.map((v) => v * sc);
+  const near = (a, b) => a >= b * 0.75 && a <= b * 1.25;
+  return near(h, th) && ((near(w, tw) && near(d, td)) || (near(w, td) && near(d, tw)));
+}
 /** One url from the bucket's pool, weighted by share (default 1), avoiding
  *  `avoid` (the models already standing in the neighbouring cells). */
-function _pickGeneric(bucket, avoid, h = 0) {
+function _pickGeneric(bucket, avoid, h = 0, w = 0, d = 0, sc = 0.2) {
   bucket = _ownBucket(bucket);
-  const all = CHICAGO_GENERIC_GLBS.filter((g) => _genericOK(g) && g.bucket === bucket);
+  const all = CHICAGO_GENERIC_GLBS.filter((g) => _genericOK(g) && g.bucket === bucket && _trueFit(g, w, d, h, sc));
   const fit = all.filter((g) => !g.maxH || h <= g.maxH);
   const own = fit.length ? fit : all;
   if (!own.length) { const p = _pool(bucket); return p[Math.floor(Math.random() * p.length)]; }
@@ -310,6 +321,10 @@ function _pickGeneric(bucket, avoid, h = 0) {
 // Field from the 76 x 40 x 20 m parking deck.
 const GENERIC_TILES = {
   b507: { file: 'parking_deck.glb', nx: 2, nz: 4, hM: 20.3 },
+  // 120 N LaSalle's 5-level garage on the Wells side (36 x 18 m, ~16 m): the
+  // deck shrunk to the lot, 5 levels at 16 m (stretch: per-axis, within that
+  // x the uniform fit)
+  gap_3: { file: 'parking_deck.glb', nx: 1, nz: 1, hM: 16, stretch: 2.2 },
   // Soldier Field's north wing walls (one wall model, length along X)
   b_soldier_field_wing_nw: { file: 'soldier_field_wing.glb', nx: 1, nz: 1, hM: 20 },
   b_soldier_field_wing_ne: { file: 'soldier_field_wing.glb', nx: 1, nz: 1, hM: 20 },
@@ -1875,7 +1890,7 @@ export function buildChicago(scene, world, opts, K) {
         tb._skipBodyIM = true;
         tb.group.matrixAutoUpdate = false; tb.group.updateMatrix();
         scene.add(tb.group); buildings.push(tb); grid.add(tb);
-        K.queueGLB({ url: CHI_BASE + tile.file, h: tile.hM * (L.scale || 0.2), building: tb, maxW: tb.w, maxD: tb.d, rotY: o.rotY || 0, pool, stretch: 1.3 });
+        K.queueGLB({ url: CHI_BASE + tile.file, h: tile.hM * (L.scale || 0.2), building: tb, maxW: tb.w, maxD: tb.d, rotY: o.rotY || 0, pool, stretch: tile.stretch || 1.3 });
       }
       return;
     }
@@ -1918,7 +1933,7 @@ export function buildChicago(scene, world, opts, K) {
     const cx = Math.floor(o.x / 24), cz = Math.floor(o.z / 24);
     const avoid = new Set();
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const u of picked.get((cx + i) + ':' + (cz + j)) || []) avoid.add(u);
-    const url = _pickGeneric(_bucket(o.h), avoid, o.h);
+    const url = _pickGeneric(_bucket(o.h), avoid, o.h, o.w, o.d, L.scale || 0.2);
     const k = cx + ':' + cz;
     if (!picked.has(k)) picked.set(k, []);
     picked.get(k).push(url);
