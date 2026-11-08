@@ -88,21 +88,66 @@ export function buildHarbor(H, ctx) {
     const sink = sinkOf.sail;
     const all = [];
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
+    // Near / far: every boat kind has a full-detail InstancedMesh set and an
+    // LOD1 set (the ~300-tri twins). Boats within NEAR_R of the camera are
+    // packed into the near set's first slots and the rest into the far set
+    // (each set's count trimmed to its boats, so nothing is drawn twice).
+    // +1 draw per part per kind, not per tile
+    const NEAR_R = lite ? 45 : 70, groups = [];
+    const lod1Of = ctx.K.lod1Of || (() => null);
     for (const [k, list] of byKind) {
       const ims = kinds[k].map((p) => {
-        const im = new THREE.InstancedMesh(p.geom, p.mat, list.length);
-        im.castShadow = false; im.receiveShadow = true;
-        scene.add(im);
-        return { im, p };
+        const mk = (geom) => {
+          const im = new THREE.InstancedMesh(geom, p.mat, list.length);
+          im.castShadow = false; im.receiveShadow = true;
+          im.frustumCulled = false; // zero-matrix slots would stretch its bounds to the origin
+          im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          scene.add(im);
+          return im;
+        };
+        const g1 = lod1Of(p.geom);
+        return { near: mk(p.geom), far: g1 ? mk(g1) : null, p };
       });
-      list.forEach((sp, i) => {
+      const group = [];
+      list.forEach((sp) => {
         q.setFromAxisAngle(up, sp.ry);
         const base = new THREE.Matrix4().compose(new THREE.Vector3(sp.x, sinkOf[k], sp.z), q, one);
-        for (const { im, p } of ims) im.setMatrixAt(i, m.multiplyMatrices(base, p.m));
-        all.push({ sp, i, ims, base, alive: true, sinkT: -1 });
+        const b = { sp, ims, base, cur: base.clone(), alive: true, sinkT: -1, near: false, slot: 0 };
+        all.push(b); group.push(b);
       });
-      for (const { im } of ims) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+      groups.push({ ims, boats: group });
     }
+    // Write one boat's current pose into its slot of the set it's drawn from
+    const put = (b) => {
+      for (const { near, far, p } of b.ims) ((b.near || !far) ? near : far).setMatrixAt(b.slot, m.multiplyMatrices(b.cur, p.m));
+    };
+    const camPos = new THREE.Vector3(1e9, 0, 1e9), lastBand = new THREE.Vector3(1e9, 0, 1e9);
+    // Re-pack every kind's near / far sets around the camera
+    const band = () => {
+      for (const { ims, boats } of groups) {
+        const hasFar = ims.some((x) => x.far);
+        let nn = 0, nf = 0;
+        for (const b of boats) {
+          b.near = !hasFar || Math.hypot(b.sp.x - camPos.x, b.sp.z - camPos.z) < NEAR_R;
+          b.slot = b.near ? nn++ : nf++;
+          put(b);
+        }
+        for (const { near, far } of ims) {
+          near.count = nn; near.instanceMatrix.needsUpdate = true;
+          if (far) { far.count = nf; far.instanceMatrix.needsUpdate = true; }
+        }
+      }
+    };
+    band();
+    // The camera, read where three hands it over (like city.js's LOD controller)
+    const probe = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+    probe.frustumCulled = false;
+    probe.onBeforeRender = (r, s, cam) => {
+      cam.getWorldPosition(camPos);
+      // Re-band when the camera has moved a few units (the next frame shows it)
+      if (Math.hypot(camPos.x - lastBand.x, camPos.z - lastBand.z) > 6) { lastBand.copy(camPos); band(); }
+    };
+    scene.add(probe);
     // Smash: a boat within the kaiju's reach rolls over on its side (1.2 s),
     // then goes down (2 s), with a white splash burst and a foam ring. The
     // spray is pooled: one InstancedMesh of droplets and one of rings for the
@@ -130,10 +175,10 @@ export function buildHarbor(H, ctx) {
             // Ease the roll in, then the hull slides under still heeled over
             tilt.makeRotationX((1 - (1 - r) * (1 - r)) * 1.35);
             drop.makeTranslation(0, -(Math.min(1, k) ** 1.5) * 3.6, 0);
-            const mm = new THREE.Matrix4().multiplyMatrices(drop, b.base).multiply(tilt);
-            for (const { im, p } of b.ims) im.setMatrixAt(b.i, m.multiplyMatrices(mm, p.m));
+            b.cur.multiplyMatrices(drop, b.base).multiply(tilt);
+            put(b);
             dirty = dirty || new Set();
-            for (const { im } of b.ims) dirty.add(im);
+            for (const { near, far } of b.ims) { dirty.add(near); if (far) dirty.add(far); }
             // A second, smaller splash as it goes under
             if (b.sinkT - dt < ROLL_T && b.sinkT >= ROLL_T) fx.burst(b.sp.x, b.sp.z, lite ? 5 : 10, 0.6, false);
           }
