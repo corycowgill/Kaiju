@@ -216,7 +216,26 @@ onGLBParsed((root) => {
 // Any material built after load gets the shared texture slots (see
 // canonMaterialMaps) on its first draw: Mesh.onBeforeRender runs before three
 // picks the program.
-THREE.Mesh.prototype.onBeforeRender = function (r, s, c, g, material) { canonMaterialMaps(material); };
+// Also: three draws a transparent DoubleSide material in two passes (back
+// faces, then front), flipping material.side with needsUpdate each time, so
+// its program is re-resolved twice every frame (the fest beams, the shock
+// rings and most effects). Where the passes' order can't change the result
+// they draw in one: additive blending without depth writes (the sum
+// commutes), or a flat geometry (each pixel sees only one side of it).
+const _FLAT = new Set(['PlaneGeometry', 'RingGeometry', 'CircleGeometry']);
+function _prepMaterial(m, geometry) {
+  canonMaterialMaps(m);
+  if (!m || !m.transparent || m.side !== THREE.DoubleSide) return;
+  const u = m.userData;
+  if (u.onePass === undefined) {
+    u.onePass = m.forceSinglePass ? 'own' : (m.blending === THREE.AdditiveBlending && !m.depthWrite) ? 'add'
+      : (geometry && _FLAT.has(geometry.type)) ? 'flat' : 'no';
+    if (u.onePass === 'add' || u.onePass === 'flat') m.forceSinglePass = true;
+  } else if (u.onePass === 'flat' && geometry && !_FLAT.has(geometry.type)) {
+    u.onePass = 'no'; m.forceSinglePass = false; // also drawn on a solid shape: back to two passes
+  }
+}
+THREE.Mesh.prototype.onBeforeRender = function (r, s, c, geometry, material) { _prepMaterial(material, geometry); };
 function _drainTexQueue(budgetMs) {
   const t0 = performance.now();
   for (const t of _texQueue) {
@@ -1813,7 +1832,7 @@ function _disposeKaijuGLB(glb) {
 function _linkAsync(root, target = composer ? composer.readBuffer : null, wait = true) {
   const lightsFrom = root === scene ? null : scene;
   // The programs these will draw with (compile() skips Mesh.onBeforeRender)
-  root.traverse((o) => { for (const m of [].concat(o.material || [])) canonMaterialMaps(m); });
+  root.traverse((o) => { for (const m of [].concat(o.material || [])) _prepMaterial(m, o.geometry); });
   const prev = renderer.getRenderTarget();
   renderer.setRenderTarget(target);
   let p;
