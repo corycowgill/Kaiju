@@ -2804,8 +2804,8 @@ function _placeFillGLB(entry, scene) {
     const k = Math.max(fw * 0.75 / w, fd * 0.75 / d, 1);
     return Math.min(w, fw * 1.25 / k) * Math.min(d, fd * 1.25 / k) / (w * d) / Math.sqrt(k);
   };
-  const best = (w, d, not) => {
-    const c = urls.filter((u) => u !== not).map((u) => [u, cover(u, w, d)]).sort((x, y) => y[1] - x[1]);
+  const best = (w, d, not, list = urls) => {
+    const c = list.filter((u) => u !== not).map((u) => [u, cover(u, w, d)]).sort((x, y) => y[1] - x[1]);
     const top = c.filter((x) => x[1] >= c[0][1] * 0.92); // near-ties: vary
     return top[Math.floor(Math.random() * top.length)] || c[0];
   };
@@ -2821,11 +2821,16 @@ function _placeFillGLB(entry, scene) {
   let prev = null;
   for (let i = 0; i < n; i++) {
     const cw = alongX ? cl : dep, cd = alongX ? dep : cl;
-    const pool = urls.filter((u) => !FILL_NO_REPEAT.test(u));
-    const [u] = (pool.length ? best.call(null, cw, cd, prev) : [u0]);
+    // Cell pieces scale to the block height but never past their cell in
+    // plan (they were blown up to 3-7x the lot): only pieces that still
+    // reach 75% of the height inside the cell, if any do
+    let pool = urls.filter((u) => !FILL_NO_REPEAT.test(u));
+    const fit = pool.filter((u) => { const [rw, rh, rd] = dim.get(u); return Math.min(cw / rw, cd / rd) * 1.25 >= h / rh * 0.75; });
+    if (fit.length) pool = fit;
+    const [u] = (pool.length ? best(cw, cd, prev, pool) || [pool[0]] : [u0]);
     const uu = pool.includes(u) ? u : (pool.find((x) => x !== prev) || u0);
     prev = uu;
-    const [rw, rh, rd] = dim.get(uu), s = h / rh * (0.9 + Math.random() * 0.2);
+    const [rw, rh, rd] = dim.get(uu), s = Math.min(h / rh * (0.9 + Math.random() * 0.2), cw / rw * 1.25, cd / rd * 1.25);
     // Plan scale to the cell (+-25% of the height scale), height by the block
     const sx = THREE.MathUtils.clamp(cw / rw, s * 0.75, s * 1.25), sz = THREE.MathUtils.clamp(cd / rd, s * 0.75, s * 1.25);
     const P = new _Placed(_glbTemplates.get(uu).scene), c = P.top;
