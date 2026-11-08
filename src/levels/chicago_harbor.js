@@ -128,7 +128,9 @@ export function buildHarbor(H, ctx) {
         const hasFar = ims.some((x) => x.far);
         let nn = 0, nf = 0;
         for (const b of boats) {
-          b.near = !hasFar || Math.hypot(b.sp.x - camPos.x, b.sp.z - camPos.z) < NEAR_R;
+          // Hysteresis: in at NEAR_R - 5, out at NEAR_R + 5 (no flicker on the edge)
+          const d = Math.hypot(b.sp.x - camPos.x, b.sp.z - camPos.z);
+          b.near = !hasFar || d < NEAR_R - 5 || (b.near && d < NEAR_R + 5);
           b.slot = b.near ? nn++ : nf++;
           put(b);
         }
@@ -139,15 +141,19 @@ export function buildHarbor(H, ctx) {
       }
     };
     band();
-    // The camera, read where three hands it over (like city.js's LOD controller)
+    // The camera, read where three hands it over (like city.js's LOD controller).
+    // The re-pack itself runs in an animator, before the next frame's draw
+    // calls: done mid-render, sets drawn before and after the probe could
+    // briefly miss or double a boat
     const probe = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
     probe.frustumCulled = false;
-    probe.onBeforeRender = (r, s, cam) => {
-      cam.getWorldPosition(camPos);
-      // Re-band when the camera has moved a few units (the next frame shows it)
-      if (Math.hypot(camPos.x - lastBand.x, camPos.z - lastBand.z) > 6) { lastBand.copy(camPos); band(); }
-    };
+    probe.onBeforeRender = (r, s, cam) => { cam.getWorldPosition(camPos); };
     scene.add(probe);
+    animators.push({
+      update() {
+        if (Math.hypot(camPos.x - lastBand.x, camPos.z - lastBand.z) > 4) { lastBand.copy(camPos); band(); }
+      },
+    });
     // Smash: a boat within the kaiju's reach rolls over on its side (1.2 s),
     // then goes down (2 s), with a white splash burst and a foam ring. The
     // spray is pooled: one InstancedMesh of droplets and one of rings for the
