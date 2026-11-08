@@ -5076,6 +5076,7 @@ function _clonePedestrian() {
 }
 
 let _civFallback = null; // shared look of the procedural fallback civilian (see Civilian)
+const _civSphere = new THREE.Sphere(), _civCenter = new THREE.Vector3();
 export class Civilian {
   constructor(x, z) {
     this.dead = false;
@@ -5141,10 +5142,15 @@ export class Civilian {
     // Skinned-mixer ticks are the civilians' main per-frame cost. Beyond
     // ~120u a pedestrian is a few pixels tall, so tick its mixer at 1/4
     // rate with the accumulated dt (same pose timing, a quarter of the work).
+    // Out of the last frame's view (world.viewFrustum, with a margin) it
+    // isn't drawn at all: the dt just accumulates until it is.
     if (this.mixer) {
       this._mixDt = (this._mixDt || 0) + dt;
       this._mixSkip = (this._mixSkip || 0) + 1;
-      if (distSq < 120 * 120 || this._mixSkip >= 4) {
+      const fr = world.viewFrustum;
+      const inView = !(fr instanceof THREE.Frustum) || fr.intersectsSphere(_civSphere.set(_civCenter.set(myPos.x, myPos.y + 1, myPos.z), 4));
+      if (!this._mixed || (inView && (distSq < 120 * 120 || this._mixSkip >= 4))) {
+        this._mixed = true; // always posed once (no bind pose on its first frame in view)
         this.mixer.update(this._mixDt);
         this._mixDt = 0; this._mixSkip = 0;
       }

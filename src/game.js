@@ -5139,6 +5139,10 @@ function tick(now) {
     _batchSets[0][0] = state.cars; _batchSets[1][0] = world.debris; _batchSets[2][0] = state.civilians;
     batchMovers(_batchSets, scene, camera);
     cullRubble(camera);
+    // This frame's view, for next frame's off-screen skips (civilian mixers)
+    _viewPM.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    _viewFrustum.setFromProjectionMatrix(_viewPM);
+    world.viewFrustum = _viewFrustum;
     if (composer) composer.render();
     else renderer.render(scene, camera);
   }
@@ -5148,6 +5152,7 @@ const IDLE_RENDER_MS = 66;
 // Traffic, flying debris and civilians (the phone-LOW box crowd; skinned
 // pedestrians stay individual), drawn batched (carBatch.js); items set per frame
 const _batchSets = [[null, (c) => c.root], [null, (d) => d], [null, (c) => c.root]];
+const _viewFrustum = new THREE.Frustum(), _viewPM = new THREE.Matrix4();
 const _loadingScreenEl = document.getElementById('loading-screen');
 let _lastIdleRender = -Infinity;
 requestAnimationFrame(tick);
