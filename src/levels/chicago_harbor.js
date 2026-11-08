@@ -173,6 +173,7 @@ export function buildHarbor(H, ctx) {
             b.alive = false; b.sinkT = 0;
             fx.burst(b.sp.x, b.sp.z, lite ? 12 : 28);
             world.onCarDestroyed?.();
+            world.onBoatSunk?.(b.sp.x, b.sp.z);
           }
           if (b.sinkT >= 0 && b.sinkT < ROLL_T + SINK_T) {
             b.sinkT += dt;

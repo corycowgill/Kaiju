@@ -27,6 +27,7 @@ import audio from './audio.js';
 import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce, onGLBParsed, canonMaterialMaps } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
 import { batchCars } from './carBatch.js';
+import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
@@ -882,6 +883,8 @@ const world = {
     this._shakeTime = Math.max(this._shakeTime || 0, dur);
   },
   spawnExplosion: function (pos, scale = 1) {
+    // Missile / shell impacts that land on water also splash
+    if (pos.y < 3) waterImpact(this, pos.x, pos.z, 0.4 + 0.5 * scale, 'missile');
     this.effects.push(makeExplosion(this, pos, scale));
     audio.explosion(scale);
   },
@@ -1030,6 +1033,7 @@ function applyLevelLook(level) {
 function buildWorldCity() {
   world.crowdHit = null; // a level with festival crowds sets it (Chicago)
   world.festStages = null; // ...and its stages (chicago_fest.js: id, name, x, z, rot, h, group, destroyed)
+  world.water = null; // ...and its water surface API (chicago_water.js waterFX)
   const res = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT, level: selectedLevel });
   const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = res;
   world.buildings = buildings;
@@ -1044,6 +1048,7 @@ function buildWorldCity() {
   world.center = res.center || { x: 0, z: 0 };
   world.spawn = res.spawn || { x: 0, z: 0 };
   world.isWater = res.isWater || null;
+  bindWater(world);
   world.landPoint = res.landPoint || null;
   world.mapWater = res.mapWater || null;
   window.__barrier = res.barrier || _tokyoBarrier;
@@ -2896,6 +2901,7 @@ world.onBossSlam = () => {
   hurtKaiju(22);
   world.shake(1.0, 0.5);
 };
+world.onBoatSunk = (x, z) => boatSunk(world, x, z);
 world.onCarDestroyed = () => {
   state.carsCrushed++;
   audio.carCrush();
@@ -3378,6 +3384,7 @@ function fireBeam() {
     if (tg > 0 && tg < impactDist) { impactDist = tg; _beamImpact.copy(_beamOrigin).addScaledVector(_beamDir, tg).setY(0); }
   }
   if (impactDist < length) {
+    if (_beamImpact.y < 1.5) waterImpact(world, _beamImpact.x, _beamImpact.z, 2, 'beam');
     const fx = vfx.spawn('beamImpact', { world, pos: _beamImpact.clone(), color: cfg.color });
     if (fx) world.effects.push(fx);
     else world.spawnHitPulse(_beamImpact.clone(), cfg.color);
@@ -3584,6 +3591,7 @@ function fireUltimate() {
   const center = state.kaiju.root.position.clone();
   // Massive AOE damage in all variants -- the *visual* differs.
   damageInRadius(center, 130, 250, true);
+  waterImpact(world, center.x, center.z, 3, 'ult');
 
   if (cfg.variant === 'gojira') {
     // GOJIRA -- ATOMIC DEVASTATION
@@ -3779,7 +3787,7 @@ function updatePlayer(dt) {
   // Speed multipliers bumped: walk ~16 (was 11), sprint ~28 (was 18). Combined
   // with the per-monster `stats.speed` scalar this is roughly +50% across the
   // board so the kaiju actually feels like a kaiju.
-  const speed = state.monsterCfg.stats.speed * (sprint ? 32 : 18) * state.upgrades.speedMult;
+  const speed = state.monsterCfg.stats.speed * (sprint ? 32 : 18) * state.upgrades.speedMult * wadeSpeedMult();
 
   let mx = 0, mz = 0;
   if (keys.KeyW) mz += 1;
@@ -3893,7 +3901,8 @@ function updatePlayer(dt) {
         const impactPos = _impact.copy(k.root.position);
         world.spawnShockwave(impactPos, 0xffcc44, 55);
         world.spawnShockwave(impactPos, 0xffaa66, 30);
-        world.effects.push(makeDustBurst(world, impactPos, 22, 14));
+        // In water the splash replaces the dust (dust read as dirt on the lake)
+        if (!waterImpact(world, impactPos.x, impactPos.z, 2, 'stomp')) world.effects.push(makeDustBurst(world, impactPos, 22, 14));
         world.shake(1.2, 0.55);
         damageInRadius(impactPos, 36, 220, true);
         audio.stomp();
@@ -3915,7 +3924,7 @@ function updatePlayer(dt) {
       if ((state._lastPhase < Math.PI && phase >= Math.PI) || (state._lastPhase > phase)) {
         damageInRadius(k.root.position, 11, 60, false, true);
         world.shake(0.10, 0.12);
-        audio.footstep();
+        if (!waterFootfall(world, k.root.position, sprint)) audio.footstep();
       }
       state._lastPhase = phase;
     }
@@ -3985,7 +3994,7 @@ function updatePlayer(dt) {
       const impactPos = _impact.copy(k.root.position);
       world.spawnShockwave(impactPos, 0xffcc44, 56);
       world.spawnShockwave(impactPos, 0xffaa66, 34);
-      world.effects.push(makeDustBurst(world, impactPos, 28, 14));
+      if (!waterImpact(world, impactPos.x, impactPos.z, 2, 'stomp')) world.effects.push(makeDustBurst(world, impactPos, 28, 14));
       world.shake(1.1, 0.5);
       damageInRadius(impactPos, 38, 220, true);
       audio.stomp();
@@ -4147,11 +4156,21 @@ function updatePlayer(dt) {
       // demolish vehicles / soldiers walked over and chip nearby buildings
       damageInRadius(k.root.position, 7, 60, false, true);
       world.shake(0.08, 0.12);
-      audio.footstep();
+      if (!waterFootfall(world, k.root.position, sprint)) audio.footstep();
     }
     state._lastPhase = phase;
   }
   } // end else (procedural animation)
+
+  // Wading: depth under the kaiju eases the body down into the water and
+  // feeds the wake. The GLB path leaves root y alone outside a stomp jump,
+  // the procedural path rewrites it every frame (bob), so set vs. offset.
+  const airborne = (state._stompJumpT || 0) > 0;
+  updateWading(world, k.root.position, state.vel.x * (moving ? 1 : 0), state.vel.z * (moving ? 1 : 0), dt, airborne);
+  if (!airborne) {
+    if (k.glb) k.root.position.y = -wadeSink();
+    else k.root.position.y -= wadeSink();
+  }
 
   // Trigger powers
   if (keys.Digit1 || padInput.pressed.beam) fireBeam();
@@ -4368,12 +4387,20 @@ function updateWorld(dt) {
   // Debris physics
   for (let i = world.debris.length - 1; i >= 0; i--) {
     const d = world.debris[i];
-    d.userData.vel.y -= 30 * dt;
+    // A chunk that fell into water sinks slowly instead of bouncing
+    if (d.userData.sunk) d.userData.vel.y = -2.5;
+    else d.userData.vel.y -= 30 * dt;
     d.position.addScaledVector(d.userData.vel, dt);
     d.rotation.x += d.userData.angVel.x * dt;
     d.rotation.y += d.userData.angVel.y * dt;
     d.rotation.z += d.userData.angVel.z * dt;
-    if (d.position.y < 0) {
+    if (d.userData.sunk) {
+      if (d.position.y < -5) d.userData.life = 0;
+    } else if (d.position.y < 0 && !d.userData.landed && (d.userData.landed = true)
+      && waterImpact(world, d.position.x, d.position.z, 0.6, 'debris')) {
+      d.userData.sunk = true;
+      d.userData.vel.x *= 0.2; d.userData.vel.z *= 0.2;
+    } else if (d.position.y < 0) {
       d.position.y = 0;
       d.userData.vel.multiplyScalar(0.4);
       d.userData.vel.y = Math.abs(d.userData.vel.y) * 0.3;
