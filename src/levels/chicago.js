@@ -2704,25 +2704,132 @@ export function buildChicago(scene, world, opts, K) {
     for (const p of lots) parkLot(p.polygon);
   }
 
-  // ---- distant backdrop: suburbs west/north/south (nothing over the lake) ----
+  // ---- distant backdrop: neighbourhoods west/north/south (nothing over the lake) ----
+  // Beyond the play bounds, 470-730u out. One merged, UNLIT mesh: towers
+  // with setbacks and crowns, mid-rise slabs and low blocks, each with a
+  // tint (limestone, brick, glass, granite) times a baked sun shade per
+  // face, over a small procedural facade texture (floor bands, window
+  // rows, mullions) mapped in world units so it doesn't stretch. At this
+  // range the window grid mip-filters to a tone; what reads is the floor
+  // banding, light/shade sides, colour variety and the stepped massing,
+  // under the scene fog. MeshBasicMaterial adds no lit shader program (the
+  // old flat-grey instanced boxes were a lit MeshStandard variant).
+  // Massing is at the map's real scale (0.2 u/m): towers 8-16u wide (40-80 m),
+  // nothing over ~85u (Willis is 88u).
   {
-    const N = lite ? 60 : 110;
-    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x6f6a66, roughness: 0.95 }), N);
-    const dm = new THREE.Object3D();
+    const N = lite ? 90 : 220;
     const cx = (B.minX + B.maxX) / 2, cz = (B.minZ + B.maxZ) / 2;
+    const BAY = 6, STOREYS = 8; // world units per facade-texture repeat (u, v)
+    // Sun direction baked into the face shading (the noon look's sunOffset)
+    const L = new THREE.Vector3(6, 140, 50).normalize();
+    const TINTS = [0xc9c1b2, 0xb7b0a6, 0xd6d4ce, 0x8f6656, 0x7e93a6, 0x5f6c78, 0x75706c, 0xa9a297];
+    const pos = [], uv = [], col = [], idx = [];
+    const c = new THREE.Color(), cTop = new THREE.Color();
+    const n = new THREE.Vector3();
+    // One axis-aligned-in-local box (no bottom face), rotated ry about y
+    function addBox(x, y0, z, w, h, d, ry, tint, roof) {
+      const cs = Math.cos(ry), sn = Math.sin(ry);
+      const P = (lx, ly, lz) => [x + lx * cs + lz * sn, y0 + ly, z - lx * sn + lz * cs];
+      const hw = w / 2, hd = d / 2;
+      // sides: [corner a, corner b, local outward normal, face width]
+      const sides = [
+        [[-hw, hd], [hw, hd], [0, 1], w], [[hw, hd], [hw, -hd], [1, 0], d],
+        [[hw, -hd], [-hw, -hd], [0, -1], w], [[-hw, -hd], [-hw, hd], [-1, 0], d],
+      ];
+      for (const [a, b, nl, fw] of sides) {
+        n.set(nl[0] * cs + nl[1] * sn, 0, -nl[0] * sn + nl[1] * cs);
+        const shade = 0.62 + 0.38 * Math.max(0, n.dot(L)) / 0.34; // side faces: 0.62..1.0
+        c.copy(tint).multiplyScalar(Math.min(1, shade) * 0.86);
+        const v = pos.length / 3;
+        const u0 = (x * 0.37 + z * 0.61) / BAY; // per-building phase so seams don't line up
+        for (const [lx, lz, ly, uu] of [[a[0], a[1], 0, 0], [b[0], b[1], 0, fw], [b[0], b[1], h, fw], [a[0], a[1], h, 0]]) {
+          pos.push(...P(lx, ly, lz));
+          uv.push(u0 + uu / BAY, (y0 + ly) / STOREYS);
+          col.push(c.r, c.g, c.b);
+        }
+        idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
+      }
+      // roof: flat spandrel-coloured texel
+      cTop.copy(roof);
+      const v = pos.length / 3;
+      for (const [lx, lz] of [[-hw, hd], [hw, hd], [hw, -hd], [-hw, -hd]]) {
+        // uv: a spandrel texel (CanvasTexture flipY: v counts from the bottom)
+        pos.push(...P(lx, h, lz)); uv.push(0.5, 0.082); col.push(cTop.r, cTop.g, cTop.b);
+      }
+      idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
+    }
     for (let i = 0; i < N; i++) {
       // Angles from north (-z) round through west to south: x < lake
       const a = Math.PI * (0.5 + Math.random());
       const r = 470 + Math.random() * 260;
-      const h = 15 + Math.random() * (Math.random() < 0.15 ? 90 : 35);
-      dm.position.set(cx + Math.cos(a) * r, h / 2, cz + Math.sin(a) * r);
-      dm.rotation.set(0, Math.random() * Math.PI, 0);
-      dm.scale.set(14 + Math.random() * 30, h, 14 + Math.random() * 30);
-      dm.updateMatrix();
-      im.setMatrixAt(i, dm.matrix);
+      const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+      const ry = Math.random() * Math.PI;
+      // River North / Gold Coast (north) is the densest high-rise district
+      const north = Math.max(0, -Math.sin(a));
+      const roll = Math.random();
+      const tint = new THREE.Color(TINTS[(Math.random() * TINTS.length) | 0]);
+      const roof = tint.clone().lerp(new THREE.Color(0x8c8a86), 0.6).multiplyScalar(0.95);
+      if (roll < 0.14 + 0.22 * north) {
+        // Tower: 2-3 tiers stepping in, optional crown and mast
+        const h = 38 + Math.random() * 47;
+        let w = 9 + Math.random() * 7, d = w * (0.75 + Math.random() * 0.5), y = 0;
+        const tiers = Math.random() < 0.5 ? 2 : 3;
+        const split = tiers === 2 ? [0.68, 0.32] : [0.5, 0.3, 0.2];
+        for (let t = 0; t < tiers; t++) {
+          const th = h * split[t];
+          addBox(x, y, z, w, th, d, ry, tint, roof);
+          y += th; w *= 0.78; d *= 0.78;
+        }
+        if (Math.random() < 0.45) addBox(x, y, z, w * 0.55, 2 + Math.random() * 3, d * 0.55, ry, tint.clone().multiplyScalar(0.7), roof);
+        if (Math.random() < 0.3) addBox(x, y, z, 0.5, 6 + Math.random() * 10, 0.5, ry, new THREE.Color(0x55585c), roof);
+      } else if (roll < 0.55) {
+        // Mid-rise slab, sometimes with a lower podium
+        const h = 14 + Math.random() * 22;
+        const w = 12 + Math.random() * 16, d = 10 + Math.random() * 12;
+        if (Math.random() < 0.4) {
+          addBox(x, 0, z, w * 1.25, 4 + Math.random() * 3, d * 1.25, ry, tint.clone().multiplyScalar(0.92), roof);
+        }
+        addBox(x, 0, z, w, h, d, ry, tint, roof);
+      } else {
+        // Low blocks (3-8 storeys), often two side by side
+        const h = 3 + Math.random() * 6;
+        const w = 14 + Math.random() * 18, d = 12 + Math.random() * 14;
+        addBox(x, 0, z, w, h, d, ry, tint, roof);
+        if (Math.random() < 0.5) {
+          const ox = Math.cos(ry) * (w * 0.5 + 6), oz = -Math.sin(ry) * (w * 0.5 + 6);
+          addBox(x + ox, 0, z + oz, w * 0.7, h * (0.7 + Math.random() * 0.6), d, ry, new THREE.Color(TINTS[(Math.random() * TINTS.length) | 0]), roof);
+        }
+      }
     }
-    im.frustumCulled = false;
-    scene.add(im);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    geo.computeBoundingSphere();
+    // Facade tile: 6 bays x 10 storeys, light spandrel bands, dark window
+    // rows with per-pane variation (sky reflections), thin mullions.
+    const S = 128;
+    const cv = document.createElement('canvas'); cv.width = cv.height = S;
+    const g2 = cv.getContext('2d');
+    g2.fillStyle = '#e4e2dc'; g2.fillRect(0, 0, S, S);
+    const rowH = S / 10, bayW = S / 6;
+    for (let rI = 0; rI < 10; rI++) {
+      for (let bI = 0; bI < 6; bI++) {
+        const k = 92 + Math.random() * 46; // pane value: dark glass .. sky reflection
+        g2.fillStyle = `rgb(${k | 0},${(k + 8) | 0},${(k + 18) | 0})`;
+        g2.fillRect(bI * bayW + 1.5, rI * rowH + 4.5, bayW - 3, rowH - 5.5);
+      }
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 4;
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, fog: true }));
+    mesh.frustumCulled = false;
+    mesh.userData.backdrop = true;
+    mesh.matrixAutoUpdate = false; mesh.updateMatrix();
+    scene.add(mesh);
   }
 
   // ---- play-area barrier: a faint rectangle at the bounds ----
