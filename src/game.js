@@ -882,18 +882,25 @@ const world = {
     this._shakeMag = Math.max(this._shakeMag || 0, mag);
     this._shakeTime = Math.max(this._shakeTime || 0, dur);
   },
+  // The generic spawners build at most MAX_EFFECTS per frame: updateWorld
+  // keeps only the newest MAX_EFFECTS anyway, and an ult collapsing ~100
+  // buildings in one frame built ~1,700 effects only to drop ~1,500 the next
+  // (90-180 ms frames on desktop, 0.4-0.7 s at 4x CPU). Power visuals push
+  // directly.
+  _fxSpawned: 0,
+  _fxRoom: function () { return this._fxSpawned++ < MAX_EFFECTS; },
   spawnExplosion: function (pos, scale = 1) {
     // Missile / shell impacts that land on water also splash
     if (pos.y < 3) waterImpact(this, pos.x, pos.z, 0.4 + 0.5 * scale, 'missile');
-    this.effects.push(makeExplosion(this, pos, scale));
+    if (this._fxRoom()) this.effects.push(makeExplosion(this, pos, scale));
     audio.explosion(scale);
   },
-  spawnSparks: function (pos, n) { this.effects.push(makeSparks(this, pos, n)); },
+  spawnSparks: function (pos, n) { if (this._fxRoom()) this.effects.push(makeSparks(this, pos, n)); },
   spawnShockwave: function (pos, color, r) { this.effects.push(makeShockwave(this, pos, color, r)); },
-  spawnMuzzleFlash: function (pos, s) { this.effects.push(makeMuzzleFlash(this, pos, s)); },
-  spawnSmoke: function (pos, s) { this.effects.push(makeSmokePuff(this, pos, s)); },
-  spawnHitPulse: function (pos, color) { this.effects.push(makeHitPulse(this, pos, color)); },
-  spawnSmokeColumn: function (pos, height) { this.effects.push(makeSmokeColumn(this, pos, height)); },
+  spawnMuzzleFlash: function (pos, s) { if (this._fxRoom()) this.effects.push(makeMuzzleFlash(this, pos, s)); },
+  spawnSmoke: function (pos, s) { if (this._fxRoom()) this.effects.push(makeSmokePuff(this, pos, s)); },
+  spawnHitPulse: function (pos, color) { if (this._fxRoom()) this.effects.push(makeHitPulse(this, pos, color)); },
+  spawnSmokeColumn: function (pos, height) { if (this._fxRoom()) this.effects.push(makeSmokeColumn(this, pos, height)); },
   spawnBeam: function (origin, dir, len, color, glow) {
     this.effects.push(makeBeam(this, origin, dir, len, color, glow));
   },
@@ -4366,6 +4373,7 @@ function _disposeDebris(d) {
 }
 
 function updateWorld(dt) {
+  world._fxSpawned = 0;
   // Shared instanced sparks/shrapnel/embers (one draw for all of them).
   vfx.tickParticles(dt);
   // Effects
