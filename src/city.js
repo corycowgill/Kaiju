@@ -4529,7 +4529,7 @@ const CAR_GLBS = [
   { url: './assets/vehicles/kei_van.glb',     len: 3.4,  weight: 34, levels: ['tokyo'] },
   { url: './assets/vehicles/taxi_black.glb',  len: 4.7,  weight: 30, levels: ['tokyo'] }, // Chicago: yellow cab
   { url: './assets/vehicles/police_car.glb',  len: 4.8,  weight: 10, levels: ['tokyo'] }, // Japanese livery
-  { url: './assets/vehicles/small_truck.glb', len: 4.7,  weight: 20 },
+  { url: './assets/vehicles/small_truck.glb', len: 4.7,  weight: 20, levels: ['tokyo'] }, // Japanese kei truck
   // Tokyo-only until the CTA bus GLB lands (green Japanese livery)
   { url: './assets/vehicles/city_bus.glb',    len: 11.0, weight: 6, parked: false, levels: ['tokyo'] },
 ];
