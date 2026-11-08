@@ -475,8 +475,8 @@ function _normalizeLayout(L) {
   // polylines and car graph alike, by vertex, so junctions stay joined) and
   // drawn once
   const expressway = new Set(out.roads.filter((r) => r.expressway).map((r) => r.id));
-  const carriage = out.real ? _mergeCarriageways(out.roads) : { partner: new Map(), moved: new Map(), dropped: new Set() };
-  const onMid = (pts, id) => (carriage.partner.has(id) ? _onMidline(pts, carriage.partner.get(id), carriage.moved)
+  const carriage = out.real ? _mergeCarriageways(out.roads) : { dense: new Map(), moved: new Map(), dropped: new Set() };
+  const onMid = (pts, id) => (carriage.dense.has(id) ? _onMidline(pts, carriage.dense.get(id), carriage.moved)
     : pts.map((p) => carriage.moved.get(_vkey(p)) || p));
   for (const r of out.roads) r.points = onMid(r.points, r.id);
   out.roads = out.roads.filter((r) => !carriage.dropped.has(r.id));
@@ -569,12 +569,15 @@ function _nearestOn(x, z, pts) {
 }
 /** Overlapping parallel road pairs (same kind; sampled every 2u, 60%+ of the
  *  shorter beside the other within 20 deg with their ribbons overlapping).
- *  Returns partner (id -> the other road's original points and the pair's
- *  reach), the moves of every original vertex of both to the midpoint with
- *  the other line (by _vkey: junctions shared with cross streets move too)
- *  and the ids not drawn (the shorter of each pair; the kept one takes the
- *  wider width). */
+ *  Each road of a pair becomes a dense polyline (its vertices plus a point
+ *  every 3u) pulled to the midpoint with the other line where they overlap,
+ *  the pull fading out over TAPER u of road past the overlap so the centre
+ *  line bends back instead of kinking. Returns dense (id -> { pts, at: vertex
+ *  _vkey -> index }), moved (every paired vertex's new place, by _vkey, so
+ *  cross streets' junction vertices follow) and the ids not drawn (the
+ *  shorter of each pair; the kept one takes the wider width). */
 function _mergeCarriageways(roads) {
+  const TAPER = 8;
   const len = (r) => r.points.slice(1).reduce((t, p, i) => t + Math.hypot(p[0] - r.points[i][0], p[1] - r.points[i][1]), 0);
   const along = (r, s) => {
     let n = 0, hit = 0;
@@ -589,10 +592,38 @@ function _mergeCarriageways(roads) {
     }
     return hit / n;
   };
+  // a's dense polyline on the midline with b (reach: how far apart they pair)
+  const toMid = (a, b, reach) => {
+    const pts = [], at = new Map(), s = [];
+    let acc = 0;
+    a.points.forEach((p, i) => {
+      if (i > 0) {
+        const o = a.points[i - 1], l = Math.hypot(p[0] - o[0], p[1] - o[1]), k = Math.floor(l / 3);
+        for (let j = 1; j < k; j++) { pts.push([o[0] + (p[0] - o[0]) * j / k, o[1] + (p[1] - o[1]) * j / k]); s.push(acc + l * j / k); }
+        acc += l;
+      }
+      at.set(_vkey(p), pts.length);
+      pts.push(p.slice()); s.push(acc);
+    });
+    const off = pts.map(([x, z]) => { const q = _nearestOn(x, z, b.points); return q && q.d < reach ? [(q.p[0] - x) / 2, (q.p[1] - z) / 2] : null; });
+    // Taper: an unpaired point takes the nearest paired point's pull, fading
+    // to nothing TAPER u along the road
+    const out = pts.map((p, i) => {
+      if (off[i]) return [p[0] + off[i][0], p[1] + off[i][1]];
+      let best = null, w = 0;
+      for (let j = 0; j < pts.length; j++) {
+        if (!off[j]) continue;
+        const f = 1 - Math.abs(s[i] - s[j]) / TAPER;
+        if (f > w) { w = f; best = off[j]; }
+      }
+      return best ? [p[0] + best[0] * w, p[1] + best[1] * w] : p;
+    });
+    return { pts: out, at };
+  };
   const cand = roads.filter((r) => r.kind === 'lsd' || r.kind === 'major');
   const box = (r) => { const xs = r.points.map((p) => p[0]), zs = r.points.map((p) => p[1]); return [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)]; };
   const bb = new Map(cand.map((r) => [r, box(r)]));
-  const partner = new Map(), moved = new Map(), dropped = new Set(), done = new Set();
+  const dense = new Map(), moved = new Map(), dropped = new Set(), done = new Set();
   for (const r of cand) {
     if (done.has(r)) continue;
     const [ax0, ax1, az0, az1] = bb.get(r);
@@ -603,36 +634,26 @@ function _mergeCarriageways(roads) {
       const [sh, lo] = len(r) <= len(s) ? [r, s] : [s, r];
       if (along(sh, lo) < 0.6) continue;
       for (const [a, b] of [[r, s], [s, r]]) {
-        partner.set(a.id, { pts: b.points.map((p) => p.slice()), reach: m });
-        for (const p of a.points) {
-          const k = _vkey(p), q = _nearestOn(p[0], p[1], b.points);
-          if (!moved.has(k) && q && q.d < m) moved.set(k, [(p[0] + q.p[0]) / 2, (p[1] + q.p[1]) / 2]);
-        }
+        const d = toMid(a, b, m);
+        dense.set(a.id, d);
+        for (const [k, i] of d.at) if (!moved.has(k)) moved.set(k, d.pts[i]);
       }
       lo.width = Math.max(lo.width, sh.width);
       dropped.add(sh.id); done.add(r); done.add(s);
       break;
     }
   }
-  return { partner, moved, dropped };
+  return { dense, moved, dropped };
 }
-/** pts (original coordinates) of a paired road on its midline: vertices by
- *  the move map, plus a point every 3u between them pulled to the midpoint
- *  with the partner line, so both halves of the pair coincide. */
-function _onMidline(pts, mate, moved) {
-  const out = [];
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    if (i > 0) {
-      const o = pts[i - 1], k = Math.floor(Math.hypot(p[0] - o[0], p[1] - o[1]) / 3);
-      for (let j = 1; j < k; j++) {
-        const x = o[0] + (p[0] - o[0]) * j / k, z = o[1] + (p[1] - o[1]) * j / k, q = _nearestOn(x, z, mate.pts);
-        out.push(q && q.d < mate.reach ? [(x + q.p[0]) / 2, (z + q.p[1]) / 2] : [x, z]);
-      }
-    }
-    out.push(moved.get(_vkey(p)) || p);
+/** A paired road's points (original coordinates; the whole road or a graph
+ *  edge along it) on its dense midline polyline: the slice between its end
+ *  vertices, else vertex by vertex. */
+function _onMidline(pts, d, moved) {
+  const i0 = d.at.get(_vkey(pts[0])), i1 = d.at.get(_vkey(pts[pts.length - 1]));
+  if (i0 !== undefined && i1 !== undefined && i0 !== i1) {
+    return i0 < i1 ? d.pts.slice(i0, i1 + 1) : d.pts.slice(i1, i0 + 1).reverse();
   }
-  return out;
+  return pts.map((p) => moved.get(_vkey(p)) || p);
 }
 /** Ids of non-LSD roads that run along an LSD road (within 20 deg) with
  *  at least 70% of their length inside its ribbon. */
