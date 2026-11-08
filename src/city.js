@@ -217,6 +217,20 @@ const _lod1Attached = new Set(); // LOD0 urls whose twin registered (smoke test)
 // a moving car) the LOD1 geometry is drawn instead
 const LOD1_DIST = 150;
 
+const _isIdentity = (m) => m.elements.every((v, i) => Math.abs(v - (i % 5 === 0 ? 1 : 0)) < 1e-6);
+/** Copy of g with every attribute as plain floats (quantized / normalized
+ *  ints decoded), safe to transform in place. */
+function _floatGeom(g) {
+  const out = g.clone();
+  for (const [name, a] of Object.entries(out.attributes)) {
+    if (!a.isInterleavedBufferAttribute && a.array instanceof Float32Array && !a.normalized) continue;
+    const f = new Float32Array(a.count * a.itemSize);
+    const get = ['getX', 'getY', 'getZ', 'getW'];
+    for (let i = 0; i < a.count; i++) for (let k = 0; k < a.itemSize; k++) f[i * a.itemSize + k] = a[get[k]](i);
+    out.setAttribute(name, new THREE.BufferAttribute(f, a.itemSize));
+  }
+  return out;
+}
 /** Load url's _lod1 twin (if listed) and register its geometries against scene's meshes. */
 function _attachLod1(url, scene) {
   if (!LOD1_READY.has(url)) return Promise.resolve();
@@ -228,7 +242,15 @@ function _attachLod1(url, scene) {
       reportLoadError('LOD', url, new Error(`LOD1 mesh count mismatch (${m1.length} vs ${m0.length}), skipped`));
       return;
     }
-    m0.forEach((m, i) => _lod1ByGeom.set(m.geometry, m1[i].geometry));
+    // Twins are swapped geometry-only under the LOD0 node, so a LOD1 whose
+    // node transform differs (quantized phone GLBs carry their dequantize
+    // scale / offset on the mesh node) is moved into its LOD0's mesh space
+    scene.updateMatrixWorld(true); gltf.scene.updateMatrixWorld(true);
+    const rel = new THREE.Matrix4();
+    m0.forEach((m, i) => {
+      rel.copy(m.matrixWorld).invert().multiply(m1[i].matrixWorld);
+      _lod1ByGeom.set(m.geometry, _isIdentity(rel) ? m1[i].geometry : _floatGeom(m1[i].geometry).applyMatrix4(rel));
+    });
     _lod1Attached.add(url);
   }).catch((err) => {
     // LOD0 still works; the tile just keeps drawing full detail
