@@ -141,6 +141,7 @@ const RP = isMobile ? {
   shadowMap: Q_HIGH ? 1024 : 512,
   shadowHalf: 48,                                    // tight frustum (u)
   shadowType: THREE.PCFShadowMap,
+  shadowEvery: 2,                                   // shadow map refresh interval (frames)
   neon:      Q_HIGH ? 3 : 2,
   dynRes:    true,
 } : {
@@ -154,6 +155,7 @@ const RP = isMobile ? {
   shadowMap: 1024,
   shadowHalf: 112,
   shadowType: THREE.PCFSoftShadowMap,
+  shadowEvery: 2,
   neon:      Q_HIGH ? 3 : (Q_MED ? 3 : 4),   // MED was 5 (+3 pool = 10 lights > HIGH's 8)
   dynRes:    true,
 };
@@ -182,6 +184,14 @@ renderer.setPixelRatio(_curPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = RP.shadows;
 renderer.shadowMap.type = RP.shadowType;
+// The shadow pass (~100 instanced-building depth draws on desktop HIGH, and
+// a full scene traversal) re-renders every RP.shadowEvery frames instead of
+// every frame (see tick). Its casters are static buildings plus the kaiju;
+// the light matrix only changes when the map re-renders, so the map and
+// its lookup stay consistent and a moving kaiju's shadow trails by at most
+// one frame.
+if (RP.shadowEvery > 1) renderer.shadowMap.autoUpdate = false;
+let _shadowFrame = 0;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -5033,6 +5043,10 @@ function tick(now) {
   const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible');
   if (!loadingUp && (!idleScreen || now - _lastIdleRender >= IDLE_RENDER_MS)) {
     _lastIdleRender = now;
+    if (RP.shadows && RP.shadowEvery > 1 && ++_shadowFrame >= RP.shadowEvery) {
+      _shadowFrame = 0;
+      renderer.shadowMap.needsUpdate = true;
+    }
     if (composer) composer.render();
     else renderer.render(scene, camera);
   }
