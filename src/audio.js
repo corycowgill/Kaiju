@@ -96,6 +96,17 @@ const STAGE_GAIN = 0.8;
 // Monster variant (monsters.js cfg.variant) -> per-kaiju SFX suffix
 const KAIJU_SFX = { gojira: 'gorrak', ghidorah: 'tridon', mecha: 'mechra' };
 
+// Called every frame by the stage mix and the water beds: an AudioParam only gets a new target
+// when it moved by more than eps (each setTargetAtTime queues an automation
+// event; an exponential approach to the same target is the same curve). Every
+// writer of those params goes through here (eps 0 always writes), so the
+// cached target is never stale.
+function _aim(param, v, t, tc, eps) {
+  if (eps > 0 && param._aim !== undefined && Math.abs(param._aim - v) <= eps) return;
+  param._aim = v;
+  param.setTargetAtTime(v, t, tc);
+}
+
 class Audio {
   constructor() {
     this.ctx = null;
@@ -134,8 +145,8 @@ class Audio {
     setInterval(() => {
       if (this._amb && this.ctx && this._now() - this._ambT > 0.5) this._setAmbience(0, 0, 0);
       if (this.stageBus && this.ctx && this._now() - this._stageT > 0.5) this._fadeStages();
-      if (this._shore && this.ctx && this._now() - this._shoreT > 0.5) this._shore.g.gain.setTargetAtTime(0, this._now(), 0.4);
-      if (this._wade && this.ctx && this._now() - this._wadeT > 0.5) this._wade.g.gain.setTargetAtTime(0, this._now(), 0.3);
+      if (this._shore && this.ctx && this._now() - this._shoreT > 0.5) _aim(this._shore.g.gain, 0, this._now(), 0.4, 0);
+      if (this._wade && this.ctx && this._now() - this._wadeT > 0.5) _aim(this._wade.g.gain, 0, this._now(), 0.3, 0);
     }, 250);
   }
 
@@ -334,7 +345,7 @@ class Audio {
       this._wade = { src, g };
     }
     this._wadeT = t;
-    this._wade.g.gain.setTargetAtTime(target, t, 0.3);
+    _aim(this._wade.g.gain, target, t, 0.3, 0.002);
   }
 
   // Shore lapping bed. Call once per frame with the kaiju's distance to the
@@ -358,7 +369,7 @@ class Audio {
       this._shore = { src, g };
     }
     this._shoreT = t;
-    this._shore.g.gain.setTargetAtTime(target, t, 0.6);
+    _aim(this._shore.g.gain, target, t, 0.6, 0.002);
   }
 
   // Trim codec padding at a loop point: any extra decoded length is padding;
@@ -423,17 +434,17 @@ class Audio {
       // PA faces the crowd (stage front = local +Z): about -4 dB behind the stage
       const front = d > 1 ? ((kpos.x - st.x) * Math.sin(st.rot || 0) + (kpos.z - st.z) * Math.cos(st.rot || 0)) / d : 1;
       const g = k * k * (0.8 + 0.2 * front);
-      voice.g.gain.setTargetAtTime(g * STAGE_GAIN, t, 0.25);
-      voice.lp.frequency.setTargetAtTime(1200 + 17000 * g, t, 0.25);
+      _aim(voice.g.gain, g * STAGE_GAIN, t, 0.25, 0.002);
+      _aim(voice.lp.frequency, 1200 + 17000 * g, t, 0.25, 20);
       if (voice.pan) {
         const dx = (st.x - kpos.x) / (d || 1), dz = (st.z - kpos.z) / (d || 1);
-        voice.pan.pan.setTargetAtTime((dx * rx + dz * rz) * 0.8 * Math.min(1, d / 20), t, 0.15);
+        _aim(voice.pan.pan, (dx * rx + dz * rz) * 0.8 * Math.min(1, d / 20), t, 0.15, 0.005);
       }
       loudest = Math.max(loudest, g);
     }
-    this.stageBus.gain.setTargetAtTime(1, t, 0.3);
+    _aim(this.stageBus.gain, 1, t, 0.3, 0.002);
     // standing in front of a stage pulls the background score down
-    this.musicDuck.gain.setTargetAtTime(1 - 0.75 * loudest, t, 0.5);
+    _aim(this.musicDuck.gain, 1 - 0.75 * loudest, t, 0.5, 0.002);
   }
 
   _isPhone() {
@@ -514,14 +525,14 @@ class Audio {
 
   _fadeStages() {
     const t = this._now();
-    this.stageBus.gain.setTargetAtTime(0, t, 0.25);
-    this.musicDuck.gain.setTargetAtTime(1, t, 0.5);
+    _aim(this.stageBus.gain, 0, t, 0.25, 0);
+    _aim(this.musicDuck.gain, 1, t, 0.5, 0);
   }
 
   _stopStages() {
     for (const id of Object.keys(this._stageV)) this._dropStage(id);
     this._stageV = {};
-    if (this.musicDuck) this.musicDuck.gain.setTargetAtTime(1, this._now(), 0.5);
+    if (this.musicDuck) _aim(this.musicDuck.gain, 1, this._now(), 0.5, 0);
   }
 
   // Single tone with envelope and optional pitch slide
