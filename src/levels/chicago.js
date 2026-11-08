@@ -2460,6 +2460,32 @@ export function buildChicago(scene, world, opts, K) {
             for (const [k, m] of Object.entries(lens)) m.emissiveIntensity = k === on ? 1.6 : 0.04;
           },
         });
+      } else {
+        // Merged signal (one material, ~4x fewer draws): its emissive map is a
+        // lens MASK (R red, G green, B amber lens faces, black elsewhere); a
+        // shader hook turns it into the lit lens colour per a 3-float uniform
+        // driven by the same city-wide cycle
+        let pal = null;
+        K.propScene('chi_traffic_signal')?.traverse((o) => { if (o.isMesh && o.material.emissiveMap && /traffic_signal/.test(o.material.name)) pal = o.material; });
+        if (pal) {
+          const uLens = { value: new THREE.Vector3(0, 0, 0) }; // red, amber, green
+          pal.emissive.setRGB(1, 1, 1); pal.emissiveIntensity = 1.6;
+          pal.onBeforeCompile = (sh) => {
+            sh.uniforms.uLens = uLens;
+            sh.fragmentShader = 'uniform vec3 uLens;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#ifdef USE_EMISSIVEMAP
+              vec4 lensMask = texture2D( emissiveMap, vEmissiveMapUv );
+              totalEmissiveRadiance *= vec3( 1.0, 0.024, 0.01 ) * lensMask.r * uLens.x + vec3( 1.0, 0.4, 0.016 ) * lensMask.b * uLens.y + vec3( 0.03, 1.0, 0.25 ) * lensMask.g * uLens.z;
+            #endif`);
+          };
+          pal.customProgramCacheKey = () => 'chi-signal-lens';
+          pal.needsUpdate = true;
+          animators.push({
+            update(dt, time) {
+              const t = time % 16, g = t < 7, a = !g && t < 9, r = !g && !a;
+              uLens.value.set(r ? 1 : 0.025, a ? 1 : 0.025, g ? 1 : 0.025);
+            },
+          });
+        }
       }
     }
     // Bus shelters and hot-dog carts on arterial sidewalks
