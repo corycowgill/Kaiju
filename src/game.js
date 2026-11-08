@@ -5170,7 +5170,7 @@ function tick(now) {
 const IDLE_RENDER_MS = 66;
 // Traffic, flying debris and civilians (the phone-LOW box crowd; skinned
 // pedestrians stay individual), drawn batched (carBatch.js); items set per frame
-const _batchSets = [[null, (c) => c.root], [null, (d) => d], [null, (c) => c.root]];
+const _batchSets = [[null, (c) => c.root, 12], [null, (d) => d, 8], [null, (c) => c.root, 8]];
 const _viewFrustum = new THREE.Frustum(), _viewPM = new THREE.Matrix4();
 const _loadingScreenEl = document.getElementById('loading-screen');
 let _lastIdleRender = -Infinity;

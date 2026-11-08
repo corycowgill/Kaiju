@@ -57,8 +57,13 @@ const _parts = (c, r) => {
 
 /** Copy every live mover's visible parts into the batches. Call once per
  *  frame before rendering, after the movers and the camera have moved.
- *  sets: [[items, rootOf], ...] (rootOf(item) -> its root Object3D; an item
- *  is gone once item.dead or its root has no parent).
+ *  sets: [[items, rootOf, reach], ...] (rootOf(item) -> its root Object3D;
+ *  an item is gone once item.dead or its root has no parent; reach: a
+ *  radius around the root holding everything it draws).
+ *  The movers' world matrices are kept here, not by the renderer (their
+ *  roots get matrixWorldAutoUpdate off): updated once, and only for movers
+ *  whose reach is in view. Off-screen ones (skinned civilians: ~700 bones)
+ *  aren't drawn, so their matrices wait until they're back in view.
  *  cull=false (shader prewarm): batch every part, in view or not. */
 export function batchMovers(sets, root, camera, cull = true) {
   for (const b of _batches.values()) b.n = 0;
@@ -67,11 +72,18 @@ export function batchMovers(sets, root, camera, cull = true) {
     _pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     _frustum.setFromProjectionMatrix(_pm);
   }
-  for (const [items, rootOf] of sets) {
+  for (const [items, rootOf, reach = 12] of sets) {
     if (!items) continue;
     for (const c of items) {
       const r = rootOf(c);
       if (c.dead || !r.parent || !r.visible) continue;
+      if (cull) {
+        r.matrixWorldAutoUpdate = false;
+        _sphere.center.copy(r.position);
+        if (r.parent !== root) _sphere.center.applyMatrix4(r.parent.matrixWorld);
+        _sphere.radius = reach;
+        if (!_frustum.intersectsSphere(_sphere)) continue;
+      }
       r.updateMatrixWorld(true);
       for (const p of _parts(c, r)) {
         if (!p.visible && !p.userData.batched) continue; // hidden by someone else
