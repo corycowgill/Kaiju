@@ -4760,11 +4760,15 @@ export class Car {
    *  car lengths and stopping under 0.3 (one short list per edge, no
    *  all-pairs). Back to cruise speed on a clear road. */
   _follow(dt) {
-    const list = this.net._occ.get(this.edge);
+    let list = this.net._occ && this.net._occ.get(this.edge);
+    if (!list || this._occEdge !== this.edge) { this._occupy(this.edge); list = this.net._occ.get(this.edge); }
+    // Cars that stopped updating (removed without dying, e.g. the menu's
+    // shader-prewarm traffic) drop out after half a second
+    const now = this._seen = performance.now();
     let lead = null, gap = Infinity;
     for (let i = list.length - 1; i >= 0; i--) {
       const c = list[i];
-      if (c.dead) { list.splice(i, 1); continue; }
+      if (c.dead || now - c._seen > 500) { list.splice(i, 1); if (c !== this && !c.dead) c._occEdge = undefined; continue; }
       if (c === this || c.from !== this.from || c.t <= this.t) continue;
       if (c.t - this.t < gap) { gap = c.t - this.t; lead = c; }
     }
@@ -4935,7 +4939,6 @@ export function spawnCars(scene, count, cityRadius = 380, blockSize = 36) {
   const cars = [];
   if (_carNet && _carNet.edges.length) {
     const net = _carNet;
-    net._occ = new Map(); // a respawn starts the per-edge following lists over
     for (let i = 0; i < count; i++) {
       // Edge picked by length, so traffic density is even along the roads
       let r = Math.random() * net.total, ei = 0;
