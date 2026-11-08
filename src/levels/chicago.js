@@ -166,10 +166,10 @@ const CHICAGO_LANDMARK_GLBS = [
   // the street front is the narrow end (refits requested)
   { id: 'northern_trust_50_s_lasalle', file: 'northern_trust_50_s_lasalle.glb', trueHeightM: 53.2, face: 'east', ready: true },
   { id: 'manhattan_building', file: 'manhattan_building.glb', trueHeightM: 60.8, face: 'west', ready: true },
-  { id: 'lakeview_building_116_s_michigan', file: 'lakeview_building_116_s_michigan.glb', trueHeightM: 64.6, ready: true },
+  { id: 'lakeview_building_116_s_michigan', file: 'lakeview_building_116_s_michigan.glb', trueHeightM: 64.6, face: 'east', ready: true }, // refit: +Z the 11 m Michigan end
   { id: 'johnson_publishing_820_s_michigan', file: 'johnson_publishing_820_s_michigan.glb', trueHeightM: 45.6, face: 'east', ready: true }, // refit: +Z the 21 m Michigan end
   { id: 'renelle_403_n_wabash', file: 'renelle_403_n_wabash.glb', trueHeightM: 68.4, face: 'west', ready: true },
-  { id: 'chicago_motor_club', file: 'chicago_motor_club.glb', trueHeightM: 68.4, face: 'west', ready: true },
+  { id: 'chicago_motor_club', file: 'chicago_motor_club.glb', trueHeightM: 68.4, face: 'south', ready: true }, // refit: +Z the 14 m E Wacker Pl end
   { id: 'pontiac_building', file: 'pontiac_building.glb', trueHeightM: 53.2, face: 'east', ready: true },
   { id: 'silversmith_building', file: 'silversmith_building.glb', trueHeightM: 38, face: 'north', ready: true },
   // Michigan Ave front block of the club (b460's rear stays a kit block)
