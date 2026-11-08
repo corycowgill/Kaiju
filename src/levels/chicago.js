@@ -315,6 +315,8 @@ function _pool(bucket) {
   const own = CHICAGO_GENERIC_GLBS.filter((g) => _genericOK(g) && g.bucket === bucket).map((g) => CHI_BASE + g.file);
   return own.length ? own : TOKYO_GENERIC[bucket].map((n) => `./assets/buildings/${n}.glb`);
 }
+// The kit pieces a merged townhouse run (src row_merge) may use
+const ROW_BRICK = /gen_low2_(brick_shop|terracotta_comm|chicago_school|loft|retail_strip|warehouse)\.glb$/;
 /** Fill candidates for a lot of height h: its bucket's kit plus the wider
  *  low-rise commercial pieces (any whose maxH allows the height). */
 function _fillPool(h) {
@@ -527,7 +529,7 @@ function _normalizeLayout(L) {
     .filter((o) => !(o.landmark && lmIds.has(o.landmark))) // the landmark itself stands there
     .map((o) => {
       const r = o.cx !== undefined ? { x: +o.cx, z: +o.cz, w: +o.w, d: +o.d, rotY: +(o.rot || 0) } : _rect(o);
-      return { ...r, id: o.id, podiumOf: o.podiumOf || null, h: +(o.h ?? o.height ?? 12), style: o.style || null, phoneSkip: !!o.phoneSkip };
+      return { ...r, id: o.id, podiumOf: o.podiumOf || null, h: +(o.h ?? o.height ?? 12), style: o.style || null, phoneSkip: !!o.phoneSkip, rowMerge: o.src === 'row_merge' };
     })
     // Soldier Field's north wing walls need their own wall GLB (requested);
     // a generic block kit piece can't stand in for a 105 m x 10 m wall
@@ -2187,14 +2189,25 @@ export function buildChicago(scene, world, opts, K) {
     const cx = Math.floor(o.x / 24), cz = Math.floor(o.z / 24);
     const avoid = new Set();
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const u of picked.get((cx + i) + ':' + (cz + j)) || []) avoid.add(u);
-    const url = _pickGeneric(_bucket(o.h), avoid, o.h, o.w, o.d, L.scale || 0.2);
+    let url = _pickGeneric(_bucket(o.h), avoid, o.h, o.w, o.d, L.scale || 0.2);
+    // Merged townhouse runs (row_merge) take only the brick / terracotta
+    // commercial pieces: the garage and parking-deck roofs made the river
+    // banks a field of pale garages
+    let fillPool = fill ? _fillPool(o.h) : pool;
+    if (o.rowMerge) {
+      const brick = _fillPool(o.h).filter((u) => ROW_BRICK.test(u));
+      if (brick.length) {
+        fillPool = brick;
+        if (!ROW_BRICK.test(url)) url = brick[Math.floor(Math.random() * brick.length)];
+      }
+    }
     const k = cx + ':' + cz;
     if (!picked.has(k)) picked.set(k, []);
     picked.get(k).push(url);
     // Kit pieces stretch up to 1.3x per axis to fill the footprint (artist-
     // approved); low / short fill pieces up to 1.6x in plan (never taller
     // than the block), then repeat across what's left
-    K.queueGLB({ url, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: fill ? _fillPool(o.h) : pool, stretch: 1.3, fill });
+    K.queueGLB({ url, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: fillPool, stretch: 1.3, fill });
   };
   // Every block on every tier: phones used to skip 40% of the blocks under
   // 16u (~110 empty grey lots in the Loop), but the kit is instanced per
