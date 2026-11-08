@@ -158,6 +158,30 @@ const CHICAGO_LANDMARK_GLBS = [
   // Native 56 x 25 m (cloud-3d refit to the layout outline), long axis
   // east-west at the layout rot; the crown bay on the narrow east end over LaSalle
   { id: 'lasalle_120_n', file: 'lasalle_120_n.glb', trueHeightM: 152.7, ready: true },
+  // Tier A batches 2-3 (artist-3d, native to cartographer's footprints, +Z the
+  // notes' FRONTS face). face: the street on the address's side (even numbers
+  // west / north of the street). Corner lots whose +Z long face is on the cross
+  // street face it (Century on Adams, Reliance on Washington, Crane on 9th,
+  // Silversmith on Madison); no face: the model's front is its long side but
+  // the street front is the narrow end (refits requested)
+  { id: 'northern_trust_50_s_lasalle', file: 'northern_trust_50_s_lasalle.glb', trueHeightM: 53.2, face: 'east', ready: true },
+  { id: 'manhattan_building', file: 'manhattan_building.glb', trueHeightM: 60.8, face: 'west', ready: true },
+  { id: 'lakeview_building_116_s_michigan', file: 'lakeview_building_116_s_michigan.glb', trueHeightM: 64.6, ready: true },
+  { id: 'johnson_publishing_820_s_michigan', file: 'johnson_publishing_820_s_michigan.glb', trueHeightM: 45.6, ready: true },
+  { id: 'renelle_403_n_wabash', file: 'renelle_403_n_wabash.glb', trueHeightM: 68.4, face: 'west', ready: true },
+  { id: 'chicago_motor_club', file: 'chicago_motor_club.glb', trueHeightM: 68.4, face: 'west', ready: true },
+  { id: 'pontiac_building', file: 'pontiac_building.glb', trueHeightM: 53.2, face: 'east', ready: true },
+  { id: 'silversmith_building', file: 'silversmith_building.glb', trueHeightM: 38, face: 'north', ready: true },
+  // Michigan Ave front block of the club (b460's rear stays a kit block)
+  { id: 'chicago_athletic_assoc', file: 'chicago_athletic_assoc.glb', trueHeightM: 68.4, face: 'east', ready: true },
+  { id: 'lasalle_350_n', file: 'lasalle_350_n.glb', trueHeightM: 57, face: 'east', ready: true },
+  { id: 'lsd_644_n_hotel', file: 'lsd_644_n_hotel.glb', trueHeightM: 90.8, face: 'east', ready: true },
+  { id: 'century_building', file: 'century_building.glb', trueHeightM: 60.8, face: 'north', ready: true },
+  { id: 'reliance_building', file: 'reliance_building.glb', trueHeightM: 53.2, face: 'north', ready: true },
+  { id: 'crane_company_building', file: 'crane_company_building.glb', trueHeightM: 41.8, face: 'south', ready: true },
+  // Relief front (+Z) is the narrow end, on Madison (110 W: north side)
+  { id: 'st_peters_in_the_loop', file: 'st_peters_in_the_loop.glb', trueHeightM: 26.6, face: 'south', ready: true },
+  { id: 'chicago_club', file: 'chicago_club.glb', trueHeightM: 32, face: 'north', ready: true },
 ];
 // Generic downtown blocks, picked by height bucket like Tokyo's pools.
 // share: fraction of that bucket's blocks that use it (the rest stay boxes),
@@ -217,6 +241,9 @@ const CHICAGO_VEHICLE_GLBS = [
   { url: CHI_BASE + 'sedan_red.glb', len: 4.82, weight: 14, ready: true },
   { url: CHI_BASE + 'sedan_blue.glb', len: 4.82, weight: 12, ready: true },
   { url: CHI_BASE + 'sedan_silver.glb', len: 4.82, weight: 12, ready: true },
+  // Plain white box truck (artist-3d): 7.56 m, a full 6u kerb slot, so never
+  // parked; white body at the bus's 0.69 albedo for the noon bloom
+  { url: CHI_BASE + 'box_truck.glb', len: 7.5, weight: 8, parked: false, albedo: 0.69, ready: true },
 ];
 // Kit pieces placed many times: the generic bascule bridge (scaled to each
 // bridges[] entry, spans along its local X) and the L track segment (tiled
