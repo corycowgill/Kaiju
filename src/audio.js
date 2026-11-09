@@ -66,14 +66,14 @@ const SFX = {
 // encoder-delay header (older Safari) hand back 1105 samples of LAME priming
 // up front plus tail padding, which would click/gap at the loop point; when
 // the decoded buffer is longer than this, loop only the real content.
-const LOOP_SAMPLES = { loop_heli: 185220, loop_tank: 194040, loop_city: 348390, loop_lapping: 0 };
+const LOOP_SAMPLES = { loop_heli: 185220, loop_tank: 194040, loop_city: 348390, loop_lapping: 392490 };
 const MP3_PRIMING = 1105;
 const AAC_PRIMING = 1024;
 // Newer SFX ship as OGG + AAC (.m4a) instead of OGG + MP3
 const M4A_SFX = new Set(['water_step', 'water_splash', 'water_splash_sm', 'boat_sink', 'loop_lapping']);
-// Water samples aren't generated yet: until they land in assets/sfx/ (then flip
-// this) the water API plays its procedural fallbacks and nothing is fetched.
-const WATER_SAMPLES = false;
+// Water samples (assets/sfx/water_*, boat_sink_*, loop_lapping). With this off
+// the water API plays its procedural fallbacks and nothing is fetched.
+const WATER_SAMPLES = true;
 
 // Kaijupalooza! stage music (Chicago level). One looping mono track per stage,
 // keyed by the chicago_fest.js stage id; positional around the kaiju.

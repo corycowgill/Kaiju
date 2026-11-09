@@ -107,3 +107,33 @@ Total size: 2.53 MB (88 clips x 2 formats).
 | `boss_windup_2` | 0.90s | sfx | Giant robot weapon powering up, fast rising servo and turbine whine with electric buzz building tension. Length: 1 seconds (shaped: stretched to 0.9 s, +8 dB rising ramp) |
 | `boss_slam_warn_1` | 1.50s | sfx | Earthquake rumble building up, deep low groan rising in intensity with heavy metal creaking, ominous. Length: 2 seconds (shaped: reversed into a swell, last 1.5 s, +6 dB rising ramp) |
 | `boss_slam_warn_2` | 1.50s | sfx | Giant machine rearing up, deep hydraulic groan and rising bass drone with alarm horn, cinematic warning. Length: 2 seconds (shaped: reversed, stretched to 1.5 s, +6 dB rising ramp) |
+
+
+## Chicago water (OGG + M4A)
+
+These clips were generated with **Stable Audio 3 small-sfx** on the official `stabilityai/stable-audio-3` Hugging Face
+Space, using ZeroGPU and the user's quota, with no local model loaded. Settings were 8 steps, cfg 1.0 and the
+`pingpong` sampler.
+
+Processing matches the clips above: mono, trimmed, faded and levelled under the score. Targets are momentary-max
+-21 LUFS for wading steps, -16 for the big splash, -20 for the small splash and -19 for boat sinks. The lapping loop
+is an 8.9 s equal-power crossfaded loop at -26 LUFS. Files are encoded as OGG Vorbis q3 and AAC `.m4a` at 96 kbps,
+and `audio.js` loads OGG where supported and M4A otherwise.
+
+Hooks: `waterStep`, `waterSplash`, `waterWade` and `updateShore`, called from `src/waterPlay.js`.
+Total: 0.65 MB.
+
+| File | Duration | Prompt |
+|---|---|---|
+| `water_step_1` | 1.10s | Massive creature striding through shallow harbor water, thick splash and wave surge. Length: 1 seconds |
+| `water_step_2` | 1.10s | Elephant wading through a river, single heavy step, water splashing and swirling. Length: 1 seconds |
+| `water_step_3` | 1.10s | Heavy body plunging a leg into water, deep plunge splash with trickling runoff. Length: 1 seconds |
+| `water_step_4` | 1.10s | Giant monster foot stepping into deep lake water, heavy splash and deep slosh of displaced water, close. Length: 1 seconds |
+| `water_splash_1` | 1.95s | Giant wave crashing over a pier, heavy water impact and spray, outdoor. Length: 3 seconds |
+| `water_splash_2` | 2.80s | Huge concrete chunk crashing into a lake, massive splash, water spray raining down afterwards, cinematic. Length: 3 seconds |
+| `water_splash_3` | 2.21s | Enormous object falling into deep water, deep boom of impact and a towering splash with falling droplets. Length: 3 seconds |
+| `water_splash_sm_1` | 0.82s | Medium splash of a brick thrown into a pond, clean water splash. Length: 1 seconds |
+| `water_splash_sm_2` | 0.91s | Debris falling into water, a few quick splashes and drips. Length: 1 seconds |
+| `boat_sink_1` | 3.50s | Motorboat swamped by a wave, water rushing in, metal creaking, bubbling as it goes under. Length: 4 seconds |
+| `boat_sink_2` | 2.94s | Boat capsizing and sinking, splashing water, deep gurgles and air bubbles rising. Length: 4 seconds |
+| `loop_lapping` | 8.90s | Gentle lake waves lapping against a concrete shore, calm steady water sloshing, light wind, outdoor ambience. Length: 12 seconds |
