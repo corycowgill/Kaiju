@@ -520,13 +520,23 @@ if (RP.shadows) {
   sun.shadow.camera.top = H;   sun.shadow.camera.bottom = -H;
   sun.shadow.camera.near = 1;   sun.shadow.camera.far = 290;
   sun.shadow.bias = -0.0005;
-  if (RP.shadowCasterLayer) sun.shadow.camera.layers.set(RP.shadowCasterLayer);
 }
 scene.add(sun);
-/** Put a caster on the phone shadow layer (RP.shadowCasterLayer): every mesh
- *  under root, since three tests layers per object. No-op on desktop. */
+/** Phones: mark root as a shadow caster (RP.shadowCasterLayer on every mesh
+ *  under it). The layer is only a marker: three r160's shadow pass tests
+ *  object layers against the MAIN camera, not the shadow camera, so the
+ *  casters are enforced by restrictShadowCasters() below. No-op on desktop. */
 function markShadowCaster(root) {
   if (RP.shadowCasterLayer && root) root.traverse((o) => { if (o.isMesh) o.layers.enable(RP.shadowCasterLayer); });
+}
+/** Phones: castShadow off for every mesh under root that isn't a marked
+ *  caster (the city's building / prop tiles drew ~88 depth draws per
+ *  shadow update for shadows inside the +-48u window; they still receive).
+ *  Run on the scene at game start and on each wave's spawns. */
+function restrictShadowCasters(root) {
+  if (!RP.shadowCasterLayer || !root) return;
+  const bit = 1 << RP.shadowCasterLayer;
+  root.traverse((o) => { if (o.isMesh && o.castShadow && !(o.layers.mask & bit)) { o.castShadow = false; o.userData.phoneNoCast = true; } });
 }
 // Cool back/rim light opposite the sunset key. No shadows (cheap); it
 // separates kaiju and vehicle silhouettes from the warm background.
@@ -2341,6 +2351,7 @@ async function _startGameInner(key) {
   // tree once and flip the flags so the shadow pass picks up every limb.
   k.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   markShadowCaster(k.root);
+  restrictShadowCasters(scene); // the city is placed by now (GLB flush above)
   // Cache named limb refs so per-frame animation skips getObjectByName tree
   // walks. GLB rigs may not expose these names; nulls are fine, the call
   // sites already null-check.
@@ -2803,6 +2814,8 @@ function startWave(n) {
       const sol = new Soldier(sx, sz); scene.add(sol.root); enemies.push(sol);
     }
   }
+  // Phones: of this wave's spawns only the marked big enemies cast
+  for (const e of enemies) restrictShadowCasters(e.root);
 }
 
 // ---- Floating score popups (HTML overlay) ----
