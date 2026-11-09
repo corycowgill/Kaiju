@@ -3479,7 +3479,7 @@ function fireBeam() {
       const td = _tmpV1.copy(tgt.root.position).sub(_beamOrigin).dot(_beamDir);
       if (td > 0 && td < det) det = td;
     }
-    fireAtomicBreath(scene, _beamOrigin, _beamDir, det, cfg.color, _atomicDetonate);
+    fireAtomicBreath(scene, _beamOrigin, _beamDir, det, cfg.color, _atomicDetonate, { kaijuRoot: state.kaiju.root, world });
   } else if (impactDist < length) {
     if (_beamImpact.y < 1.5) waterImpact(world, _beamImpact.x, _beamImpact.z, 2, 'beam');
     const fx = vfx.spawn('beamImpact', { world, pos: _beamImpact.clone(), color: cfg.color });
