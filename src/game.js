@@ -1,8 +1,8 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', 'f7892c5+', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.11.121', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
-import { LoneSoldier, loadInfantryView } from './loneSoldier.js';
+import { LoneSoldier, loadLoneView } from './loneSoldier.js';
 import { resolveStructureContact } from './buildingCollision.js';
 window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -2453,7 +2453,7 @@ async function _startGameInner(key) {
 
   if (modePicker.value === 'lone') {
     const role = document.getElementById('lone-role').value;
-    const viewModel = role === 'infantry' ? await loadInfantryView() : null;
+    const viewModel = await loadLoneView(role);
     lone = new LoneSoldier({world, state, camera, role, viewModel,
       sound: () => audio.hit(), finish: won => {
         gameOver(won); lone.hud.style.display = 'none';

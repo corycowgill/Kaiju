@@ -130,7 +130,7 @@ const enemies = await imp('enemies.js');
 const { loadKaijuModel } = await imp('kaijuLoader.js');
 const vfx = await imp('vfx.js');
 const assetCache = await imp('assetCache.js');
-const { loadInfantryView } = await imp('loneSoldier.js');
+const { loadLoneView } = await imp('loneSoldier.js');
 const carBatch = await imp('carBatch.js');
 const effects = await imp('effects.js');
 
@@ -138,16 +138,34 @@ const scene = new THREE.Scene();
 const world = new Proxy({ scene, enemies: [], effects: [], shells: [], debris: [], time: 0 },
   { get: (t, k) => (k in t ? t[k] : noop) });
 await step('vfx.init', () => { vfx.init(scene); vfx.registerAllBuilders(effects); });
-await step('first-person infantry asset', async () => {
-  const view = await loadInfantryView();
-  let draws = 0, tris = 0;
+for (const role of ['infantry','tank','helicopter']) await step(`first-person ${role} asset`, async () => {
+  const view = await loadLoneView(role);
+  let draws = 0, tris = 0, pbr = 0, occluded = 0;
   const materials = new Set();
   view.traverse(o => { if (o.isMesh) {
     draws++; tris += (o.geometry.index?.count || o.geometry.attributes.position.count) / 3;
     materials.add(o.material.name);
+    if(o.material.normalMap && o.material.roughnessMap)pbr++;
+    if(o.geometry.attributes.color)occluded++;
+    const normals=o.geometry.attributes.normal;
+    for(let i=0;i<normals.count;i++) {
+      const length=Math.hypot(normals.getX(i),normals.getY(i),normals.getZ(i));
+      if(!Number.isFinite(length)||length<.9||length>1.1){fail(`${role} view contains invalid normals`);break;}
+    }
   } });
-  if (draws > 8 || tris > 25000) fail(`infantry view budget: ${draws} draws, ${tris} tris`);
-  if (![...materials].some(n => /sleeve/i.test(n)) || ![...materials].some(n => /glove/i.test(n))) fail('infantry view missing arms/glove materials');
+  if (draws > 24 || tris > 40000) fail(`${role} view budget: ${draws} draws, ${tris} tris`);
+  if (![...materials].some(n => /sleeve/i.test(n)) || ![...materials].some(n => /glove/i.test(n))) fail(`${role} view missing arms/glove materials`);
+  if(!view.getObjectByName('MUZZLE'))fail(`${role} view missing muzzle anchor`);
+  if(role!=='infantry'&&!view.getObjectByName('CREW_CONTROLS'))fail(`${role} view missing crew controls`);
+  if(pbr<4||!occluded)fail(`${role} view missing PBR surfaces / baked occlusion`);
+  if(role!=='infantry') {
+    view.updateMatrixWorld(true);
+    for(const direction of [new THREE.Vector3(0,1,-.15),new THREE.Vector3(0,-1,-.1),
+      new THREE.Vector3(1,0,-.15),new THREE.Vector3(-1,0,-.15),new THREE.Vector3(0,0,-1)]) {
+      const ray=new THREE.Raycaster(new THREE.Vector3(),direction.normalize(),.01,3);
+      if(!ray.intersectObject(view,true).length)fail(`${role} cabin has an unsealed roof/floor/side/window`);
+    }
+  }
 });
 await step('level data', () => city.loadLevelData(level));
 if (Q.GLB_CONTENT) await step('tree/ped/car templates', () => Promise.all([city.loadTreeTemplates(undefined, level), city.loadPedestrianTemplates(), city.loadCarTemplates(undefined, level)]));

@@ -1,13 +1,36 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { attachViewDetails } from './loneSoldierView.js';
 
-export async function loadInfantryView() {
-  const response = await fetch('./assets/viewmodels/infantry_view.glb');
-  if (!response.ok) throw new Error('Infantry viewmodel failed to load');
-  const {scene} = await new GLTFLoader().parseAsync(await response.arrayBuffer(), './assets/viewmodels/');
-  scene.traverse(o => { if(o.isMesh) {o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;} });
-  return scene;
+const viewTemplates = new Map();
+const sharedViewTextures = new Map();
+export async function loadLoneView(role) {
+  if (!['infantry','tank','helicopter'].includes(role)) throw new Error(`Unknown soldier view: ${role}`);
+  if (!viewTemplates.has(role)) viewTemplates.set(role,(async()=>{
+    const {cachedFetch}=await import('./assetCache.js');
+    const bytes=await cachedFetch(`./assets/viewmodels/${role}_view.glb`);
+    const {scene,parser}=await new GLTFLoader().parseAsync(bytes,'./assets/viewmodels/');
+    scene.traverse(o=>{if(o.isMesh){
+      o.geometry.userData.shared=true;
+      for(const slot of ['map','emissiveMap','normalMap','roughnessMap','metalnessMap']) {
+        const texture=o.material[slot];if(!texture)continue;
+        const index=parser.associations.get(texture)?.textures;
+        const source=parser.json.textures[index]?.source;
+        const uri=parser.json.images[source]?.uri;if(!uri)continue;
+        const key=uri+':'+texture.colorSpace;
+        if(sharedViewTextures.has(key)) {
+          const shared=sharedViewTextures.get(key);
+          if(shared!==texture){o.material[slot]=shared;texture.dispose();}
+        } else sharedViewTextures.set(key,texture);
+      }
+    }});
+    return scene;
+  })().catch(error=>{viewTemplates.delete(role);throw error;}));
+  const view=(await viewTemplates.get(role)).clone(true);
+  view.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;}});
+  return view;
 }
+export const loadInfantryView = () => loadLoneView('infantry');
 
 export const UNITS = {
   infantry: { name: 'Infantry', hp: 100, speed: 9, eye: 1.8, damage: 18, interval: .12 },
@@ -38,41 +61,32 @@ export class LoneSoldier {
     this.hud.innerHTML='<div class="lone-panel" id="lone-status"></div><div class="lone-crosshair" aria-hidden="true"></div><div class="lone-controls lone-panel">WASD move · Mouse aim · Hold fire / RT shoot · Shift sprint<br>Helicopter: E / Space ascend · Q / C descend · Esc pause</div><div class="lone-panel" id="lone-target"></div>';
     document.body.append(this.hud);
     this.view = new THREE.Group(); this.camera.add(this.view); world.scene.add(camera);
-    if (role === 'infantry') {
-      if (viewModel) this.view.add(viewModel);
-    } else {
-    const mat = new THREE.MeshStandardMaterial({color:0x344047,metalness:.65,roughness:.55});
-    const gun = new THREE.Mesh(new THREE.BoxGeometry(role === 'infantry' ? .09 : .18,.10,role === 'infantry' ? .35 : .85),mat);
-    gun.position.set(.25,-.25,-.7); this.view.add(gun);
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(.018,.022,.55,8),mat);
-    barrel.rotation.x=Math.PI/2;barrel.position.set(.25,-.22,-1);this.view.add(barrel);
-    if(role !== 'infantry') {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(1.4,.24,.3),mat);
-      panel.position.set(0,-.57,-.7); this.view.add(panel);
-    }
-    if(role === 'helicopter') {
-      for(const side of [-1,1]) {
-        const strut=new THREE.Mesh(new THREE.BoxGeometry(.055,1.5,.08),mat);
-        strut.position.set(side*.65,0,-.9);strut.rotation.z=side*.2;this.view.add(strut);
-      }
-    }
+    if (viewModel) {
+      this.view.add(viewModel);
+      this.visuals=attachViewDetails(viewModel,role,camera);
     }
     this.motion = 0; this.recoil = 0;
+    this.steer=0;
 
   }
   cameraUpdate() {
     const kick = Math.sin(this.recoil * Math.PI / 2);
-    this.view.position.set(Math.sin(this.time * 8) * .006 * this.motion,
-      Math.cos(this.time * 16) * .004 * this.motion, kick * .025);
-    this.view.rotation.set(kick * .025, Math.sin(this.time * 8) * .004 * this.motion, kick * -.009);
+    const infantry=this.role==='infantry',heli=this.role==='helicopter';
+    const shake=heli ? .0015 : .001*this.motion;
+    this.view.position.set(Math.sin(this.time * (infantry?8:29)) * (infantry ? .006 : shake) * (infantry?this.motion:1),
+      Math.cos(this.time * (infantry?16:37)) * (infantry ? .004*this.motion : shake),kick*(this.role==='tank' ? .055 : .025));
+    this.view.rotation.set(kick*(this.role==='tank' ? .035 : .025),Math.sin(this.time*8)*.004*this.motion,
+      (heli?-this.steer*.025:0)+kick*-.009);
     this.camera.position.copy(this.pos);
     const {yaw,pitch}=this.state;
     this.camera.lookAt(this.pos.x+Math.sin(yaw)*Math.cos(pitch),this.pos.y+Math.sin(pitch),this.pos.z+Math.cos(yaw)*Math.cos(pitch));
+    this.visuals?.cameraUpdate();
   }
   shoot() {
     if (this.cooldown>0) return;
     this.cooldown=this.unit.interval; this.recoil=1; this.sound();
     this.cameraUpdate();
+    this.visuals?.fire();
     const dir=new THREE.Vector3();this.camera.getWorldDirection(dir);
     this.ray.set(this.pos,dir);let distance=450, hitKaiju=false;
     const root=this.state.kaiju.root;root.updateMatrixWorld(true);
@@ -104,6 +118,7 @@ export class LoneSoldier {
     state.yaw-=input.lookX*.045;state.pitch=THREE.MathUtils.clamp(state.pitch-input.lookY*.03,-1.35,1.35);
     let x=input.x,z=input.z,l=Math.max(1,Math.hypot(x,z));x/=l;z/=l;
     this.motion=THREE.MathUtils.lerp(this.motion,Math.min(1,Math.hypot(x,z)),Math.min(1,dt*10));
+    this.steer=THREE.MathUtils.lerp(this.steer,x,Math.min(1,dt*5));
     const speed=this.unit.speed*(input.sprint?1.45:1), old=pos.clone();
     pos.x+=(Math.sin(state.yaw)*z-Math.cos(state.yaw)*x)*speed*dt;
     pos.z+=(Math.cos(state.yaw)*z+Math.sin(state.yaw)*x)*speed*dt;
@@ -112,6 +127,7 @@ export class LoneSoldier {
     let blocked=this.role!=='helicopter' && world.isWater?.(pos.x,pos.z);
     world.buildingGrid?.forEachNear(pos.x,pos.z,40,b=>{if(!b.destroyed && pos.y<b.h+1 && Math.abs(pos.x-b.x)<b.w/2+1 && Math.abs(pos.z-b.z)<b.d/2+1)blocked=true;});
     if(blocked)pos.copy(old);
+    this.groundSpeed=Math.hypot(pos.x-old.x,pos.z-old.z)/Math.max(dt,1e-5);
     this.cameraUpdate();if(input.fire)this.shoot();
     const kp=k.root.position, dx=pos.x-kp.x,dz=pos.z-kp.z,d=Math.hypot(dx,dz);
     const moving=d>22;
@@ -144,15 +160,15 @@ export class LoneSoldier {
       }
     }
     if(d<16)this.hp-=28*dt;
+    this.visuals?.update(this,dt);
     document.getElementById('lone-status').textContent=`LONE SOLDIER · ${this.unit.name.toUpperCase()} · HP ${Math.max(0,Math.ceil(this.hp))} / ${this.unit.hp}`;
     document.getElementById('lone-target').innerHTML=`AI KAIJU · ${Math.ceil(this.kaijuHP)} / ${this.maxKaijuHP}<div class="lone-health-track"><div class="lone-health-fill" style="width:${this.kaijuHP/this.maxKaijuHP*100}%"></div></div><div class="lone-warning" role="status">${this.warning>0?'INCOMING BEAM — MOVE!':''}</div>`;
     if(this.hp<=0||this.kaijuHP<=0)this.finish(this.kaijuHP<=0);
   }
   dispose(){
     this.hud.remove();this.view.removeFromParent();
-    const materials=new Set();this.view.traverse(o=>{o.geometry?.dispose();if(o.material)materials.add(o.material);});
-    const textures=new Set();
-    for(const m of materials){for(const key of ['map','normalMap','roughnessMap','metalnessMap','emissiveMap'])if(m[key])textures.add(m[key]);m.dispose();}
-    for(const t of textures)t.dispose();
+    this.visuals?.dispose();
+    const materials=new Set();this.view.traverse(o=>{if(o.isMesh&&o.geometry&&!o.geometry.userData.shared)o.geometry.dispose();if(o.material)materials.add(o.material);});
+    for(const m of materials)m.dispose();
   }
 }
