@@ -27,6 +27,7 @@ import audio from './audio.js';
 import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadError, warnOnce, onGLBParsed, canonMaterialMaps } from './assetCache.js';
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
 import { batchCars, batchMovers } from './carBatch.js';
+import { fireAtomicBreath, updateAtomicBlasts, resetAtomicBlasts } from './atomicBlast.js';
 import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
@@ -2110,6 +2111,7 @@ async function _preuploadTextures(roots) {
 // resets per-run state and returns to the monster-select menu.
 function restartInPlace() {
   _teardownScene();
+  resetAtomicBlasts();
   if (state.kaiju && state.kaiju.mixer && !state.kaiju.glb) state.kaiju.mixer.stopAllAction();
   world.effects.length = 0;
   world.shells.length = 0;
@@ -3320,11 +3322,35 @@ function kaijuOneShot(names, fade = 0.15, timeScale = 1, opts) {
   return false;
 }
 
+// Gorrak's atomic breath detonation (atomicBlast.js calls this at the
+// detonation instant, a beat after the bolt arrives). Radial damage with
+// falloff: the core flattens what it touches, the outer ring softens.
+const ATOMIC_RANGE = 190;
+const ATOMIC_CORE_R = 30, ATOMIC_OUTER_R = 60;
+function _atomicDetonate(pos) {
+  if (state.gameOver || !state.kaiju) return;
+  const cfg = state.monsterCfg.beam;
+  const ground = _tmpV2.set(pos.x, 0.3, pos.z);
+  world.spawnShockwave(ground.clone(), cfg.color, ATOMIC_OUTER_R);
+  world.spawnShockwave(ground.clone(), 0xeef6ff, ATOMIC_CORE_R * 1.3);
+  world.spawnSmokeColumn(_tmpV2.set(pos.x, 0, pos.z).clone(), isMobile ? 28 : 55);
+  if (!isMobile) world.spawnExplosion(_tmpV2.set(pos.x, Math.max(pos.y, 6), pos.z).clone(), 3); // fireball + pooled light
+  world.shake(1.5, 0.9);
+  damageInRadius(pos, ATOMIC_CORE_R, cfg.damage * 2.2, true);
+  damageInRadius(pos, ATOMIC_OUTER_R, cfg.damage * 0.5, true);
+  waterImpact(world, pos.x, pos.z, 3, 'ult');
+  if (typeof audio.atomicBlast === 'function') audio.atomicBlast(isMobile ? 0.8 : 1);
+  else audio.explosion(3);
+}
+
 function fireBeam() {
   const cfg = state.monsterCfg.beam;
   if (state.rage < cfg.cost || state.cooldowns.beam > 0) return;
   state.rage -= cfg.cost;
-  state.cooldowns.beam = 4.0;
+  const variant = state.monsterCfg.variant;
+  // Gorrak's breath ends in an atomic detonation: a longer recharge
+  const atomic = variant === 'gojira';
+  state.cooldowns.beam = atomic ? 6.0 : 4.0;
 
   state._beamStanceT = 0.6; // pose: head leans forward, jaw opens
   if (state.kaiju.glb) {
@@ -3339,7 +3365,7 @@ function fireBeam() {
   _beamDir.y *= 0.4; _beamDir.normalize();
   _beamOrigin.addScaledVector(_beamDir, 5.5);
 
-  const length = 260;
+  const length = atomic ? ATOMIC_RANGE : 260;
   // Snap onto an enemy near the aim (horizontal angle only): ground units
   // within ~20 deg (they sit far below the beam's pitch and are small),
   // air units within ~14 deg. The snapped target is hit directly below,
@@ -3349,12 +3375,14 @@ function fireBeam() {
     _tmpV1.copy(tgt.root.position); _tmpV1.y += 3;
     _beamDir.subVectors(_tmpV1, _beamOrigin).normalize();
   }
-  world.spawnBeam(_beamOrigin, _beamDir, length, cfg.color, cfg.glow);
+  // The atomic breath travels as a bolt instead (fired below, once the
+  // detonation point is known)
+  if (!atomic) world.spawnBeam(_beamOrigin, _beamDir, length, cfg.color, cfg.glow);
   world.shake(0.3, 0.4);
   audio.beam();
+  if (atomic && typeof audio.atomicCharge === 'function') audio.atomicCharge();
 
   // Per-variant beam signature: a few extras spawned alongside the beam.
-  const variant = state.monsterCfg.variant;
   if (variant === 'ghidorah') {
     // GRAVITY BEAM = a continuous chain of lightning bolts running the
     // FULL beam length, plus extra branching arcs every 50u for the
@@ -3401,12 +3429,6 @@ function fireBeam() {
       toP.z += (Math.random() - 0.5) * 18;
       world.effects.push(makeChainLightning(world, fromP, toP, cfg.color, 1.0, 8));
     }
-  } else if (variant === 'gojira') {
-    // Atomic breath = pulsing green hit-pulses dotted along the beam path.
-    for (let i = 0; i < 4; i++) {
-      const p = _beamOrigin.clone().addScaledVector(_beamDir, 30 + i * 40);
-      world.spawnHitPulse(p, cfg.color);
-    }
   }
 
   // Hit detection along ray -- single raycast against the global body IM
@@ -3434,11 +3456,10 @@ function fireBeam() {
   if (hitB) {
     const hp = _beamImpact.clone();
     hitB.damage(beamDmg, hp, world);
-    world.spawnExplosion(hp, 0.8);
+    // (the atomic breath's impact visuals are its detonation)
+    if (!atomic) world.spawnExplosion(hp, 0.8);
     // Variant-specific impact signature at the hit point
-    if (variant === 'gojira') {
-      world.spawnHitPulse(hp, cfg.color); // bright green flash
-    } else if (variant === 'mecha') {
+    if (variant === 'mecha') {
       // Plasma cannon: secondary explosion ring for double-impact
       world.spawnShockwave(hp.clone().setY(0.3), cfg.color, 14);
     } else if (variant === 'ghidorah') {
@@ -3450,7 +3471,16 @@ function fireBeam() {
     const tg = -_beamOrigin.y / _beamDir.y;
     if (tg > 0 && tg < impactDist) { impactDist = tg; _beamImpact.copy(_beamOrigin).addScaledVector(_beamDir, tg).setY(0); }
   }
-  if (impactDist < length) {
+  if (atomic) {
+    // Detonate at the first building / ground hit, the snapped target, or
+    // max range, whichever comes first
+    let det = impactDist;
+    if (tgt) {
+      const td = _tmpV1.copy(tgt.root.position).sub(_beamOrigin).dot(_beamDir);
+      if (td > 0 && td < det) det = td;
+    }
+    fireAtomicBreath(scene, _beamOrigin, _beamDir, det, cfg.color, _atomicDetonate);
+  } else if (impactDist < length) {
     if (_beamImpact.y < 1.5) waterImpact(world, _beamImpact.x, _beamImpact.z, 2, 'beam');
     const fx = vfx.spawn('beamImpact', { world, pos: _beamImpact.clone(), color: cfg.color });
     if (fx) world.effects.push(fx);
@@ -4442,6 +4472,7 @@ function updateWorld(dt) {
     world.effects[i].tick(dt);
     if (world.effects[i].dead) world.effects.splice(i, 1);
   }
+  updateAtomicBlasts(dt); // pooled breath bolts + detonations (not in world.effects: never trimmed)
   // Cap effect count -- splice once instead of shifting in a loop (O(n) vs O(n^2))
   if (world.effects.length > MAX_EFFECTS) {
     const drop = world.effects.length - MAX_EFFECTS;
