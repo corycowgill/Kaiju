@@ -2,6 +2,7 @@
 console.info('[KAIJU HAVOC] build', 'f7892c5+', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
+import { LoneSoldier } from './loneSoldier.js';
 import { resolveStructureContact } from './buildingCollision.js';
 window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -1245,7 +1246,7 @@ window.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement === renderer.domElement) {
     state.yaw -= e.movementX * 0.0024;
     state.pitch -= e.movementY * 0.0018;
-    state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
+    state.pitch = THREE.MathUtils.clamp(state.pitch, lone ? -1.35 : -0.6, lone ? 1.35 : 0.4);
   }
 });
 
@@ -1610,7 +1611,7 @@ window.addEventListener('touchmove', (e) => {
     touchInput.lookLastY = t.clientY;
     state.yaw -= dx * 0.005;
     state.pitch -= dy * 0.004;
-    state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
+    state.pitch = THREE.MathUtils.clamp(state.pitch, lone ? -1.35 : -0.6, lone ? 1.35 : 0.4);
   }
 }, { passive: true });
 const endLook = (e) => {
@@ -1677,6 +1678,39 @@ const POWER_ICONS = {
     + '<ellipse class="o" cx="16" cy="16" rx="9" ry="3.3"/><ellipse class="o" cx="16" cy="16" rx="9" ry="3.3" transform="rotate(60 16 16)"/><ellipse class="o" cx="16" cy="16" rx="9" ry="3.3" transform="rotate(-60 16 16)"/>'
     + '<circle class="d" cx="16" cy="16" r="2.6"/>',
 };
+
+let lone = null;
+const modePicker = document.getElementById('game-mode');
+modePicker.addEventListener('change', () => {
+  const active = modePicker.value === 'lone';
+  document.getElementById('lone-role-label').hidden = !active;
+  document.getElementById('lone-menu-help').hidden = !active;
+  document.getElementById('startBtn').textContent = active ? 'DEPLOY · LONE SOLDIER' : 'UNLEASH HAVOC';
+});
+function updateLoneSoldier(dt) {
+  readGamepad();
+  lone.update(dt, {
+    x: (+!!keys.KeyD)-(+!!keys.KeyA)+touchInput.moveX+padInput.moveX,
+    z: (+!!keys.KeyW)-(+!!keys.KeyS)+touchInput.moveZ+padInput.moveZ,
+    vertical: (+!!(keys.KeyE || keys.Space))-(+!!(keys.KeyQ || keys.KeyC)),
+    sprint: keys.ShiftLeft || padInput.sprint || touchInput.sprint,
+    fire: state.mouseDown || touchInput.attackHeld || padInput.attack,
+    lookX: padInput.lookX, lookY: padInput.lookY,
+  });
+  world._fxSpawned = world._dbSpawned = 0;
+  vfx.tickParticles(dt); updateAtomicBlasts(dt);
+  for (let i=world.effects.length-1;i>=0;i--) { const e=world.effects[i];e.tick(dt);if(e.dead)world.effects.splice(i,1); }
+  while(world.effects.length>MAX_EFFECTS) finishEffect(world.effects.shift());
+  for(let i=world.debris.length-1;i>=0;i--) {
+    const d=world.debris[i];d.userData.life-=dt;
+    if(d.userData.life<=0){d.removeFromParent();_disposeDebris(d);world.debris.splice(i,1);continue;}
+    d.userData.vel.y-=25*dt;d.position.addScaledVector(d.userData.vel,dt);
+    if(d.position.y<.2){d.position.y=.2;d.userData.vel.multiplyScalar(.2);}
+  }
+  while(world.debris.length>MAX_DEBRIS){const d=world.debris.shift();d.removeFromParent();_disposeDebris(d);}
+  flushBodiesIM(world.bodiesIM);
+  for(const a of world.cityAnimators || [])a.update(dt,world.time);
+}
 
 // ------------------------- Monster select UI -------------------------
 // Build cards immediately with the emoji visible, THEN swap in rendered 3D
@@ -2115,6 +2149,7 @@ async function _preuploadTextures(roots) {
 // the city itself), rebuilds a fresh city from the cached templates,
 // resets per-run state and returns to the monster-select menu.
 function restartInPlace() {
+  lone?.dispose(); lone = null;
   _teardownScene();
   resetAtomicBlasts();
   if (state.kaiju && state.kaiju.mixer && !state.kaiju.glb) state.kaiju.mixer.stopAllAction();
@@ -2415,7 +2450,18 @@ async function _startGameInner(key) {
   // falls back to a procedural ambient drone if no asset is present.
   audio.startMusic();
 
-  startWave(1);
+  if (modePicker.value === 'lone') {
+    lone = new LoneSoldier({world, state, camera, role: document.getElementById('lone-role').value,
+      sound: () => audio.hit(), finish: won => {
+        gameOver(won); lone.hud.style.display = 'none';
+        document.getElementById('goTitle').textContent = won ? 'KAIJU NEUTRALIZED' : 'SOLDIER DOWN';
+        document.getElementById('goSubtitle').textContent = won ? 'The city survives. You held the line.' : 'The Kaiju prevailed. Redeploy and try again.';
+      }});
+    document.getElementById('powers').classList.add('hidden');
+    document.getElementById('help').classList.add('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('minimap').classList.add('hidden');
+  } else startWave(1);
   // Effects not linked behind the menu: phones queue them all now, desktop
   // links them one at a time after the first frames
   if (isMobile) _queueVfxLinks();
@@ -3062,7 +3108,7 @@ function gameOver(victory) {
   // Play death or dance animation on GLB model
   if (state.kaiju && state.kaiju.glb) {
     const glb = state.kaiju.glb;
-    if (victory) {
+    if (lone ? !victory : victory) {
       // As a one-shot so per-frame locomotion 'idle' can't override it.
       kaijuOneShot(['dance'], 0.3);
     } else {
@@ -3298,6 +3344,7 @@ function _atomicDetonate(pos) {
 }
 
 function fireBeam() {
+  if (lone) { return; }
   const cfg = state.monsterCfg.beam;
   if (state.rage < cfg.cost || state.cooldowns.beam > 0) return;
   state.rage -= cfg.cost;
@@ -3456,6 +3503,7 @@ function fireBeam() {
 }
 
 function fireRoar() {
+  if (lone) { return; }
   const cfg = state.monsterCfg.roar;
   if (state.rage < cfg.cost || state.cooldowns.roar > 0) return;
   state.rage -= cfg.cost;
@@ -3522,6 +3570,7 @@ function fireRoar() {
 }
 
 function fireCharge() {
+  if (lone) { return; }
   const cfg = state.monsterCfg.charge;
   if (state.rage < cfg.cost || state.cooldowns.charge > 0) return;
   state.rage -= cfg.cost;
@@ -3590,6 +3639,7 @@ function fireCharge() {
 }
 
 function fireStomp() {
+  if (lone) { return; }
   if (state.rage < 15 || state.cooldowns.stomp > 0) return;
   state.rage -= 15;
   state.cooldowns.stomp = 1.5;
@@ -3609,6 +3659,7 @@ function fireStomp() {
 }
 
 function fireUltimate() {
+  if (lone) { return; }
   if (state.rage < 100 || state.cooldowns.ult > 0) return;
   state.rage = 0;
   // Long cooldown to keep ultimates as a real moment of power instead
@@ -3733,6 +3784,7 @@ function fireUltimate() {
 }
 
 function fireMelee() {
+  if (lone) { lone.shoot(); return; }
   if (state.cooldowns.melee > 0) return;
   state.cooldowns.melee = 0.6;
   const forward = _fwd.set(Math.sin(state.yaw), 0, Math.cos(state.yaw));
@@ -3785,7 +3837,7 @@ function updatePlayer(dt) {
   if (padInput.lookX !== 0 || padInput.lookY !== 0) {
     state.yaw   -= padInput.lookX * 0.045;
     state.pitch -= padInput.lookY * 0.030;
-    state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
+    state.pitch = THREE.MathUtils.clamp(state.pitch, lone ? -1.35 : -0.6, lone ? 1.35 : 0.4);
   }
   const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
   // Speed multipliers bumped: walk ~16 (was 11), sprint ~28 (was 18). Combined
@@ -4272,6 +4324,7 @@ const _camCandidates = []; // reused across frames -- we only mutate length
 const _camBox = new THREE.Box3();
 const _camHit = new THREE.Vector3();
 function updateCamera() {
+  if (lone) { lone.cameraUpdate(); return; }
   const k = state.kaiju;
   if (!k) return;
   // Sun offset stays constant relative to the kaiju so shadows follow it
@@ -5062,8 +5115,8 @@ function tick(now) {
     world.time += dt;
     skyMat.uniforms.time.value = world.time;
     if (state.kaiju) {
-      updatePlayer(dt);
-      updateWorld(dt);
+      if (lone) updateLoneSoldier(dt);
+      else { updatePlayer(dt); updateWorld(dt); }
       _dynResTick(dtRaw);
     }
     updateCamera();

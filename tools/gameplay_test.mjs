@@ -110,3 +110,40 @@ test('textured power layers stay batched and all instance values stay finite', (
     effects.finishEffect(fx); assert.equal(scene.children.length, 0);
   }
 });
+
+// The new mode is independent of the normal kaiju wave loop.
+import { LoneSoldier, UNITS } from '../src/loneSoldier.js';
+test('Lone Soldier roles move, fire at the AI Kaiju, and respect cover', () => {
+  const oldDocument=globalThis.document;
+  const labels=new Map();
+  globalThis.document={body:{append(){}},createElement:()=>({style:{},remove(){},innerHTML:''}),
+    getElementById:id=>{if(!labels.has(id))labels.set(id,{textContent:'',innerHTML:''});return labels.get(id);}};
+  try {
+    for(const role of Object.keys(UNITS)) {
+      const scene=new THREE.Scene(),root=new THREE.Mesh(new THREE.BoxGeometry(10,30,10),new THREE.MeshBasicMaterial());root.position.y=15;scene.add(root);
+      const camera=new THREE.PerspectiveCamera();
+      const state={kaiju:{root,head:root},yaw:0,pitch:0,score:0};
+      const world={scene,bounds:{minX:-200,maxX:200,minZ:-200,maxZ:200},buildings:[],
+        buildingGrid:{forEachNear(){}},isWater:()=>false,spawnBeam(){},spawnHitPulse(){},spawnSparks(){},spawnExplosion(){}};
+      let result;
+      const mode=new LoneSoldier({world,state,camera,role,sound(){},finish:v=>result=v});
+      state.pitch=Math.atan2(15-mode.pos.y,85);
+      mode.shoot();assert.equal(mode.kaijuHP,2400-UNITS[role].damage,role+' should hit');
+      mode.cooldown=0;world.buildings=[{x:40,z:0,w:10,d:10,h:100}];
+      mode.shoot();assert.equal(mode.kaijuHP,2400-UNITS[role].damage,role+' cover blocks shot');
+      const before=mode.pos.clone();
+      mode.update(.1,{x:1,z:0,lookX:0,lookY:0,vertical:1,fire:false,sprint:false});
+      assert.ok(mode.pos.distanceTo(before)>0);
+      if(role==='helicopter')assert.ok(mode.pos.y>UNITS[role].eye);
+      assert.ok(root.position.x>0,'AI pursues the player');
+      world.buildings=[];
+      const idle={x:0,z:0,lookX:0,lookY:0,vertical:0};
+      mode.attackTimer=0;mode.update(.01,idle);assert.ok(mode.warning>0,'beam is telegraphed');
+      mode.warning=.01;const hp=mode.hp;mode.update(.02,idle);assert.ok(mode.hp<hp,'locked beam hits stationary unit');
+      mode.attackTimer=0;mode.update(.01,idle);mode.pos.x+=20;
+      mode.warning=.01;const safeHP=mode.hp;mode.update(.02,idle);assert.equal(mode.hp,safeHP,'moving away evades beam');
+      mode.kaijuHP=0;mode.update(.01,{x:0,z:0,lookX:0,lookY:0,vertical:0});assert.equal(result,true);
+      mode.dispose();assert.equal(camera.children.length,0);
+    }
+  } finally {globalThis.document=oldDocument;}
+});

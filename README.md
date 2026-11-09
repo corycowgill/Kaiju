@@ -218,3 +218,19 @@ The textured particles share one instanced draw per layer, with fewer particles
 on lower quality tiers. The shader fallback also works before the sheets load.
 `npm test` checks cleanup, finite instance data, draw counts, and missile
 impacts/cancellation. `?vfx=legacy` retains the original effects for comparison.
+
+
+## Lone Soldier
+
+Choose **Lone Soldier · First Person** in the main menu, select Infantry,
+Tank, or Helicopter, then choose the opposing Kaiju and deploy. Each role
+has its own health, movement speed, weapon damage and firing cadence.
+The AI Kaiju pursues you, crushes buildings and telegraphs aimed beam attacks.
+Move out of its firing solution or use buildings as cover. Defeat its health
+bar to win; losing your unit ends the sortie.
+
+WASD moves, mouse aims, hold left mouse / controller attack fires, Shift
+sprints, and Escape pauses. Helicopter altitude uses E/Space to ascend and
+Q/C to descend. A first-person weapon/cockpit view, crosshair, unit health and
+Kaiju health replace the monster powers HUD. The regular Havoc mode remains
+available from the mode selector.

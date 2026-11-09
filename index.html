@@ -1292,6 +1292,11 @@
   <h2 id="levelTitle"><span class="jp-line">東京破壊</span>TOKYO DESTRUCTION</h2>
   <div class="levels" id="levelCards"></div>
   <div id="highscore-display"></div>
+  <div style="display:flex;gap:12px;justify-content:center;margin:12px;flex-wrap:wrap">
+    <label>MODE <select id="game-mode" style="padding:10px;background:#192530;color:white"><option value="havoc">Kaiju Havoc</option><option value="lone">Lone Soldier · First Person</option></select></label>
+    <label id="lone-role-label" hidden>DEPLOY AS <select id="lone-role" style="padding:10px;background:#192530;color:white"><option value="infantry">Infantry · Rifle</option><option value="tank">Tank · Cannon</option><option value="helicopter">Helicopter · Autocannon</option></select></label>
+  </div>
+  <p id="lone-menu-help" hidden>Defend the city against an AI Kaiju. Choose your Kaiju opponent below.</p>
   <div class="starring">STARRING · 出演</div>
   <div class="monsters" id="monsterCards"></div>
   <button class="start-btn" id="startBtn" disabled>UNLEASH HAVOC</button>
