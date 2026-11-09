@@ -234,3 +234,27 @@ sprints, and Escape pauses. Helicopter altitude uses E/Space to ascend and
 Q/C to descend. A first-person weapon/cockpit view, crosshair, unit health and
 Kaiju health replace the monster powers HUD. The regular Havoc mode remains
 available from the mode selector.
+
+
+### Blender art sources
+
+The infantry first-person rifle, camouflage sleeves and posed gloves are
+loaded from `assets/viewmodels/infantry_view.glb`; its editable `.blend` and
+rebuild script `tools/build_infantry_view.py` are included. The model uses seven
+material batches, embedded camouflage texture, beveled rifle details, recoil
+and movement sway.
+
+Festival guests use a Blender-authored 756-triangle human mesh, with shaped
+faces, hair, separate shoes, rounded limbs and muted clothing colours.
+`tools/build_festival_person.py` rebuilds its editable `.blend` and runtime
+`festival_person.json`, including shader articulation metadata. Knee and
+elbow bends and varied complexions remain in the single instanced crowd draw.
+The deployment selectors and Lone Soldier HUD share the main HUD's colour,
+font, panel and spacing tokens.
+
+
+The crowd's shared 16-style cotton atlas adds weave, fabric folds, stripes,
+plaid, seam wear and original Chicago/lakefront/festival prints. It uses one
+texture sampler within the existing crowd material, with per-person atlas
+selection; it does not add a draw call per person. Rebuild the atlas with
+`python tools/build_crowd_shirts.py`.

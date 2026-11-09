@@ -2,7 +2,7 @@
 console.info('[KAIJU HAVOC] build', 'f7892c5+', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
-import { LoneSoldier } from './loneSoldier.js';
+import { LoneSoldier, loadInfantryView } from './loneSoldier.js';
 import { resolveStructureContact } from './buildingCollision.js';
 window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -2451,7 +2451,9 @@ async function _startGameInner(key) {
   audio.startMusic();
 
   if (modePicker.value === 'lone') {
-    lone = new LoneSoldier({world, state, camera, role: document.getElementById('lone-role').value,
+    const role = document.getElementById('lone-role').value;
+    const viewModel = role === 'infantry' ? await loadInfantryView() : null;
+    lone = new LoneSoldier({world, state, camera, role, viewModel,
       sound: () => audio.hit(), finish: won => {
         gameOver(won); lone.hud.style.display = 'none';
         document.getElementById('goTitle').textContent = won ? 'KAIJU NEUTRALIZED' : 'SOLDIER DOWN';

@@ -1,8 +1,25 @@
 import * as THREE from 'three';
 
+let authoredPerson = null, shirtAtlas = null;
+export async function loadCrowdGeometry() {
+  if (authoredPerson) return;
+  const response = await fetch('./assets/viewmodels/festival_person.json');
+  if (!response.ok) throw new Error('Festival person mesh failed to load');
+  const data = await response.json();
+  const g = new THREE.BufferGeometry();
+  for (const [name, size] of [['position',3],['normal',3],['color',3],['limb',2],['joint',2],['surface',2],['shirtUV',2]]) {
+    g.setAttribute(name,new THREE.Float32BufferAttribute(data[name],size));
+  }
+  g.setIndex(data.index);g.computeBoundingSphere();
+  shirtAtlas = await new THREE.TextureLoader().loadAsync('./assets/viewmodels/crowd_shirts.png');
+  shirtAtlas.colorSpace=THREE.SRGBColorSpace;shirtAtlas.anisotropy=4;
+  authoredPerson=g;
+}
+
 // One draw for the whole festival. Limbs animate in the vertex shader;
 // only steering and instance transforms run on the CPU, at 30 Hz.
 export function crowdGeometry() {
+  if (authoredPerson) return authoredPerson.clone();
   const parts = [ // width, height, depth, x, y, pivot, limb, colour
     [.13, .50, .16, -.10, .27, .52, -1, [.14, .18, .27]],
     [.13, .50, .16, .10, .27, .52, 1, [.14, .18, .27]],
@@ -14,7 +31,7 @@ export function crowdGeometry() {
   ];
   const pos = [], col = [], limb = [];
   for (const [w, h, d, x, y, pivot, id, colour] of parts) {
-    const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
+    const g = new THREE.SphereGeometry(1,8,5).scale(w/2,h/2,d/2).toNonIndexed();
     g.translate(x, y, 0);
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
@@ -26,6 +43,9 @@ export function crowdGeometry() {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setAttribute('limb', new THREE.Float32BufferAttribute(limb, 2));
+  g.setAttribute('shirtUV',new THREE.Float32BufferAttribute(new Float32Array(pos.length/3*2),2));
+  g.setAttribute('joint',new THREE.Float32BufferAttribute(new Float32Array(pos.length/3*2),2));
+  g.setAttribute('surface',new THREE.Float32BufferAttribute(col.flatMap((v,i)=>i%3===0?[col[i]+col[i+1]+col[i+2]>2.99?1:0,0]:[]),2));
   g.computeVertexNormals();
   return g;
 }
@@ -35,8 +55,16 @@ export function crowdMaterial(uTime) {
   mat.name = 'festival_animated_crowd';
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = uTime;
+    sh.uniforms.uShirtAtlas={value:shirtAtlas};
+    sh.uniforms.uHasShirts={value:shirtAtlas?1:0};
     sh.vertexShader = `uniform float uTime;
       attribute vec2 limb;
+      attribute vec2 joint;
+      attribute vec2 surface;
+      attribute vec2 shirtUV;
+      varying vec2 vShirtUV;
+      varying float vShirtMask;
+      varying float vShirtStyle;
       attribute vec3 crowdMotion;
       float swing() {
         float phase = uTime * mix(7.5, 14.0, crowdMotion.y) + crowdMotion.x;
@@ -46,12 +74,22 @@ export function crowdMaterial(uTime) {
       ` + sh.vertexShader
       .replace('#include <color_vertex>', `#include <color_vertex>
         #ifdef USE_INSTANCING_COLOR
-          vColor = color.r + color.g + color.b > 2.99 ? instanceColor.rgb : color;
+          vColor = mix(color, color * instanceColor.rgb, surface.x);
+          float complexion = fract(crowdMotion.x * 1.79);
+          vColor = mix(vColor, mix(vec3(.30,.16,.095),vec3(.86,.64,.46),complexion),surface.y);
         #endif`)
       .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
+        float flex = abs(joint.y) > .5 ? (abs(joint.y) < 1.5 ? max(0.0,swing()) * .65 : .25 + crowdMotion.y * .55) * crowdMotion.z : 0.0;
+        objectNormal.yz = mat2(cos(flex),sin(flex),-sin(flex),cos(flex)) * objectNormal.yz;
         float aN = abs(limb.y) > .5 ? swing() : 0.0;
         objectNormal.yz = mat2(cos(aN), sin(aN), -sin(aN), cos(aN)) * objectNormal.yz;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vShirtUV=shirtUV;vShirtMask=surface.x;vShirtStyle=floor(fract(crowdMotion.x*.837)*16.0);
+        if (abs(joint.y) > .5) {
+          float flexV = (abs(joint.y) < 1.5 ? max(0.0,swing()) * .65 : .25 + crowdMotion.y * .55) * crowdMotion.z;
+          vec2 relative = transformed.yz - vec2(joint.x,0.0);
+          transformed.yz = mat2(cos(flexV),sin(flexV),-sin(flexV),cos(flexV))*relative+vec2(joint.x,0.0);
+        }
         if (abs(limb.y) > .5) {
           float a = swing();
           vec2 yz = transformed.yz - vec2(limb.x, 0.0);
@@ -59,8 +97,21 @@ export function crowdMaterial(uTime) {
         }
         float beat = sin(uTime * mix(7.5, 28.0, crowdMotion.y) + crowdMotion.x);
         transformed.y += max(0.0, beat) * mix(.12, .045, crowdMotion.y) * crowdMotion.z;`);
+    sh.fragmentShader = `uniform sampler2D uShirtAtlas;
+      uniform float uHasShirts;
+      varying vec2 vShirtUV; varying float vShirtMask; varying float vShirtStyle;
+      ` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+        if(uHasShirts>.5 && vShirtMask>.5) {
+          float styleIndex=floor(vShirtStyle+.5);
+          vec2 tile=vec2(mod(styleIndex,4.0),3.0-floor(styleIndex/4.0));
+          vec2 sampleUV=(tile+clamp(vShirtUV,vec2(.012),vec2(.988)))/4.0;
+          vec3 cotton=texture2D(uShirtAtlas,sampleUV).rgb;
+          float printInk=smoothstep(.72,.89,cotton.r);
+          diffuseColor.rgb=mix(diffuseColor.rgb*cotton*1.65,vec3(.78,.75,.66),printInk*.85);
+        }
+      `);
   };
-  mat.customProgramCacheKey = () => 'festival-articulated-v1';
+  mat.customProgramCacheKey = () => 'festival-blender-shirts-v3';
   return mat;
 }
 

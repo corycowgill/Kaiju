@@ -10,7 +10,7 @@
 // to true in the commit that adds the last fest_* GLB.
 import * as THREE from 'three';
 import { dressFestival } from './festivalDressing.js';
-import { crowdGeometry, crowdMaterial, animateCrowd } from './festivalCrowd.js';
+import { loadCrowdGeometry, crowdGeometry, crowdMaterial, animateCrowd } from './festivalCrowd.js';
 import { assetURL } from '../assetCache.js';
 
 const FEST_URL = './assets/levels/chicago_fest.json';
@@ -106,6 +106,7 @@ export function festBuildingGLBs() {
 /** Fetch and normalise the festival layout; null when off or missing. */
 export async function loadFest() {
   if (!festEnabled()) return null;
+  await loadCrowdGeometry();
   try {
     const r = await fetch(FEST_URL, { cache: 'no-cache' });
     if (!r.ok) return null;
@@ -473,7 +474,7 @@ function _ledScreen(lite) {
 }
 
 // --------------- crowd ---------------
-const SHIRTS = [0xff3d8b, 0xff8a1f, 0xffd21f, 0x2fd4c0, 0x9b5cff, 0x4fb3ff, 0xd8d8d8, 0x222222, 0xe23030, 0x44cc55]; // white kept under the noon bloom threshold
+const SHIRTS = [0xa14545, 0xc28b54, 0xc8b575, 0x538b80, 0x726a8b, 0x5b819f, 0xc5c4b5, 0x343a3e, 0x9f584b, 0x647958];
 
 /** Festival-goers on the stage lawns, packed denser toward each stage:
  *  one InstancedMesh for every lawn (a single draw). lawns: [{ it, n }]. */
@@ -698,7 +699,7 @@ export function buildFest(scene, F, ctx) {
     const uTime = { value: 0 };
     const geom = crowdGeometry(), mat = crowdMaterial(uTime);
     const perU2 = !glb ? 0.08 : lite ? 0.22 : 0.62; // people per square unit
-    const cap = !glb ? 450 : lite ? 1600 : 5200;
+    const cap = !glb ? 450 : lite ? 1600 : 4400;
     const lawns = stages.filter(({ it }) => it.crowdArea && (glb || it.tier === 'main'));
     const area = (p) => { let s = 0; for (let i = 0; i < p.length; i++) { const [x0, z0] = p[i], [x1, z1] = p[(i + 1) % p.length]; s += x0 * z1 - x1 * z0; } return Math.abs(s) / 2; };
     const tot = lawns.reduce((s, { it }) => s + area(it.crowdArea), 0);

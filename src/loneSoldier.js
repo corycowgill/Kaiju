@@ -1,4 +1,13 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+export async function loadInfantryView() {
+  const response = await fetch('./assets/viewmodels/infantry_view.glb');
+  if (!response.ok) throw new Error('Infantry viewmodel failed to load');
+  const {scene} = await new GLTFLoader().parseAsync(await response.arrayBuffer(), './assets/viewmodels/');
+  scene.traverse(o => { if(o.isMesh) {o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;} });
+  return scene;
+}
 
 export const UNITS = {
   infantry: { name: 'Infantry', hp: 100, speed: 9, eye: 1.8, damage: 18, interval: .12 },
@@ -7,7 +16,7 @@ export const UNITS = {
 };
 
 export class LoneSoldier {
-  constructor({ world, state, camera, role, finish, sound }) {
+  constructor({ world, state, camera, role, finish, sound, viewModel }) {
     Object.assign(this, { world, state, camera, finish, sound });
     this.unit = UNITS[role]; this.role = role; this.pos = new THREE.Vector3();
     const kp = state.kaiju.root.position;
@@ -26,10 +35,12 @@ export class LoneSoldier {
     state.yaw = Math.atan2(kp.x-this.pos.x,kp.z-this.pos.z); state.pitch = 0;
     this.ray = new THREE.Raycaster(); this.box = new THREE.Box3(); this.hit = new THREE.Vector3();
     this.hud = document.createElement('div'); this.hud.id='lone-hud';
-    this.hud.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:8;color:white;font:600 16px system-ui;text-shadow:0 2px 4px black';
-    this.hud.innerHTML='<div style="position:absolute;top:24px;left:24px" id="lone-status"></div><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:30px">+</div><div style="position:absolute;bottom:28px;left:24px">WASD move · Mouse aim · Hold fire / RT shoot · Shift sprint<br>Helicopter: E / Space ascend · Q / C descend · Esc pause</div><div id="lone-target" style="position:absolute;top:24px;left:35%;width:40%"></div>';
+    this.hud.innerHTML='<div class="lone-panel" id="lone-status"></div><div class="lone-crosshair" aria-hidden="true"></div><div class="lone-controls lone-panel">WASD move · Mouse aim · Hold fire / RT shoot · Shift sprint<br>Helicopter: E / Space ascend · Q / C descend · Esc pause</div><div class="lone-panel" id="lone-target"></div>';
     document.body.append(this.hud);
     this.view = new THREE.Group(); this.camera.add(this.view); world.scene.add(camera);
+    if (role === 'infantry') {
+      if (viewModel) this.view.add(viewModel);
+    } else {
     const mat = new THREE.MeshStandardMaterial({color:0x344047,metalness:.65,roughness:.55});
     const gun = new THREE.Mesh(new THREE.BoxGeometry(role === 'infantry' ? .09 : .18,.10,role === 'infantry' ? .35 : .85),mat);
     gun.position.set(.25,-.25,-.7); this.view.add(gun);
@@ -45,16 +56,22 @@ export class LoneSoldier {
         strut.position.set(side*.65,0,-.9);strut.rotation.z=side*.2;this.view.add(strut);
       }
     }
+    }
+    this.motion = 0; this.recoil = 0;
+
   }
   cameraUpdate() {
-    this.view.position.z = this.cooldown > this.unit.interval * .8 ? .08 : 0;
+    const kick = Math.sin(this.recoil * Math.PI / 2);
+    this.view.position.set(Math.sin(this.time * 8) * .006 * this.motion,
+      Math.cos(this.time * 16) * .004 * this.motion, kick * .025);
+    this.view.rotation.set(kick * .025, Math.sin(this.time * 8) * .004 * this.motion, kick * -.009);
     this.camera.position.copy(this.pos);
     const {yaw,pitch}=this.state;
     this.camera.lookAt(this.pos.x+Math.sin(yaw)*Math.cos(pitch),this.pos.y+Math.sin(pitch),this.pos.z+Math.cos(yaw)*Math.cos(pitch));
   }
   shoot() {
     if (this.cooldown>0) return;
-    this.cooldown=this.unit.interval; this.sound();
+    this.cooldown=this.unit.interval; this.recoil=1; this.sound();
     this.cameraUpdate();
     const dir=new THREE.Vector3();this.camera.getWorldDirection(dir);
     this.ray.set(this.pos,dir);let distance=450, hitKaiju=false;
@@ -80,11 +97,13 @@ export class LoneSoldier {
     }
   }
   update(dt,input) {
+    this.recoil=Math.max(0,this.recoil-dt*13);
     this.time+=dt;this.cooldown=Math.max(0,this.cooldown-dt);
     const {state,world,pos}=this, k=state.kaiju;
     state.hp=this.hp;state.maxHp=this.unit.hp;state.rage=0;
     state.yaw-=input.lookX*.045;state.pitch=THREE.MathUtils.clamp(state.pitch-input.lookY*.03,-1.35,1.35);
     let x=input.x,z=input.z,l=Math.max(1,Math.hypot(x,z));x/=l;z/=l;
+    this.motion=THREE.MathUtils.lerp(this.motion,Math.min(1,Math.hypot(x,z)),Math.min(1,dt*10));
     const speed=this.unit.speed*(input.sprint?1.45:1), old=pos.clone();
     pos.x+=(Math.sin(state.yaw)*z-Math.cos(state.yaw)*x)*speed*dt;
     pos.z+=(Math.cos(state.yaw)*z+Math.sin(state.yaw)*x)*speed*dt;
@@ -126,12 +145,14 @@ export class LoneSoldier {
     }
     if(d<16)this.hp-=28*dt;
     document.getElementById('lone-status').textContent=`LONE SOLDIER · ${this.unit.name.toUpperCase()} · HP ${Math.max(0,Math.ceil(this.hp))} / ${this.unit.hp}`;
-    document.getElementById('lone-target').innerHTML=`AI KAIJU · ${Math.ceil(this.kaijuHP)} / ${this.maxKaijuHP}<div style="height:8px;background:#222"><div style="height:100%;background:#ef664c;width:${this.kaijuHP/this.maxKaijuHP*100}%"></div></div><div style="color:#ffbe69">${this.warning>0?'INCOMING BEAM — MOVE!':''}</div>`;
+    document.getElementById('lone-target').innerHTML=`AI KAIJU · ${Math.ceil(this.kaijuHP)} / ${this.maxKaijuHP}<div class="lone-health-track"><div class="lone-health-fill" style="width:${this.kaijuHP/this.maxKaijuHP*100}%"></div></div><div class="lone-warning" role="status">${this.warning>0?'INCOMING BEAM — MOVE!':''}</div>`;
     if(this.hp<=0||this.kaijuHP<=0)this.finish(this.kaijuHP<=0);
   }
   dispose(){
     this.hud.remove();this.view.removeFromParent();
     const materials=new Set();this.view.traverse(o=>{o.geometry?.dispose();if(o.material)materials.add(o.material);});
-    for(const m of materials)m.dispose();
+    const textures=new Set();
+    for(const m of materials){for(const key of ['map','normalMap','roughnessMap','metalnessMap','emissiveMap'])if(m[key])textures.add(m[key]);m.dispose();}
+    for(const t of textures)t.dispose();
   }
 }

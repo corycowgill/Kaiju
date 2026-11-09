@@ -130,6 +130,7 @@ const enemies = await imp('enemies.js');
 const { loadKaijuModel } = await imp('kaijuLoader.js');
 const vfx = await imp('vfx.js');
 const assetCache = await imp('assetCache.js');
+const { loadInfantryView } = await imp('loneSoldier.js');
 const carBatch = await imp('carBatch.js');
 const effects = await imp('effects.js');
 
@@ -137,6 +138,17 @@ const scene = new THREE.Scene();
 const world = new Proxy({ scene, enemies: [], effects: [], shells: [], debris: [], time: 0 },
   { get: (t, k) => (k in t ? t[k] : noop) });
 await step('vfx.init', () => { vfx.init(scene); vfx.registerAllBuilders(effects); });
+await step('first-person infantry asset', async () => {
+  const view = await loadInfantryView();
+  let draws = 0, tris = 0;
+  const materials = new Set();
+  view.traverse(o => { if (o.isMesh) {
+    draws++; tris += (o.geometry.index?.count || o.geometry.attributes.position.count) / 3;
+    materials.add(o.material.name);
+  } });
+  if (draws > 8 || tris > 25000) fail(`infantry view budget: ${draws} draws, ${tris} tris`);
+  if (![...materials].some(n => /sleeve/i.test(n)) || ![...materials].some(n => /glove/i.test(n))) fail('infantry view missing arms/glove materials');
+});
 await step('level data', () => city.loadLevelData(level));
 if (Q.GLB_CONTENT) await step('tree/ped/car templates', () => Promise.all([city.loadTreeTemplates(undefined, level), city.loadPedestrianTemplates(), city.loadCarTemplates(undefined, level)]));
 else if (level === 'chicago') await step('car templates', () => city.loadCarTemplates(undefined, level)); // as game.js: GLB cars on Chicago LOW
