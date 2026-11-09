@@ -87,7 +87,7 @@ const KINDS = {
   vendor: { models: () => ['vendor_tent'], mode: 'tile', color: 0x30b0a0 },
   merch: { models: () => ['vendor_tent'], mode: 'tile', color: 0xe0c030 },
   bar: { models: () => ['vendor_tent'], mode: 'tile', color: 0xd04070 },
-  family: { models: () => ['side_stage'], mode: 'fit', color: 0x50c050, maxHM: 9 },
+  family: { models: () => ['side_stage'], mode: 'fit', color: 0x50c050, maxHM: 15 },
   first_aid: { models: () => ['vendor_tent'], mode: 'tile', color: 0xf4f4f4 },
   water: { models: () => ['vendor_tent'], mode: 'tile', color: 0x3080e0 },
   toilets: { models: () => ['porta_potty_bank'], mode: 'tile', color: 0x3070c0 },
@@ -97,6 +97,28 @@ const _model = (it) => {
   const c = KINDS[it.kind]?.models(it) || [];
   return c.find(_ready) || c[0] || null;
 };
+
+// The city layout compresses metres to .2u, but the close-up crowd is ~1.8u
+// tall. Enlarge the human-scale fixtures without expanding the whole park.
+const PROP_SCALE = { vendor_tent: 3.5, porta_potty_bank: 4.5, trailer: 2.7,
+  entry_gate: 1.8, vip_deck: 2 };
+function scaleFestivalItem(it) {
+  const id = _model(it), mdl = FEST_MODELS[id];
+  if (!mdl) return it;
+  if (KINDS[it.kind].mode === 'tile') {
+    const s = .2 * (PROP_SCALE[id] || 1);
+    return { ...it, w: Math.max(it.w, mdl.sizeM[0] * s),
+      d: Math.max(it.d, mdl.sizeM[1] * s), h: mdl.sizeM[2] * s };
+  }
+  const factor = it.kind === 'stage' ? 1.3 : it.kind === 'delay_tower' ? 1.5 :
+    it.kind === 'foh_tower' ? 1.8 : it.kind === 'family' ? 2.7 : 1.4;
+  const h = it.h * factor;
+  const planFactor = it.kind === 'family' ? 1.3 : factor;
+  // Give narrow screens/towers enough depth to reach their requested height:
+  // otherwise the GLB's plan-fit cap silently shrinks the enlarged model again.
+  return { ...it, h, w: Math.max(it.w * planFactor, mdl.sizeM[0] / mdl.sizeM[2] * h),
+    d: Math.max(it.d * planFactor, mdl.sizeM[1] / mdl.sizeM[2] * h) };
+}
 
 /** GLB urls the festival needs (ready models only; [] when it's off). */
 export function festBuildingGLBs() {
@@ -113,14 +135,25 @@ export async function loadFest() {
     if (!r.ok) return null;
     const J = await r.json();
     const pt = (p) => [+p[0], +p[1]];
+    const items = (J.items || []).map(it => scaleFestivalItem({
+      ...it, x: +it.x, z: +it.z, rot: +(it.rot || 0), w: +it.w, d: +it.d, h: +it.h,
+      crowdArea: it.crowdArea ? it.crowdArea.map(pt) : null,
+    }));
+    // Move flanking screens outward with the wider stages rather than burying
+    // them in the stage roof/trusses.
+    for (const screen of items.filter(it => it.kind === 'screen')) {
+      const stage = items.find(it => it.kind === 'stage' && screen.id.startsWith(it.id + '_screen_'));
+      if (!stage) continue;
+      const c = Math.cos(stage.rot), s = Math.sin(stage.rot);
+      const offset = (screen.x - stage.x) * c - (screen.z - stage.z) * s;
+      const shift = Math.sign(offset) * Math.max(0, (stage.w + screen.w) / 2 + .3 - Math.abs(offset));
+      screen.x += c * shift; screen.z -= s * shift;
+    }
     return {
       fence: (J.fence?.points || []).map(pt),
-      fenceH: +(J.fence?.height || 0.48),
+      fenceH: Math.max(1.05, +(J.fence?.height || 0.48)),
       closed: (J.closedRoads || []).map((r) => r.points.map(pt)),
-      items: (J.items || []).map((it) => ({
-        ...it, x: +it.x, z: +it.z, rot: +(it.rot || 0), w: +it.w, d: +it.d, h: +it.h,
-        crowdArea: it.crowdArea ? it.crowdArea.map(pt) : null,
-      })),
+      items,
     };
   } catch (e) { return null; }
 }
@@ -477,7 +510,7 @@ function _ledScreen(lite) {
 // --------------- crowd ---------------
 /** Festival-goers on the stage lawns, packed denser toward each stage:
  *  stable logical IDs, compacted into shared GLB model/LOD batches. */
-function _makeCrowd(scene, lawns, uTime) {
+function _makeCrowd(scene, lawns, uTime, obstacles) {
   const pts = [], yaw = [];
   for (const { it, n } of lawns) {
     const poly = it.crowdArea;
@@ -487,6 +520,7 @@ function _makeCrowd(scene, lawns, uTime) {
     for (let tries = 0, got = 0; got < n && tries < n * 12; tries++) {
       const x = x0 + Math.random() * (x1 - x0), z = z0 + Math.random() * (z1 - z0);
       if (!_inPoly(x, z, poly)) continue;
+      if (obstacles.some(b => Math.abs(x - b.x) < b.w / 2 + .25 && Math.abs(z - b.z) < b.d / 2 + .25)) continue;
       const near = 1 - Math.min(1, Math.hypot(x - it.x, z - it.z) / far);
       if (Math.random() > 0.3 + 0.7 * near * near) continue;
       pts.push(x, z); yaw.push(Math.atan2(it.x - x, it.z - z)); got++;
@@ -586,8 +620,8 @@ export function buildFest(scene, F, ctx) {
       continue;
     }
     // Tiled: true-size copies along the item's width, rows along its depth
-    const [mw, md, mh] = mdl.sizeM.map((v) => v * S);
-    const nx = Math.max(1, Math.min(12, Math.round(it.w / mw)));
+    const [mw, md, mh] = mdl.sizeM.map((v) => v * S * (PROP_SCALE[id] || 1));
+    const nx = Math.max(1, Math.min(12, Math.floor(it.w / mw)));
     const nz = Math.max(1, Math.min(4, Math.floor(it.d / (md * 1.6))));
     const cw = it.w / nx, cd = it.d / nz;
     const h = Math.min(mh, it.kind === 'gate' ? mh : Math.max(it.h, mh));
@@ -603,7 +637,7 @@ export function buildFest(scene, F, ctx) {
   // ---- fence: instanced panels in runs of up to 14, gaps at the gates ----
   {
     const pm = FEST_MODELS.fence_panel;
-    const pl = pm.sizeM[0] * S, h = F.fenceH;
+    const h = F.fenceH, pl = pm.sizeM[0] / pm.sizeM[2] * h;
     const gates = F.items.filter((it) => it.kind === 'gate');
     const ring = F.fence;
     // Panels every ~3.5 m along the whole ring (arc length, across its
@@ -702,7 +736,8 @@ export function buildFest(scene, F, ctx) {
     const area = (p) => { let s = 0; for (let i = 0; i < p.length; i++) { const [x0, z0] = p[i], [x1, z1] = p[(i + 1) % p.length]; s += x0 * z1 - x1 * z0; } return Math.abs(s) / 2; };
     const tot = lawns.reduce((s, { it }) => s + area(it.crowdArea), 0);
     const k = Math.min(perU2, cap / Math.max(1, tot));
-    const c = _makeCrowd(scene, lawns.map(({ it }) => ({ it, n: Math.round(area(it.crowdArea) * k) })), uTime);
+    const c = _makeCrowd(scene, lawns.map(({ it }) => ({ it, n: Math.round(area(it.crowdArea) * k) })), uTime,
+      buildings.filter(b => b.fest));
     if (c) {
       crowds.push(c);
       animators.push(animateCrowd(c, { world: ctx.world, buildings,
