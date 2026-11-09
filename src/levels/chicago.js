@@ -1464,7 +1464,11 @@ export function buildChicago(scene, world, opts, K) {
   // (desktop: 120u tiles, LOD1 from 150u)
   // (phone LOW: its lamps/trees are procedural, a few dozen tris each, so one
   // tile spans the whole map: one draw per part)
-  const instance = () => K.instanceStaticClones(scene, !glb ? 4000 : lite ? 240 : 120, lite ? 185 : 150);
+  // Phones also hide a tile of small props (under 2u: signs, planters,
+  // racks, hydrants...) once its nearest one is under ~3 px tall; trees,
+  // lamps, the L and the riverwalk carry the far view and stay
+  const smallCull = glb && lite ? { px: 3, maxH: 2, keep: /tree|lamp|l_track|l_station|riverwalk/i } : null;
+  const instance = () => K.instanceStaticClones(scene, !glb ? 4000 : lite ? 240 : 120, lite ? 185 : 150, smallCull);
   // GLB buildings: the generic kit is a dozen tiny (<300 tri) templates, so
   // big batch tiles keep their draws down at almost no triangle cost
   K.setBuildingTile(!glb ? 600 : lite ? 440 : 400); // phone LOW: one tile per quadrant; desktop 400 since the street-wall split

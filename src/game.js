@@ -144,10 +144,12 @@ const RP = isMobile ? {
   shadowHalf: 48,                                    // tight frustum (u)
   shadowType: THREE.PCFShadowMap,
   shadowEvery: 2,                                   // shadow map refresh interval (frames)
-  // Phones: only the kaiju and the big enemies (Mech, BossMech) cast, via a
-  // shadow-camera layer: the shadow pass drew ~88 building tiles per update
-  // for shadows inside a +-48u window. Buildings still receive.
+  // Phones: only the kaiju and the big enemies (Mech, BossMech) cast: they're
+  // marked with this layer and restrictShadowCasters() turns castShadow off
+  // on the rest (the shadow pass drew ~88 building tiles per update for
+  // shadows inside a +-48u window). Buildings still receive.
   shadowCasterLayer: 5,
+  carFar: 180, civFar: 90,                           // movers not drawn past this camera distance (u)
   bloomMips: 3,                                      // UnrealBloomPass levels (desktop: three's 5)
   neon:      Q_HIGH ? 3 : 2,
   dynRes:    true,
@@ -5203,7 +5205,7 @@ function tick(now) {
 const IDLE_RENDER_MS = 66;
 // Traffic, flying debris and civilians (the phone-LOW box crowd; skinned
 // pedestrians stay individual), drawn batched (carBatch.js); items set per frame
-const _batchSets = [[null, (c) => c.root, 12], [null, (d) => d, 8], [null, (c) => c.root, 8]];
+const _batchSets = [[null, (c) => c.root, 12, RP.carFar || 0], [null, (d) => d, 8], [null, (c) => c.root, 8, RP.civFar || 0]];
 const _viewFrustum = new THREE.Frustum(), _viewPM = new THREE.Matrix4();
 const _loadingScreenEl = document.getElementById('loading-screen');
 let _lastIdleRender = -Infinity;

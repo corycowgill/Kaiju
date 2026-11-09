@@ -390,7 +390,10 @@ const BATCH_TILE = 120;
 
 // tile / lodDist: a level may batch into bigger tiles and switch to LOD1
 // sooner (Chicago on phones); Tokyo uses the defaults.
-function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST) {
+// smallCull (phones): { px, maxH, keep } hides a tile of small props (under
+// maxH tall, template not matching keep) once its nearest instance would be
+// under ~px CSS pixels tall on a phone-sized view, so nothing visibly pops.
+function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST, smallCull = null) {
   scene.updateMatrixWorld(true);
   const clones = [];
   scene.traverse((o) => { if (o.userData.instance) clones.push(o); });
@@ -411,6 +414,7 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST) {
   _removeChildren(new Set(clones));
   const lodPairs = [];
   for (const b of buckets.values()) {
+    const cull2 = smallCull ? _smallCullDist2(b, smallCull) : 0;
     const ims = [b.geometry, _lod1ByGeom.get(b.geometry)].filter(Boolean).map((geom) => {
       const im = new THREE.InstancedMesh(geom, b.material, b.matrices.length);
       b.matrices.forEach((mat, i) => im.setMatrixAt(i, mat));
@@ -426,12 +430,27 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST) {
     });
     // Same tile, same instances: exactly one of the pair is visible, so the
     // draw-call count doesn't change
-    if (ims.length === 2) {
-      ims[1].visible = false;
-      lodPairs.push({ near: ims[0], far: ims[1], center: ims[0].boundingSphere.center });
+    if (ims.length === 2) ims[1].visible = false;
+    if (ims.length === 2 || cull2) {
+      const bs = ims[0].boundingSphere;
+      lodPairs.push({ near: ims[0], far: ims[1] || null, center: bs.center, cull2: cull2 && (Math.sqrt(cull2) + bs.radius) ** 2 });
     }
   }
   if (lodPairs.length) _makeLodController(scene, lodPairs, lodDist);
+}
+
+// Squared distance past which a bucket's props are under smallCull.px tall
+// on screen (a ~450 CSS px tall landscape phone view, 70 deg FOV: h u at d u
+// is ~h * 320 / d px); 0 when the bucket isn't small or is kept.
+const _cullBox = new THREE.Box3();
+function _smallCullDist2(b, { px, maxH, keep }) {
+  if (keep && (keep.test(b.material.name || '') || keep.test(b.geometry.name || ''))) return 0;
+  if (!b.geometry.boundingBox) b.geometry.computeBoundingBox();
+  let h = 0;
+  for (const m of b.matrices) { _cullBox.copy(b.geometry.boundingBox).applyMatrix4(m); h = Math.max(h, _cullBox.max.y - _cullBox.min.y); }
+  if (!(h > 0) || h >= maxH) return 0;
+  const d = h * 320 / px;
+  return d * d;
 }
 
 /** Run fn(camera) once per render() of scene, with its camera, before the
@@ -451,16 +470,23 @@ function _onCamera(scene, fn) {
 }
 
 /** Flips each tile pair between LOD0 and LOD1 by the main camera's distance
- *  (before the frame's draw calls). */
+ *  (before the frame's draw calls). far: null for a tile without a LOD1
+ *  twin; cull2: squared center distance past which the tile is hidden. */
 function _makeLodController(scene, pairs, dist = LOD1_DIST) {
   const camPos = new THREE.Vector3();
   const d2 = dist * dist;
   _onCamera(scene, (camera) => {
     camera.getWorldPosition(camPos);
     for (const p of pairs) {
-      const far = p.center.distanceToSquared(camPos) > d2;
+      const c2 = p.center.distanceToSquared(camPos);
+      if (p.cull2 && c2 > p.cull2) {
+        p.near.visible = false;
+        if (p.far) p.far.visible = false;
+        continue;
+      }
+      const far = !!p.far && c2 > d2;
       p.near.visible = !far;
-      p.far.visible = far;
+      if (p.far) p.far.visible = far;
     }
   });
 }
@@ -5142,13 +5168,14 @@ export class Civilian {
     // Skinned-mixer ticks are the civilians' main per-frame cost. Beyond
     // ~120u a pedestrian is a few pixels tall, so tick its mixer at 1/4
     // rate with the accumulated dt (same pose timing, a quarter of the work).
-    // Out of the last frame's view (world.viewFrustum, with a margin) it
-    // isn't drawn at all: the dt just accumulates until it is.
+    // Out of the last frame's view (world.viewFrustum, with a margin), or
+    // past the phones' draw distance (_farHidden, carBatch), it isn't drawn
+    // at all: the dt just accumulates until it is.
     if (this.mixer) {
       this._mixDt = (this._mixDt || 0) + dt;
       this._mixSkip = (this._mixSkip || 0) + 1;
       const fr = world.viewFrustum;
-      const inView = !(fr instanceof THREE.Frustum) || fr.intersectsSphere(_civSphere.set(_civCenter.set(myPos.x, myPos.y + 1, myPos.z), 4));
+      const inView = !this._farHidden && (!(fr instanceof THREE.Frustum) || fr.intersectsSphere(_civSphere.set(_civCenter.set(myPos.x, myPos.y + 1, myPos.z), 4)));
       if (!this._mixed || (inView && (distSq < 120 * 120 || this._mixSkip >= 4))) {
         this._mixed = true; // always posed once (no bind pose on its first frame in view)
         this.mixer.update(this._mixDt);

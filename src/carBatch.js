@@ -13,6 +13,7 @@ import * as THREE from 'three';
 const _frustum = new THREE.Frustum();
 const _pm = new THREE.Matrix4();
 const _sphere = new THREE.Sphere();
+const _camPos = new THREE.Vector3();
 const _batches = new Map(); // `${geometry.id}:${material.id}` -> { im, n }
 
 function _batchFor(part, root) {
@@ -57,9 +58,11 @@ const _parts = (c, r) => {
 
 /** Copy every live mover's visible parts into the batches. Call once per
  *  frame before rendering, after the movers and the camera have moved.
- *  sets: [[items, rootOf, reach], ...] (rootOf(item) -> its root Object3D;
+ *  sets: [[items, rootOf, reach, far], ...] (rootOf(item) -> its root Object3D;
  *  an item is gone once item.dead or its root has no parent; reach: a
- *  radius around the root holding everything it draws).
+ *  radius around the root holding everything it draws; far (phones): past
+ *  this camera distance the item isn't drawn at all, its own meshes hidden
+ *  too, while its AI and gameplay carry on).
  *  The movers' world matrices are kept here, not by the renderer (their
  *  roots get matrixWorldAutoUpdate off): updated once, and only for movers
  *  whose reach is in view. Off-screen ones (skinned civilians: ~700 bones)
@@ -71,8 +74,9 @@ export function batchMovers(sets, root, camera, cull = true) {
     camera.updateMatrixWorld();
     _pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     _frustum.setFromProjectionMatrix(_pm);
+    _camPos.setFromMatrixPosition(camera.matrixWorld);
   }
-  for (const [items, rootOf, reach = 12] of sets) {
+  for (const [items, rootOf, reach = 12, far = 0] of sets) {
     if (!items) continue;
     for (const c of items) {
       const r = rootOf(c);
@@ -82,8 +86,15 @@ export function batchMovers(sets, root, camera, cull = true) {
         _sphere.center.copy(r.position);
         if (r.parent !== root) _sphere.center.applyMatrix4(r.parent.matrixWorld);
         _sphere.radius = reach;
+        if (far) {
+          // A few units of hysteresis so one walking back and forth on the
+          // edge doesn't flicker
+          const lim = c._farHidden ? far - 4 : far;
+          if (_sphere.center.distanceToSquared(_camPos) > lim * lim) { _hideFar(c, r); continue; }
+          if (c._farHidden) _showFar(c);
+        }
         if (!_frustum.intersectsSphere(_sphere)) continue;
-      }
+      } else if (c._farHidden) _showFar(c);
       r.updateMatrixWorld(true);
       for (const p of _parts(c, r)) {
         if (!p.visible && !p.userData.batched) continue; // hidden by someone else
@@ -104,6 +115,19 @@ export function batchMovers(sets, root, camera, cull = true) {
     b.im.visible = b.n > 0 || !cull;
     if (b.n) b.im.instanceMatrix.needsUpdate = true;
   }
+}
+
+// Far movers: their batched parts just aren't added; the meshes drawn on
+// their own (skinned civilians, transparent glass) are hidden here and
+// shown again on return. Only meshes this hid are restored.
+function _hideFar(c, r) {
+  if (c._farHidden) return;
+  c._farHidden = [];
+  r.traverse((o) => { if (o.isMesh && o.visible && !o.userData.batched) { o.visible = false; c._farHidden.push(o); } });
+}
+function _showFar(c) {
+  for (const o of c._farHidden) o.visible = true;
+  c._farHidden = null;
 }
 
 const _carRoot = (c) => c.root;
