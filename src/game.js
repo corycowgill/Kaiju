@@ -2,6 +2,7 @@
 console.info('[KAIJU HAVOC] build', 'f7892c5+', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
+import { resolveStructureContact } from './buildingCollision.js';
 window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -15,7 +16,7 @@ import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuil
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
-  Effect, makeExplosion, makeSparks, makeShockwave,
+  Effect, finishEffect, makeExplosion, makeSparks, makeShockwave,
   makeMuzzleFlash, makeSmokePuff, makeBeam, makeHitPulse, makeSmokeColumn,
   makeChainLightning, makeMissileSwarm, makeAtomicDome, makeAtomicDevastation,
   makeWingSlash, makeTailSweep, makeAfterburnerTrail, makeDustBurst,
@@ -334,9 +335,13 @@ class GodRayPass extends Pass {
           float decay = 1.0;
           for (int i = 0; i < ${samples}; i++) {
             float t = float(i) / float(${samples});
-            vec3 s = texture2D(tDiffuse, vUv + toSun * (t * 0.45)).rgb;
+            vec2 sampleUv = vUv + toSun * (t * 0.45);
+            vec3 s = texture2D(tDiffuse, sampleUv).rgb;
             float lum = dot(s, vec3(0.299, 0.587, 0.114));
-            ray += s * smoothstep(0.55, 1.4, lum) * decay;
+            // Shafts belong to the sun, not every explosion or beam pixel.
+            // Bound HDR energy so a near-camera flash cannot wash out the city.
+            float sunMask = 1.0 - smoothstep(.08, .32, distance(sampleUv, sunPos));
+            ray += min(s, vec3(2.0)) * smoothstep(1.1, 2.0, lum) * decay * sunMask;
             decay *= 0.92;
           }
           ray /= float(${samples});
@@ -363,9 +368,9 @@ if (RP.post) {
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth * RP.bloomScale, window.innerHeight * RP.bloomScale),
-    Q_HIGH ? 0.85 : (Q_MED ? 0.65 : 0.45), // strength
-    Q_HIGH ? 0.55 : (Q_MED ? 0.50 : 0.40), // radius
-    0.85                                    // threshold (0.7 bloomed lit props/flipbook smoke)
+    Q_HIGH ? 0.45 : (Q_MED ? 0.35 : 0.25), // restrained energy highlights
+    Q_HIGH ? 0.25 : 0.22,                    // narrow halo preserves texture detail
+    1.10                                     // ordinary smoke/white surfaces stay out of bloom
   );
   composer.addPass(bloomPass);
   if (RP.bloomMips && RP.bloomMips < bloomPass.nMips) {
@@ -955,6 +960,7 @@ const world = {
   spawnMuzzleFlash: function (pos, s) { if (this._fxRoom()) this.effects.push(makeMuzzleFlash(this, pos, s)); },
   spawnSmoke: function (pos, s) { if (this._fxRoom()) this.effects.push(makeSmokePuff(this, pos, s)); },
   spawnHitPulse: function (pos, color) { if (this._fxRoom()) this.effects.push(makeHitPulse(this, pos, color)); },
+  spawnDustBurst: function (pos, r, n = 8) { if (this._fxRoom()) this.effects.push(makeDustBurst(this, pos, r, n)); },
   spawnSmokeColumn: function (pos, height) { if (this._fxRoom()) this.effects.push(makeSmokeColumn(this, pos, height)); },
   spawnBeam: function (origin, dir, len, color, glow) {
     this.effects.push(makeBeam(this, origin, dir, len, color, glow));
@@ -2138,6 +2144,8 @@ function restartInPlace() {
 /** Remove (and dispose) everything added to the scene since boot: the
  *  city, and after a run the kaiju, enemies, effects, debris and traffic. */
 function _teardownScene() {
+  for (const e of world.effects) finishEffect(e);
+  world.effects.length = 0;
   // The kaiju GLB stays alive in _kaijuCache: reused if the same monster
   // is picked again, disposed by _startGameInner if a different one is.
   const keepRoot = state.kaiju && state.kaiju.glb ? state.kaiju.root : null;
@@ -2173,7 +2181,11 @@ window.__restartInPlace = restartInPlace;
 // ?debug test hooks (QA scripts): inspect state and trigger abilities
 if (/[?&]debug\b/.test(location.search)) {
   // composer(): the post chain (bloom, grade) for in-game-look screenshots
-  window.__qa = { state, world, camera, renderer, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on), gameOver: (v) => gameOver(!!v), upgrades: () => offerUpgrades() };
+  window.__qa = { state, world, camera, renderer,
+    power: (name) => {
+      const action = { beam: fireBeam, roar: fireRoar, charge: fireCharge, stomp: fireStomp, ult: fireUltimate }[name];
+      if (action && state.kaiju) { state.rage = 100; state.cooldowns[name] = 0; action(); }
+    }, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on), gameOver: (v) => gameOver(!!v), upgrades: () => offerUpgrades() };
 }
 async function startGame(key) {
   if (_startingGame) return;
@@ -3377,59 +3389,10 @@ function fireBeam() {
   }
   // The atomic breath travels as a bolt instead (fired below, once the
   // detonation point is known)
-  if (!atomic) world.spawnBeam(_beamOrigin, _beamDir, length, cfg.color, cfg.glow);
+
   world.shake(0.3, 0.4);
   audio.beam();
   if (atomic && typeof audio.atomicCharge === 'function') audio.atomicCharge();
-
-  // Per-variant beam signature: a few extras spawned alongside the beam.
-  if (variant === 'ghidorah') {
-    // GRAVITY BEAM = a continuous chain of lightning bolts running the
-    // FULL beam length, plus extra branching arcs every 50u for the
-    // electrical-storm read. Bolts are thick + last 0.65s so they're
-    // dominant, not a subtle fork next to a green tube.
-    //
-    // Visibility from the chase cam: the camera looks straight down the
-    // beam from behind Tridon, so bolts ON the beam axis were end-on and
-    // hidden by its wings/body. The main bolt now starts 10 u ahead of the
-    // head and coils around the axis (helix, radius ~3.5 u), and two
-    // extra bolts leap from the wing tips (beside the body, in view) and
-    // converge onto the beam ~50 u out.
-    const right = _tmpV1.crossVectors(_beamDir, THREE.Object3D.DEFAULT_UP).normalize().clone();
-    const up2 = new THREE.Vector3().crossVectors(right, _beamDir).normalize();
-    const SEGS = 6;
-    const START = 10;
-    const segLen = (length - START) / SEGS;
-    const ph0 = Math.random() * Math.PI * 2;
-    const helix = (i) => {
-      const p = _beamOrigin.clone().addScaledVector(_beamDir, START + i * segLen);
-      const a = ph0 + i * 1.4;
-      const r = i === 0 ? 1.0 : 3.5;
-      return p.addScaledVector(right, Math.cos(a) * r).addScaledVector(up2, Math.sin(a) * r);
-    };
-    let prev = helix(0);
-    for (let i = 0; i < SEGS; i++) {
-      const next = helix(i + 1);
-      world.effects.push(makeChainLightning(world, prev, next, cfg.color, 1.3, 12));
-      prev = next;
-    }
-    for (const side of [-1, 1]) {
-      const wing = _beamOrigin.clone()
-        .addScaledVector(right, side * 11).addScaledVector(up2, 4).addScaledVector(_beamDir, -2);
-      const meet = _beamOrigin.clone().addScaledVector(_beamDir, 45 + Math.random() * 15);
-      world.effects.push(makeChainLightning(world, wing, meet, cfg.color, 1.2, 10));
-    }
-    // Branching forks coming off the main bolt
-    for (let f = 0; f < 5; f++) {
-      const distAlong = 40 + Math.random() * (length - 80);
-      const fromP = _beamOrigin.clone().addScaledVector(_beamDir, distAlong);
-      const toP = fromP.clone();
-      toP.x += (Math.random() - 0.5) * 18;
-      toP.y += (Math.random() - 0.5) * 10;
-      toP.z += (Math.random() - 0.5) * 18;
-      world.effects.push(makeChainLightning(world, fromP, toP, cfg.color, 1.0, 8));
-    }
-  }
 
   // Hit detection along ray -- single raycast against the global body IM
   _beamRay.set(_beamOrigin, _beamDir);
@@ -3471,6 +3434,49 @@ function fireBeam() {
     const tg = -_beamOrigin.y / _beamDir.y;
     if (tg > 0 && tg < impactDist) { impactDist = tg; _beamImpact.copy(_beamOrigin).addScaledVector(_beamDir, tg).setY(0); }
   }
+  const visualLength = Math.max(1, impactDist);
+  if (variant === 'mecha') world.spawnBeam(_beamOrigin, _beamDir, visualLength, cfg.color, cfg.glow);
+  // Per-variant beam signature: a few extras spawned alongside the beam.
+  if (variant === 'ghidorah') {
+    // Electrical discharge has no solid beam tube: narrow re-striking
+    // branches converge on the first visible contact, with wing arcs
+    // keeping the discharge readable from the chase camera.
+    const right = _tmpV1.crossVectors(_beamDir, THREE.Object3D.DEFAULT_UP).normalize().clone();
+    const up2 = new THREE.Vector3().crossVectors(right, _beamDir).normalize();
+    const SEGS = 6;
+    const START = Math.min(10, visualLength * .15);
+    const segLen = (visualLength - START) / SEGS;
+    const ph0 = Math.random() * Math.PI * 2;
+    const helix = (i) => {
+      const p = _beamOrigin.clone().addScaledVector(_beamDir, START + i * segLen);
+      const a = ph0 + i * 1.4;
+      const r = i === 0 ? 1.0 : 3.5;
+      return p.addScaledVector(right, Math.cos(a) * r).addScaledVector(up2, Math.sin(a) * r);
+    };
+    let prev = helix(0);
+    for (let i = 0; i < SEGS; i++) {
+      const next = helix(i + 1);
+      world.effects.push(makeChainLightning(world, prev, next, cfg.color, 1.3, 12));
+      prev = next;
+    }
+    for (const side of [-1, 1]) {
+      const wing = _beamOrigin.clone()
+        .addScaledVector(right, side * 11).addScaledVector(up2, 4).addScaledVector(_beamDir, -2);
+      const meet = _beamOrigin.clone().addScaledVector(_beamDir, Math.min(visualLength, 45 + Math.random() * 15));
+      world.effects.push(makeChainLightning(world, wing, meet, cfg.color, 1.2, 10));
+    }
+    // Branching forks coming off the main bolt
+    for (let f = 0; f < 5; f++) {
+      const distAlong = visualLength * (.2 + Math.random() * .6);
+      const fromP = _beamOrigin.clone().addScaledVector(_beamDir, distAlong);
+      const toP = fromP.clone();
+      toP.x += (Math.random() - 0.5) * 18;
+      toP.y += (Math.random() - 0.5) * 10;
+      toP.z += (Math.random() - 0.5) * 18;
+      world.effects.push(makeChainLightning(world, fromP, toP, cfg.color, 1.0, 8));
+    }
+  }
+
   if (atomic) {
     // Detonate at the first building / ground hit, the snapped target, or
     // max range, whichever comes first
@@ -3533,8 +3539,10 @@ function fireRoar() {
   const roarHeadPos = new THREE.Vector3();
   roarHead.getWorldPosition(roarHeadPos);
   const roarDir = new THREE.Vector3(Math.sin(state.yaw), 0.05, Math.cos(state.yaw));
-  world.effects.push(makeSoundWaveRings(world, roarHeadPos, cfg.color, 3, cfg.radius * 0.95, 1.4));
-  world.effects.push(makeBreathCone(world, roarHeadPos, roarDir, 45, cfg.color, 0.8));
+  if (variant !== 'mecha') {
+    world.effects.push(makeSoundWaveRings(world, roarHeadPos, cfg.color, 3, cfg.radius * 0.95, 1.4));
+    world.effects.push(makeBreathCone(world, roarHeadPos, roarDir, 45, cfg.color, 0.8));
+  }
 
   // Per-variant signature VFX layered on top of the shared shockwave.
   if (variant === 'gojira') {
@@ -3565,7 +3573,7 @@ function fireRoar() {
     }
   } else if (variant === 'mecha') {
     // MISSILE BARRAGE: 8 missiles arcing outward, each exploding on impact.
-    makeMissileSwarm(world, center, cfg.radius, 8);
+    makeMissileSwarm(world, roarHeadPos.clone().setY(Math.max(12, roarHeadPos.y * .7)), cfg.radius, 8);
     // Visible launch flash at the kaiju so the player sees the source
     world.effects.push(makeMissileLaunchFlash(world, roarHeadPos));
   }
@@ -3812,9 +3820,8 @@ function fireMelee() {
 }
 
 // ------------------------- Collision -------------------------
-// Resolve kaiju-vs-buildings as a circle-vs-AABB push, while wearing the
-// building down. Walking into a building no longer phases through it; you
-// have to crush it down (or use beam/charge/melee) to pass.
+// Low structures crush on contact without reducing walking speed. Taller
+// buildings use a circle/AABB push and continuous contact damage.
 const KAIJU_BODY_RADIUS = 8.1;
 function resolveBuildingCollisions(pos, dt) {
   if (!state.monsterCfg) return;
@@ -3823,49 +3830,7 @@ function resolveBuildingCollisions(pos, dt) {
   if (!grid) return;
   // Only query the cells the kaiju overlaps -- typically 1-4 buildings.
   grid.forEachNear(pos.x, pos.z, radius + 30, (b) => {
-    if (b.destroyed) return;
-    const bx = b.group.position.x;
-    const bz = b.group.position.z;
-    const halfW = b.w / 2;
-    const halfD = b.d / 2;
-
-    // Quick reject (single-distance test against bounding circle of building)
-    const ddx = pos.x - bx;
-    const ddz = pos.z - bz;
-    const maxR = Math.max(halfW, halfD) + radius;
-    if (ddx * ddx + ddz * ddz > maxR * maxR) return;
-
-    // Closest point on the AABB footprint
-    const cx = THREE.MathUtils.clamp(pos.x, bx - halfW, bx + halfW);
-    const cz = THREE.MathUtils.clamp(pos.z, bz - halfD, bz + halfD);
-    const dx = pos.x - cx;
-    const dz = pos.z - cz;
-    const dist2 = dx * dx + dz * dz;
-    if (dist2 >= radius * radius) return;
-
-    let contactX, contactZ;
-    if (dist2 < 1e-4) {
-      // Center is inside the box -- pop out the nearest edge
-      const exitL = pos.x - (bx - halfW);
-      const exitR = (bx + halfW) - pos.x;
-      const exitN = pos.z - (bz - halfD);
-      const exitS = (bz + halfD) - pos.z;
-      const m = Math.min(exitL, exitR, exitN, exitS);
-      if (m === exitL)      { pos.x = bx - halfW - radius; contactX = bx - halfW; contactZ = pos.z; }
-      else if (m === exitR) { pos.x = bx + halfW + radius; contactX = bx + halfW; contactZ = pos.z; }
-      else if (m === exitN) { pos.z = bz - halfD - radius; contactZ = bz - halfD; contactX = pos.x; }
-      else                  { pos.z = bz + halfD + radius; contactZ = bz + halfD; contactX = pos.x; }
-    } else {
-      const dist = Math.sqrt(dist2);
-      const nx = dx / dist, nz = dz / dist;
-      pos.x = cx + nx * radius;
-      pos.z = cz + nz * radius;
-      contactX = cx; contactZ = cz;
-    }
-
-    // Continuous wear-down: ~35 dps to the building you push into
-    _tmpV1.set(contactX, b.h * 0.6, contactZ);
-    b.damage(35 * dt, _tmpV1, world);
+    resolveStructureContact(pos, radius, b, dt, world, _tmpV1);
   });
 }
 
@@ -4478,8 +4443,7 @@ function updateWorld(dt) {
     const drop = world.effects.length - MAX_EFFECTS;
     for (let i = 0; i < drop; i++) {
       const e = world.effects[i];
-      if (e && e.mesh && e.mesh.parent) e.mesh.parent.remove(e.mesh);
-      if (e && e.mesh) disposeInstance(e.mesh);
+      finishEffect(e);
     }
     world.effects.splice(0, drop);
   }

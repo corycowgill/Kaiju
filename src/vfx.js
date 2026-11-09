@@ -12,6 +12,7 @@
 // degrades gracefully on failure.
 
 import * as THREE from 'three';
+import { powerBuilders } from './powerVfx.js';
 import { QUALITY_PROFILE, LEGACY_VFX, Q_HIGH, isMobile } from './quality.js';
 import { disposeInstance, markShared, warnOnce, reportLoadError } from './assetCache.js';
 
@@ -142,6 +143,7 @@ class VFXEffect {
           warnOnce('vfx-cleanup|' + where + (e && e.message), '[vfx] final cleanup threw (meshes may leak):', e);
         }
         // Free the per-spawn geometry (module-level _G_* stay; see markShared).
+        this.mesh?.removeFromParent();
         disposeInstance(this.mesh);
       }
       this.dead = true;
@@ -1598,7 +1600,14 @@ function _spawnMissileSwarmShader(opts) {
     world.scene.add(trail);
     const vel = new THREE.Vector3(vx, vy, vz);
     let timeLeft = T + 0.05;
-    world.effects.push(new VFXEffect(m, T + 0.1, (dt, t) => {
+    world.effects.push(new VFXEffect(m, T + 0.1, (dt, t, effect) => {
+      // Budget retirement / expiry must remove the sibling trail even if
+      // the flight timer has not reached impact yet.
+      if (t >= 1) {
+        m.removeFromParent(); trail.removeFromParent();
+        trailGear.mat.dispose();
+        return;
+      }
       timeLeft -= dt;
       vel.y -= g * dt;
       m.position.addScaledVector(vel, dt);
@@ -1609,6 +1618,7 @@ function _spawnMissileSwarmShader(opts) {
       trailGear.uniforms.fade.value = 0.9 * (1 - t * 0.6);
       trail.scale.setScalar(0.5 + t * 1.2);
       if (timeLeft <= 0 || m.position.y <= 0.4) {
+        effect.life = 0;
         world.scene.remove(m);
         world.scene.remove(trail);
         trailGear.mat.dispose();
@@ -2207,7 +2217,7 @@ const _ARC_FS = `
     // Sheet loaded with flipY=false: v=0 is the top row.
     float I = texture2D(map, vec2(vUv.x, (row + vUv.y) / 8.0)).r;
     if (I < 0.004) discard;
-    vec3 col = boltColor * I * 3.0 + vec3(smoothstep(0.55, 1.0, I)) * 2.4;
+    vec3 col = boltColor * I * 1.6 + vec3(smoothstep(0.65, 1.0, I)) * .65;
     gl_FragColor = vec4(col * fade, 1.0);
   }
 `;
@@ -2249,7 +2259,7 @@ function _spawnArcRibbon(world, curve, len, color, life, segs, restrike) {
   const layers = [];
   // Widths scale with arc length so long beam-length bolts stay readable
   // from the chase cam (core / halo).
-  for (const [w, dim] of [[Math.min(9, 4.0 + len * 0.04), 1.0], [Math.min(16, 8 + len * 0.06), 0.5]]) {
+  for (const [w, dim] of [[Math.min(1.4, .35 + len * .008), 1.0], [Math.min(3, .8 + len * .012), .22]]) {
     const uniforms = {
       map: { value: _flipTex.arc_strip_1x8 },
       boltColor: { value: new THREE.Color(color) },
@@ -2404,6 +2414,9 @@ function _registerUpgradedBuilders() {
 export function registerAllBuilders(legacy) {
   registerLegacyEffects(legacy);
   _registerUpgradedBuilders();
+  if (!LEGACY_VFX) {
+    for (const [name, builder] of Object.entries(powerBuilders(name => _flipTex[name], _placeScorch))) registerBuilder(name, builder);
+  }
 }
 
 const vfx = {

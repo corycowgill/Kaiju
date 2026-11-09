@@ -176,3 +176,45 @@ Then visit `http://localhost:8000` and start stomping.
 This game lives at **[hallucinatedgames.com](https://www.hallucinatedgames.com)** along with whatever else we let the model dream up next week.
 
 Built fast. Built loud. Built by hallucination.
+
+
+## Chicago graphics and gameplay pass
+
+Grant Park festival crowds now have articulated limbs and individual reaction
+speeds. Nearby guests flee toward safer entrances, steer around live structures
+and water, and escape when they reach a gate. Crowd movement uses one instanced
+draw with GPU limb animation and a 30 Hz steering update.
+
+Festival lawns have varied wear, concession and entrance pennants move in the
+wind, and lakefront foam advances toward the shore with subtle offshore whitecaps.
+Tents, fences, and buildings below the kaiju's lower-body clearance crush on
+contact without pushing it back. Bridges and taller buildings remain solid.
+Festival destruction uses small panels, dust, and sparks, with lighter camera
+shake; masonry retains heavier debris and smoke.
+
+Power effects now run their complete expiry callback when removed by the effect
+budget or a scene reset. Missile trails also clean up on expiry and retirement.
+
+Run `npm install`, `npm test`, and `npm run smoke` for the regression and asset
+checks. To play locally, run `python -m http.server 8765` from the repository,
+then open `http://localhost:8765/?level=chicago`.
+
+
+### Power effects
+
+Power VFX combine the shipped animated fire/smoke/dust sprite sheets with
+camera-facing energy ribbons, instanced debris and short impact flashes.
+Roars use broken condensation fronts; tail and wing attacks leave directional
+vapor and dust; the plasma cannon reveals narrow moving strands; electrical
+attacks use thin branching arcs. Missile volleys launch in sequence above the
+ground with ballistic flight and textured exhaust. Atomic detonations combine
+a short flame eruption, flying embers, and an irregular rising smoke column.
+The former luminous domes and large spherical hit flashes are removed from
+the upgraded path. Bloom is narrower, and sun shafts no longer smear every
+bright effect across the scene. Existing impact scorch decals remain bounded
+and fade out.
+
+The textured particles share one instanced draw per layer, with fewer particles
+on lower quality tiers. The shader fallback also works before the sheets load.
+`npm test` checks cleanup, finite instance data, draw counts, and missile
+impacts/cancellation. `?vfx=legacy` retains the original effects for comparison.

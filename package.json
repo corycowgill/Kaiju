@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Browser game; no build step. This file only serves the dev tools in tools/.",
   "scripts": {
-    "smoke": "node tools/smoke_test.mjs"
+    "smoke": "node tools/smoke_test.mjs",
+    "test": "node --test tools/gameplay_test.mjs"
   },
   "devDependencies": {
     "three": "0.160.0"

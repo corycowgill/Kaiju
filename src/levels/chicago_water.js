@@ -311,9 +311,17 @@ export function makeWaterMaterial(field, opts = {}) {
           float fn = texture2D(uWave, vWXZ * 0.045 + vec2(uTime * 0.012, -uTime * 0.009)).a;
           float fn2 = texture2D(uWave, vWXZ * 0.11 - vec2(uTime * 0.02, uTime * 0.015)).a;
           float band = 1.0 - smoothstep(0.3, 2.4, d + (fn - 0.5) * 2.0);
+          // Shore-distance waves travel toward the revetment instead of a
+          // static foam outline. Keep open-water whitecaps off sheltered rivers.
+          float shoreWave = sin(d * 2.5 - uTime * 1.8 + (fn - .5) * 2.4);
+          float wash = smoothstep(.78, .98, shoreWave) * (1.0 - smoothstep(1.0, 7.0, d));
+          band = max(band, wash * .65 * (1.0 - fld.g));
           // Calmer river / pond edges: a thin lapping line only
           band *= mix(1.0, 0.45, fld.g);
           wFoam = clamp(band * smoothstep(0.38, 0.68, fn2 * 0.6 + fn * 0.5), 0.0, 1.0) * (1.0 - wPool);
+          float crest = smoothstep(.77, .90, fn * .65 + fn2 * .45);
+          float openLake = smoothstep(12.0, 45.0, d) * (1.0 - fld.g) * (1.0 - wPool);
+          wFoam = max(wFoam, crest * openLake * .22);
           // Kaiju ripples, wake and shore surges: foam broken up by the same noise
           float fx = waterFx(vWXZ, d) * (1.0 - wPool);
           wFoam = clamp(wFoam + fx * smoothstep(0.25, 0.6, fn2 * 0.7 + 0.3), 0.0, 1.0);
@@ -342,7 +350,7 @@ export function makeWaterMaterial(field, opts = {}) {
         }
         #include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => 'chi-water';
+  mat.customProgramCacheKey = () => 'chi-water-shorewash-v2';
   return mat;
 }
 

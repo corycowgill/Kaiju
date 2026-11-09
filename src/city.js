@@ -2376,18 +2376,20 @@ export class Building {
     const pos = this.group.position.clone();
     pos.y += this.h / 2;
 
-    // Big initial fireball + a couple of staggered smaller explosions
-    if (world) {
+    // Festival fabric and truss collapse into dust and sparks, not a row
+    // of petrol fireballs. Masonry keeps the larger explosive silhouette.
+    const festival = !!this.fest;
+    if (world && !festival) {
       world.spawnExplosion(pos.clone(), 1.6 + Math.min(2.0, this.h / 30));
-      const w2 = world;
-      setTimeout(() => { if (w2.scene) w2.spawnExplosion(pos.clone().setY(this.h * 0.5).add(new THREE.Vector3(rand(-3,3), 0, rand(-3,3))), 1.0); }, 90);
-      setTimeout(() => { if (w2.scene) w2.spawnExplosion(this.group.position.clone().setY(this.h * 0.2), 1.2); }, 200);
+    } else if (world && this.destructionMaterial === 'metal') {
+      world.spawnSparks(pos, 12);
     }
 
     // Lots of debris chunks for satisfying spray
-    const useGLBDebris = _debrisTemplates.length > 0;
+    const useGLBDebris = !festival && _debrisTemplates.length > 0;
     // More, smaller pieces with the v2 kit (facade panels, rebar, beams, glass)
     let chunks = 10 + Math.floor(Math.random() * 4) + Math.min(6, Math.floor(this.h / 15)) + (useGLBDebris ? 6 : 0);
+    if (festival) chunks = this.isFence ? 3 : 6;
     // A frame's flying debris is capped (world.debrisRoom: the world keeps
     // only that many anyway); a lone collapse still gets every chunk
     const room = world && typeof world.debrisRoom === 'function' ? world.debrisRoom(chunks) : chunks;
@@ -2405,9 +2407,9 @@ export class Building {
         // Fallback to procedural box if GLBs not loaded. The geom + material
         // are unique to this mesh (not shared with a template), so flag them
         // for disposal when the debris expires (see updateWorld in game.js).
-        const cw = this.w * rand(0.18, 0.55);
-        const ch = this.h * rand(0.08, 0.32);
-        const cd = this.d * rand(0.18, 0.55);
+        const cw = festival ? rand(.25, 1.1) : this.w * rand(0.18, 0.55);
+        const ch = festival ? rand(.04, .16) : this.h * rand(0.08, 0.32);
+        const cd = festival ? rand(.2, .8) : this.d * rand(0.18, 0.55);
         m = new THREE.Mesh(
           new THREE.BoxGeometry(cw, ch, cd),
           new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 0.95 })
@@ -2419,7 +2421,13 @@ export class Building {
       m.position.x += rand(-this.w / 3, this.w / 3);
       m.position.z += rand(-this.d / 3, this.d / 3);
       m.rotation.set(rand(0, Math.PI), rand(0, Math.PI), rand(0, Math.PI));
-      m.userData.vel = new THREE.Vector3(rand(-12, 12), rand(10, 22), rand(-12, 12));
+      const kp = world.kaijuPos;
+      const awayX = kp ? this.x - kp.x : 0, awayZ = kp ? this.z - kp.z : 0;
+      const awayL = Math.hypot(awayX, awayZ) || 1;
+      m.userData.vel = new THREE.Vector3(
+        rand(-6, 6) + awayX / awayL * 7,
+        festival ? rand(3, 8) : rand(10, 22),
+        rand(-6, 6) + awayZ / awayL * 7);
       m.userData.angVel = new THREE.Vector3(rand(-5, 5), rand(-5, 5), rand(-5, 5));
       m.userData.life = 6.5;
       // Flying chunks are small and fast: skip the shadow pass (it doubled
@@ -2431,7 +2439,7 @@ export class Building {
     }
 
     // Ground rubble (stays permanently)
-    const rubbleCount = 3 + Math.floor(Math.random() * 2);
+    const rubbleCount = festival ? 2 : 3 + Math.floor(Math.random() * 2);
     for (let i = 0; i < rubbleCount; i++) {
       const rubSize = THREE.MathUtils.clamp(Math.max(this.w, this.d) * rand(0.15, 0.3), 2.5, 8);
       if (useGLBDebris && _placeRubbleInstanced(world.scene, rubSize,
@@ -2442,16 +2450,16 @@ export class Building {
         continue;
       }
       // Fallback (no debris GLBs, e.g. mobile LOW): procedural box.
-      const rw = this.w * rand(0.3, 0.7);
-      const rd = this.d * rand(0.3, 0.7);
-      const rh = rand(1.2, 2.6);
+      const rw = festival ? rand(.3, 1.1) : this.w * rand(0.3, 0.7);
+      const rd = festival ? rand(.2, .7) : this.d * rand(0.3, 0.7);
+      const rh = festival ? rand(.06, .18) : rand(1.2, 2.6);
       const rub = new THREE.Mesh(
         new THREE.BoxGeometry(rw, rh, rd),
         new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 1.0 })
       );
       rub.position.set(
         this.group.position.x + rand(-this.w / 4, this.w / 4),
-        rubSize * 0.15,
+        festival ? rh / 2 : rubSize * 0.15,
         this.group.position.z + rand(-this.d / 4, this.d / 4),
       );
       rub.rotation.set(rand(-0.2, 0.2), rand(0, Math.PI), rand(-0.2, 0.2));
@@ -2463,15 +2471,11 @@ export class Building {
     // Dust plume: many smoke puffs spreading from base
     if (world) {
       const base = this.group.position.clone().setY(0);
-      for (let i = 0; i < 8; i++) {
-        const dust = base.clone().add(new THREE.Vector3(rand(-this.w * 0.6, this.w * 0.6), rand(0, 4), rand(-this.d * 0.6, this.d * 0.6)));
-        world.spawnSmoke(dust, 1.4 + Math.random() * 1.2);
-      }
-      // Ground dust ring
-      world.spawnShockwave(base, 0xaa8866, Math.max(this.w, this.d) * 1.4);
-      world.shake(0.9 + Math.min(0.7, this.h / 40), 0.7);
-      // Lingering smoke column visible from afar
-      world.spawnSmokeColumn?.(base, this.h);
+      const spread = Math.max(1.5, Math.min(24, Math.hypot(this.w, this.d) * .65));
+      world.spawnDustBurst?.(base, spread, festival ? 5 : 9);
+      world.spawnShockwave(base, festival ? 0xc4b18a : 0xaa8866, spread * 1.6);
+      world.shake(festival ? .16 : .9 + Math.min(.7, this.h / 40), festival ? .18 : .7);
+      if (!festival) world.spawnSmokeColumn?.(base, this.h);
     }
 
     if (world) world.onBuildingDestroyed?.(this);

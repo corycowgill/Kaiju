@@ -2519,7 +2519,7 @@ export function buildChicago(scene, world, opts, K) {
   }
 
   // ---- Kaijupalooza! (Grant Park festival): buildings too, so before the bodies ----
-  if (L.fest) buildFest(scene, L.fest, { K, buildings, grid, animators, world, lite, glb, addBatch, polygonGeom, M, S: L.scale || 0.2 });
+  if (L.fest) buildFest(scene, L.fest, { K, buildings, grid, animators, world, lite, glb, addBatch, polygonGeom, M, isWater, bounds: B, S: L.scale || 0.2 });
 
   const bodiesIM = K.buildGlobalBodies(scene, buildings);
   const windowPulse = K.buildGlobalWindows(scene, CHI_WINDOWS);

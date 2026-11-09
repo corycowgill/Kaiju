@@ -21,8 +21,8 @@
 // Tiers: desktop gets everything; phone MED the core layers (charge glow,
 // bolt core + outer glow, torus, scorch, fewer embers); LOW the minimum.
 import * as THREE from 'three';
-import { registerBuilder } from './vfx.js';
-import { isMobile, Q_LOW } from './quality.js';
+import { registerBuilder, spawn as spawnVFX } from './vfx.js';
+import { isMobile, Q_LOW, LEGACY_VFX } from './quality.js';
 
 const FULL = !isMobile && !Q_LOW;   // desktop MED / HIGH
 const MID = !FULL && !Q_LOW;        // phone MED
@@ -75,7 +75,7 @@ const _GLOW_FS = `
     float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
     float a = mix(1.0, pow(f, 1.6), rim);
     vec3 c = mix(hot, color, f);
-    gl_FragColor = vec4(c * (1.0 + 1.5 * (1.0 - f)), a * opacity);
+    gl_FragColor = vec4(min(c * (1.0 + .35 * (1.0 - f)), vec3(2.2)), a * opacity * .65);
   }`;
 function _glowMat(rim) {
   return new THREE.ShaderMaterial({
@@ -389,7 +389,7 @@ function _updateSlot(s, dt) {
   // --- Charge: the body glows up, the mouth swells
   if (t < CHARGE) {
     const k = t / CHARGE;
-    _setGlow(s, 0.65 * k * k * (0.85 + 0.15 * Math.sin(t * 50)));
+    _setGlow(s, 0.28 * k * k * (0.85 + 0.15 * Math.sin(t * 50)));
     if (mouth) {
       mouth.scale.setScalar(1.2 + 3.4 * k + Math.sin(t * 70) * 0.3);
       mouth.material.uniforms.opacity.value = 0.4 + 0.6 * k;
@@ -398,7 +398,7 @@ function _updateSlot(s, dt) {
   }
   const tt = t - CHARGE; // travel clock
   // Body glow decays through the travel
-  if (tt < tr + 0.4) _setGlow(s, 0.65 * Math.max(0, 1 - tt / (tr + 0.4)));
+  if (tt < tr + 0.4) _setGlow(s, 0.28 * Math.max(0, 1 - tt / (tr + 0.4)));
   else if (s.mats.length) _restoreGlow(s);
   if (mouth && mouth.visible) {
     if (tt > 0.25) mouth.visible = false;
@@ -419,8 +419,8 @@ function _updateSlot(s, dt) {
     bolt.material.uniforms.opacity.value = 1.0 * fade;
     bolt.material.uniforms.hot.value.setRGB(2.2, 2.4, 2.6);
     if (boltOuter) {
-      boltOuter.scale.set(4.2 + Math.sin(tt * 40) * 0.4, len, 4.2 + Math.sin(tt * 40) * 0.4);
-      boltOuter.material.uniforms.opacity.value = 0.55 * fade;
+      boltOuter.scale.set(2.2 + Math.sin(tt * 40) * .2, len, 2.2 + Math.sin(tt * 40) * .2);
+      boltOuter.material.uniforms.opacity.value = .12 * fade;
     }
     if (ribbon) {
       ribbon.scale.set(2.6, len, 2.6);
@@ -461,14 +461,14 @@ function _updateSlot(s, dt) {
   if (core.visible) {
     if (td < CORE_T) {
       const k = td / CORE_T;
-      core.scale.setScalar(3 + 13 * (1 - (1 - k) * (1 - k)));
-      core.material.uniforms.opacity.value = 1 - k;
+      core.scale.setScalar(2 + 5 * (1 - (1 - k) * (1 - k)));
+      core.material.uniforms.opacity.value = Math.max(0, 1 - k * 3);
     } else if (td < PULSE_AT) {
       core.material.uniforms.opacity.value = 0;
     } else if (td < PULSE_AT + PULSE_T && !Q_LOW) {
       const k = (td - PULSE_AT) / PULSE_T;
       core.scale.setScalar(8 + 10 * k);
-      core.material.uniforms.opacity.value = 0.75 * Math.sin(Math.PI * k);
+      core.material.uniforms.opacity.value = .12 * Math.sin(Math.PI * k);
     } else core.visible = false;
   }
   // Shell: grows (ease-out) bluish-white, holds, then cools into the beam
@@ -534,12 +534,16 @@ function _detonate(s) {
   s.detonated = true;
   const { core, shell, torus, cap } = s.parts;
   const P = s.pos, C = s.color, g = s.ground;
+  if (s.world && !LEGACY_VFX) {
+    const plume = spawnVFX('atomicDetonation', { world: s.world, pos: P.clone() });
+    if (plume) s.world.effects.push(plume);
+  }
   core.position.copy(P); core.visible = true;
   core.material.uniforms.hot.value.setRGB(3, 3, 3);
   core.material.uniforms.color.value.setRGB(2.2, 2.4, 2.6);
-  shell.position.set(P.x, g + 4, P.z); shell.visible = true;
-  if (torus) { torus.position.set(P.x, g + 4, P.z); torus.visible = true; }
-  if (cap) { cap.position.copy(P); cap.visible = true; }
+  shell.position.set(P.x, g + 4, P.z); shell.visible = LEGACY_VFX;
+  if (torus) { torus.position.set(P.x, g + 4, P.z); torus.visible = LEGACY_VFX; }
+  if (cap) { cap.position.copy(P); cap.visible = LEGACY_VFX; }
   // Radial ember streaks flung outward
   const embers = FULL ? 160 : (MID ? 40 : 14);
   for (let i = 0; i < embers; i++) {

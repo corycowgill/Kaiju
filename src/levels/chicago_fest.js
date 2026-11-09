@@ -9,6 +9,8 @@
 // in a shipped build); ?fest=1 turns it on, ?fest=0 off. Flip FEST_DEFAULT
 // to true in the commit that adds the last fest_* GLB.
 import * as THREE from 'three';
+import { dressFestival } from './festivalDressing.js';
+import { crowdGeometry, crowdMaterial, animateCrowd } from './festivalCrowd.js';
 import { assetURL } from '../assetCache.js';
 
 const FEST_URL = './assets/levels/chicago_fest.json';
@@ -471,47 +473,7 @@ function _ledScreen(lite) {
 }
 
 // --------------- crowd ---------------
-/** Low-poly festival-goer (~1.2u), origin at the feet; white vertices take the shirt colour. */
-function _personGeom() {
-  const parts = [
-    [0.30, 0.52, 0.18, 0.26, [0.18, 0.2, 0.3]],  // legs (jeans)
-    [0.38, 0.44, 0.22, 0.74, [1, 1, 1]],         // torso (shirt: instance colour)
-    [0.22, 0.22, 0.22, 1.08, [0.86, 0.68, 0.55]], // head
-  ];
-  const pos = [], col = [], idx = [];
-  for (const [w, h, d, y, c] of parts) {
-    const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
-    g.translate(0, y, 0);
-    const p = g.attributes.position;
-    const base = pos.length / 3;
-    for (let i = 0; i < p.count; i++) { pos.push(p.getX(i), p.getY(i), p.getZ(i)); col.push(...c); idx.push(base + i); }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.computeVertexNormals();
-  return g;
-}
 const SHIRTS = [0xff3d8b, 0xff8a1f, 0xffd21f, 0x2fd4c0, 0x9b5cff, 0x4fb3ff, 0xd8d8d8, 0x222222, 0xe23030, 0x44cc55]; // white kept under the noon bloom threshold
-
-function _crowdMaterial(uTime) {
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = uTime;
-    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader
-      .replace('#include <color_vertex>', `#include <color_vertex>
-#ifdef USE_INSTANCING_COLOR
-        vColor = color.r + color.g + color.b > 2.99 ? instanceColor.rgb : color;
-#endif`)
-      // Jumping to the beat: about half the crowd bounces, each on its own phase
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-        float ph = float(gl_InstanceID) * 1.618;
-        float jumper = step(0.45, fract(ph * 0.37));
-        transformed.y += jumper * max(0.0, sin(uTime * 7.5 + ph * 6.2831)) * 0.22;`);
-  };
-  mat.customProgramCacheKey = () => 'fest-crowd';
-  return mat;
-}
 
 /** Festival-goers on the stage lawns, packed denser toward each stage:
  *  one InstancedMesh for every lawn (a single draw). lawns: [{ it, n }]. */
@@ -567,6 +529,8 @@ export function buildFest(scene, F, ctx) {
   const newBuilding = (x, z, aw, ad, h, color, modelId) => {
     const b = new K.Building(x, z, aw, ad, h, { skipWindows: true, color });
     b.fest = true;
+    b.destructionMaterial = /tent|trailer|potty|fence/.test(modelId) ? 'lightweight' : 'metal';
+    b.crushOnContact = h < 2.4;
     b.glbBucket = 'fest'; // Grant Park straddles tile lines: one batch per part for the whole festival
     const ok = _ready(modelId);
     if (ok) b._skipBodyIM = true;
@@ -726,11 +690,13 @@ export function buildFest(scene, F, ctx) {
     });
   }
 
+  dressFestival(scene, F, buildings, trampled, animators, lite);
+
   // ---- crowds: instanced festival-goers on the lawns (phones fewer, LOW minimal) ----
   const crowds = [];
   {
     const uTime = { value: 0 };
-    const geom = _personGeom(), mat = _crowdMaterial(uTime);
+    const geom = crowdGeometry(), mat = crowdMaterial(uTime);
     const perU2 = !glb ? 0.08 : lite ? 0.22 : 0.62; // people per square unit
     const cap = !glb ? 450 : lite ? 1600 : 5200;
     const lawns = stages.filter(({ it }) => it.crowdArea && (glb || it.tier === 'main'));
@@ -738,7 +704,11 @@ export function buildFest(scene, F, ctx) {
     const tot = lawns.reduce((s, { it }) => s + area(it.crowdArea), 0);
     const k = Math.min(perU2, cap / Math.max(1, tot));
     const c = _makeCrowd(scene, lawns.map(({ it }) => ({ it, n: Math.round(area(it.crowdArea) * k) })), geom, mat);
-    if (c) crowds.push(c);
+    if (c) {
+      crowds.push(c);
+      animators.push(animateCrowd(c, { world: ctx.world, buildings,
+        gates: F.items.filter(it => it.kind === 'gate'), isWater: ctx.isWater, bounds: ctx.bounds }));
+    }
     animators.push({ update(dt, time) { uTime.value = time; } });
     // Stomped / blasted festival-goers: flattened where they stood
     // (game.js damageInRadius calls this like it does for civilians)
@@ -751,7 +721,9 @@ export function buildFest(scene, F, ctx) {
           for (let i = 0; i < c.alive.length; i++) {
             if (!c.alive[i]) continue;
             const dx = c.pts[i * 2] - x, dz = c.pts[i * 2 + 1] - z;
-            if (dx * dx + dz * dz > r2) continue;
+            const dist2 = dx * dx + dz * dz;
+            if (dist2 < r2 + 900 && c.panic) c.panic[i] = 10;
+            if (dist2 > r2) continue;
             c.alive[i] = 0; n++; dirty = true;
             c.im.getMatrixAt(i, flat);
             flat.scale(squash);
@@ -801,7 +773,7 @@ export function buildFest(scene, F, ctx) {
     if (beams.length) {
       const g = new THREE.CylinderGeometry(0.03, 0.55, 1, 10, 1, true);
       g.translate(0, -0.5, 0); // apex at the origin, opening down -Y
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true });
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true });
       const im = new THREE.InstancedMesh(g, mat, beams.length);
       im.frustumCulled = false; im.castShadow = false;
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -828,7 +800,7 @@ export function buildFest(scene, F, ctx) {
             im.setMatrixAt(i, m.compose(pos, q, scl));
             let burst = strobe.get(it.id) || 0;
             if (time > burst + 3 && Math.random() < dt * 0.25) strobe.set(it.id, burst = time + 1.2);
-            const flash = time < burst && Math.floor(time * 14) % 2 ? 2.2 : 1;
+            const flash = time < burst && Math.floor(time * 14) % 2 ? 1.4 : 1;
             col.setHSL((bm.hue + time * 0.06) % 1, 1, 0.5).multiplyScalar(flash);
             im.setColorAt(i, col);
           });
