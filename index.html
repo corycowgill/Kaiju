@@ -965,17 +965,6 @@
     to   { opacity: 0; transform: translateX(-12px); }
   }
 
-  /* Score popup */
-  .popup {
-    position: absolute; left: 0; top: 0;
-    transform: translate(-50%, -50%);
-    font-weight: bold; font-size: 24px;
-    color: #ffee66; text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
-    white-space: nowrap;
-    will-change: transform, opacity;
-  }
-  body.mobile .popup { font-size: 18px; }
-
   /* Low HP pulsing red vignette */
   #lowhp-warning.active {
     animation: lowhpPulse 0.9s ease-in-out infinite;
@@ -1091,7 +1080,7 @@
   /* START prewarm (_prewarmHUD): the in-play HUD drawn once, near-invisible,
      above the opaque loading screen so its raster pipelines compile there */
   body.hud-prewarm #hud, body.hud-prewarm #powers, body.hud-prewarm #mobile-ui > *, body.hud-prewarm #message,
-  body.hud-prewarm #wave-banner, body.hud-prewarm #popups, body.hud-prewarm #upgrade-modal, body.hud-prewarm #pause-menu,
+  body.hud-prewarm #wave-banner, body.hud-prewarm #upgrade-modal, body.hud-prewarm #pause-menu,
   body.hud-prewarm #damage-flash, body.hud-prewarm #lowhp-warning, body.hud-prewarm #dmg-indicators {
     opacity: 0.01 !important; z-index: 300 !important; pointer-events: none !important;
   }
@@ -1282,9 +1271,6 @@
 <!-- Directional damage chevrons (populated by addDamageIndicator in game.js) -->
 <div id="dmg-indicators" style="position:fixed; inset:0; pointer-events:none; z-index:10; overflow:hidden;"></div>
 <div id="lowhp-warning" style="position:fixed; inset:0; pointer-events:none; z-index:9; will-change:opacity; box-shadow:inset 0 0 120px 60px #ff0033; opacity:0;"></div>
-
-<!-- Floating score popup container -->
-<div id="popups" style="position:fixed; inset:0; pointer-events:none; z-index:8; overflow:hidden;"></div>
 
 <!-- Mobile touch controls (body.touch) -->
 <div id="mobile-ui">

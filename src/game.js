@@ -1200,7 +1200,6 @@ const state = {
   damageFlash: 0,    // 0..1 fade, > 0 means recently hit
   upgrades: { hpBonus: 0, dmgMult: 1, speedMult: 1, regenRate: 0, comboTimerBonus: 0, rageGainMult: 1 },
   upgradePending: false,
-  popups: [],          // floating score numbers
   slowMoUntil: 0,      // performance.now() ms until slow-mo ends
   slowMoScale: 1,
   civilians: [],       // tiny pedestrians fleeing the kaiju
@@ -2834,36 +2833,6 @@ function startWave(n) {
   for (const e of enemies) restrictShadowCasters(e.root);
 }
 
-// ---- Floating score popups (HTML overlay) ----
-const popupContainer = document.getElementById('popups');
-function spawnPopup(worldPos, text, color = '#ffee66') {
-  if (!popupContainer) return;
-  const el = document.createElement('div');
-  el.className = 'popup';
-  el.textContent = text;
-  el.style.color = color;
-  popupContainer.appendChild(el);
-  state.popups.push({ el, worldPos: worldPos.clone(), life: 1.1, maxLife: 1.1 });
-}
-// Reused projection vector so we don't clone Vector3 28x per frame
-const _popV = new THREE.Vector3();
-function updatePopups(dt) {
-  for (let i = state.popups.length - 1; i >= 0; i--) {
-    const p = state.popups[i];
-    p.life -= dt;
-    if (p.life <= 0) { p.el.remove(); state.popups.splice(i, 1); continue; }
-    const t = 1 - p.life / p.maxLife;
-    _popV.copy(p.worldPos);
-    _popV.y += t * 7;
-    _popV.project(camera);
-    if (_popV.z > 1 || _popV.z < -1) { p.el.style.opacity = '0'; continue; }
-    const x = (_popV.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-_popV.y * 0.5 + 0.5) * window.innerHeight;
-    p.el.style.transform = `translate(${x}px, ${y}px) scale(${1 + t * 0.4})`;
-    p.el.style.opacity = String(Math.max(0, 1 - t * 1.2));
-  }
-}
-
 // ---- Slow-motion on big moments ----
 function slowMo(scale, durSec) {
   state.slowMoScale = scale;
@@ -2904,10 +2873,6 @@ function registerKill() {
     toastMini(`${tier.label} +${tier.score}`, tier.color);
     state.score += tier.score;
     if (tier.slow && typeof slowMo === 'function') slowMo(tier.slow, tier.slowDur);
-    if (state.kaiju) {
-      _tmpV1.copy(state.kaiju.root.position); _tmpV1.y += 18;
-      spawnPopup(_tmpV1, tier.label + '!', '#ffaa66');
-    }
   }
 }
 function addScore(base) {
@@ -2998,10 +2963,8 @@ world.onPickup = (type, pos) => {
   if (pos) world.spawnSparks(pos.clone().setY(2.5), 12);
   if (type === 'hp') {
     state.hp = Math.min(state.maxHp, state.hp + 25);
-    if (pos) spawnPopup(pos.clone().setY(4), '+25 HP', '#66ff99');
   } else if (type === 'rage') {
     addRage(30);
-    if (pos) spawnPopup(pos.clone().setY(4), '+30 RAGE', '#88ccff');
   } else if (type === 'score') {
     addScore(500);
   }
@@ -3276,10 +3239,6 @@ function crushUnderfoot() {
     const dx = ep.x - p.x, dz = ep.z - p.z;
     if (dx * dx + dz * dz < r * r) {
       e.damage(999, world);
-      if (e.dead && e.type !== 'soldier') {
-        _tmpV2.set(ep.x, ep.y + 6, ep.z);
-        spawnPopup(_tmpV2, 'CRUSHED!', '#ffee44');
-      }
     }
   }
 }
@@ -4393,7 +4352,6 @@ function updateCamera() {
 // ------------------------- World tick -------------------------
 const MAX_EFFECTS = isMobile ? 90 : 180;
 const MAX_DEBRIS  = isMobile ? 60 : 140;
-const MAX_POPUPS  = 28;
 
 // Debris cleanup: only dispose geometries / materials that the mesh owns.
 // GLB-cloned debris shares geom + material with the template (Three.js
@@ -4470,14 +4428,7 @@ function updateWorld(dt) {
     }
     world.debris.splice(0, drop);
   }
-  if (state.popups.length > MAX_POPUPS) {
-    const drop = state.popups.length - MAX_POPUPS;
-    for (let i = 0; i < drop; i++) {
-      const p = state.popups[i];
-      if (p && p.el) p.el.remove();
-    }
-    state.popups.splice(0, drop);
-  }
+
 
   // Enemies
   const kpos = state.kaiju ? state.kaiju.root.position : new THREE.Vector3();
@@ -5119,7 +5070,6 @@ function tick(now) {
     updateHUD();
     // Minimap is a full canvas redraw; ~15Hz is plenty
     if (now - (state._lastMini || 0) > 66) { drawMinimap(); state._lastMini = now; }
-    updatePopups(dt);
   } else if (state.kaiju) {
     // Keep GLB animation mixer running during pause/gameOver so
     // death, dance, and idle animations continue playing
@@ -5128,7 +5078,6 @@ function tick(now) {
       if (state._topple) _updateTopple(Math.min(0.05, dtRaw));
     }
     updateCamera();
-    updatePopups(dt);
   }
   // Menu navigation (gamepad) -- runs whenever the menu or upgrade modal
   // is on screen, regardless of paused/gameOver state.
