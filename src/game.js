@@ -144,6 +144,11 @@ const RP = isMobile ? {
   shadowHalf: 48,                                    // tight frustum (u)
   shadowType: THREE.PCFShadowMap,
   shadowEvery: 2,                                   // shadow map refresh interval (frames)
+  // Phones: only the kaiju and the big enemies (Mech, BossMech) cast, via a
+  // shadow-camera layer: the shadow pass drew ~88 building tiles per update
+  // for shadows inside a +-48u window. Buildings still receive.
+  shadowCasterLayer: 5,
+  bloomMips: 3,                                      // UnrealBloomPass levels (desktop: three's 5)
   neon:      Q_HIGH ? 3 : 2,
   dynRes:    true,
 } : {
@@ -360,6 +365,13 @@ if (RP.post) {
     0.85                                    // threshold (0.7 bloomed lit props/flipbook smoke)
   );
   composer.addPass(bloomPass);
+  if (RP.bloomMips && RP.bloomMips < bloomPass.nMips) {
+    // Phones: fewer blur levels (-2 levels x 2 draws). The composite still
+    // reads all five targets, so the dropped levels' weights go to 0
+    const bf = bloomPass.compositeMaterial.uniforms.bloomFactors.value;
+    for (let i = RP.bloomMips; i < bloomPass.nMips; i++) bf[i] = 0;
+    bloomPass.nMips = RP.bloomMips;
+  }
 
   // Cinematic post pass: chromatic aberration, vignette, film grain,
   // god-ray sun shafts, and a synthwave-dusk colour grade. Runs in
@@ -508,8 +520,14 @@ if (RP.shadows) {
   sun.shadow.camera.top = H;   sun.shadow.camera.bottom = -H;
   sun.shadow.camera.near = 1;   sun.shadow.camera.far = 290;
   sun.shadow.bias = -0.0005;
+  if (RP.shadowCasterLayer) sun.shadow.camera.layers.set(RP.shadowCasterLayer);
 }
 scene.add(sun);
+/** Put a caster on the phone shadow layer (RP.shadowCasterLayer): every mesh
+ *  under root, since three tests layers per object. No-op on desktop. */
+function markShadowCaster(root) {
+  if (RP.shadowCasterLayer && root) root.traverse((o) => { if (o.isMesh) o.layers.enable(RP.shadowCasterLayer); });
+}
 // Cool back/rim light opposite the sunset key. No shadows (cheap); it
 // separates kaiju and vehicle silhouettes from the warm background.
 const rimLight = new THREE.DirectionalLight(0x6fa8ff, Q_LOW ? 0.45 : 0.65);
@@ -2322,6 +2340,7 @@ async function _startGameInner(key) {
   // Phase 4: kaiju is the only object that casts shadows. Traverse its mesh
   // tree once and flip the flags so the shadow pass picks up every limb.
   k.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  markShadowCaster(k.root);
   // Cache named limb refs so per-frame animation skips getObjectByName tree
   // walks. GLB rigs may not expose these names; nulls are fine, the call
   // sites already null-check.
@@ -2737,6 +2756,7 @@ function startWave(n) {
   if (isBossWave) {
     const [bx, bz] = spawnPos(170);
     const boss = new BossMech(bx, bz);
+    markShadowCaster(boss.root);
     scene.add(boss.root);
     enemies.push(boss);
     state.boss = boss;
@@ -2764,7 +2784,7 @@ function startWave(n) {
   }
   for (let i = 0; i < mechCount; i++) {
     const [x, z] = spawnPos(150 + Math.random() * 60);
-    const m = new Mech(x, z); scene.add(m.root); enemies.push(m);
+    const m = new Mech(x, z); markShadowCaster(m.root); scene.add(m.root); enemies.push(m);
   }
   for (let i = 0; i < jetCount; i++) {
     const [x, z] = spawnPos(220 + Math.random() * 60, true);
