@@ -2965,7 +2965,6 @@ world.onBossKilled = () => {
   addScore(5000); addRage(40);
   toast('BOSS DESTROYED · +5000', 'good');
   document.getElementById('boss-bar').style.display = 'none';
-  if (state.boss) spawnPopup(state.boss.root.position.clone().setY(14), '+5000', '#ff66aa');
   state.boss = null;
   slowMo(0.25, 0.7);
   world.shake(2.0, 1.0);
@@ -2993,11 +2992,6 @@ world.onCivilianStomped = () => {
   audio.scream();
   addScore(35); addRage(1);
   progressObjective('civilians');
-  // Tiny popup so the player gets feedback on every flatten
-  if (state.kaiju) {
-    _tmpV1.copy(state.kaiju.root.position); _tmpV1.y += 6;
-    spawnPopup(_tmpV1, '+35', '#ffaaaa');
-  }
 };
 world.onPickup = (type, pos) => {
   audio.pickup(type);
@@ -3010,7 +3004,6 @@ world.onPickup = (type, pos) => {
     if (pos) spawnPopup(pos.clone().setY(4), '+30 RAGE', '#88ccff');
   } else if (type === 'score') {
     addScore(500);
-    if (pos) spawnPopup(pos.clone().setY(4), '+500', '#ffcc44');
   }
 };
 // One objective channel: the chip at the top of the HUD. Completion turns
@@ -3069,10 +3062,6 @@ world.onBuildingDestroyed = (b) => {
   bumpCombo();
   // Drop a pickup at the rubble
   maybeDropPickup(b.group.position.clone(), 'building');
-  // Floating "+N" with combo multiplier shown
-  const shown = Math.floor(base * comboMult());
-  spawnPopup(b.group.position.clone().setY(b.h * 0.6), `+${shown}`,
-    state.combo >= 5 ? '#ff66aa' : '#ffee66');
 };
 
 // ---- Artillery shell support (parabolic) ----
@@ -3186,12 +3175,6 @@ function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample =
       e.damage(dealt, world);
       _tmpV1.set(ep.x, ep.y + 4, ep.z);
       world.spawnHitPulse(_tmpV1, 0xffffff);
-      if (e.dead && e.type !== 'soldier') {
-        _tmpV2.set(ep.x, ep.y + 8, ep.z);
-        spawnPopup(_tmpV2,
-          e.type === 'boss' ? '+5000' : (e.type === 'mech' ? '+700' : (e.type === 'jet' ? '+450' : '+250')),
-          '#ffee44');
-      }
     }
   }
   // Catch cars + civilians too -- any attack in their radius should
