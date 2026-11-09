@@ -60,6 +60,9 @@ const SFX = {
   water_splash_sm: [2, 0.6,  4, 0.05, 0.12],
   boat_sink:       [2, 0.7,  2, 0.30, 0.05],
   loop_lapping:    [1, 1.0,  1, 0,    0],
+  // Gorrak atomic breath detonation (OGG + M4A)
+  atomic_blast:    [2, 1.0,  1, 1.00, 0.03],
+  atomic_charge:   [1, 0.8,  1, 0.30, 0.02],
 };
 
 // Exact loop lengths (samples at 44.1 kHz). Decoders that ignore the MP3
@@ -70,7 +73,7 @@ const LOOP_SAMPLES = { loop_heli: 185220, loop_tank: 194040, loop_city: 348390, 
 const MP3_PRIMING = 1105;
 const AAC_PRIMING = 1024;
 // Newer SFX ship as OGG + AAC (.m4a) instead of OGG + MP3
-const M4A_SFX = new Set(['water_step', 'water_splash', 'water_splash_sm', 'boat_sink', 'loop_lapping']);
+const M4A_SFX = new Set(['water_step', 'water_splash', 'water_splash_sm', 'boat_sink', 'loop_lapping', 'atomic_blast', 'atomic_charge']);
 // Water samples (assets/sfx/water_*, boat_sink_*, loop_lapping). With this off
 // the water API plays its procedural fallbacks and nothing is fetched.
 const WATER_SAMPLES = true;
@@ -175,7 +178,7 @@ class Audio {
     const extsM4a = ogg ? ['ogg', 'm4a'] : ['m4a', 'ogg'];
     const jobs = [];
     for (const name of Object.keys(SFX)) {
-      if (M4A_SFX.has(name) && !WATER_SAMPLES) continue;
+      if (M4A_SFX.has(name) && !WATER_SAMPLES && !name.startsWith('atomic')) continue;
       const n = SFX[name][0];
       for (let i = 0; i < n; i++) jobs.push([name, i, n > 1 ? `${name}_${i + 1}` : name]);
     }
@@ -702,6 +705,20 @@ class Audio {
     if (this._play('boss_slam_warn')) return;
     this.tone(40, 1.5, 'sawtooth', 0.45, 30);
     this.noise(1.5, 300, 0.25);
+  }
+
+  // Gorrak atomic breath. atomicCharge() at fire time: 0.4 s rising whine over
+  // the bolt's travel. atomicBlast(size) on detonation: crack + sub boom + ~3.5 s
+  // rolling tail (size 1 desktop, 0.8 phones scales level and weight).
+  atomicCharge() {
+    if (this._play('atomic_charge')) return;
+    this.tone(300, 0.4, 'sawtooth', 0.25, 900);
+  }
+
+  atomicBlast(size = 1) {
+    const s = Math.max(0.3, Math.min(1.5, size));
+    if (this._play('atomic_blast', 0.7 + 0.3 * s, 1.06 - 0.06 * s)) return;
+    this.explosion(3);
   }
 
   // Building destroyed: concrete collapse, sometimes with a glass shatter on top

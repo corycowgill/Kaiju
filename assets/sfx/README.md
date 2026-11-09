@@ -137,3 +137,14 @@ Total: 0.65 MB.
 | `boat_sink_1` | 3.50s | Motorboat swamped by a wave, water rushing in, metal creaking, bubbling as it goes under. Length: 4 seconds |
 | `boat_sink_2` | 2.94s | Boat capsizing and sinking, splashing water, deep gurgles and air bubbles rising. Length: 4 seconds |
 | `loop_lapping` | 8.90s | Gentle lake waves lapping against a concrete shore, calm steady water sloshing, light wind, outdoor ambience. Length: 12 seconds |
+
+## Gorrak atomic breath (OGG + M4A)
+
+These clips were generated with Stable Audio 3 small-sfx on the official `stabilityai/stable-audio-3` ZeroGPU Space,
+with the same settings as the water clips.
+
+| File | Duration | Prompt / processing |
+|---|---|---|
+| `atomic_blast_1` | 3.80s | Massive bomb detonation, earth shaking sub boom with crack and debris, very long rolling echo tail. Levelled to -13 LUFS momentary max. |
+| `atomic_blast_2` | 3.51s | Huge energy sphere detonation, crackling electric snap into a colossal deep boom, long reverberant rumble decaying. Levelled to -14 LUFS. |
+| `atomic_charge` | 0.40s | Plasma bolt flying fast, rising whoosh and electric whine. Cut and fitted to the 0.4 s bolt travel, with a +12 dB rising ramp, levelled to -18 LUFS. |
