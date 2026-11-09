@@ -10,7 +10,8 @@
 // to true in the commit that adds the last fest_* GLB.
 import * as THREE from 'three';
 import { dressFestival } from './festivalDressing.js';
-import { loadCrowdGeometry, crowdGeometry, crowdMaterial, animateCrowd } from './festivalCrowd.js';
+import { animateCrowd } from './festivalCrowd.js';
+import { loadFestivalPeople, createFestivalPeople } from './festivalPeople.js';
 import { assetURL } from '../assetCache.js';
 
 const FEST_URL = './assets/levels/chicago_fest.json';
@@ -106,7 +107,7 @@ export function festBuildingGLBs() {
 /** Fetch and normalise the festival layout; null when off or missing. */
 export async function loadFest() {
   if (!festEnabled()) return null;
-  await loadCrowdGeometry();
+  await loadFestivalPeople();
   try {
     const r = await fetch(FEST_URL, { cache: 'no-cache' });
     if (!r.ok) return null;
@@ -474,11 +475,9 @@ function _ledScreen(lite) {
 }
 
 // --------------- crowd ---------------
-const SHIRTS = [0xa14545, 0xc28b54, 0xc8b575, 0x538b80, 0x726a8b, 0x5b819f, 0xc5c4b5, 0x343a3e, 0x9f584b, 0x647958];
-
 /** Festival-goers on the stage lawns, packed denser toward each stage:
- *  one InstancedMesh for every lawn (a single draw). lawns: [{ it, n }]. */
-function _makeCrowd(scene, lawns, geom, mat) {
+ *  stable logical IDs, compacted into shared GLB model/LOD batches. */
+function _makeCrowd(scene, lawns, uTime) {
   const pts = [], yaw = [];
   for (const { it, n } of lawns) {
     const poly = it.crowdArea;
@@ -495,15 +494,15 @@ function _makeCrowd(scene, lawns, geom, mat) {
   }
   const count = pts.length / 2;
   if (!count) return null;
-  const im = new THREE.InstancedMesh(geom, mat, count);
-  const o = new THREE.Object3D(), c = new THREE.Color();
+  const im = createFestivalPeople(count, uTime);
+  if (!im) throw new Error('Festival crowd models were not loaded');
+  const o = new THREE.Object3D();
   for (let i = 0; i < count; i++) {
     o.position.set(pts[i * 2], 0.04, pts[i * 2 + 1]);
     o.rotation.set(0, yaw[i] + (Math.random() - 0.5) * 0.6, 0);
     o.scale.setScalar(0.9 + Math.random() * 0.25);
     o.updateMatrix();
     im.setMatrixAt(i, o.matrix);
-    im.setColorAt(i, c.setHex(SHIRTS[Math.floor(Math.random() * SHIRTS.length)]));
   }
   im.computeBoundingSphere();
   im.castShadow = false; im.receiveShadow = false;
@@ -697,23 +696,21 @@ export function buildFest(scene, F, ctx) {
   const crowds = [];
   {
     const uTime = { value: 0 };
-    const geom = crowdGeometry(), mat = crowdMaterial(uTime);
     const perU2 = !glb ? 0.08 : lite ? 0.22 : 0.62; // people per square unit
     const cap = !glb ? 450 : lite ? 1600 : 4400;
     const lawns = stages.filter(({ it }) => it.crowdArea && (glb || it.tier === 'main'));
     const area = (p) => { let s = 0; for (let i = 0; i < p.length; i++) { const [x0, z0] = p[i], [x1, z1] = p[(i + 1) % p.length]; s += x0 * z1 - x1 * z0; } return Math.abs(s) / 2; };
     const tot = lawns.reduce((s, { it }) => s + area(it.crowdArea), 0);
     const k = Math.min(perU2, cap / Math.max(1, tot));
-    const c = _makeCrowd(scene, lawns.map(({ it }) => ({ it, n: Math.round(area(it.crowdArea) * k) })), geom, mat);
+    const c = _makeCrowd(scene, lawns.map(({ it }) => ({ it, n: Math.round(area(it.crowdArea) * k) })), uTime);
     if (c) {
       crowds.push(c);
       animators.push(animateCrowd(c, { world: ctx.world, buildings,
         gates: F.items.filter(it => it.kind === 'gate'), isWater: ctx.isWater, bounds: ctx.bounds }));
     }
     animators.push({ update(dt, time) { uTime.value = time; } });
-    // Stomped / blasted festival-goers: flattened where they stood
+    // Stomped / blasted festival-goers play the reference death animation.
     // (game.js damageInRadius calls this like it does for civilians)
-    const flat = new THREE.Matrix4(), squash = new THREE.Vector3(1.6, 0.04, 1.6);
     if (ctx.world) {
       ctx.world.crowdHit = (x, z, r2) => {
         let n = 0;
@@ -726,9 +723,7 @@ export function buildFest(scene, F, ctx) {
             if (dist2 < r2 + 900 && c.panic) c.panic[i] = 10;
             if (dist2 > r2) continue;
             c.alive[i] = 0; n++; dirty = true;
-            c.im.getMatrixAt(i, flat);
-            flat.scale(squash);
-            c.im.setMatrixAt(i, flat);
+            c.im.kill(i);
           }
           if (dirty) c.im.instanceMatrix.needsUpdate = true;
         }

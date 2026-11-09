@@ -153,6 +153,18 @@ await step('level data', () => city.loadLevelData(level));
 if (Q.GLB_CONTENT) await step('tree/ped/car templates', () => Promise.all([city.loadTreeTemplates(undefined, level), city.loadPedestrianTemplates(), city.loadCarTemplates(undefined, level)]));
 else if (level === 'chicago') await step('car templates', () => city.loadCarTemplates(undefined, level)); // as game.js: GLB cars on Chicago LOW
 const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q.isMobile, glb: Q.GLB_CONTENT, level }));
+if (level === 'chicago') await step('rigged festival crowd', async () => {
+  const { festivalPeopleStats } = await import('../src/levels/festivalPeople.js');
+  const stats = festivalPeopleStats();
+  if (stats.variants !== 9 || stats.clips.length !== 9) fail(`festival: ${stats.variants} variants / ${stats.clips.length} clips`);
+  const crowd = scene.children.find(o => o.userData.festivalPeople);
+  if (!crowd) { fail('festival: rigged crowd missing'); return; }
+  world.crowdViewPosition = new THREE.Vector3(-35, 2, -80);
+  for (const animator of res.cityAnimators) animator.update(.04, .04);
+  const visible = crowd.children.reduce((sum, mesh) => sum + mesh.count, 0);
+  if (!visible) fail('festival: all crowd instance batches are empty');
+  if (crowd.children.length !== 27) fail('festival: expected 9 model / 3 LOD batches');
+});
 for (const key of ['godzilla', 'ghidorah', 'mecha']) await step(`kaiju ${key}`, () => loadKaijuModel(key));
 if (Q.GLB_CONTENT) {
   await step('building/debris/enemy templates', () => Promise.all([city.loadBuildingTemplates(undefined, level), city.loadDebrisTemplates(), enemies.loadEnemyTemplates()]));

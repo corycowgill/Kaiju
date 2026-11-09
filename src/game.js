@@ -927,6 +927,7 @@ function _rayGLBBuildingsAll(ray, maxDist) {
 }
 
 const world = {
+  crowdViewPosition: camera.position,
   scene,
   time: 0,
   effects: [],

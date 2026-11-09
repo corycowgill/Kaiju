@@ -205,13 +205,14 @@ export function animateCrowd(c, { world, buildings, gates, isWater, bounds }) {
         pose.position.set(c.pts[i * 2], .04, c.pts[i * 2 + 1]);
         pose.rotation.set(moved ? .14 : 0, c.heading[i], 0); pose.scale.setScalar(sizes[i]);
         pose.updateMatrix(); c.im.setMatrixAt(i, pose.matrix);
-        motion.setY(i, moved ? 1 : .2); dirty = true;
+        motion.setY(i, motion.getY(i) + ((moved ? 1 : .2) - motion.getY(i)) * Math.min(1, step * 8)); dirty = true;
         // Reaching an exit retires the person instead of piling bodies on it.
         if (gate && Math.hypot(gate.x - pose.position.x, gate.z - pose.position.z) < 1.8 && d > 26) {
           c.alive[i] = 0; c.im.setMatrixAt(i, pose.matrix.makeScale(0, 0, 0));
         }
       }
       if (dirty) { c.im.instanceMatrix.needsUpdate = true; motion.needsUpdate = true; }
+      c.im.sync?.(world?.crowdViewPosition || world?.kaijuPos);
     },
   };
 }
