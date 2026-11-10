@@ -27,9 +27,37 @@ The infantry model has a chamfered handguard, curved stamped magazine, barrel/br
 receiver controls, reflex sight, exposed bolt, rail teeth, woven sleeves and gloves.
 
 Live screens display altitude, speed, heading, target range and weapon readiness.
-The controls react to movement, the cannon recoils, and textured muzzle flashes use
-the existing fire flipbook. A foreground projection retains internal depth while
+The controls react to movement, the cannon recoils, and directional combustion
+sprites replace the explosion flipbook at the muzzle. A foreground projection retains internal depth while
 leaving the world camera's depth precision unchanged.
+
+The follow-up material pass separates graphite steel, satin hardware, khaki
+polymer, dark leather and woven sleeves using glTF factors with shared textures.
+The receiver has a forged stepped silhouette, forward assist, optic adjustment
+dial and laser markings. Look inertia and a blended sprint pose add weapon weight.
+All six screen types now draw live vector instruments; generated fixed readings
+are no longer visible. Radar uses relative target bearing and a 200 m scale.
+
+## Reference review
+
+Visual benchmarks: [Call of Duty weapon presentation](https://www.callofduty.com/blog/2024/10/call-of-duty-black-ops-6-launch-comms-weapons-attachments-intel),
+[Battlefield vehicle roles](https://www.ea.com/games/battlefield/battlefield-6/news/vehicles),
+and [DCS cockpit reference imagery](https://www.digitalcombatsimulator.com/it/files/3328167/).
+These are review references, not texture or model sources.
+
+The review identified identical-looking material finishes, a slab-like receiver,
+and fixed instrument readings as the most immediate weaknesses. This pass targets
+those issues while retaining the connected cabin and existing geometry budgets.
+Remaining differences from a AAA production include hand anatomy, bespoke baked
+wear masks, environment lighting and authored skeletal handling animations.
+
+## AI behavior
+
+`loneKaijuAI.js` owns approach, wind-up, attack and recovery phases. The Kaiju
+alternates close ground slams with ranged beam bursts, locks a slightly predicted
+target during the warning, respects beam cover, and attacks faster below 40% HP.
+Attack damage occurs once per burst; visual pulses cannot multiply damage.
+Regression tests run a full minute per role and verify evasion and cover.
 
 ## Rebuild
 

@@ -54,7 +54,13 @@ def ell(name,p,scale,m):
  return finish(o,name,m)
 # Carbine centered down the screen-right firing line.
 x=.205
-box('Upper receiver',(x,-.235,-.63),(.075,.065,.25),steel)
+# Forged receiver profile: stepped charging shoulder and tapered front ferrule.
+profile=[(-.505,-.254),(-.505,-.217),(-.53,-.200),(-.705,-.200),(-.755,-.217),(-.755,-.251)]
+verts=[v((x+side*.0375,y,z))for side in [-1,1]for z,y in profile];n=len(profile)
+faces=[tuple(reversed(range(n))),tuple(range(n,n*2))]+[(i,(i+1)%n,(i+1)%n+n,i+n)for i in range(n)]
+me=bpy.data.meshes.new('Forged receiver profile');me.from_pydata(verts,[],faces);me.update()
+o=bpy.data.objects.new('Contoured upper receiver',me);bpy.context.collection.objects.link(o);finish(o,o.name,steel)
+mod=o.modifiers.new('Forged edge fillets','BEVEL');mod.width=.004;mod.segments=3;o.modifiers.new('Receiver normals','WEIGHTED_NORMAL')
 box('Lower receiver',(x,-.285,-.59),(.069,.055,.15),poly)
 # Octagonal free-float handguard: chamfered silhouette, no solid rectangular slab.
 section=[(-.03,-.038),(.03,-.038),(.041,-.026),(.041,.026),(.03,.038),(-.03,.038),(-.041,.026),(-.041,-.026)]
@@ -92,6 +98,19 @@ box('Trigger guard',(x,-.327,-.603),(.049,.008,.061),steel,.003)
 rod('Trigger',(x,-.295,-.602),(x,-.319,-.61),.004,edge)
 box('Ejection port',(x+.038,-.228,-.637),(.002,.023,.075),rubber,.002)
 box('Bolt carrier visible in port',(x+.040,-.227,-.641),(.003,.013,.035),edge,.001)
+for z in [-.72,-.52]:
+ rod('Receiver machined end collar',(x,-.235,z-.005),(x,-.235,z+.005),.037,edge,verts=24)
+rod('Forward assist housing',(x+.036,-.23,-.535),(x+.056,-.23,-.519),.009,steel,verts=16)
+rod('Forward assist serrated cap',(x+.055,-.23,-.52),(x+.061,-.23,-.515),.011,edge,verts=16)
+rod('Optic brightness dial',(x+.026,-.125,-.646),(x+.042,-.125,-.646),.012,rubber,verts=20)
+for i in range(8):
+ a=i*math.tau/8;ell('Dial knurl',(x+.038,-.125+math.cos(a)*.012,-.646+math.sin(a)*.012),(.004,.002,.002),edge)
+# Close-up receiver engraving faces the operator, rather than billboard labels.
+for text,p,size in [('SAFE', (x-.040,-.273,-.549),.006),('5.56 / KDF', (x-.039,-.235,-.61),.007),('07', (x,-.173,-.57),.006)]:
+ bpy.ops.object.text_add(location=v(p));o=bpy.context.object;o.data.body=text;o.data.size=size;o.data.extrude=0
+ if text=='07':o.rotation_euler=(0,0,0)
+ else:o.rotation_euler=(math.pi/2,0,-math.pi/2)
+ o.data.materials.append(edge);bpy.ops.object.convert(target='MESH');o.name='Laser etched '+text
 for z in [-.55,-.66]:rod('Receiver pivot pin',(x+.036,-.276,z),(x+.041,-.276,z),.006,edge,verts=12)
 rod('Safety selector',(x-.038,-.275,-.56),(x-.055,-.275,-.56),.007,edge)
 box('Angled selector lever',(x-.056,-.285,-.565),(.006,.026,.012),rubber,.003)

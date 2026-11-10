@@ -727,7 +727,7 @@ export const ASSET_HASHES = {
   "assets/vehicles/small_truck_lod1.glb": "900eee24a7",
   "assets/vehicles/taxi_black.glb": "7231fbc771",
   "assets/vehicles/taxi_black_lod1.glb": "2ee4b1ef00",
-  "assets/viewmodels/helicopter_view.glb": "42cd383e79",
-  "assets/viewmodels/infantry_view.glb": "dc5c885258",
-  "assets/viewmodels/tank_view.glb": "9a989b670e"
+  "assets/viewmodels/helicopter_view.glb": "5d3c82c3c9",
+  "assets/viewmodels/infantry_view.glb": "09dc029827",
+  "assets/viewmodels/tank_view.glb": "e3c3ccb94c"
 };

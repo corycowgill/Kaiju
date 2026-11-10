@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { attachViewDetails } from './loneSoldierView.js';
+import { LoneKaijuAI } from './loneKaijuAI.js';
 
 const viewTemplates = new Map();
 const sharedViewTextures = new Map();
@@ -54,7 +55,7 @@ export class LoneSoldier {
       if (!blocked) { this.pos.set(x,this.unit.eye,z); break; }
     }
     this.hp = this.unit.hp; this.kaijuHP = this.maxKaijuHP = 2400;
-    this.cooldown = 0; this.attackTimer = 3; this.warning = 0; this.time = 0;
+    this.cooldown = 0; this.warning = 0; this.time = 0;
     state.yaw = Math.atan2(kp.x-this.pos.x,kp.z-this.pos.z); state.pitch = 0;
     this.ray = new THREE.Raycaster(); this.box = new THREE.Box3(); this.hit = new THREE.Vector3();
     this.hud = document.createElement('div'); this.hud.id='lone-hud';
@@ -66,7 +67,7 @@ export class LoneSoldier {
       this.visuals=attachViewDetails(viewModel,role,camera);
     }
     this.motion = 0; this.recoil = 0;
-    this.steer=0;
+    this.steer=0;this.ai=new LoneKaijuAI();this.lookSway=new THREE.Vector2();this.sprintBlend=0;
 
   }
   cameraUpdate() {
@@ -74,9 +75,10 @@ export class LoneSoldier {
     const infantry=this.role==='infantry',heli=this.role==='helicopter';
     const shake=heli ? .0015 : .001*this.motion;
     this.view.position.set(Math.sin(this.time * (infantry?8:29)) * (infantry ? .006 : shake) * (infantry?this.motion:1),
-      Math.cos(this.time * (infantry?16:37)) * (infantry ? .004*this.motion : shake),kick*(this.role==='tank' ? .055 : .025));
-    this.view.rotation.set(kick*(this.role==='tank' ? .035 : .025),Math.sin(this.time*8)*.004*this.motion,
-      (heli?-this.steer*.025:0)+kick*-.009);
+      Math.cos(this.time * (infantry?16:37)) * (infantry ? .004*this.motion : shake)-(infantry?this.sprintBlend*.045:0),kick*(this.role==='tank' ? .055 : .025));
+    this.view.rotation.set(kick*(this.role==='tank' ? .035 : .025)+(infantry?this.lookSway.y+this.sprintBlend*.09:0),
+      Math.sin(this.time*8)*.004*this.motion+(infantry?this.lookSway.x:0),
+      (heli?-this.steer*.025:infantry?this.sprintBlend*-.12:0)+kick*-.009);
     this.camera.position.copy(this.pos);
     const {yaw,pitch}=this.state;
     this.camera.lookAt(this.pos.x+Math.sin(yaw)*Math.cos(pitch),this.pos.y+Math.sin(pitch),this.pos.z+Math.cos(yaw)*Math.cos(pitch));
@@ -118,6 +120,8 @@ export class LoneSoldier {
     state.yaw-=input.lookX*.045;state.pitch=THREE.MathUtils.clamp(state.pitch-input.lookY*.03,-1.35,1.35);
     let x=input.x,z=input.z,l=Math.max(1,Math.hypot(x,z));x/=l;z/=l;
     this.motion=THREE.MathUtils.lerp(this.motion,Math.min(1,Math.hypot(x,z)),Math.min(1,dt*10));
+    this.lookSway.lerp(new THREE.Vector2(THREE.MathUtils.clamp(input.lookX*.004,-.035,.035),THREE.MathUtils.clamp(input.lookY*.004,-.025,.025)),1-Math.exp(-dt*12));
+    this.sprintBlend=THREE.MathUtils.lerp(this.sprintBlend,input.sprint && !input.fire?this.motion:0,1-Math.exp(-dt*8));
     this.steer=THREE.MathUtils.lerp(this.steer,x,Math.min(1,dt*5));
     const speed=this.unit.speed*(input.sprint?1.45:1), old=pos.clone();
     pos.x+=(Math.sin(state.yaw)*z-Math.cos(state.yaw)*x)*speed*dt;
@@ -129,40 +133,10 @@ export class LoneSoldier {
     if(blocked)pos.copy(old);
     this.groundSpeed=Math.hypot(pos.x-old.x,pos.z-old.z)/Math.max(dt,1e-5);
     this.cameraUpdate();if(input.fire)this.shoot();
-    const kp=k.root.position, dx=pos.x-kp.x,dz=pos.z-kp.z,d=Math.hypot(dx,dz);
-    const moving=d>22;
-    if(moving){kp.x+=dx/d*10*dt;kp.z+=dz/d*10*dt;k.root.rotation.y=Math.atan2(dx,dz);}
-    k.glb?.play(moving?'walk':'idle');k.mixer?.update(dt);
-    world.kaijuPos=kp;
-    world.buildingGrid?.forEachNear(kp.x,kp.z,35,b=>{if(!b.destroyed && Math.abs(kp.x-b.x)<b.w/2+10 && Math.abs(kp.z-b.z)<b.d/2+10)b.damage(100*dt,kp,world);});
-    this.attackTimer-=dt;
-    if(this.attackTimer<=0 && !this.warning){this.warning=1.2;this.target=pos.clone();k.glb?.playOnce('skill1',.1,1);}
-    if(this.warning>0){
-      this.warning-=dt;
-      if(this.warning<=0){
-        const mouth=new THREE.Vector3();k.head.getWorldPosition(mouth);
-        const aim=this.target.clone().sub(mouth).normalize();
-        let reach=mouth.distanceTo(this.target),cover=null;
-        this.ray.set(mouth,aim);
-        for(const b of world.buildings) {
-          if(b.destroyed)continue;
-          this.box.min.set(b.x-b.w/2,0,b.z-b.d/2);this.box.max.set(b.x+b.w/2,b.h,b.z+b.d/2);
-          if(this.box.containsPoint(mouth))continue;
-          if(this.ray.ray.intersectBox(this.box,this.hit)) {
-            const dist=this.hit.distanceTo(mouth);if(dist<reach){reach=dist;cover=b;}
-          }
-        }
-        const impact=mouth.clone().addScaledVector(aim,reach);
-        world.spawnBeam(mouth,aim,reach,0x75dfff,0xb2f5ff);world.spawnExplosion(impact,1.1);
-        if(cover)cover.damage(180,impact,world);
-        else if(pos.distanceTo(this.target)<(this.role==='tank'?10:7))this.hp-=this.role==='tank'?65:35;
-        this.attackTimer=3.5;
-      }
-    }
-    if(d<16)this.hp-=28*dt;
+    this.ai.update(this,dt);
     this.visuals?.update(this,dt);
     document.getElementById('lone-status').textContent=`LONE SOLDIER · ${this.unit.name.toUpperCase()} · HP ${Math.max(0,Math.ceil(this.hp))} / ${this.unit.hp}`;
-    document.getElementById('lone-target').innerHTML=`AI KAIJU · ${Math.ceil(this.kaijuHP)} / ${this.maxKaijuHP}<div class="lone-health-track"><div class="lone-health-fill" style="width:${this.kaijuHP/this.maxKaijuHP*100}%"></div></div><div class="lone-warning" role="status">${this.warning>0?'INCOMING BEAM — MOVE!':''}</div>`;
+    document.getElementById('lone-target').innerHTML=`AI KAIJU · ${Math.ceil(this.kaijuHP)} / ${this.maxKaijuHP}<div class="lone-health-track"><div class="lone-health-fill" style="width:${this.kaijuHP/this.maxKaijuHP*100}%"></div></div><div class="lone-warning" role="status">${this.warning>0?this.attackLabel:''}</div>`;
     if(this.hp<=0||this.kaijuHP<=0)this.finish(this.kaijuHP<=0);
   }
   dispose(){

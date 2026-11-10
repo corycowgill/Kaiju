@@ -1,8 +1,8 @@
 [
   {
     "role": "infantry",
-    "bytes": 1261288,
-    "triangles": 16830,
+    "bytes": 1419812,
+    "triangles": 20219,
     "primitives": 8,
     "textures": [
       "viewtex_3b218342e1ef.png",
@@ -21,7 +21,7 @@
   },
   {
     "role": "tank",
-    "bytes": 1716996,
+    "bytes": 1717312,
     "triangles": 32686,
     "primitives": 17,
     "textures": [
@@ -44,7 +44,7 @@
   },
   {
     "role": "helicopter",
-    "bytes": 1773612,
+    "bytes": 1773932,
     "triangles": 32682,
     "primitives": 18,
     "textures": [

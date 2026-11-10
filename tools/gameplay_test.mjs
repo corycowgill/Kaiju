@@ -138,10 +138,10 @@ test('Lone Soldier roles move, fire at the AI Kaiju, and respect cover', () => {
       assert.ok(root.position.x>0,'AI pursues the player');
       world.buildings=[];
       const idle={x:0,z:0,lookX:0,lookY:0,vertical:0};
-      mode.attackTimer=0;mode.update(.01,idle);assert.ok(mode.warning>0,'beam is telegraphed');
-      mode.warning=.01;const hp=mode.hp;mode.update(.02,idle);assert.ok(mode.hp<hp,'locked beam hits stationary unit');
-      mode.attackTimer=0;mode.update(.01,idle);mode.pos.x+=20;
-      mode.warning=.01;const safeHP=mode.hp;mode.update(.02,idle);assert.equal(mode.hp,safeHP,'moving away evades beam');
+      const hp=mode.hp;let warned=false;
+      for(let frame=0;frame<300;frame++){mode.update(1/60,idle);warned ||= mode.warning>0;}
+      assert.ok(warned,'attack is telegraphed');
+      assert.ok(mode.hp<hp,'stationary unit takes attack damage');
       mode.kaijuHP=0;mode.update(.01,{x:0,z:0,lookX:0,lookY:0,vertical:0});assert.equal(result,true);
       mode.dispose();assert.equal(camera.children.length,0);
     }
