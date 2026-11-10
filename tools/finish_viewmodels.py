@@ -12,6 +12,8 @@ used_textures=set()
 for role in ['infantry','tank','helicopter']:
  path=OUT/f'{role}_view.glb';raw=path.read_bytes();length=struct.unpack_from('<I',raw,12)[0]
  g=json.loads(raw[20:20+length]);binary=bytearray(raw[28+length:])
+ if role=='infantry':
+  for animation in g.get('animations',[]):animation['name']='reload'
  # Material separation uses glTF factors so all roles still share albedo maps.
  # Values are linear RGB, deliberately avoiding an identical green metal/leather look.
  palette={
@@ -31,7 +33,7 @@ for role in ['infantry','tank','helicopter']:
  for material in g.get('materials',[]):
   if material.get('name') in palette:
    r,gg,b,metal,rough=palette[material['name']];p=material['pbrMetallicRoughness']
-   p['baseColorFactor']=[r,gg,b,1];p['metallicFactor']=metal;p['roughnessFactor']=rough
+   p['baseColorFactor']=[r,gg,b,1];p['metallicFactor']=metal;p['roughnessFactor']=1 if 'metallicRoughnessTexture' in p else rough
  for mesh in g['meshes']:
   for p in mesh['primitives']:
    a=g['accessors'][p['attributes']['NORMAL']];view=g['bufferViews'][a['bufferView']]

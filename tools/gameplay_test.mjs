@@ -3,6 +3,7 @@ import test from 'node:test';
 import * as THREE from 'three';
 import { resolveStructureContact } from '../src/buildingCollision.js';
 import { crowdGeometry, crowdMaterial, animateCrowd } from '../src/levels/festivalCrowd.js';
+import { followSoldierShadow, applyEnvironmentStrength } from '../src/firstPersonLighting.js';
 
 globalThis.window = { innerWidth: 1440, innerHeight: 900 };
 globalThis.location = { search: '?q=high' };
@@ -175,4 +176,39 @@ test('Lone Soldier roles move, fire at the AI Kaiju, and respect cover', () => {
       mode.dispose();assert.equal(camera.children.length,0);
     }
   } finally {globalThis.document=oldDocument;}
+});
+
+test('infantry magazines, reload lock, aim transition, recoil and camera restoration',()=>{
+  const previous=globalThis.document,labels=new Map();
+  globalThis.document={body:{append(){}},createElement:()=>({remove(){},innerHTML:''}),
+    getElementById:id=>{if(!labels.has(id))labels.set(id,{});return labels.get(id);}};
+  try {
+    const root=new THREE.Group(),camera=new THREE.PerspectiveCamera(60,1,.5,1000);
+    const state={kaiju:{root,head:root},yaw:0,pitch:0,score:0};
+    const world={scene:new THREE.Scene(),bounds:{minX:-500,maxX:500,minZ:-500,maxZ:500},buildings:[],spawnBeam(){}};
+    const c=new LoneSoldier({world,state,camera,role:'infantry',sound(){},finish(){}});c.ai.update=()=>{};
+    const idle={x:0,z:0,lookX:0,lookY:0,vertical:0};
+    for(let i=0;i<30;i++){c.cooldown=0;c.shoot();}
+    assert.equal(c.ammo,0);c.cooldown=0;c.shoot();assert.ok(c.reloadTime>2);
+    const score=state.score;c.shoot();assert.equal(state.score,score,'reload blocks fire');
+    c.update(1,idle);assert.equal(c.ammo,0,'ammo is not restored before seating magazine');
+    c.update(1.3,{...idle,aim:true});assert.equal(c.ammo,30);assert.ok(camera.fov<50);
+    const p=c.pos.clone();c.update(.5,{...idle,x:1,aim:true});
+    assert.ok(c.pos.distanceTo(p)<3,'aiming reduces movement speed');
+    assert.ok(Number.isFinite(c.weaponKick));
+    c.dispose();assert.equal(camera.fov,60);assert.equal(camera.children.length,0);
+  } finally {globalThis.document=previous;}
+});
+
+test('soldier shadow tracking keeps sun direction fixed and environment strength reaches materials',()=>{
+  const sun=new THREE.DirectionalLight(),anchor=new THREE.Object3D(),offset=new THREE.Vector3(6,140,50);
+  followSoldierShadow(sun,anchor,new THREE.Vector3(50,2,-40),offset);
+  assert.ok(sun.position.clone().sub(anchor.position).distanceTo(offset)<1e-8);
+  assert.equal(sun.target,anchor);
+  const before=anchor.position.clone();followSoldierShadow(sun,anchor,new THREE.Vector3(50.000001,2,-40),offset);
+  assert.ok(before.distanceTo(anchor.position)<.00001,'sub-texel motion does not shift the map');
+  const scene=new THREE.Scene(),material=new THREE.MeshStandardMaterial(),explicit=material.clone();
+  explicit.envMap=new THREE.Texture();explicit.envMapIntensity=.22;
+  scene.add(new THREE.Mesh(new THREE.BoxGeometry(),material),new THREE.Mesh(new THREE.BoxGeometry(),explicit));
+  applyEnvironmentStrength(scene,.85);assert.equal(material.envMapIntensity,.85);assert.equal(explicit.envMapIntensity,.22);
 });

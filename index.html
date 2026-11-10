@@ -1257,6 +1257,9 @@
   .lone-crosshair::before { left:8px; top:0; width:2px; height:18px; }
   .lone-crosshair::after { left:0; top:8px; width:18px; height:2px; }
   .lone-controls { position:absolute; bottom:var(--safe-b); left:var(--safe-l); color:var(--c-muted); font:var(--fs-cap) var(--f-jp); line-height:1.8; letter-spacing:.4px; }
+  .lone-infantry-actions { display:none; position:absolute; right:140px; bottom:130px; gap:10px; pointer-events:auto; }
+  .lone-infantry-actions button { color:var(--c-gold); background:var(--glass-strong); border:var(--stroke); border-radius:var(--r); padding:14px; touch-action:none; }
+  body.touch .lone-infantry-actions { display:flex; }
   @media(max-width:700px) { #lone-status { max-width:42%; font-size:14px; } #lone-target { left:auto; right:var(--safe-r); width:48%; font-size:16px; } .lone-controls { max-width:90%; font-size:10px; } }
 </style>
 </head>
@@ -1523,34 +1526,35 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.123",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.123",
-    "./src/audio.js": "./src/audio.js?v=1.11.123",
-    "./src/city.js": "./src/city.js?v=1.11.123",
-    "./src/effects.js": "./src/effects.js?v=1.11.123",
-    "./src/carBatch.js": "./src/carBatch.js?v=1.11.123",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.123",
-    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.11.123",
-    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.11.123",
-    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.11.123",
-    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.11.123",
-    "./src/game.js": "./src/game.js?v=1.11.123",
-    "./src/intro.js": "./src/intro.js?v=1.11.123",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.123",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.123",
-    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.11.123",
-    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.11.123",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.123",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.123",
-    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.11.123",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.123",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.123",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.123",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.123",
-    "./src/quality.js": "./src/quality.js?v=1.11.123",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.123",
-    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.11.123",
-    "./src/waterPlay.js": "./src/waterPlay.js?v=1.11.123"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.124",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.124",
+    "./src/audio.js": "./src/audio.js?v=1.11.124",
+    "./src/city.js": "./src/city.js?v=1.11.124",
+    "./src/effects.js": "./src/effects.js?v=1.11.124",
+    "./src/carBatch.js": "./src/carBatch.js?v=1.11.124",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.124",
+    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.11.124",
+    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.11.124",
+    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.11.124",
+    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.11.124",
+    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.11.124",
+    "./src/game.js": "./src/game.js?v=1.11.124",
+    "./src/intro.js": "./src/intro.js?v=1.11.124",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.124",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.124",
+    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.11.124",
+    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.11.124",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.124",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.124",
+    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.11.124",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.124",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.124",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.124",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.124",
+    "./src/quality.js": "./src/quality.js?v=1.11.124",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.124",
+    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.11.124",
+    "./src/waterPlay.js": "./src/waterPlay.js?v=1.11.124"
   }
 }
 </script>
@@ -1564,7 +1568,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.123"></script>
-<script type="module" async src="./src/intro.js?v=1.11.123"></script>
+<script type="module" src="./src/game.js?v=1.11.124"></script>
+<script type="module" async src="./src/intro.js?v=1.11.124"></script>
 </body>
 </html>

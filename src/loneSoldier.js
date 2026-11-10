@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { attachViewDetails } from './loneSoldierView.js';
 import { LoneKaijuAI } from './loneKaijuAI.js';
 
@@ -10,7 +11,8 @@ export async function loadLoneView(role) {
   if (!viewTemplates.has(role)) viewTemplates.set(role,(async()=>{
     const {cachedFetch}=await import('./assetCache.js');
     const bytes=await cachedFetch(`./assets/viewmodels/${role}_view.glb`);
-    const {scene,parser}=await new GLTFLoader().parseAsync(bytes,'./assets/viewmodels/');
+    const {scene,parser,animations}=await new GLTFLoader().parseAsync(bytes,'./assets/viewmodels/');
+    scene.animations=animations;
     scene.traverse(o=>{if(o.isMesh){
       o.geometry.userData.shared=true;
       for(const slot of ['map','emissiveMap','normalMap','roughnessMap','metalnessMap']) {
@@ -27,7 +29,7 @@ export async function loadLoneView(role) {
     }});
     return scene;
   })().catch(error=>{viewTemplates.delete(role);throw error;}));
-  const view=(await viewTemplates.get(role)).clone(true);
+  const view=cloneSkeleton(await viewTemplates.get(role));
   view.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;}});
   return view;
 }
@@ -59,15 +61,25 @@ export class LoneSoldier {
     state.yaw = Math.atan2(kp.x-this.pos.x,kp.z-this.pos.z); state.pitch = 0;
     this.ray = new THREE.Raycaster(); this.box = new THREE.Box3(); this.hit = new THREE.Vector3();
     this.hud = document.createElement('div'); this.hud.id='lone-hud';
-    this.hud.innerHTML='<div class="lone-panel" id="lone-status"></div><div class="lone-crosshair" aria-hidden="true"></div><div class="lone-controls lone-panel">WASD move · Mouse aim · Hold fire / RT shoot · Shift sprint<br>Helicopter: E / Space ascend · Q / C descend · Esc pause</div><div class="lone-panel" id="lone-target"></div>';
+    this.hud.innerHTML='<div class="lone-panel" id="lone-status"></div><div class="lone-crosshair" aria-hidden="true"></div><div class="lone-controls lone-panel">WASD move · Mouse / RT fire · Shift sprint<br>Infantry: RMB / LT aim · R / X reload<br>Helicopter: E / Space ascend · Q / C descend · Esc pause</div><div class="lone-panel" id="lone-target"></div>';
     document.body.append(this.hud);
     this.view = new THREE.Group(); this.camera.add(this.view); world.scene.add(camera);
     if (viewModel) {
+      world.prepareFirstPerson?.(viewModel);
       this.view.add(viewModel);
       this.visuals=attachViewDetails(viewModel,role,camera);
     }
     this.motion = 0; this.recoil = 0;
     this.steer=0;this.ai=new LoneKaijuAI();this.lookSway=new THREE.Vector2();this.sprintBlend=0;
+    this.ammo=30;this.magSize=30;this.reloadTime=0;this.reloadHeld=false;
+    this.aimBlend=0;this.baseFov=camera.fov;this.weaponKick=0;this.kickVelocity=0;
+    if(role==='infantry') {
+      this.hud.insertAdjacentHTML?.('beforeend','<div class="lone-infantry-actions"><button type="button" data-action="aim">AIM</button><button type="button" data-action="reload">RELOAD</button></div>');
+      const aim=this.hud.querySelector?.('[data-action="aim"]'),reload=this.hud.querySelector?.('[data-action="reload"]');
+      aim?.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();aim.setPointerCapture(e.pointerId);this.touchAim=true;});
+      for(const event of ['pointerup','pointercancel','lostpointercapture'])aim?.addEventListener(event,()=>{this.touchAim=false;});
+      reload?.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();this.touchReload=true;});
+    }
 
   }
   cameraUpdate() {
@@ -79,13 +91,25 @@ export class LoneSoldier {
     this.view.rotation.set(kick*(this.role==='tank' ? .035 : .025)+(infantry?this.lookSway.y+this.sprintBlend*.09:0),
       Math.sin(this.time*8)*.004*this.motion+(infantry?this.lookSway.x:0),
       (heli?-this.steer*.025:infantry?this.sprintBlend*-.12:0)+kick*-.009);
+    if(infantry) {
+      const aim=this.aimBlend,reload=this.reloadTime>0?Math.sin((1-this.reloadTime/2.2)*Math.PI):0;
+      this.view.position.x+=-.205*aim+reload*.025;
+      this.view.position.y+=.120*aim-reload*.035+Math.sin(this.time*1.8)*.0015*(1-aim);
+      this.view.position.z+=.14*aim+this.weaponKick*1.8;
+      this.view.rotation.x=this.weaponKick+this.lookSway.y*(1-aim*.65)+this.sprintBlend*.09+reload*.10;
+      this.view.rotation.y*=1-aim*.8;this.view.rotation.z+=reload*.22;
+      const fov=this.baseFov-aim*12;
+      if(Math.abs(this.camera.fov-fov)>.001){this.camera.fov=fov;this.camera.updateProjectionMatrix();}
+    }
     this.camera.position.copy(this.pos);
     const {yaw,pitch}=this.state;
     this.camera.lookAt(this.pos.x+Math.sin(yaw)*Math.cos(pitch),this.pos.y+Math.sin(pitch),this.pos.z+Math.cos(yaw)*Math.cos(pitch));
     this.visuals?.cameraUpdate();
   }
   shoot() {
-    if (this.cooldown>0) return;
+    if (this.cooldown>0 || this.reloadTime>0) return;
+    if(this.role==='infantry' && this.ammo===0){this.reload();return;}
+    if(this.role==='infantry'){this.ammo--;this.kickVelocity+=.85;}
     this.cooldown=this.unit.interval; this.recoil=1; this.sound();
     this.cameraUpdate();
     this.visuals?.fire();
@@ -116,9 +140,23 @@ export class LoneSoldier {
       });
     }
   }
+  reload() {
+    if(this.role!=='infantry'||this.reloadTime>0||this.ammo===this.magSize)return false;
+    this.reloadTime=2.2;this.visuals?.reload();return true;
+  }
   update(dt,input) {
     this.recoil=Math.max(0,this.recoil-dt*13);
     this.time+=dt;this.cooldown=Math.max(0,this.cooldown-dt);
+    if(this.reloadTime>0){this.reloadTime=Math.max(0,this.reloadTime-dt);if(this.reloadTime===0)this.ammo=this.magSize;}
+    if(input.reload&&!this.reloadHeld)this.reload();this.reloadHeld=!!input.reload;
+    const aiming=this.role==='infantry' && input.aim && !this.reloadTime && !input.sprint;
+    this.aimBlend=THREE.MathUtils.lerp(this.aimBlend,aiming?1:0,1-Math.exp(-dt*16));
+    // Small fixed substeps keep the damped recoil stable during a long frame.
+    for(let remaining=Math.min(dt,.1);remaining>0;) {
+      const step=Math.min(remaining,1/120);remaining-=step;
+      this.kickVelocity+=(-550*this.weaponKick-32*this.kickVelocity)*step;
+      this.weaponKick+=this.kickVelocity*step;
+    }
     const {state,world,pos}=this, k=state.kaiju;
     state.hp=this.hp;state.maxHp=this.unit.hp;state.rage=0;
     state.yaw-=input.lookX*.045;state.pitch=THREE.MathUtils.clamp(state.pitch-input.lookY*.03,-1.35,1.35);
@@ -127,7 +165,7 @@ export class LoneSoldier {
     this.lookSway.lerp(new THREE.Vector2(THREE.MathUtils.clamp(input.lookX*.004,-.035,.035),THREE.MathUtils.clamp(input.lookY*.004,-.025,.025)),1-Math.exp(-dt*12));
     this.sprintBlend=THREE.MathUtils.lerp(this.sprintBlend,input.sprint && !input.fire?this.motion:0,1-Math.exp(-dt*8));
     this.steer=THREE.MathUtils.lerp(this.steer,x,Math.min(1,dt*5));
-    const speed=this.unit.speed*(input.sprint?1.45:1), old=pos.clone();
+    const speed=this.unit.speed*(input.sprint?1.45:1)*(1-this.aimBlend*.45), old=pos.clone();
     pos.x+=(Math.sin(state.yaw)*z-Math.cos(state.yaw)*x)*speed*dt;
     pos.z+=(Math.cos(state.yaw)*z+Math.sin(state.yaw)*x)*speed*dt;
     if(this.role==='helicopter')pos.y=THREE.MathUtils.clamp(pos.y+input.vertical*14*dt,8,65);
@@ -139,14 +177,17 @@ export class LoneSoldier {
     this.cameraUpdate();if(input.fire)this.shoot();
     this.ai.update(this,dt);
     this.visuals?.update(this,dt);
-    document.getElementById('lone-status').textContent=`LONE SOLDIER · ${this.unit.name.toUpperCase()} · HP ${Math.max(0,Math.ceil(this.hp))} / ${this.unit.hp}`;
+    document.getElementById('lone-status').textContent=`LONE SOLDIER · ${this.unit.name.toUpperCase()} · HP ${Math.max(0,Math.ceil(this.hp))} / ${this.unit.hp}${this.role==='infantry'?this.reloadTime>0?' · RELOADING':` · ${this.ammo} / ${this.magSize}`:''}`;
+    const crosshair=this.hud.querySelector?.('.lone-crosshair');if(crosshair)crosshair.style.opacity=String(1-this.aimBlend);
     document.getElementById('lone-target').innerHTML=`AI KAIJU · ${Math.ceil(this.kaijuHP)} / ${this.maxKaijuHP}<div class="lone-health-track"><div class="lone-health-fill" style="width:${this.kaijuHP/this.maxKaijuHP*100}%"></div></div><div class="lone-warning" role="status">${this.warning>0?this.attackLabel:''}</div>`;
     if(this.hp<=0||this.kaijuHP<=0)this.finish(this.kaijuHP<=0);
   }
   dispose(){
+    this.camera.fov=this.baseFov;this.camera.updateProjectionMatrix();
     this.hud.remove();this.view.removeFromParent();
     this.visuals?.dispose();
-    const materials=new Set();this.view.traverse(o=>{if(o.isMesh&&o.geometry&&!o.geometry.userData.shared)o.geometry.dispose();if(o.material)materials.add(o.material);});
+    const skeletons=new Set(),materials=new Set();this.view.traverse(o=>{if(o.skeleton)skeletons.add(o.skeleton);if(o.isMesh&&o.geometry&&!o.geometry.userData.shared)o.geometry.dispose();if(o.material)materials.add(o.material);});
+    for(const skeleton of skeletons)skeleton.dispose();
     for(const m of materials)m.dispose();
   }
 }

@@ -158,6 +158,20 @@ for (const role of ['infantry','tank','helicopter']) await step(`first-person ${
   if(!view.getObjectByName('MUZZLE'))fail(`${role} view missing muzzle anchor`);
   if(role!=='infantry'&&!view.getObjectByName('CREW_CONTROLS'))fail(`${role} view missing crew controls`);
   if(pbr<4||!occluded)fail(`${role} view missing PBR surfaces / baked occlusion`);
+    if(role==='infantry') {
+      const clip=view.animations.find(c=>c.name==='reload');
+      if(!clip||clip.duration<2)fail('infantry: authored reload missing');
+      const second=await loadLoneView(role),a=view.getObjectByName('L_hand'),b=second.getObjectByName('L_hand');
+      if(!a||!b||a===b)fail('infantry: skeletons must be independently cloned');
+      else {
+        view.updateMatrixWorld(true);const before=new THREE.Vector3();a.getWorldPosition(before);
+        const mixer=new THREE.AnimationMixer(view);mixer.clipAction(clip).play();mixer.update(.8);view.updateMatrixWorld(true);
+        const after=new THREE.Vector3();a.getWorldPosition(after);
+        if(before.distanceTo(after)<.08)fail('infantry: reload does not move support hand');
+        if(!view.getObjectByName('MAGAZINE'))fail('infantry: animated magazine missing');
+        mixer.stopAllAction();mixer.uncacheRoot(view);
+      }
+    }
   if(role!=='infantry') {
     view.updateMatrixWorld(true);
     for(const direction of [new THREE.Vector3(0,1,-.15),new THREE.Vector3(0,-1,-.1),
@@ -181,7 +195,9 @@ if (level === 'chicago') await step('rigged festival crowd', async () => {
   for (const animator of res.cityAnimators) animator.update(.04, .04);
   const visible = crowd.children.reduce((sum, mesh) => sum + mesh.count, 0);
   if (!visible) fail('festival: all crowd instance batches are empty');
-  if (crowd.children.length !== 27) fail('festival: expected 9 model / 3 LOD batches');
+  if (crowd.children.filter(o=>o.name==='festival_GLB').length !== 27) fail('festival: expected 9 model / 3 LOD batches');
+  const contacts=crowd.getObjectByName('festival_contacts');
+  if(!contacts||contacts.count>256)fail('festival: contact shadow batch missing or unbounded');
 });
 for (const key of ['godzilla', 'ghidorah', 'mecha']) await step(`kaiju ${key}`, () => loadKaijuModel(key));
 if (Q.GLB_CONTENT) {

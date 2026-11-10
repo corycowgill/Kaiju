@@ -38,6 +38,32 @@ dial and laser markings. Look inertia and a blended sprint pose add weapon weigh
 All six screen types now draw live vector instruments; generated fixed readings
 are no longer visible. Radar uses relative target bearing and a 200 m scale.
 
+## Infantry handling and lighting, build 1.11.124
+
+The infantry GLB now includes a six-bone arm skeleton and a 2.2 second reload
+clip baked from Blender IK. Separate magazine animation follows the support
+hand; each runtime clone has its own skeleton. Glove forms include curved
+fingers, opposed thumbs, individual knuckle pads and connected cuffs. Blender
+authoring helpers are excluded from the exported runtime GLB.
+
+RMB / LT aims through the centered reflex sight with a smooth FOV transition.
+R / X reloads a 30-round magazine, with automatic reload on an empty trigger.
+Touch devices expose aim and reload buttons. Reload blocks firing until the
+magazine is seated. Damped recoil, bolt cycling, ejected brass, reduced aimed
+movement/sensitivity and sprint transitions complete the handling pass.
+
+Weapons and cabins share one PMREM reflection probe. Roughness textures retain
+their authored values instead of being multiplied by a second roughness factor.
+World environment strength is applied to materials explicitly for three r160.
+Lone Soldier's sun and shadow target track the player with a stable texel grid;
+desktop HIGH uses a 2048 shadow map. Nearby festival pedestrians receive shadows
+and batched soft foot-contact patches (256 desktop / 96 phone MED; skipped on
+phone LOW). Phone LOW uses two crowd LOD tiers to preserve its draw budget.
+
+Validation includes magazine/aim behavior, shadow tracking, independent skeleton
+clones, actual hand movement in the shipped reload clip, and browser rendering
+of hip, aim, reload, sprint and firing poses.
+
 ## Reference review
 
 Visual benchmarks: [Call of Duty weapon presentation](https://www.callofduty.com/blog/2024/10/call-of-duty-black-ops-6-launch-comms-weapons-attachments-intel),

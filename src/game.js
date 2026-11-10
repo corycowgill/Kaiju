@@ -1,8 +1,9 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.11.123', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.11.124', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
+import { firstPersonEnvironment, lightFirstPerson, followSoldierShadow, applyEnvironmentStrength } from './firstPersonLighting.js';
 import { resolveStructureContact } from './buildingCollision.js';
 window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -164,7 +165,7 @@ const RP = isMobile ? {
   cine:      !Q_LOW,
   cineCA: true, cineGrain: true, godRays: true,
   shadows:   Q_HIGH,
-  shadowMap: 1024,
+  shadowMap: Q_HIGH ? 2048 : 1024,
   shadowHalf: 112,
   shadowType: THREE.PCFSoftShadowMap,
   shadowEvery: 2,
@@ -528,9 +529,11 @@ if (RP.shadows) {
   sun.shadow.camera.left = -H; sun.shadow.camera.right = H;
   sun.shadow.camera.top = H;   sun.shadow.camera.bottom = -H;
   sun.shadow.camera.near = 1;   sun.shadow.camera.far = 290;
-  sun.shadow.bias = -0.0005;
+  sun.shadow.bias = -0.00015;
+  sun.shadow.normalBias = .045;
 }
 scene.add(sun);
+const soldierShadowAnchor=new THREE.Object3D();scene.add(soldierShadowAnchor);
 /** Phones: mark root as a shadow caster (RP.shadowCasterLayer on every mesh
  *  under it). The layer is only a marker: three r160's shadow pass tests
  *  object layers against the MAIN camera, not the shadow camera, so the
@@ -630,6 +633,7 @@ scene.add(sky);
 // PMREM, and feed it as scene.environment. All MeshStandardMaterials get
 // reflections/ambient automatically. Skipped on mobile to keep the GPU
 // budget for bloom + emissive windows.
+scene.userData.envStrength=.55;
 function _captureEnv() {
   try {
     if (scene.environment) scene.environment.dispose();
@@ -651,7 +655,7 @@ function _captureEnv() {
     for (const o of hidden) o.visible = true;
     const env = pmrem.fromCubemap(cubeTarget.texture).texture;
     scene.environment = env;
-    scene.environmentIntensity = 0.55;
+    scene.userData.envStrength = 0.55;
     cubeTarget.dispose();
     pmrem.dispose();
   } catch (e) { console.warn('PMREM env failed:', e); }
@@ -971,6 +975,9 @@ const world = {
     if(!this._fxRoom())return;
     const e=vfx.spawn('weaponTracer',{world:this,origin,dir,length,role});if(e)this.effects.push(e);
   },
+  prepareFirstPerson: function (model) {
+    lightFirstPerson(model,firstPersonEnvironment(renderer));
+  },
   spawnBallisticImpact: function (pos, normal, role, kind) {
     if(!this._fxRoom())return;
     const e=vfx.spawn('ballisticImpact',{world:this,pos,normal,role,kind});if(e)this.effects.push(e);
@@ -1050,7 +1057,7 @@ const _TOKYO_LOOK = {
   sun: sun.color.getHex(), sunI: sun.intensity, rim: rimLight.color.getHex(), rimI: rimLight.intensity,
   amb: ambient.color.getHex(), ambI: ambient.intensity, neonI: _neonLights.map((l) => l.intensity),
   sky: Object.fromEntries(['horizon', 'midCol', 'zenith', 'sunRim'].map((k) => [k, skyMat.uniforms[k].value.toArray()])),
-  nebula: skyMat.uniforms.nebula.value, env: scene.environmentIntensity,
+  nebula: skyMat.uniforms.nebula.value, env: scene.userData.envStrength,
   bloom: bloomPass && { threshold: bloomPass.threshold, strength: bloomPass.strength },
   grade: window.__cinePass && {
     mix: window.__cinePass.uniforms.gradeMix.value,
@@ -1115,7 +1122,8 @@ function applyLevelLook(level) {
   }
   // The Tokyo backdrop ring/mountains/barrier would stand in Lake Michigan
   for (const o of _horizon) o.visible = level === 'tokyo';
-  if (Q_HIGH) { _captureEnv(); scene.environmentIntensity = L.env; }
+  if (Q_HIGH) { _captureEnv(); scene.userData.envStrength = L.env; }
+  applyEnvironmentStrength(scene,L.env);
 }
 
 function buildWorldCity() {
@@ -1255,16 +1263,20 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-window.addEventListener('mousedown', (e) => { if (e.button === 0) state.mouseDown = true; });
-window.addEventListener('mouseup', (e) => { if (e.button === 0) state.mouseDown = false; });
+window.addEventListener('mousedown', (e) => { if (e.button === 0) state.mouseDown = true;if(e.button===2)state.aimDown=true; });
+window.addEventListener('mouseup', (e) => { if (e.button === 0) state.mouseDown = false;if(e.button===2)state.aimDown=false; });
+renderer.domElement.addEventListener('contextmenu',e=>{if(lone)e.preventDefault();});
+window.addEventListener('blur',()=>{state.mouseDown=state.aimDown=false;for(const key of Object.keys(keys))keys[key]=false;});
 
 renderer.domElement.addEventListener('click', () => {
   if (!state.gameOver && state.kaiju) _requestPointerLock();
 });
 window.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement === renderer.domElement) {
-    state.yaw -= e.movementX * 0.0024;
-    state.pitch -= e.movementY * 0.0018;
+    const aimSensitivity=1-(lone?.aimBlend||0)*.45;
+    if(lone)lone.lookSway.add(new THREE.Vector2(e.movementX*.00025,e.movementY*.00025)).clampLength(0,.035);
+    state.yaw -= e.movementX * 0.0024*aimSensitivity;
+    state.pitch -= e.movementY * 0.0018*aimSensitivity;
     state.pitch = THREE.MathUtils.clamp(state.pitch, lone ? -1.35 : -0.6, lone ? 1.35 : 0.4);
   }
 });
@@ -1306,7 +1318,7 @@ window.addEventListener('scroll', () => window.scrollTo(0, 0), { passive: true }
 const padInput = {
   moveX: 0, moveZ: 0,
   lookX: 0, lookY: 0,
-  attack: false, sprint: false,
+  attack: false, sprint: false, soldierFire:false, soldierAim:false, soldierSprint:false,
   // edge-trigger latches: button-X-pressed-this-frame
   pressed: { beam: false, roar: false, charge: false, stomp: false, ult: false, pause: false },
   prevDown: {},
@@ -1320,6 +1332,7 @@ function readGamepad() {
   if (!pad) {
     padInput.moveX = padInput.moveZ = padInput.lookX = padInput.lookY = 0;
     padInput.attack = padInput.sprint = false;
+    padInput.soldierFire=padInput.soldierAim=padInput.soldierSprint=false;
     for (const k of Object.keys(padInput.pressed)) padInput.pressed[k] = false;
     return false;
   }
@@ -1336,6 +1349,9 @@ function readGamepad() {
   const press = (i) => isDown(i) && !padInput.prevDown[i];
   // Continuous
   padInput.attack = isDown(0); // A held = melee
+  padInput.soldierFire=(pad.buttons[7]?.value||0)>.4;
+  padInput.soldierAim=(pad.buttons[6]?.value||0)>.4;
+  padInput.soldierSprint=isDown(10)||isDown(4);
   padInput.sprint = isDown(4) || (pad.buttons[6]?.value || 0) > 0.4; // LB or LT
   // Edge-triggered: only fire once per press
   padInput.pressed.beam   = press(2); // X
@@ -1712,10 +1728,14 @@ function updateLoneSoldier(dt) {
     x: (+!!keys.KeyD)-(+!!keys.KeyA)+touchInput.moveX+padInput.moveX,
     z: (+!!keys.KeyW)-(+!!keys.KeyS)+touchInput.moveZ+padInput.moveZ,
     vertical: (+!!(keys.KeyE || keys.Space))-(+!!(keys.KeyQ || keys.KeyC)),
-    sprint: keys.ShiftLeft || padInput.sprint || touchInput.sprint,
-    fire: state.mouseDown || touchInput.attackHeld || padInput.attack,
+    sprint: keys.ShiftLeft || padInput.soldierSprint || touchInput.sprint,
+    fire: state.mouseDown || touchInput.attackHeld || padInput.soldierFire,
+    aim: state.aimDown || padInput.soldierAim || lone.touchAim,
+    reload: keys.KeyR || padInput.pressed.beam || lone.touchReload,
     lookX: padInput.lookX, lookY: padInput.lookY,
   });
+  lone.touchReload=false;
+  followSoldierShadow(sun,soldierShadowAnchor,lone.pos,_sunOffset);
   world._fxSpawned = world._dbSpawned = 0;
   vfx.tickParticles(dt); updateAtomicBlasts(dt);
   for (let i=world.effects.length-1;i>=0;i--) { const e=world.effects[i];e.tick(dt);if(e.dead)world.effects.splice(i,1); }
@@ -2473,7 +2493,7 @@ async function _startGameInner(key) {
     const role = document.getElementById('lone-role').value;
     const viewModel = await loadLoneView(role);
     lone = new LoneSoldier({world, state, camera, role, viewModel,
-      sound: () => audio.hit(), finish: won => {
+      sound: () => audio.shoot(role==='infantry'?'rifle':role==='helicopter'?'heli':'tank'), finish: won => {
         gameOver(won); lone.hud.style.display = 'none';
         document.getElementById('goTitle').textContent = won ? 'KAIJU NEUTRALIZED' : 'SOLDIER DOWN';
         document.getElementById('goSubtitle').textContent = won ? 'The city survives. You held the line.' : 'The Kaiju prevailed. Redeploy and try again.';
@@ -2483,6 +2503,7 @@ async function _startGameInner(key) {
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('minimap').classList.add('hidden');
   } else startWave(1);
+  applyEnvironmentStrength(scene,scene.userData.envStrength);
   // Effects not linked behind the menu: phones queue them all now, desktop
   // links them one at a time after the first frames
   if (isMobile) _queueVfxLinks();

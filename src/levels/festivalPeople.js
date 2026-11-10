@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { cachedFetch } from '../assetCache.js';
+import { Q_LOW, isMobile } from '../quality.js';
 
 const BASE = './assets/enemies/festival/';
 let templates, atlas, clips, loading;
@@ -181,27 +182,54 @@ export function createFestivalPeople(count, time) {
       const mesh = new THREE.InstancedMesh(geometry, animatedMaterial(template.material, time), capacity);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.frustumCulled = false; mesh.count = 0; mesh.name = 'festival_GLB';
+      mesh.receiveShadow=true;
       group.add(mesh); return mesh;
     }));
   }
-  const matrix = new THREE.Matrix4();
+  // Nearby attendees get one batched soft contact patch beneath their feet.
+  // It anchors them without adding thousands of shadow casters or a normal
+  // override pass that would bypass the shared GPU skinning shader.
+  const contactGeometry=new THREE.PlaneGeometry(.68,.46);contactGeometry.rotateX(-Math.PI/2);
+  const contactMaterial=new THREE.ShaderMaterial({
+    uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog]),
+    vertexShader:`varying vec2 vUv;
+      #include <fog_pars_vertex>
+      void main(){vUv=uv;vec4 mvPosition=modelViewMatrix*instanceMatrix*vec4(position,1.0);gl_Position=projectionMatrix*mvPosition;
+      #include <fog_vertex>
+      }`,
+    fragmentShader:`varying vec2 vUv;
+      #include <fog_pars_fragment>
+      void main(){vec2 p=vUv*2.0-1.0;float alpha=(1.0-smoothstep(.04,1.0,dot(p,p)))*.24;gl_FragColor=vec4(.025,.032,.03,alpha);
+      #include <fog_fragment>
+      }`,
+    transparent:true,depthWrite:false,fog:true,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1,
+  });
+  const contactLimit=isMobile?(Q_LOW?0:96):256;
+  const contacts=new THREE.InstancedMesh(contactGeometry,contactMaterial,Math.max(1,contactLimit));contacts.name='festival_contacts';contacts.count=0;contacts.frustumCulled=false;
+  contacts.instanceMatrix.setUsage(THREE.DynamicDrawUsage);group.add(contacts);
+  const matrix = new THREE.Matrix4(),contactPose=new THREE.Object3D();
   group.sync = viewpoint => {
     const motion = group.geometry.getAttribute('crowdMotion');
     if (!motion) return;
     for (const pair of buckets) for (const mesh of pair) mesh.count = 0;
     let closeCount = 0;
+    contacts.count=0;
     for (let i = 0; i < count; i++) {
       const at = i * 16;
       if (transforms[at] === 0 && transforms[at+5] === 0) continue; // escaped
       const dx = transforms[at+12] - (viewpoint?.x || 0), dz = transforms[at+14] - (viewpoint?.z || 0);
       const d2 = dx*dx + dz*dz;
       if (viewpoint && d2 > 230*230) continue;
+      if(d2<55*55 && contacts.count<contactLimit) {
+        contactPose.position.set(transforms[at+12],transforms[at+13]+.035,transforms[at+14]);
+        contactPose.updateMatrix();contacts.setMatrixAt(contacts.count++,contactPose.matrix);
+      }
       // Hysteresis prevents detail/texture popping as camera bob crosses a boundary.
       const nearRadius = lodState[i] === 0 ? 27 : 22;
       const near = d2 < nearRadius*nearRadius && closeCount < (count > 2000 ? 144 : 64);
       if (near) closeCount++;
       const midRadius = lodState[i] === 1 ? 72 : 60;
-      const lod = near ? 0 : d2 < midRadius*midRadius ? 1 : 2;
+      const lod = isMobile&&Q_LOW ? (d2<30*30?1:2) : near ? 0 : d2 < midRadius*midRadius ? 1 : 2;
       lodState[i] = lod;
       const mesh = buckets[i % buckets.length][lod], slot = mesh.count++;
       matrix.fromArray(transforms, at); mesh.setMatrixAt(slot,matrix);
@@ -214,9 +242,11 @@ export function createFestivalPeople(count, time) {
       mesh.geometry.attributes.crowdMotion.needsUpdate = true;
       mesh.geometry.attributes.crowdDeath.needsUpdate = true;
     }
+    contacts.visible=contacts.count>0;contacts.instanceMatrix.needsUpdate=true;
   };
   group.userData.festivalPeople = true;
   group.addEventListener('removed', () => {
+    contactMaterial.dispose();contactGeometry.dispose();
     for (const pair of buckets) for (const mesh of pair) mesh.material.dispose();
   });
   return group;

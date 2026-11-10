@@ -1,14 +1,13 @@
 [
   {
     "role": "infantry",
-    "bytes": 1419812,
-    "triangles": 20219,
-    "primitives": 8,
+    "bytes": 1832140,
+    "triangles": 26587,
+    "primitives": 13,
     "textures": [
       "viewtex_3b218342e1ef.png",
       "viewtex_b38e1e5005c8.png",
       "viewtex_6bcd75d49f3a.png",
-      "viewtex_18b31c92e234.png",
       "viewtex_a24aa9a8e1db.png",
       "viewtex_08a0cd8c1703.png",
       "viewtex_a2ebc52d421a.png",
@@ -16,12 +15,13 @@
       "viewtex_87ee38671dc6.png",
       "viewtex_6da1247ef039.png",
       "viewtex_d10ca133093f.png",
-      "viewtex_3a9a14b6e8d7.png"
+      "viewtex_3a9a14b6e8d7.png",
+      "viewtex_18b31c92e234.png"
     ]
   },
   {
     "role": "tank",
-    "bytes": 1717312,
+    "bytes": 1717296,
     "triangles": 32686,
     "primitives": 17,
     "textures": [
@@ -44,7 +44,7 @@
   },
   {
     "role": "helicopter",
-    "bytes": 1773932,
+    "bytes": 1773912,
     "triangles": 32682,
     "primitives": 18,
     "textures": [

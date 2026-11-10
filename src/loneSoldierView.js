@@ -3,6 +3,9 @@ import { drawInstrument } from './loneInstruments.js';
 
 /** Live avionics are drawn into the actual recessed Blender screen meshes. */
 export function attachViewDetails(model, role, camera) {
+  const mixer=role==='infantry'?new THREE.AnimationMixer(model):null;
+  const reloadClip=model.animations?.find(c=>c.name==='reload');
+  const reloadAction=reloadClip?mixer.clipAction(reloadClip).setLoop(THREE.LoopOnce,1):null;
   const displays = [], ownedTextures = [], originalMaterials = [];
   model.traverse(mesh => {
     if (!mesh.isMesh || !/^DISPLAY_(FLIGHT|TACTICAL|SIGHT|ANALOG|ENGINE|SYSTEMS)$/.test(mesh.name)) return;
@@ -46,6 +49,18 @@ export function attachViewDetails(model, role, camera) {
   const flashMaterial = new THREE.SpriteMaterial({map:fire,color:0xffd7a0,transparent:true,
     blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false});
   const flash = new THREE.Sprite(flashMaterial);flash.visible=false;model.add(flash);
+  const bolt=model.getObjectByName('BOLT'),boltRest=bolt?.position.z||0;
+  const eject=model.getObjectByName('EJECT');
+  const shellStates=Array.from({length:12},()=>({age:9,origin:new THREE.Vector3()}));
+  const shellPose=new THREE.Object3D();let shellCursor=0,shells;
+  if(role==='infantry') {
+    let environment;model.traverse(o=>{if(o.material?.envMap)environment=o.material.envMap;});
+    shells=new THREE.InstancedMesh(new THREE.CylinderGeometry(.0045,.0045,.027,8),
+      new THREE.MeshStandardMaterial({color:0xb79a58,metalness:.7,roughness:.35,envMap:environment,envMapIntensity:.5}),12);
+    shells.name='rifle_ejected_brass';shells.frustumCulled=false;shells.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    shellPose.scale.setScalar(0);shellPose.updateMatrix();for(let i=0;i<12;i++)shells.setMatrixAt(i,shellPose.matrix);
+    model.add(shells);
+  }
   // Keep the world camera's near/far planes intact. A separate foreground
   // projection gives the cabin a short near plane and reserves a small front
   // depth range, preserving internal occlusion without clipping into buildings.
@@ -77,6 +92,7 @@ export function attachViewDetails(model, role, camera) {
   const local = new THREE.Vector3();
   return {
     cameraUpdate,
+    reload(){reloadAction?.reset().setEffectiveWeight(1).play();},
     muzzlePosition(target) {
       const muzzle=muzzles[(shot-1+muzzles.length)%muzzles.length];
       if(!muzzle)return false;
@@ -87,8 +103,23 @@ export function attachViewDetails(model, role, camera) {
       const muzzle=muzzles[(shot++)%Math.max(1,muzzles.length)];
       if(muzzle) { model.updateMatrixWorld(true);muzzle.getWorldPosition(local);model.worldToLocal(local);flash.position.copy(local); }
       flash.visible=true;flashMaterial.rotation=Math.random()*Math.PI*2;
+      if(shells&&eject) {
+        const shell=shellStates[shellCursor++%12];shell.age=0;
+        model.updateMatrixWorld(true);eject.getWorldPosition(shell.origin);model.worldToLocal(shell.origin);
+      }
     },
     update(s, dt) {
+      mixer?.update(dt);
+      if(bolt)bolt.position.z=boltRest+s.recoil*.025;
+      if(shells) {
+        for(let i=0;i<12;i++) {
+          const shell=shellStates[i],age=shell.age+=dt;
+          shellPose.position.set(shell.origin.x+age*1.4,shell.origin.y+age*.6-2.8*age*age,shell.origin.z+age*.25);
+          shellPose.rotation.set(age*17,i+age*23,age*9);shellPose.scale.setScalar(age<.65?Math.min(1,(.65-age)*12):0);
+          shellPose.updateMatrix();shells.setMatrixAt(i,shellPose.matrix);
+        }
+        shells.instanceMatrix.needsUpdate=true;
+      }
       flashAge+=dt;
       flash.visible=flashAge < (role==='tank'?.095:.055);
       const size=(role==='tank'?.70:role==='helicopter'?.23:.16)*(1+flashAge*5);
@@ -104,6 +135,7 @@ export function attachViewDetails(model, role, camera) {
       }
     },
     dispose() {
+      mixer?.stopAllAction();mixer?.uncacheRoot(model);
       for(const texture of ownedTextures)texture.dispose();
       for(const material of originalMaterials)material.dispose();
     },
