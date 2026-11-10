@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 
-// Shared world-space wear on the lawns: stage-front dust, irregular worn
-// patches and maintenance stripes stay continuous across triangulated fields.
+// Cheap wind-reactive fabric, batched and attached to destructible stalls.
 export function dressFestival(scene, F, buildings, trampled, animators, lite) {
-  // Fabric pennants along the concessions and entrance gateways. Two draws,
+  // Fabric pennants along the concessions and entrance gateways. One draw,
   // no lights or shadow passes; attach each to a live destructible building.
   const flags = [];
   for (const it of F.items) {
@@ -18,9 +17,27 @@ export function dressFestival(scene, F, buildings, trampled, animators, lite) {
   }
   if (!flags.length) return;
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute([-.22, 0, 0, .22, 0, 0, 0, -.48, 0], 3));
+  const vertices=[],indices=[];
+  for(let j=0;j<4;j++){const t=j/4;vertices.push(-.22*(1-t),-.48*t,0,.22*(1-t),-.48*t,0);}
+  vertices.push(0,-.48,0);
+  for(let j=0;j<3;j++){const a=j*2;indices.push(a,a+1,a+2,a+1,a+3,a+2);}
+  indices.push(6,7,8);
+  g.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));g.setIndex(indices);
   g.computeVertexNormals();
   const mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, color: 0xffffff });
+  const fabricTime={value:0};
+  mat.onBeforeCompile=shader=>{
+    shader.uniforms.fabricTime=fabricTime;
+    shader.vertexShader='uniform float fabricTime;varying float pennantFold;\n'+shader.vertexShader
+      .replace('#include <begin_vertex>',`#include <begin_vertex>
+        float tip=clamp(-position.y/.48,0.0,1.0);
+        float phase=instanceMatrix[3].x*.7+instanceMatrix[3].z*.3;
+        pennantFold=sin(fabricTime*2.7+phase+tip*5.0);
+        transformed.z+=pennantFold*tip*tip*.065;`);
+    shader.fragmentShader='varying float pennantFold;\n'+shader.fragmentShader
+      .replace('#include <color_fragment>','#include <color_fragment>\n diffuseColor.rgb*=.89+.11*pennantFold;');
+  };
+  mat.customProgramCacheKey=()=> 'festival-bending-fabric-v1';
   const im = new THREE.InstancedMesh(g, mat, flags.length);
   im.name = 'festival_wind_pennants'; im.frustumCulled = false;
   im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -39,9 +56,10 @@ export function dressFestival(scene, F, buildings, trampled, animators, lite) {
   }
   scene.add(im);
   const animate = { update(dt, time) {
+    fabricTime.value=time%(Math.PI*20);
     flags.forEach((f, i) => {
       o.position.set(f.x, f.y, f.z);
-      o.rotation.set(Math.sin(time * 3.2 + f.phase) * .24, f.yaw, Math.sin(time * 2.1 + f.phase) * .08);
+      o.rotation.set(Math.sin(time * 3.2 + f.phase) * .06, f.yaw, Math.sin(time * 2.1 + f.phase) * .04);
       o.scale.setScalar(f.owner?.destroyed ? 0 : 1); o.updateMatrix(); im.setMatrixAt(i, o.matrix);
     });
     im.instanceMatrix.needsUpdate = true;

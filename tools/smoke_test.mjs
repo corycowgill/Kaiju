@@ -257,6 +257,7 @@ const sceneTotals = () => {
 }
 const totals = sceneTotals();
 if(level==='chicago') {
+  if(!world.chicagoSurfaceWear || world.chicagoSurfaceWear.sources<1 || world.chicagoSurfaceWear.bytes>256*256*4)fail('Chicago localized wear field missing or over budget');
   const surfaces=new Set();
   scene.traverse(o=>{for(const material of [].concat(o.material||[])) {
     const data=material.userData?.chicagoSurface;if(!data)continue;

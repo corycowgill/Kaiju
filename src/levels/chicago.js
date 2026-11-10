@@ -6,7 +6,7 @@
 // bascule bridges, landmark massing, props) lives here.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { chicagoGround } from './chicagoMaterials.js';
+import { chicagoGround, configureChicagoWear, tickChicagoMaterials } from './chicagoMaterials.js';
 import { isMobile, Q_HIGH } from '../quality.js';
 import { buildHarbor, splashPool } from './chicago_harbor.js';
 import { bakeShoreField, makeWaterMaterial, waterUniforms, swellGrid, waterFX } from './chicago_water.js';
@@ -1450,6 +1450,9 @@ export function buildChicago(scene, world, opts, K) {
   K.setBuildingTile(!glb ? 600 : lite ? 440 : 400); // phone LOW: one tile per quadrant; desktop 400 since the street-wall split
   const B = L.bounds;
   const animators = [];
+  const surfaceWear=configureChicagoWear(L.fest,L.paths,lite);
+  if(world)world.chicagoSurfaceWear=surfaceWear;
+  animators.push({update(dt,time){tickChicagoMaterials(time);}});
   const STREET_TILE = K.TILE.STREET, SW_TILE = K.TILE.SIDEWALK;
   const ASPHALT_TILE = L.real ? 2 : STREET_TILE;
   // Real-scale map: narrower sidewalks, smaller markings and street furniture

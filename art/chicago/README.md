@@ -27,3 +27,17 @@ for Chicago), with the previous draw and triangle budgets unchanged.
 The smoke test validates terrain PBR maps, texture scale, all five quality/level
 configurations and shader/geometry budgets. Chrome captures check ground detail,
 festival overview and lakefront foliage at player and elevated camera heights.
+
+## Local wear and wind — build 1.11.127
+
+`chicagoWear.js` bakes foot traffic from the actual gate, concession, stage and
+path positions. Grass gains broken soil transitions near busy edges; paving
+receives subtler dust. The field is deterministic, rebuilt on level creation,
+and cleared when the festival is disabled. It uses 256 KB desktop / 64 KB phone
+memory and requires no downloaded images, decal meshes or per-frame CPU baking.
+
+The existing material family adds gentle height-masked canopy motion with trunks
+anchored. Pennants use seven triangles each and bend along their length instead
+of swinging as rigid cards. Their existing draw batch and destruction attachment
+remain. Both wind clocks wrap on complete cycles to prevent long-session jumps.
+The 17-program Chicago cap and existing draw/triangle budgets remain unchanged.

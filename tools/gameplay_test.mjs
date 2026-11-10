@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { resolveStructureContact } from '../src/buildingCollision.js';
 import { crowdGeometry, crowdMaterial, animateCrowd } from '../src/levels/festivalCrowd.js';
 import { followSoldierShadow, applyEnvironmentStrength, structureClearance, soldierSunExposure } from '../src/firstPersonLighting.js';
+import { buildChicagoWear } from '../src/levels/chicagoWear.js';
 
 globalThis.window = { innerWidth: 1440, innerHeight: 900 };
 globalThis.location = { search: '?q=high' };
@@ -229,4 +230,19 @@ test('soldier shadow tracking keeps sun direction fixed and environment strength
   explicit.envMap=new THREE.Texture();explicit.envMapIntensity=.22;
   scene.add(new THREE.Mesh(new THREE.BoxGeometry(),material),new THREE.Mesh(new THREE.BoxGeometry(),explicit));
   applyEnvironmentStrength(scene,.85);assert.equal(material.envMapIntensity,.85);assert.equal(explicit.envMapIntensity,.22);
+});
+
+test('festival ground wear follows entrances and paths, stays deterministic and clears when disabled',()=>{
+  const festival={fence:[[-10,-10],[10,-10],[10,10],[-10,10]],items:[{kind:'gate',x:0,z:0,w:4,d:1,rot:0}]};
+  const a=buildChicagoWear(festival,[],128),b=buildChicagoWear(festival,[],128);
+  assert.deepEqual(a.data,b.data);assert.ok(a.sources>0);assert.equal(a.data.length,128*128*4);
+  const sample=(field,x,z)=>{
+    const {bounds:b,size}=field,i=Math.floor((x-b.x0)/(b.x1-b.x0)*size),j=Math.floor((z-b.z0)/(b.z1-b.z0)*size);
+    return field.data[(j*size+i)*4];
+  };
+  assert.ok(sample(a,0,2)>180,'entrance is worn');assert.equal(sample(a,8,8),0,'distant lawn stays intact');
+  const path=buildChicagoWear({...festival,items:[]},[{points:[[-8,5],[8,5]],width:1}],128);
+  assert.ok(sample(path,0,5)>90);assert.equal(sample(path,0,-5),0);
+  const off=buildChicagoWear(null,[],128);assert.equal(off.sources,0);
+  assert.ok(off.data.every((v,i)=>i%4===3?v===255:v===0));
 });

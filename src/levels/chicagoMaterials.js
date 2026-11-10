@@ -1,7 +1,19 @@
 import * as THREE from 'three';
 import { assetURL, reportLoadError } from '../assetCache.js';
+import { buildChicagoWear } from './chicagoWear.js';
 
 const textures=new Map(),loader=new THREE.TextureLoader();
+const blankWear=new THREE.DataTexture(new Uint8Array([0,0,0,255]),1,1);blankWear.needsUpdate=true;
+const shared={chiTime:{value:0},chiWearField:{value:blankWear},chiWearBounds:{value:new THREE.Vector4(0,0,1,1)}};
+let wearTexture;
+export function configureChicagoWear(festival,paths,lite=false) {
+  const field=buildChicagoWear(festival,paths,lite?128:256),b=field.bounds;
+  wearTexture?.dispose();wearTexture=new THREE.DataTexture(field.data,field.size,field.size);
+  wearTexture.minFilter=wearTexture.magFilter=THREE.LinearFilter;wearTexture.needsUpdate=true;
+  shared.chiWearField.value=wearTexture;shared.chiWearBounds.value.set(b.x0,b.z0,b.x1-b.x0,b.z1-b.z0);
+  return {resolution:field.size,sources:field.sources,bytes:field.data.byteLength};
+}
+export function tickChicagoMaterials(time){shared.chiTime.value=time%(Math.PI*40);}
 function texture(file,color=false) {
   const key=file+color;if(textures.has(key))return textures.get(key);
   const t=loader.load(assetURL('./assets/textures/'+file),undefined,undefined,()=>reportLoadError('ChicagoSurface',file,new Error('texture load failed')));
@@ -21,8 +33,8 @@ export function chicagoWeather(material,kind,wear=0,tile=2.4) {
   material.userData.chicagoSurface={kind,wear,tile};
   const uniforms={chiKind:{value:kind},chiWear:{value:wear},chiTile:{value:tile},chiFabric:{value:texture('chi_canvas_color.jpg',true)}};
   material.onBeforeCompile=shader=>{
-    Object.assign(shader.uniforms,uniforms);
-    shader.vertexShader='uniform float chiKind;uniform float chiTile;varying vec3 chiWorld;varying float chiSeed;\n'+shader.vertexShader
+    Object.assign(shader.uniforms,uniforms,shared);
+    shader.vertexShader='uniform float chiKind;uniform float chiTile;uniform float chiTime;varying vec3 chiWorld;varying float chiSeed;\n'+shader.vertexShader
       .replace('#include <uv_vertex>',`#include <uv_vertex>
         vec4 chiPosition=vec4(position,1.0);vec4 chiOrigin=vec4(0,0,0,1);
         #ifdef USE_INSTANCING
@@ -44,21 +56,34 @@ export function chicagoWeather(material,kind,wear=0,tile=2.4) {
           #ifdef USE_AOMAP
             vAoMapUv=chiUv/chiTile;
           #endif
+        }`)
+      .replace('#include <project_vertex>',THREE.ShaderChunk.project_vertex+`
+        if(chiKind>4.5){
+          float crown=smoothstep(2.0,5.0,chiWorld.y-chiOrigin.y);
+          float breeze=sin(chiTime*.75+chiSeed*6.283)*.032+sin(chiTime*1.7+chiWorld.x*.6)*.009;
+          mvPosition.xyz+=mat3(viewMatrix)*vec3(breeze*crown,0.0,breeze*crown*.4);
+          gl_Position=projectionMatrix*mvPosition;
         }`);
-    shader.fragmentShader='uniform float chiKind;uniform float chiWear;uniform sampler2D chiFabric;varying vec3 chiWorld;varying float chiSeed;\n'+noise+shader.fragmentShader
+    shader.fragmentShader='uniform float chiKind;uniform float chiWear;uniform sampler2D chiFabric;uniform sampler2D chiWearField;uniform vec4 chiWearBounds;varying vec3 chiWorld;varying float chiSeed;\n'+noise+shader.fragmentShader
       .replace('#include <color_fragment>',`#include <color_fragment>
         float macro=chiNoise(chiWorld.xz*.075),grain=chiNoise(chiWorld.xz*1.7);
+        vec2 wearUv=(chiWorld.xz-chiWearBounds.xy)/chiWearBounds.zw;
+        vec2 footTraffic=vec2(0.0);
+        if(chiKind<2.5 && min(wearUv.x,wearUv.y)>=0.0 && max(wearUv.x,wearUv.y)<=1.0)footTraffic=texture2D(chiWearField,wearUv).rg;
         if(chiKind<.5){
           diffuseColor.rgb*=mix(.83,1.12,macro);
           float dry=smoothstep(.48,.82,chiNoise(chiWorld.xz*.22+17.0))*chiWear;
           diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(1.30,1.03,.70),dry*.72);
           float soil=smoothstep(.64,.83,chiNoise(chiWorld.xz*.38+5.0))*chiWear;
           diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.115,.086,.052),soil*.55);
+          float footSoil=footTraffic.r*(.35+.65*smoothstep(.10,.75,grain));
+          diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.11,.077,.043),footSoil*.72);
         }else if(chiKind<1.5){
           vec2 slab=chiWorld.xz/vec2(2.0,1.65),edge=min(fract(slab),1.0-fract(slab));
           float joint=1.0-smoothstep(.002,.010,min(edge.x,edge.y));
           float panel=chiHash(floor(slab));
           diffuseColor.rgb*=mix(.94,1.04,panel)*(1.0-joint*.23*(1.0-chiWear))*( .94+macro*.08);
+          diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.77,.72,.62),footTraffic.g*(.10+grain*.12));
         }else if(chiKind<2.5){
           float oilPatch=smoothstep(.65,.86,chiNoise(chiWorld.xz*.32));
           diffuseColor.rgb*=.90+macro*.16-oilPatch*.12;
@@ -82,7 +107,7 @@ export function chicagoWeather(material,kind,wear=0,tile=2.4) {
           diffuseColor.rgb*=mix(vec3(.96,.94,.91),summer,leaf);
         }`);
   };
-  material.customProgramCacheKey=()=> 'chicago-materials-v1';material.needsUpdate=true;return material;
+  material.customProgramCacheKey=()=> 'chicago-materials-wear-wind-v2';material.needsUpdate=true;return material;
 }
 
 export function chicagoGround(material,surface,wear=0) {
