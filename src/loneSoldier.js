@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { attachViewDetails } from './loneSoldierView.js';
 import { LoneKaijuAI } from './loneKaijuAI.js';
+import { structureClearance } from './firstPersonLighting.js';
 
 const viewTemplates = new Map();
 const sharedViewTextures = new Map();
@@ -42,8 +43,8 @@ export const UNITS = {
 };
 
 export class LoneSoldier {
-  constructor({ world, state, camera, role, finish, sound, viewModel }) {
-    Object.assign(this, { world, state, camera, finish, sound });
+  constructor({ world, state, camera, role, finish, sound, viewModel, handlingSound=()=>{} }) {
+    Object.assign(this, { world, state, camera, finish, sound, handlingSound });
     this.unit = UNITS[role]; this.role = role; this.pos = new THREE.Vector3();
     const kp = state.kaiju.root.position;
     const land = world.landPoint?.() || [kp.x + 70, kp.z];
@@ -72,7 +73,9 @@ export class LoneSoldier {
     this.motion = 0; this.recoil = 0;
     this.steer=0;this.ai=new LoneKaijuAI();this.lookSway=new THREE.Vector2();this.sprintBlend=0;
     this.ammo=30;this.magSize=30;this.reloadTime=0;this.reloadHeld=false;
+    this.reloadDuration=2.2;this.emptyReload=false;
     this.aimBlend=0;this.baseFov=camera.fov;this.weaponKick=0;this.kickVelocity=0;
+    this.gait=0;this.strideLean=0;this.settle=0;this.clearance=1.6;this.lightExposure=1;this.lightTarget=1;this.lightSampleTimer=0;this.lookDirection=new THREE.Vector3();
     if(role==='infantry') {
       this.hud.insertAdjacentHTML?.('beforeend','<div class="lone-infantry-actions"><button type="button" data-action="aim">AIM</button><button type="button" data-action="reload">RELOAD</button></div>');
       const aim=this.hud.querySelector?.('[data-action="aim"]'),reload=this.hud.querySelector?.('[data-action="reload"]');
@@ -92,12 +95,15 @@ export class LoneSoldier {
       Math.sin(this.time*8)*.004*this.motion+(infantry?this.lookSway.x:0),
       (heli?-this.steer*.025:infantry?this.sprintBlend*-.12:0)+kick*-.009);
     if(infantry) {
-      const aim=this.aimBlend,reload=this.reloadTime>0?Math.sin((1-this.reloadTime/2.2)*Math.PI):0;
-      this.view.position.x+=-.205*aim+reload*.025;
+      const aim=this.aimBlend,reload=this.reloadTime>0?Math.sin((1-this.reloadTime/this.reloadDuration)*Math.PI):0;
+      const wall=1-THREE.MathUtils.smoothstep(this.clearance,.85,1.55),bob=this.motion*(1-aim*.88);
+      this.view.position.x=Math.sin(this.gait)*.006*bob-.205*aim+reload*.025;
+      this.view.position.y=Math.cos(this.gait*2)*.004*bob-this.sprintBlend*.055-wall*.065;
+      this.view.position.z=this.settle+wall*.08+this.sprintBlend*.035;
       this.view.position.y+=.120*aim-reload*.035+Math.sin(this.time*1.8)*.0015*(1-aim);
       this.view.position.z+=.14*aim+this.weaponKick*1.8;
-      this.view.rotation.x=this.weaponKick+this.lookSway.y*(1-aim*.65)+this.sprintBlend*.09+reload*.10;
-      this.view.rotation.y*=1-aim*.8;this.view.rotation.z+=reload*.22;
+      this.view.rotation.x=this.weaponKick+this.lookSway.y*(1-aim*.65)-this.sprintBlend*.18+reload*.10-wall*.50;
+      this.view.rotation.y*=1-aim*.8;this.view.rotation.z+=reload*.22+this.strideLean;
       const fov=this.baseFov-aim*12;
       if(Math.abs(this.camera.fov-fov)>.001){this.camera.fov=fov;this.camera.updateProjectionMatrix();}
     }
@@ -142,14 +148,21 @@ export class LoneSoldier {
   }
   reload() {
     if(this.role!=='infantry'||this.reloadTime>0||this.ammo===this.magSize)return false;
-    this.reloadTime=2.2;this.visuals?.reload();return true;
+    this.emptyReload=this.ammo===0;this.reloadDuration=this.emptyReload?2.7:2.2;
+    this.reloadTime=this.reloadDuration;this.visuals?.reload(this.emptyReload);this.handlingSound('release');return true;
   }
   update(dt,input) {
     this.recoil=Math.max(0,this.recoil-dt*13);
     this.time+=dt;this.cooldown=Math.max(0,this.cooldown-dt);
-    if(this.reloadTime>0){this.reloadTime=Math.max(0,this.reloadTime-dt);if(this.reloadTime===0)this.ammo=this.magSize;}
+    if(this.reloadTime>0){
+      const before=this.reloadDuration-this.reloadTime;this.reloadTime=Math.max(0,this.reloadTime-dt);
+      const after=this.reloadDuration-this.reloadTime;
+      if(before<1.5&&after>=1.5)this.handlingSound('seat');
+      if(this.emptyReload&&before<2.05&&after>=2.05)this.handlingSound('bolt');
+      if(this.reloadTime===0)this.ammo=this.magSize;
+    }
     if(input.reload&&!this.reloadHeld)this.reload();this.reloadHeld=!!input.reload;
-    const aiming=this.role==='infantry' && input.aim && !this.reloadTime && !input.sprint;
+    const aiming=this.role==='infantry' && input.aim && !this.reloadTime && !input.sprint && this.clearance>1.25;
     this.aimBlend=THREE.MathUtils.lerp(this.aimBlend,aiming?1:0,1-Math.exp(-dt*16));
     // Small fixed substeps keep the damped recoil stable during a long frame.
     for(let remaining=Math.min(dt,.1);remaining>0;) {
@@ -161,11 +174,10 @@ export class LoneSoldier {
     state.hp=this.hp;state.maxHp=this.unit.hp;state.rage=0;
     state.yaw-=input.lookX*.045;state.pitch=THREE.MathUtils.clamp(state.pitch-input.lookY*.03,-1.35,1.35);
     let x=input.x,z=input.z,l=Math.max(1,Math.hypot(x,z));x/=l;z/=l;
-    this.motion=THREE.MathUtils.lerp(this.motion,Math.min(1,Math.hypot(x,z)),Math.min(1,dt*10));
     this.lookSway.lerp(new THREE.Vector2(THREE.MathUtils.clamp(input.lookX*.004,-.035,.035),THREE.MathUtils.clamp(input.lookY*.004,-.025,.025)),1-Math.exp(-dt*12));
-    this.sprintBlend=THREE.MathUtils.lerp(this.sprintBlend,input.sprint && !input.fire?this.motion:0,1-Math.exp(-dt*8));
     this.steer=THREE.MathUtils.lerp(this.steer,x,Math.min(1,dt*5));
-    const speed=this.unit.speed*(input.sprint?1.45:1)*(1-this.aimBlend*.45), old=pos.clone();
+    const sprinting=input.sprint&&(this.role!=='infantry'||(!input.aim&&!input.fire&&!this.reloadTime));
+    const speed=this.unit.speed*(sprinting?1.45:1)*(1-this.aimBlend*.45), old=pos.clone();
     pos.x+=(Math.sin(state.yaw)*z-Math.cos(state.yaw)*x)*speed*dt;
     pos.z+=(Math.cos(state.yaw)*z+Math.sin(state.yaw)*x)*speed*dt;
     if(this.role==='helicopter')pos.y=THREE.MathUtils.clamp(pos.y+input.vertical*14*dt,8,65);
@@ -173,7 +185,17 @@ export class LoneSoldier {
     let blocked=this.role!=='helicopter' && world.isWater?.(pos.x,pos.z);
     world.buildingGrid?.forEachNear(pos.x,pos.z,40,b=>{if(!b.destroyed && pos.y<b.h+1 && Math.abs(pos.x-b.x)<b.w/2+1 && Math.abs(pos.z-b.z)<b.d/2+1)blocked=true;});
     if(blocked)pos.copy(old);
-    this.groundSpeed=Math.hypot(pos.x-old.x,pos.z-old.z)/Math.max(dt,1e-5);
+    const priorSpeed=this.groundSpeed||0,travel=Math.hypot(pos.x-old.x,pos.z-old.z);
+    this.groundSpeed=travel/Math.max(dt,1e-5);this.gait=(this.gait+travel*1.15)%(Math.PI*2);
+    this.motion=THREE.MathUtils.lerp(this.motion,Math.min(1,this.groundSpeed/this.unit.speed),1-Math.exp(-dt*12));
+    this.sprintBlend=THREE.MathUtils.lerp(this.sprintBlend,input.sprint&&!input.fire&&!input.aim&&!this.reloadTime?this.motion:0,1-Math.exp(-dt*8));
+    this.strideLean=THREE.MathUtils.lerp(this.strideLean,-x*this.motion*.018,1-Math.exp(-dt*8));
+    this.settle=THREE.MathUtils.lerp(this.settle,THREE.MathUtils.clamp((priorSpeed-this.groundSpeed)*.0015,-.015,.015),1-Math.exp(-dt*16));
+    this.lookDirection.set(Math.sin(state.yaw)*Math.cos(state.pitch),Math.sin(state.pitch),Math.cos(state.yaw)*Math.cos(state.pitch));
+    this.clearance=THREE.MathUtils.lerp(this.clearance,structureClearance(world,pos,this.lookDirection),1-Math.exp(-dt*12));
+    this.lightSampleTimer-=dt;
+    if(this.lightSampleTimer<=0){this.lightTarget=world.soldierExposure?.(pos)??1;this.lightSampleTimer=.12;}
+    this.lightExposure=THREE.MathUtils.lerp(this.lightExposure,this.lightTarget,1-Math.exp(-dt*6));
     this.cameraUpdate();if(input.fire)this.shoot();
     this.ai.update(this,dt);
     this.visuals?.update(this,dt);

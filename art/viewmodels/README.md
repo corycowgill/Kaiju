@@ -64,6 +64,24 @@ Validation includes magazine/aim behavior, shadow tracking, independent skeleton
 clones, actual hand movement in the shipped reload clip, and browser rendering
 of hip, aim, reload, sprint and firing poses.
 
+## Follow-up handling pass, build 1.11.125
+
+Empty reloads now last 2.7 seconds and include a bolt-release reach; partial
+reloads retain the magazine exchange and return to ready in 2.2 seconds. The
+export finishing step merges Blender's separate armature and magazine channels,
+normalizes frame-one timing, and derives the tactical return without duplicating
+geometry or textures. Tests verify actual magazine displacement in both actions.
+
+Weapon sway follows actual travel, stops against obstacles, settles on stopping,
+and quiets while aiming. Proximity to walls blends into a lowered ready pose.
+The bolt stays open after the last round and releases during the empty reload.
+Release, seating and bolt sounds are driven by animation progress.
+
+The shared reflection probe and sun response now fade smoothly under structural
+cover. Sun exposure is sampled at about 8 Hz through the building grid; material
+uniforms blend each frame. No dynamic lights or full-scene postprocessing passes
+are added, and the world camera's near/far planes remain unchanged.
+
 ## Reference review
 
 Visual benchmarks: [Call of Duty weapon presentation](https://www.callofduty.com/blog/2024/10/call-of-duty-black-ops-6-launch-comms-weapons-attachments-intel),

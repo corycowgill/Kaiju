@@ -168,8 +168,12 @@ for (const role of ['infantry','tank','helicopter']) await step(`first-person ${
         const mixer=new THREE.AnimationMixer(view);mixer.clipAction(clip).play();mixer.update(.8);view.updateMatrixWorld(true);
         const after=new THREE.Vector3();a.getWorldPosition(after);
         if(before.distanceTo(after)<.08)fail('infantry: reload does not move support hand');
-        if(!view.getObjectByName('MAGAZINE'))fail('infantry: animated magazine missing');
+        const magazine=view.getObjectByName('MAGAZINE');
+        if(!magazine)fail('infantry: animated magazine missing');
+        else if(magazine.position.length()<.15)fail('infantry: magazine track is not synchronized with the hand');
         mixer.stopAllAction();mixer.uncacheRoot(view);
+        const empty=view.animations.find(c=>c.name==='reload_empty');
+        if(!empty||Math.abs(empty.duration-2.7)>.01||Math.abs(clip.duration-2.2)>.01)fail('infantry: empty and partial reload timing invalid');
       }
     }
   if(role!=='infantry') {

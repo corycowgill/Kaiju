@@ -4,8 +4,11 @@ import { drawInstrument } from './loneInstruments.js';
 /** Live avionics are drawn into the actual recessed Blender screen meshes. */
 export function attachViewDetails(model, role, camera) {
   const mixer=role==='infantry'?new THREE.AnimationMixer(model):null;
-  const reloadClip=model.animations?.find(c=>c.name==='reload');
-  const reloadAction=reloadClip?mixer.clipAction(reloadClip).setLoop(THREE.LoopOnce,1):null;
+  const reloadActions={};
+  for(const name of ['reload','reload_empty']) {
+    const clip=model.animations?.find(c=>c.name===name);
+    if(clip&&mixer)reloadActions[name]=mixer.clipAction(clip).setLoop(THREE.LoopOnce,1);
+  }
   const displays = [], ownedTextures = [], originalMaterials = [];
   model.traverse(mesh => {
     if (!mesh.isMesh || !/^DISPLAY_(FLIGHT|TACTICAL|SIGHT|ANALOG|ENGINE|SYSTEMS)$/.test(mesh.name)) return;
@@ -72,12 +75,15 @@ export function attachViewDetails(model, role, camera) {
     projection.elements[14]=-2*far*near/(far-near);
   };
   cameraUpdate();
+  const sunExposure={value:1},surfaceLighting=[];
   model.traverse(object=>{
     if(!object.material)return;
     object.renderOrder=1000;
     const material=object.material;material.fog=false;
+    if(material.isMeshStandardMaterial)surfaceLighting.push({material,intensity:material.envMapIntensity});
     material.onBeforeCompile=shader=>{
       shader.uniforms.viewProjection={value:projection};
+      shader.uniforms.viewSunExposure=sunExposure;
       shader.vertexShader='uniform mat4 viewProjection;\n'+shader.vertexShader
         .replace('#include <project_vertex>',THREE.ShaderChunk.project_vertex)
         .replace(/gl_Position\s*=\s*projectionMatrix\s*\*\s*mvPosition\s*;/,
@@ -85,14 +91,17 @@ export function attachViewDetails(model, role, camera) {
       shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_begin>',
         THREE.ShaderChunk.normal_fragment_begin.replace('vec3 normal = normalize( vNormal );',
           'vec3 normal=dot(vNormal,vNormal)>1e-8?vNormal*inversesqrt(max(dot(vNormal,vNormal),1e-8)):vec3(0.0,0.0,1.0);'));
+      shader.fragmentShader='uniform float viewSunExposure;\n'+shader.fragmentShader.replace('#include <lights_fragment_begin>',
+        THREE.ShaderChunk.lights_fragment_begin.replace('getDirectionalLightInfo( directionalLight, directLight );',
+          'getDirectionalLightInfo( directionalLight, directLight );\n#if UNROLLED_LOOP_INDEX == 0\n directLight.color *= mix(.18,1.0,viewSunExposure);\n#endif\n'));
     };
-    material.customProgramCacheKey=()=> 'lone-foreground-depth-v1';
+    material.customProgramCacheKey=()=> 'lone-foreground-depth-cover-v2';
   });
   let flashAge=1, shot=0, accumulator=1;
   const local = new THREE.Vector3();
   return {
     cameraUpdate,
-    reload(){reloadAction?.reset().setEffectiveWeight(1).play();},
+    reload(empty){mixer?.stopAllAction();reloadActions[empty?'reload_empty':'reload']?.reset().setEffectiveWeight(1).play();},
     muzzlePosition(target) {
       const muzzle=muzzles[(shot-1+muzzles.length)%muzzles.length];
       if(!muzzle)return false;
@@ -110,7 +119,10 @@ export function attachViewDetails(model, role, camera) {
     },
     update(s, dt) {
       mixer?.update(dt);
-      if(bolt)bolt.position.z=boltRest+s.recoil*.025;
+      sunExposure.value=s.lightExposure??1;
+      for(const {material,intensity}of surfaceLighting)material.envMapIntensity=intensity*(.5+.5*sunExposure.value);
+      const boltOpen=role==='infantry'&&s.ammo===0&&(!s.reloadTime||s.reloadDuration-s.reloadTime<2.05);
+      if(bolt)bolt.position.z=boltRest+(boltOpen?1:s.recoil)*.025;
       if(shells) {
         for(let i=0;i<12;i++) {
           const shell=shellStates[i],age=shell.age+=dt;

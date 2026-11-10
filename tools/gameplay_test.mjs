@@ -3,7 +3,7 @@ import test from 'node:test';
 import * as THREE from 'three';
 import { resolveStructureContact } from '../src/buildingCollision.js';
 import { crowdGeometry, crowdMaterial, animateCrowd } from '../src/levels/festivalCrowd.js';
-import { followSoldierShadow, applyEnvironmentStrength } from '../src/firstPersonLighting.js';
+import { followSoldierShadow, applyEnvironmentStrength, structureClearance, soldierSunExposure } from '../src/firstPersonLighting.js';
 
 globalThis.window = { innerWidth: 1440, innerHeight: 900 };
 globalThis.location = { search: '?q=high' };
@@ -186,18 +186,36 @@ test('infantry magazines, reload lock, aim transition, recoil and camera restora
     const root=new THREE.Group(),camera=new THREE.PerspectiveCamera(60,1,.5,1000);
     const state={kaiju:{root,head:root},yaw:0,pitch:0,score:0};
     const world={scene:new THREE.Scene(),bounds:{minX:-500,maxX:500,minZ:-500,maxZ:500},buildings:[],spawnBeam(){}};
-    const c=new LoneSoldier({world,state,camera,role:'infantry',sound(){},finish(){}});c.ai.update=()=>{};
+    const phases=[];
+    const c=new LoneSoldier({world,state,camera,role:'infantry',sound(){},handlingSound:p=>phases.push(p),finish(){}});c.ai.update=()=>{};
     const idle={x:0,z:0,lookX:0,lookY:0,vertical:0};
     for(let i=0;i<30;i++){c.cooldown=0;c.shoot();}
     assert.equal(c.ammo,0);c.cooldown=0;c.shoot();assert.ok(c.reloadTime>2);
     const score=state.score;c.shoot();assert.equal(state.score,score,'reload blocks fire');
     c.update(1,idle);assert.equal(c.ammo,0,'ammo is not restored before seating magazine');
-    c.update(1.3,{...idle,aim:true});assert.equal(c.ammo,30);assert.ok(camera.fov<50);
+    c.update(1.8,{...idle,aim:true});assert.equal(c.ammo,30);assert.ok(camera.fov<50);
+    assert.deepEqual(phases,['release','seat','bolt']);phases.length=0;
+    c.cooldown=0;c.shoot();assert.equal(c.ammo,29);c.reload();assert.equal(c.reloadDuration,2.2,'partial magazine skips bolt release');
+    c.update(2.3,idle);assert.equal(c.ammo,30);
+    assert.deepEqual(phases,['release','seat'],'partial reload does not release the bolt');
     const p=c.pos.clone();c.update(.5,{...idle,x:1,aim:true});
     assert.ok(c.pos.distanceTo(p)<3,'aiming reduces movement speed');
     assert.ok(Number.isFinite(c.weaponKick));
+    world.isWater=()=>true;
+    for(let i=0;i<60;i++)c.update(1/60,{...idle,x:1,sprint:true});
+    const gait=c.gait;c.update(.5,{...idle,x:1,sprint:true});
+    assert.equal(c.gait,gait,'blocked movement cannot advance footsteps');assert.ok(c.sprintBlend<.001);
     c.dispose();assert.equal(camera.fov,60);assert.equal(camera.children.length,0);
   } finally {globalThis.document=previous;}
+});
+
+test('weapon cover probes ignore destroyed structures and distinguish sunlight from shade',()=>{
+  const pos=new THREE.Vector3(0,1.8,0),forward=new THREE.Vector3(0,0,1);
+  const wall={x:0,z:1.5,w:8,d:1,h:8,destroyed:false},world={buildings:[wall]};
+  assert.equal(structureClearance(world,pos,forward),1);
+  assert.equal(soldierSunExposure(world,pos,new THREE.Vector3(0,2,1)),0);
+  wall.destroyed=true;assert.equal(structureClearance(world,pos,forward),1.6);
+  assert.equal(soldierSunExposure(world,pos,new THREE.Vector3(0,2,1)),1);
 });
 
 test('soldier shadow tracking keeps sun direction fixed and environment strength reaches materials',()=>{

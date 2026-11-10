@@ -662,6 +662,13 @@ class Audio {
     this.noise(0.08, 700, 0.3);
   }
 
+  reloadPhase(phase) {
+    // Short mechanism sounds are driven by animation time, not timeout jobs.
+    if(phase==='release'){this.noise(.045,1600,.045);this.tone(260,.025,'triangle',.035);}
+    if(phase==='seat'){this.noise(.06,1100,.07);this.tone(180,.04,'triangle',.045);}
+    if(phase==='bolt'){this.noise(.085,2400,.065);this.tone(390,.035,'triangle',.035,-130);}
+  }
+
   pickup(type) {
     if (type === 'hp')      { if (this._play('pickup_hp')) return; this.tone(523, 0.08); this.tone(784, 0.12); }
     else if (type === 'rage') { if (this._play('pickup_rage')) return; this.tone(330, 0.07, 'square', 0.4); this.tone(523, 0.12, 'square', 0.3); }

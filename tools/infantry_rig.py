@@ -81,13 +81,13 @@ def build_arms(api):
   orientation.rotation_mode='QUATERNION';orientation.rotation_quaternion=arm.bones[side+'_hand'].matrix_local.to_quaternion()
   copy=rig.pose.bones[side+'_hand'].constraints.new('COPY_ROTATION');copy.target=orientation;copy.owner_space='WORLD';copy.target_space='WORLD'
   if side=='L':
-   poses=[(1,points[2]),(12,(.150,-.435,-.655)),(25,(.15,-.66,-.60)),(34,(.15,-.67,-.60)),(46,(.150,-.435,-.655)),(53,(.15,-.40,-.67)),(67,points[2])]
+   poses=[(1,points[2]),(12,(.150,-.435,-.655)),(25,(.15,-.66,-.60)),(34,(.15,-.67,-.60)),(46,(.150,-.435,-.655)),(52,(.15,-.40,-.67)),(60,(.14,-.31,-.61)),(66,(.145,-.30,-.61)),(82,points[2])]
    for frame,p in poses:target.location=v(p);target.keyframe_insert(data_path='location',frame=frame)
   else:
-   for frame in [1,67]:target.keyframe_insert(data_path='location',frame=frame)
- bpy.context.scene.frame_start=1;bpy.context.scene.frame_end=67;bpy.context.scene.render.fps=30
+   for frame in [1,82]:target.keyframe_insert(data_path='location',frame=frame)
+ bpy.context.scene.frame_start=1;bpy.context.scene.frame_end=82;bpy.context.scene.render.fps=30
  bpy.ops.object.select_all(action='DESELECT');rig.select_set(True);bpy.context.view_layer.objects.active=rig
- bpy.ops.nla.bake(frame_start=1,frame_end=67,step=1,only_selected=False,visual_keying=True,clear_constraints=True,use_current_action=False,bake_types={'POSE'})
+ bpy.ops.nla.bake(frame_start=1,frame_end=82,step=1,only_selected=False,visual_keying=True,clear_constraints=True,use_current_action=False,bake_types={'POSE'})
  if rig.animation_data and rig.animation_data.action:rig.animation_data.action.name='reload'
  bpy.context.scene.frame_set(1)
  return rig

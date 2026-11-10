@@ -42,3 +42,21 @@ export function followSoldierShadow(sun,anchor,position,offset) {
   anchor.position.copy(point);anchor.updateMatrixWorld(true);sun.target=anchor;
   sun.position.copy(point).add(offset);
 }
+
+const structureRay=new THREE.Ray(),structureBox=new THREE.Box3(),structureHit=new THREE.Vector3();
+const sunDirection=new THREE.Vector3();
+export function structureClearance(world,position,direction,reach=1.6) {
+  let nearest=reach;structureRay.set(position,direction);
+  const visit=b=>{
+    if(b.destroyed||b.isFence||b.h<1)return;
+    structureBox.min.set(b.x-b.w/2,0,b.z-b.d/2);structureBox.max.set(b.x+b.w/2,b.h,b.z+b.d/2);
+    if(structureRay.intersectBox(structureBox,structureHit))nearest=Math.min(nearest,position.distanceTo(structureHit));
+  };
+  if(world.buildingGrid?.forEachNear)world.buildingGrid.forEachNear(position.x,position.z,Math.min(160,reach+20),visit);
+  else for(const b of world.buildings||[])visit(b);
+  return nearest;
+}
+export function soldierSunExposure(world,position,offset) {
+  sunDirection.copy(offset).normalize();
+  return structureClearance(world,position,sunDirection,180)<180?0:1;
+}

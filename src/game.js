@@ -1,9 +1,9 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.11.124', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.11.125', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
-import { firstPersonEnvironment, lightFirstPerson, followSoldierShadow, applyEnvironmentStrength } from './firstPersonLighting.js';
+import { firstPersonEnvironment, lightFirstPerson, followSoldierShadow, applyEnvironmentStrength, soldierSunExposure } from './firstPersonLighting.js';
 import { resolveStructureContact } from './buildingCollision.js';
 window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -978,6 +978,7 @@ const world = {
   prepareFirstPerson: function (model) {
     lightFirstPerson(model,firstPersonEnvironment(renderer));
   },
+  soldierExposure: function (pos) { return soldierSunExposure(this,pos,_sunOffset); },
   spawnBallisticImpact: function (pos, normal, role, kind) {
     if(!this._fxRoom())return;
     const e=vfx.spawn('ballisticImpact',{world:this,pos,normal,role,kind});if(e)this.effects.push(e);
@@ -2493,7 +2494,8 @@ async function _startGameInner(key) {
     const role = document.getElementById('lone-role').value;
     const viewModel = await loadLoneView(role);
     lone = new LoneSoldier({world, state, camera, role, viewModel,
-      sound: () => audio.shoot(role==='infantry'?'rifle':role==='helicopter'?'heli':'tank'), finish: won => {
+      sound: () => audio.shoot(role==='infantry'?'rifle':role==='helicopter'?'heli':'tank'),
+      handlingSound: phase=>audio.reloadPhase(phase), finish: won => {
         gameOver(won); lone.hud.style.display = 'none';
         document.getElementById('goTitle').textContent = won ? 'KAIJU NEUTRALIZED' : 'SOLDIER DOWN';
         document.getElementById('goSubtitle').textContent = won ? 'The city survives. You held the line.' : 'The Kaiju prevailed. Redeploy and try again.';

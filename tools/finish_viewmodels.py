@@ -5,6 +5,7 @@ Run after the Blender builders, then make_asset_manifest.mjs.
 from pathlib import Path
 import json,struct,hashlib
 import numpy as np
+from reload_clips import finish_reload_clips
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'assets/viewmodels'
 report=[]
@@ -13,7 +14,7 @@ for role in ['infantry','tank','helicopter']:
  path=OUT/f'{role}_view.glb';raw=path.read_bytes();length=struct.unpack_from('<I',raw,12)[0]
  g=json.loads(raw[20:20+length]);binary=bytearray(raw[28+length:])
  if role=='infantry':
-  for animation in g.get('animations',[]):animation['name']='reload'
+  finish_reload_clips(g,binary)
  # Material separation uses glTF factors so all roles still share albedo maps.
  # Values are linear RGB, deliberately avoiding an identical green metal/leather look.
  palette={
@@ -39,7 +40,9 @@ for role in ['infantry','tank','helicopter']:
    a=g['accessors'][p['attributes']['NORMAL']];view=g['bufferViews'][a['bufferView']]
    normals=np.frombuffer(binary,dtype='<f4',count=a['count']*3,offset=view.get('byteOffset',0)+a.get('byteOffset',0)).reshape(-1,3)
    lengths=np.linalg.norm(normals,axis=1);bad=(~np.isfinite(lengths))|(lengths<1e-6)
-   normals[bad]=[0,1,0];normals[~bad]/=lengths[~bad,None]
+   normals[bad]=[0,1,0]
+   repair=(~bad)&(np.abs(lengths-1)>1e-5)
+   normals[repair]/=lengths[repair,None]
    if 'min' in a:a['min']=normals.min(axis=0).tolist()
    if 'max' in a:a['max']=normals.max(axis=0).tolist()
  image_views=set()
