@@ -10,6 +10,7 @@
 // to true in the commit that adds the last fest_* GLB.
 import * as THREE from 'three';
 import { dressFestival } from './festivalDressing.js';
+import { chicagoGround, chicagoFestivalSurface } from './chicagoMaterials.js';
 import { animateCrowd } from './festivalCrowd.js';
 import { loadFestivalPeople, createFestivalPeople } from './festivalPeople.js';
 import { assetURL } from '../assetCache.js';
@@ -556,6 +557,7 @@ export function buildFest(scene, F, ctx) {
 
   // Trampled lawns in front of the stages (over the park grass, under the paths)
   const trampled = new THREE.MeshStandardMaterial({ color: 0x7c8456, roughness: 1.0, map: M.grass.map });
+  chicagoGround(trampled,'grass',.9);
   for (const it of F.items) if (it.crowdArea) addBatch(polygonGeom(it.crowdArea, 0.035, 1 / 14), trampled);
   // Picnic-table strip: paving
   for (const it of F.items) if (it.kind === 'food_seating') addBatch(polygonGeom(_rectPoly(it), 0.036, 1 / 6), M.path);
@@ -776,6 +778,7 @@ export function buildFest(scene, F, ctx) {
       get(FEST_BASE + m.file)?.traverse((o) => {
         if (!o.isMesh) return;
         const mat = o.material, name = mat.name || '';
+        chicagoFestivalSurface(mat,m.file);
         if (/led_screen/i.test(name)) {
           mat.map = led.tex; mat.emissiveMap = led.tex; mat.emissive?.setRGB(1, 1, 1); mat.emissiveIntensity = 0.9;
           mat.color.setRGB(1, 1, 1); mat.metalness = 0; mat.roughness = 0.5;

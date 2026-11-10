@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { chicagoWeather } from './levels/chicagoMaterials.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL, withParseSlot, reportLoadError, isCodeBug, setKTX2Enabled } from './assetCache.js';
 import { buildChicago, loadChicagoLayout, chicagoBuildingGLBs, chicagoPropGLBs, chicagoVehicleGLBs, chicagoLod1GLBs } from './levels/chicago.js';
@@ -548,7 +549,9 @@ function _tintTree(group) {
     let t = _treeTintMats.get(key);
     if (!t) {
       t = m.material.clone();
-      t.color.multiply(_treeTint);
+      // Only foliage is muted by the summer shader; bark retains its brown.
+      t.color.multiplyScalar(.94);t.metalness=0;t.roughness=.94;
+      chicagoWeather(t,5);
       _treeTintMats.set(key, t);
     }
     m.material = t;

@@ -6,6 +6,7 @@
 // bascule bridges, landmark massing, props) lives here.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { chicagoGround } from './chicagoMaterials.js';
 import { isMobile, Q_HIGH } from '../quality.js';
 import { buildHarbor, splashPool } from './chicago_harbor.js';
 import { bakeShoreField, makeWaterMaterial, waterUniforms, swellGrid, waterFX } from './chicago_water.js';
@@ -921,33 +922,6 @@ class Massing {
   }
 }
 
-// Mottled summer-lawn texture (canvas, built once): deep greens with mowing
-// stripes and darker clumps, tiled every 14u
-let _grass = null;
-function _grassTex() {
-  if (_grass) return _grass;
-  const S = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(S, S);
-  for (let y = 0; y < S; y++) {
-    for (let x = 0; x < S; x++) {
-      const stripe = ((x >> 4) & 1) ? 0.06 : -0.02;
-      const clump = 0.5 + 0.5 * Math.sin(x * 0.21 + Math.sin(y * 0.17) * 2.3) * Math.cos(y * 0.19 + x * 0.05);
-      const n = Math.random() * 0.18 + stripe - (clump < 0.25 ? 0.12 : 0);
-      const i = (y * S + x) * 4;
-      img.data[i] = (52 + n * 120) | 0; img.data[i + 1] = (96 + n * 150) | 0; img.data[i + 2] = (40 + n * 80) | 0; img.data[i + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  _grass = new THREE.CanvasTexture(c);
-  _grass.wrapS = _grass.wrapT = THREE.RepeatWrapping;
-  _grass.colorSpace = THREE.SRGBColorSpace;
-  _grass.anisotropy = 4;
-  return _grass;
-}
-
 // --------------- materials (shared by every rebuilt Chicago city) ---------------
 let _M = null;
 function mats() {
@@ -965,7 +939,7 @@ function mats() {
     water: new THREE.MeshStandardMaterial({ color: 0x1a5276, roughness: 0.08, metalness: 0.7, emissive: 0x0a2e42, emissiveIntensity: 0.25 }),
     lake: new THREE.MeshStandardMaterial({ color: 0x24607e, roughness: 0.1, metalness: 0.65, emissive: 0x0c3448, emissiveIntensity: 0.25 }),
     wall: std(0x6a6862, 0.9), path: std(0xb8ad92, 0.95),
-    grass: std(0x7f9a6a, 0.95, 0, { map: _grassTex() }), lawn: std(0x8aa676, 0.95, 0, { map: _grassTex() }),
+    grass: std(0xffffff, 1, 0), lawn: std(0xffffff, 1, 0),
     yellow: new THREE.MeshStandardMaterial({ color: 0xf2c230, emissive: 0xd9a820, emissiveIntensity: 0.3, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1 }),
     whiteLine: new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -1 }),
     curb: std(0x3a3a3c, 1.0), lot: std(0x6c6a66, 0.95),
@@ -980,6 +954,8 @@ function mats() {
     seawall: std(0x9a958a, 0.9), sand: std(0xd8c79a, 1.0),
     roofCap: std(0x2e2c2a, 0.95), cornice: std(0xb8ae9c, 0.85),
   };
+  chicagoGround(_M.grass,'grass');chicagoGround(_M.lawn,'grass',.18);chicagoGround(_M.path,'pavement');
+  chicagoGround(_M.curb,'pavement',1);chicagoGround(_M.seawall,'pavement',1);
   for (const m of Object.values(_M)) m.userData.shared = true;
   return _M;
 }
@@ -1642,7 +1618,7 @@ export function buildChicago(scene, world, opts, K) {
     normalScale: new THREE.Vector2(1.4, 1.4), roughnessMap: K.loadDataTex('sidewalk_roughness.jpg', rep, rep),
     aoMap: K.loadDataTex('sidewalk_ao.jpg', rep, rep), aoMapIntensity: 0.8, roughness: 0.9, color: 0xc4bfb6,
   });
-  const swMat = sidewalkMat(1);
+  const swMat = M.path;
   const riverwalkGLB = glb ? _kit('riverwalk') : null;
   if (L.riverwalk.length && riverwalkGLB) {
     // Tiled promenade: river side (+Z) toward the water; vertically squashed
@@ -1716,13 +1692,8 @@ export function buildChicago(scene, world, opts, K) {
   if (L.fest) festClearFence(L.fest, roads);
   const carNet = L.fest ? K.buildRoadNet(festCutRoads(netRoads, L.fest), REAL ? 0.3 : 1.5) : net;
   {
-    const asphalt = roadMat = new THREE.MeshStandardMaterial({
-      map: K.loadTileTex('asphalt_color.jpg', 1, 1), normalMap: K.loadDataTex('asphalt_normal.jpg', 1, 1),
-      normalScale: new THREE.Vector2(0.7, 0.7), roughnessMap: K.loadDataTex('asphalt_roughness.jpg', 1, 1),
-      // The texture averages a cool (125, 134, 156): this tint takes it to a
-      // dark neutral warm grey (~(78, 76, 72) sRGB) under the noon sun
-      aoMap: K.loadDataTex('asphalt_ao.jpg', 1, 1), aoMapIntensity: 0.7, roughness: 0.9, metalness: 0.02, color: 0xa3957a,
-    });
+    const asphalt = roadMat = new THREE.MeshStandardMaterial({roughness:1,metalness:0});
+    chicagoGround(asphalt,'asphalt');
     // Real-scale map: one texture repeat per ASPHALT_TILE (10 m), not Tokyo's
     // 12u (60 m here), whose coarse grain read as gravel at street level
     const uvs = 1 / ASPHALT_TILE;

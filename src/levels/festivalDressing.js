@@ -3,18 +3,6 @@ import * as THREE from 'three';
 // Shared world-space wear on the lawns: stage-front dust, irregular worn
 // patches and maintenance stripes stay continuous across triangulated fields.
 export function dressFestival(scene, F, buildings, trampled, animators, lite) {
-  trampled.onBeforeCompile = sh => {
-    sh.vertexShader = 'varying vec2 vLawnXZ;\n' + sh.vertexShader
-      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvLawnXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
-    sh.fragmentShader = 'varying vec2 vLawnXZ;\n' + sh.fragmentShader
-      .replace('#include <color_fragment>', `#include <color_fragment>
-        float wornPatch = sin(vLawnXZ.x * .41 + sin(vLawnXZ.y * .17) * 2.0) * sin(vLawnXZ.y * .57);
-        float tracks = smoothstep(.82, .96, sin(vLawnXZ.x * .18 + vLawnXZ.y * .04));
-        diffuseColor.rgb *= mix(vec3(.77, .83, .64), vec3(1.23, 1.10, .88), wornPatch * .5 + .5);
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.31, .25, .16), tracks * .19);`);
-  };
-  trampled.customProgramCacheKey = () => 'festival-worn-lawns-v1';
-
   // Fabric pennants along the concessions and entrance gateways. Two draws,
   // no lights or shadow passes; attach each to a live destructible building.
   const flags = [];

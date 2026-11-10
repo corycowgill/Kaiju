@@ -256,6 +256,18 @@ const sceneTotals = () => {
   scene.traverse((o) => { if (o.onBeforeRender !== base) o.onBeforeRender(null, scene, cam); });
 }
 const totals = sceneTotals();
+if(level==='chicago') {
+  const surfaces=new Set();
+  scene.traverse(o=>{for(const material of [].concat(o.material||[])) {
+    const data=material.userData?.chicagoSurface;if(!data)continue;
+    if(data.kind<2.5) {
+      surfaces.add(data.kind);
+      if(!material.map||!material.normalMap||!material.roughnessMap)fail('Chicago terrain is missing a PBR map');
+      if(!(data.tile>0&&data.tile<=3))fail('Chicago terrain texture scale is invalid');
+    }
+  }});
+  if(surfaces.size!==3)fail('Chicago is missing grass, paving or asphalt surface materials');
+}
 // Lit shader programs (a proxy for three's program keys): one per distinct
 // standard-material variant in the scene, after the shared texture slots are
 // filled as game.js does before START links them (assetCache.canonMaterialMaps).
@@ -268,14 +280,18 @@ const litPrograms = (() => {
     for (const m of [].concat(o.material || [])) {
       if (!m || !m.isMeshStandardMaterial) continue;
       canonMaterialMaps(m);
-      keys.add([m.type, ...['map', 'normalMap', 'emissiveMap', 'metalnessMap', 'roughnessMap', 'aoMap', 'alphaMap', 'lightMap', 'bumpMap', 'displacementMap'].map((k) => (m[k] ? 1 : 0)),
+      const signature=[m.type, ...['map', 'normalMap', 'emissiveMap', 'metalnessMap', 'roughnessMap', 'aoMap', 'alphaMap', 'lightMap', 'bumpMap', 'displacementMap'].map((k) => (m[k] ? 1 : 0)),
         m.alphaTest > 0, m.transparent, m.side, m.vertexColors, m.flatShading, m.fog, !!o.isInstancedMesh, !!(o.isInstancedMesh && o.instanceColor),
-        !!o.isSkinnedMesh, !!(o.morphTargetInfluences && o.morphTargetInfluences.length), m.customProgramCacheKey()].join('|'));
+        !!o.isSkinnedMesh, !!(o.morphTargetInfluences && o.morphTargetInfluences.length), m.customProgramCacheKey()].join('|');
+      if(process.env.SMOKE_PROGRAMS && !keys.has(signature))log('PROGRAM '+m.name+' '+signature);
+      keys.add(signature);
     }
   });
   return keys.size;
 })();
-const LIT_PROGRAM_BUDGET = 16; // Tokyo 10, Chicago 13 (Chicago in the browser: 26 lit programs before canonMaterialMaps)
+// Chicago's shared terrain/prop weather family replaces the old lawn shader:
+// two new variants, one removed, net +1. Geometry/draw budgets stay unchanged.
+const LIT_PROGRAM_BUDGET = level==='chicago'?17:16;
 if (litPrograms > LIT_PROGRAM_BUDGET) fail(`${litPrograms} lit shader programs in the scene, budget ${LIT_PROGRAM_BUDGET} (a new material variant? see assetCache.canonMaterialMaps)`);
 if (process.env.SMOKE_BREAKDOWN) {
   // Top triangle contributors (debug aid): by geometry name / material
