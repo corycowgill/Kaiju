@@ -77,6 +77,11 @@ export function attachViewDetails(model, role, camera) {
   const local = new THREE.Vector3();
   return {
     cameraUpdate,
+    muzzlePosition(target) {
+      const muzzle=muzzles[(shot-1+muzzles.length)%muzzles.length];
+      if(!muzzle)return false;
+      camera.updateMatrixWorld(true);muzzle.getWorldPosition(target);return true;
+    },
     fire() {
       flashAge=0;
       const muzzle=muzzles[(shot++)%Math.max(1,muzzles.length)];

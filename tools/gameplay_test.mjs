@@ -111,6 +111,29 @@ test('textured power layers stay batched and all instance values stay finite', (
   }
 });
 
+test('combat VFX remain bounded and clean up their geometry on expiry or retirement',()=>{
+  for(const name of ['explosion','dustBurst','ballisticImpact','weaponTracer','kaijuCharge']) {
+    for(const retire of [false,true]) {
+      const scene=new THREE.Scene(),source=new THREE.Object3D();source.position.set(3,20,0);scene.add(source);
+      const world={scene,effects:[],time:0};
+      const fx=vfx.spawn(name,{world,pos:new THREE.Vector3(),origin:new THREE.Vector3(0,2,0),
+        dir:new THREE.Vector3(0,0,-1),normal:new THREE.Vector3(0,0,1),length:300,source,args:[2,8]});
+      assert.ok(fx,`${name} exists`);let draws=0,disposed=0;
+      fx.mesh.traverse(o=>{if(o.isMesh){draws++;o.geometry.addEventListener('dispose',()=>disposed++);}});
+      assert.ok(draws<=5,`${name}: ${draws} draws`);
+      for(let i=0;i<12;i++) {
+        source.position.x+=.1;fx.tick(1/60);
+        fx.mesh.traverse(o=>{for(const a of Object.values(o.geometry?.attributes||{}))assert.ok(a.array.every(Number.isFinite),name);});
+      }
+      if(name==='kaijuCharge')assert.ok(Math.abs(fx.mesh.position.x-source.position.x)<.001,'charge follows animated source');
+      if(retire)effects.finishEffect(fx);else fx.tick(20);
+      assert.equal(fx.dead,true);assert.equal(fx.mesh.parent,null);assert.equal(disposed,draws,`${name}: geometry released`);
+      effects.finishEffect(fx);assert.equal(disposed,draws,'retirement is idempotent');
+      assert.equal(scene.children.filter(o=>o!==source&&!o.isLight).length,0);
+    }
+  }
+});
+
 // The new mode is independent of the normal kaiju wave loop.
 import { LoneSoldier, UNITS } from '../src/loneSoldier.js';
 test('Lone Soldier roles move, fire at the AI Kaiju, and respect cover', () => {
@@ -125,12 +148,18 @@ test('Lone Soldier roles move, fire at the AI Kaiju, and respect cover', () => {
       const state={kaiju:{root,head:root},yaw:0,pitch:0,score:0};
       const world={scene,bounds:{minX:-200,maxX:200,minZ:-200,maxZ:200},buildings:[],
         buildingGrid:{forEachNear(){}},isWater:()=>false,spawnBeam(){},spawnHitPulse(){},spawnSparks(){},spawnExplosion(){}};
-      let result;
+      let result;const shots=[];
+      world.spawnWeaponTracer=(origin,dir,length,unit)=>shots.push({origin,dir,length,unit});
+      world.spawnBallisticImpact=(pos,normal,unit,kind)=>{world.lastImpact={pos,normal,unit,kind};};
       const mode=new LoneSoldier({world,state,camera,role,sound(){},finish:v=>result=v});
       state.pitch=Math.atan2(15-mode.pos.y,85);
       mode.shoot();assert.equal(mode.kaijuHP,2400-UNITS[role].damage,role+' should hit');
+      assert.equal(shots.length,1);assert.equal(shots[0].unit,role);
+      assert.ok(shots[0].length>0);assert.ok(Math.abs(shots[0].dir.length()-1)<1e-6);
+      assert.equal(world.lastImpact.kind,'kaiju');
       mode.cooldown=0;world.buildings=[{x:40,z:0,w:10,d:10,h:100}];
       mode.shoot();assert.equal(mode.kaijuHP,2400-UNITS[role].damage,role+' cover blocks shot');
+      assert.equal(world.lastImpact.kind,'concrete');
       const before=mode.pos.clone();
       mode.update(.1,{x:1,z:0,lookX:0,lookY:0,vertical:1,fire:false,sprint:false});
       assert.ok(mode.pos.distanceTo(before)>0);

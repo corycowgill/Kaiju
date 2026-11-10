@@ -17,7 +17,7 @@ class PowerEffect {
     if (this.dead) return;
     this.life -= dt;
     if (this.life <= 0) {
-      this.dead = true; this.mesh.removeFromParent();
+      this.dead = true; this.mesh.removeFromParent();this.onDispose?.();
       const geometries = new Set(), materials = new Set();
       this.mesh.traverse(o => {
         if (o.geometry) geometries.add(o.geometry);
@@ -57,7 +57,7 @@ void main() {
  #include <fog_vertex>
 }`;
 const PUFF_FS = `
-uniform sampler2D sheet; uniform float hasSheet; uniform float hot;
+uniform sampler2D sheet; uniform float hasSheet; uniform float hot; uniform float textureWeight;
 varying vec2 vUv; varying vec2 vState; varying vec3 vTint; varying float vNear;
 #include <fog_pars_fragment>
 ${NOISE}
@@ -73,7 +73,8 @@ void main() {
  if(hasSheet>.5) {
    float f=min(62.9,vState.x);
    vec4 tex=mix(frame(floor(f)),frame(min(63.0,floor(f)+1.0)),fract(f));
-   rgb=tex.rgb*vTint; alpha=tex.a*soft;
+   rgb=mix(rgb,tex.rgb*vTint,textureWeight);
+   alpha=mix(alpha*.65,tex.a*soft,textureWeight);
  }
  if(hot>.5) {
    alpha=pow(max(0.0,1.0-dot(p,p)),2.0);
@@ -86,7 +87,7 @@ void main() {
 
 // Every puff in a layer is one instanced draw, with per-puff atlas frame,
 // rotation and opacity. A procedural wispy mask also works before load ends.
-function puffs(group, n, getTexture, { sheet = 'smoke_plume_8x8', hot = false, color = 0xffffff } = {}) {
+function puffs(group, n, getTexture, { sheet = 'smoke_plume_8x8', hot = false, color = 0xffffff, textureWeight = 1 } = {}) {
   const base = new THREE.PlaneGeometry(1, 1);
   const g = new THREE.InstancedBufferGeometry().copy(base); base.dispose();
   const attr = (name, size) => {
@@ -99,7 +100,7 @@ function puffs(group, n, getTexture, { sheet = 'smoke_plume_8x8', hot = false, c
   g.instanceCount = n;
   const mat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-      sheet: { value: getTexture(sheet) || null }, hasSheet: { value: getTexture(sheet) ? 1 : 0 }, hot: { value: +hot },
+      sheet: { value: getTexture(sheet) || null }, hasSheet: { value: getTexture(sheet) ? 1 : 0 }, hot: { value: +hot }, textureWeight: {value:textureWeight},
     }]), vertexShader: PUFF_VS, fragmentShader: PUFF_FS,
     transparent: true, depthWrite: false, fog: true,
     blending: hot ? THREE.AdditiveBlending : THREE.NormalBlending,
@@ -180,20 +181,20 @@ function oriented(pos, dir) {
   return g;
 }
 
-export function powerBuilders(getTexture, placeScorch = () => {}) {
+export function powerBuilders(getTexture, placeScorch = () => {}, lightBurst = () => null) {
   function beam({ world, origin, dir, length = 100, color = 0x66aaff }) {
-    const group = oriented(origin, dir), life = .85;
+    const group = oriented(origin, dir), life = .48;
     const traces = [];
     for (let j = 0; j < 3; j++) {
       const pts = Array.from({ length: 65 }, (_, i) => {
         const z = i / 64 * length, r = j ? .65 : 0, a = i * .55 + j * 2.8;
         return [Math.sin(a) * r, Math.cos(a) * r, z];
       });
-      traces.push(trail(group, pts, j ? color : 0xd2eeff, j ? 1.15 : .85));
+      traces.push(trail(group, pts, j ? color : 0xc3eaff, j ? .62 : .30));
     }
-    const sparks = puffs(group, count(48), getTexture, { hot: true, color });
+    const sparks = puffs(group, count(24), getTexture, { hot: true, color });
     return new PowerEffect(world, group, life, T => {
-      const fade = Math.min(1, T / .08) * clamp((life - T) / .25);
+      const fade = Math.min(1, T / .035) * clamp((life - T) / .18);
       for (const [j, tr] of traces.entries()) {
         tr.uniforms.time.value = T + j; tr.uniforms.opacity.value = fade * (j ? .55 : .9);
         tr.uniforms.reveal.value = clamp((T - .035) / .14) * 1.06;
@@ -204,6 +205,131 @@ export function powerBuilders(getTexture, placeScorch = () => {}) {
           .12, randStable(i, .6, 1.5), a, fade * .75);
       }
       sparks.flush();
+    });
+  }
+
+  function explosion({world,pos,args=[]}) {
+    const scale=clamp(args[0]??1,.25,4),group=oriented(pos),life=3.2;
+    group.scale.setScalar(scale);
+    const flame=puffs(group,count(6),getTexture,{sheet:'explosion_fireball_8x8'});
+    const smoke=puffs(group,count(16),getTexture,{color:0xaca69c});
+    const dust=puffs(group,count(12),getTexture,{sheet:'dust_burst_8x8',color:0xb8ac94,textureWeight:.4});
+    const embers=puffs(group,count(20),getTexture,{hot:true,color:0xffa253});
+    const chunks=new THREE.InstancedMesh(new THREE.DodecahedronGeometry(.13,0),
+      new THREE.MeshStandardMaterial({color:0x59534b,roughness:1}),count(10));
+    chunks.frustumCulled=false;chunks.name='blast_ballistic_fragments';group.add(chunks);
+    const pose=new THREE.Object3D();
+    if(pos.y<4)placeScorch(world,pos,3.4*scale);
+    const lamp=lightBurst(world,pos,scale);
+    const effect=new PowerEffect(world,group,life,T=>{
+      lamp?.update(T);
+      for(let i=0;i<flame.n;i++) {
+        const age=Math.max(0,T-i*.024),a=i*2.399,r=age*3;
+        const size=2+age*6;
+        flame.set(i,Math.sin(a)*r,.4+age*3,Math.cos(a)*r,size,size,a,
+          T<i*.024?0:clamp(1-age/.65)*.88,Math.min(63,age*95));
+      }
+      for(let i=0;i<smoke.n;i++) {
+        const delay=.08+i*.018,age=Math.max(0,T-delay),a=i*2.399;
+        const r=(1-Math.exp(-age*2.5))*randStable(i,1.5,5.5),size=1.6+Math.sqrt(age)*3;
+        smoke.set(i,Math.sin(a)*r+age*.7,.7+age*randStable(i,1.1,2.8),Math.cos(a)*r,
+          size,size*randStable(i,.8,1.3),a+age*.12,T<delay?0:Math.min(1,age*5)*clamp((life-T)/1.2)*.48,
+          Math.min(62,6+age*18));
+      }
+      for(let i=0;i<dust.n;i++) {
+        const a=i*2.399,r=(1-Math.exp(-T*3))*randStable(i,3,10),size=1+T*3.5;
+        dust.set(i,Math.cos(a)*r,.25+size*.28+T*.3,Math.sin(a)*r,size*1.5,size*.7,a,
+          pos.y>5?0:Math.min(1,T*16)*clamp(1-T/1.8)*.50,Math.min(62,T*37));
+      }
+      for(let i=0;i<embers.n;i++) {
+        const a=i*2.399,v=randStable(i,3,12),age=Math.min(T,1.1);
+        embers.set(i,Math.sin(a)*v*age,Math.max(.12,age*randStable(i,4,12)-8*age*age),Math.cos(a)*v*age,
+          .045,.15+clamp(1-T/.5)*.4,a,clamp(1-T/randStable(i,.35,1.1))*.75);
+      }
+      for(let i=0;i<chunks.count;i++) {
+        const a=i*2.399,v=randStable(i,2,7),t=Math.min(T,1.8);
+        pose.position.set(Math.sin(a)*v*t,Math.max(.07,randStable(i,3,9)*t-7*t*t),Math.cos(a)*v*t);
+        pose.rotation.set(t*4+i,t*7+i,0);pose.scale.setScalar(clamp((life-T)/.45));pose.updateMatrix();chunks.setMatrixAt(i,pose.matrix);
+      }
+      chunks.instanceMatrix.needsUpdate=true;flame.flush();smoke.flush();dust.flush();embers.flush();
+    });
+    effect.onDispose=()=>lamp?.dispose();return effect;
+  }
+
+  function dustBurst({world,pos,args=[]}) {
+    const radius=clamp(args[0]??14,1,35),group=oriented(pos),life=2.5;
+    const dust=puffs(group,count(Math.min(32,(args[1]??8)*2)),getTexture,{sheet:'dust_burst_8x8',color:0xb8ae9d,textureWeight:.4});
+    const grit=puffs(group,count(12),getTexture,{sheet:'__grit',color:0x666056});
+    return new PowerEffect(world,group,life,T=>{
+      for(let i=0;i<dust.n;i++) {
+        const delay=i%4*.035,age=Math.max(0,T-delay),a=i*2.399;
+        const r=radius*(1-Math.exp(-age*1.8))*randStable(i,.3,1),size=1+radius*.22+age*2;
+        dust.set(i,Math.sin(a)*r+age*.6,size*.4+Math.sqrt(age)*radius*.07,Math.cos(a)*r,size*1.4,size,a+age*.06,
+          T<delay?0:Math.min(1,age*10)*clamp((life-T)/1.2)*.52,Math.min(62,age*26));
+      }
+      for(let i=0;i<grit.n;i++) {
+        const a=i*2.399,v=randStable(i,2,radius*.6),t=Math.min(T,1);
+        grit.set(i,Math.sin(a)*v*t,Math.max(.04,t*randStable(i,2,6)-6*t*t),Math.cos(a)*v*t,.07,.12,a,clamp(1-T/1.1));
+      }
+      dust.flush();grit.flush();
+    });
+  }
+
+  function tracer({world,origin,dir,length=100,role='infantry'}) {
+    const group=oriented(origin,dir),speed=role==='tank'?650:1100;
+    const duration=length/speed+.045,streak=role==='tank'?11:7;
+    const ribbon=trail(group,[[0,0,0],[0,0,streak]],0xffd0a0,role==='tank'?.11:.035);
+    const positions=ribbon.mesh.geometry.attributes.position;
+    return new PowerEffect(world,group,duration,T=>{
+      const head=Math.min(length,T*speed+1),tail=Math.max(0,head-streak);
+      for(let i=0;i<4;i++)positions.setZ(i,i<2?tail:head);
+      positions.needsUpdate=true;ribbon.uniforms.time.value=T;
+      ribbon.uniforms.opacity.value=clamp((duration-T)/.045)*.85;
+    });
+  }
+
+  function ballisticImpact({world,pos,normal=new THREE.Vector3(0,1,0),role='infantry',kind='concrete',color=0x8bd9ff,energy=false}) {
+    const group=oriented(pos),scale=energy?3:role==='tank'?3.5:role==='helicopter'?1.1:.55;
+    const life=energy?1.8:role==='tank'?2:1.05;
+    const dust=puffs(group,count(energy?18:10),getTexture,{sheet:'dust_burst_8x8',color:kind==='kaiju'?0x9babb0:0xb4ab98,textureWeight:.5});
+    const sparks=puffs(group,count(energy?26:14),getTexture,{hot:true,color:energy?color:0xffb772});
+    const n=normal.clone().normalize(),side=new THREE.Vector3().crossVectors(n,new THREE.Vector3(0,1,0));
+    if(side.lengthSq()<.001)side.set(1,0,0);else side.normalize();
+    const up=new THREE.Vector3().crossVectors(n,side).normalize();
+    if(energy && pos.y<4)placeScorch(world,pos,4);
+    return new PowerEffect(world,group,life,T=>{
+      for(let i=0;i<dust.n;i++) {
+        const a=i*2.399,v=randStable(i,.8,2.8)*scale,r=Math.sqrt(T)*v;
+        const outward=T*scale*randStable(i,.5,2),size=scale*(.3+Math.sqrt(T)*2);
+        dust.set(i,side.x*Math.cos(a)*r+up.x*Math.sin(a)*r+n.x*outward,
+          side.y*Math.cos(a)*r+up.y*Math.sin(a)*r+n.y*outward+T*.6,
+          side.z*Math.cos(a)*r+up.z*Math.sin(a)*r+n.z*outward,size,size*.8,a,
+          Math.min(1,T*35)*clamp((life-T)/.7)*.45,Math.min(62,T*55));
+      }
+      for(let i=0;i<sparks.n;i++) {
+        const a=i*2.399,v=randStable(i,2,9)*scale,t=Math.min(T,.65);
+        const forward=randStable(i,1,5)*scale*t;
+        sparks.set(i,side.x*Math.cos(a)*v*t+up.x*Math.sin(a)*v*t+n.x*forward,
+          side.y*Math.cos(a)*v*t+up.y*Math.sin(a)*v*t+n.y*forward-6*t*t,
+          side.z*Math.cos(a)*v*t+up.z*Math.sin(a)*v*t+n.z*forward,
+          i?.035*scale:scale*.7,i?.18*scale:scale*.7,a,
+          i?clamp(1-T/.45)*.8:clamp(1-T/.055));
+      }
+      dust.flush();sparks.flush();
+    });
+  }
+
+  function charge({world,source,life=1.3,color=0x77d9ff}) {
+    const group=new THREE.Group(),motes=puffs(group,count(20),getTexture,{hot:true,color});
+    return new PowerEffect(world,group,life,T=>{
+      source.getWorldPosition(group.position);
+      const buildup=T/life;
+      for(let i=0;i<motes.n;i++) {
+        const cycle=(T*1.5+i*.618)%1,a=i*2.399+T*2,r=(1-cycle)*(1+2*buildup);
+        motes.set(i,Math.sin(a)*r,Math.cos(a)*r*.6,Math.sin(a*1.7)*r,
+          i?.08:.35+buildup*.6,i?.25:.35+buildup*.6,a,(i?Math.sin(cycle*Math.PI):buildup)*.6);
+      }
+      motes.flush();
     });
   }
 
@@ -302,25 +428,6 @@ export function powerBuilders(getTexture, placeScorch = () => {}) {
         fire.set(i, Math.sin(i * 4.1) * .5, 3, u * len, .25, 1.7, i, clamp(1 - T / .3) * .8);
       }
       smoke.flush(); fire.flush();
-    });
-  }
-
-  function impact({ world, pos, color = 0x72baff }) {
-    const group = oriented(pos), dust = puffs(group, count(18), getTexture, { sheet: 'dust_burst_8x8', color: 0xb0a697 });
-    const sparks = puffs(group, count(32), getTexture, { hot: true, color });
-    if (pos.y < 4) placeScorch(world, pos, 5);
-    return new PowerEffect(world, group, 1.25, T => {
-      for (let i = 0; i < dust.n; i++) {
-        const a = i * 2.399, r = Math.sqrt(T) * randStable(i, 2, 9), sz = 1 + T * 5;
-        dust.set(i, Math.sin(a) * r, T * 3, Math.cos(a) * r, sz, sz * .8, a,
-          Math.min(1, T * 20) * clamp((1.25 - T) / .6) * .5, Math.min(62, T * 48));
-      }
-      for (let i = 0; i < sparks.n; i++) {
-        const a = i * 2.399, speed = randStable(i, 8, 22);
-        sparks.set(i, Math.sin(a) * speed * T, Math.max(0, T * randStable(i, 4, 20) - 12 * T * T), Math.cos(a) * speed * T,
-          i ? .12 : 3, i ? .7 : 3, a, i ? clamp(1 - T / .65) : clamp(1 - T / .075));
-      }
-      dust.flush(); sparks.flush();
     });
   }
 
@@ -435,11 +542,12 @@ export function powerBuilders(getTexture, placeScorch = () => {}) {
   }
 
   return {
+    explosion, dustBurst, weaponTracer: tracer, ballisticImpact, kaijuCharge: charge,
     beam, shockwave: pressure, soundRings: sound, breathCone: breath,
     tailSweep: o => slash(o), wingSlash: o => slash(o, true),
     wingFlap: o => slash({ ...o, args: [(o.args?.[0] || 1) * 1.2] }, true),
     afterburner, windStreaks: wind, atomicDome: o => pressure({ ...o, args: [0, o.args?.[0] || 130] }, true),
-    atomicDevastation: devastation, beamImpact: impact, missileSwarm: missiles,
+    atomicDevastation: devastation, beamImpact: o=>ballisticImpact({...o,energy:true}), missileSwarm: missiles,
     atomicDetonation: o => devastation({ ...o, scale: .45 }),
     hitPulse: contact, missileLaunchFlash: o => contact(o, true),
   };

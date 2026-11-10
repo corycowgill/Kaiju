@@ -794,24 +794,47 @@ export function buildFest(scene, F, ctx) {
     }
   });
 
-  // ---- stage lights: sweeping additive beams + strobe bursts (desktop / phone MED) ----
+  // ---- stage lights: soft, restrained haze cones with slow modulation (desktop / phone MED) ----
   if (glb) {
     const beams = [];
     for (const { it, b } of stages) {
-      const n = lite ? (it.tier === 'main' ? 4 : 2) : (it.tier === 'main' ? 8 : it.id === 'roar_grove' ? 3 : 5);
+      const n = lite ? (it.tier === 'main' ? 2 : 1) : (it.tier === 'main' ? 4 : 2);
       for (let i = 0; i < n; i++) beams.push({ it, b, u: (i + 0.5) / n - 0.5, phase: Math.random() * 6.28, hue: i / n });
     }
     if (beams.length) {
       const g = new THREE.CylinderGeometry(0.03, 0.55, 1, 10, 1, true);
       g.translate(0, -0.5, 0); // apex at the origin, opening down -Y
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true });
+      const mat = new THREE.ShaderMaterial({
+        uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog]),
+        vertexShader:`
+          varying vec2 vUv; varying vec3 vTint; varying vec3 vNormal; varying vec3 vEye;
+          #include <fog_pars_vertex>
+          void main(){
+            vUv=uv;vTint=instanceColor;
+            vec4 p=instanceMatrix*vec4(position,1.0);
+            vec4 mvPosition=modelViewMatrix*p;
+            vNormal=normalize(normalMatrix*mat3(instanceMatrix)*normal);vEye=-mvPosition.xyz;
+            gl_Position=projectionMatrix*mvPosition;
+            #include <fog_vertex>
+          }`,
+        fragmentShader:`
+          varying vec2 vUv; varying vec3 vTint; varying vec3 vNormal; varying vec3 vEye;
+          #include <fog_pars_fragment>
+          void main(){
+            float edge=pow(abs(dot(normalize(vNormal),normalize(vEye))),1.4);
+            float ends=smoothstep(0.0,.3,vUv.y)*(1.0-smoothstep(.90,1.0,vUv.y));
+            float falloff=.25+.75*vUv.y*vUv.y;
+            gl_FragColor=vec4(vTint,edge*ends*falloff*.065);
+            #include <fog_fragment>
+          }`,
+        transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.FrontSide,fog:true,
+      });
       const im = new THREE.InstancedMesh(g, mat, beams.length);
       im.frustumCulled = false; im.castShadow = false;
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       const q = new THREE.Quaternion(), down = new THREE.Vector3(0, -1, 0), dir = new THREE.Vector3(), pos = new THREE.Vector3(), scl = new THREE.Vector3(), m = new THREE.Matrix4(), col = new THREE.Color();
       im.setColorAt(0, col.setRGB(1, 1, 1));
       scene.add(im);
-      const strobe = new Map(); // stage id -> burst end time
       animators.push({
         update(dt, time) {
           beams.forEach((bm, i) => {
@@ -826,13 +849,11 @@ export function buildFest(scene, F, ctx) {
             const cy = Math.cos(yaw), sy = Math.sin(yaw);
             dir.set((fx * cy + fz * sy) * Math.cos(pitch), Math.sin(pitch), (fz * cy - fx * sy) * Math.cos(pitch)).normalize();
             q.setFromUnitVectors(down, dir);
-            const len = it.tier === 'main' ? 30 : 18;
-            scl.set(len * 0.08, len, len * 0.08);
+            const len = it.tier === 'main' ? 22 : 14;
+            scl.set(len * 0.045, len, len * 0.045);
             im.setMatrixAt(i, m.compose(pos, q, scl));
-            let burst = strobe.get(it.id) || 0;
-            if (time > burst + 3 && Math.random() < dt * 0.25) strobe.set(it.id, burst = time + 1.2);
-            const flash = time < burst && Math.floor(time * 14) % 2 ? 1.4 : 1;
-            col.setHSL((bm.hue + time * 0.06) % 1, 1, 0.5).multiplyScalar(flash);
+            const pulse=.92+.08*Math.sin(time*.9+bm.phase);
+            col.setHSL((bm.hue + time * 0.025) % 1, .6, .45).multiplyScalar(pulse);
             im.setColorAt(i, col);
           });
           im.instanceMatrix.needsUpdate = true;

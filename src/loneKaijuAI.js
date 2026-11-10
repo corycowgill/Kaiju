@@ -33,6 +33,7 @@ export class LoneKaijuAI {
       this.target.copy(pos).addScaledVector(this.velocity,.25);
       this.hitPlayer=false;this.impactShown=false;this.pulse=0;this.attacks++;
       k.glb?.playOnce(this.kind==='stomp'?'stomp':'skill1',.12,1,{duration:this.timer+(this.kind==='stomp'?.35:1.05)});
+      if(this.kind==='beam')world.spawnKaijuCharge?.(k.head,this.timer);
       const warning=this.kind==='stomp'?kp.clone().setY(.2):this.target.clone().setY(.2);
       world.spawnBossTelegraph?.(warning,this.kind==='stomp'?33:9,this.timer);
     } else if(this.phase==='windup' && this.timer===0) {
@@ -78,6 +79,10 @@ export class LoneKaijuAI {
       s.hp-=s.role==='tank'?65:35;this.hitPlayer=true;
     }
     if(cover)cover.damage(35,this.impact,world);
-    if(!this.impactShown){world.spawnExplosion(this.impact.clone(),.8);this.impactShown=true;}
+    if(!this.impactShown){
+      if(world.spawnEnergyImpact)world.spawnEnergyImpact(this.impact.clone(),this.direction.clone().negate());
+      else world.spawnExplosion(this.impact.clone(),.8);
+      this.impactShown=true;
+    }
   }
 }

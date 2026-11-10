@@ -2329,6 +2329,12 @@ export function registerLegacyEffects(legacy) {
   // No legacy beam-impact effect existed; a coloured hit pulse stands in.
   registerBuilder('beamImpact', (opts) => (legacy._makeHitPulseLegacy || legacy.makeHitPulse)(
     opts.world, opts.pos, opts.color));
+  registerBuilder('weaponTracer', o=>(legacy._makeBeamLegacy || legacy.makeBeam)(o.world,o.origin,o.dir,o.length,0xffbc67,0xffdfaa));
+  registerBuilder('ballisticImpact', o=>(legacy._makeSparksLegacy || legacy.makeSparks)(o.world,o.pos,8));
+  registerBuilder('kaijuCharge', o=>{
+    const pos=new THREE.Vector3();o.source.getWorldPosition(pos);
+    return (legacy._makeHitPulseLegacy || legacy.makeHitPulse)(o.world,pos,0x77d9ff);
+  });
   registerBuilder('atomicDome',         wrapPosArgs(legacy._makeAtomicDomeLegacy || legacy.makeAtomicDome));
   registerBuilder('atomicDevastation',  wrapPosArgs(legacy._makeAtomicDevastationLegacy || legacy.makeAtomicDevastation));
   registerBuilder('soundRings',         wrapPosArgs(legacy._makeSoundWaveRingsLegacy || legacy.makeSoundWaveRings));
@@ -2415,7 +2421,12 @@ export function registerAllBuilders(legacy) {
   registerLegacyEffects(legacy);
   _registerUpgradedBuilders();
   if (!LEGACY_VFX) {
-    for (const [name, builder] of Object.entries(powerBuilders(name => _flipTex[name], _placeScorch))) registerBuilder(name, builder);
+    for (const [name, builder] of Object.entries(powerBuilders(name => _flipTex[name], _placeScorch, (world,pos,scale)=>{
+      const light=_acquireLight(world.scene),seq=(light._seq=(light._seq||0)+1);
+      light.position.copy(pos);light.color.setHex(0xffb468);light.distance=22*scale;
+      return {update(age){if(light._seq===seq)light.intensity=5*scale*Math.exp(-age*12);},
+        dispose(){if(light._seq===seq)light.intensity=0;}};
+    }))) registerBuilder(name, builder);
   }
 }
 

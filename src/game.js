@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.11.122', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.11.123', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -966,6 +966,24 @@ const world = {
   spawnSmokeColumn: function (pos, height) { if (this._fxRoom()) this.effects.push(makeSmokeColumn(this, pos, height)); },
   spawnBeam: function (origin, dir, len, color, glow) {
     this.effects.push(makeBeam(this, origin, dir, len, color, glow));
+  },
+  spawnWeaponTracer: function (origin, dir, length, role) {
+    if(!this._fxRoom())return;
+    const e=vfx.spawn('weaponTracer',{world:this,origin,dir,length,role});if(e)this.effects.push(e);
+  },
+  spawnBallisticImpact: function (pos, normal, role, kind) {
+    if(!this._fxRoom())return;
+    const e=vfx.spawn('ballisticImpact',{world:this,pos,normal,role,kind});if(e)this.effects.push(e);
+  },
+  spawnKaijuCharge: function (source, life) {
+    audio.charge();
+    if(!this._fxRoom())return;
+    const e=vfx.spawn('kaijuCharge',{world:this,source,life});if(e)this.effects.push(e);
+  },
+  spawnEnergyImpact: function (pos, normal) {
+    audio.beam();
+    if(!this._fxRoom())return;
+    const e=vfx.spawn('beamImpact',{world:this,pos,normal});if(e)this.effects.push(e);
   },
   spawnBossTelegraph: function (pos, radius, delay) {
     this.effects.push(_spawnBossTelegraph(pos, radius, delay));

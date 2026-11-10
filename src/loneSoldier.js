@@ -103,10 +103,14 @@ export class LoneSoldier {
       }
     }
     const end=this.pos.clone().addScaledVector(dir,distance);
-    this.world.spawnBeam(this.pos.clone().addScaledVector(dir,1),dir,distance,0xffbc67,0xffdfaa);
-    if(hitKaiju){this.kaijuHP=Math.max(0,this.kaijuHP-this.unit.damage);this.world.spawnHitPulse(end,0xffca77);this.state.score+=this.unit.damage;}
+    const origin=this.pos.clone().addScaledVector(dir,1);
+    this.visuals?.muzzlePosition(origin);
+    const flight=end.clone().sub(origin),travel=flight.length();flight.normalize();
+    this.world.spawnWeaponTracer?.(origin,flight,travel,this.role);
+    const normal=dir.clone().negate();
+    if(hitKaiju){this.kaijuHP=Math.max(0,this.kaijuHP-this.unit.damage);this.world.spawnBallisticImpact?.(end,normal,this.role,'kaiju');this.state.score+=this.unit.damage;}
     else if(distance<450) {
-      this.world.spawnSparks(end,5);
+      this.world.spawnBallisticImpact?.(end,normal,this.role,'concrete');
       if(this.role==='tank') this.world.buildingGrid?.forEachNear(end.x,end.z,30,b=>{
         if(!b.destroyed && Math.abs(end.x-b.x)<b.w/2+3 && Math.abs(end.z-b.z)<b.d/2+3)b.damage(this.unit.damage,end,this.world);
       });
