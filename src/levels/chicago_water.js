@@ -175,7 +175,7 @@ const SWELL_GLSL = `
 
 /** The shared water material. field: bakeShoreField() result. */
 export function makeWaterMaterial(field, opts = {}) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.38, metalness: 0.0 });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, metalness: 0.0 });
   const uniforms = {
     uWave: { value: _waveTexture() },
     uField: { value: field.tex },
@@ -183,17 +183,17 @@ export function makeWaterMaterial(field, opts = {}) {
     uTime: { value: 0 },
     // Lake Michigan at noon: navy offshore, steel blue-teal over the
     // shelf, a narrow lighter band at the walls
-    uDeep: { value: new THREE.Color(0x0b2b49) },
-    uMid: { value: new THREE.Color(0x15465f) },
-    uShallow: { value: new THREE.Color(0x225a66) },
-    uShore: { value: new THREE.Color(0x3b7a7e) },
+    uDeep: { value: new THREE.Color(0x0b3e58) },
+    uMid: { value: new THREE.Color(0x17657b) },
+    uShallow: { value: new THREE.Color(0x287f8a) },
+    uShore: { value: new THREE.Color(0x438f91) },
     // Chicago River: opaque green-teal, slightly lighter at the walls
     uRiver: { value: new THREE.Color(0x1d443c) },
     uRiverEdge: { value: new THREE.Color(0x2a5a4e) },
     uSky: { value: new THREE.Color(opts.sky ?? 0xbcd6ee) },
     uSunDir: { value: new THREE.Vector3(6, 140, 50).normalize() },
     uSunCol: { value: new THREE.Color(0xfff3e2) },
-    uWaveAmp: { value: 0.55 },
+    uWaveAmp: { value: 0.25 },
     uGrid: { value: new THREE.Vector3(0, 0, 0) },
     // Kaiju interaction (waterFX): ripple / surge sources, the wake, its trail
     uRings: { value: Array.from({ length: NRING }, () => new THREE.Vector4(0, 0, -1e4, 0)) },
@@ -321,7 +321,7 @@ export function makeWaterMaterial(field, opts = {}) {
           wFoam = clamp(band * smoothstep(0.38, 0.68, fn2 * 0.6 + fn * 0.5), 0.0, 1.0) * (1.0 - wPool);
           float crest = smoothstep(.77, .90, fn * .65 + fn2 * .45);
           float openLake = smoothstep(12.0, 45.0, d) * (1.0 - fld.g) * (1.0 - wPool);
-          wFoam = max(wFoam, crest * openLake * .22);
+          wFoam = max(wFoam, crest * openLake * .07);
           // Kaiju ripples, wake and shore surges: foam broken up by the same noise
           float fx = waterFx(vWXZ, d) * (1.0 - wPool);
           wFoam = clamp(wFoam + fx * smoothstep(0.25, 0.6, fn2 * 0.7 + 0.3), 0.0, 1.0);
@@ -330,8 +330,8 @@ export function makeWaterMaterial(field, opts = {}) {
       // Wave normal: two scrolling octaves of the tileable map, world space
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
-          vec2 s1 = texture2D(uWave, vWXZ * 0.021 + vec2(uTime * 0.010, uTime * 0.006)).rg * 2.0 - 1.0;
-          vec2 s2 = texture2D(uWave, vWXZ * 0.067 + vec2(-uTime * 0.017, uTime * 0.013)).rg * 2.0 - 1.0;
+          vec2 s1 = texture2D(uWave, vWXZ * 0.048 + vec2(uTime * 0.010, uTime * 0.006)).rg * 2.0 - 1.0;
+          vec2 s2 = texture2D(uWave, vWXZ * 0.115 + vec2(-uTime * 0.017, uTime * 0.013)).rg * 2.0 - 1.0;
           // Calmer near walls (harbours sit behind breakwaters) and on the river
           float calm = mix(1.0, 0.45, wPool) * (1.0 - wFoam * 0.6) * mix(0.55, 1.0, smoothstep(8.0, 60.0, wShore)) * mix(1.0, 0.55, wRiver);
           vec2 sl = (s1 * 0.6 + s2 * 0.4) * uWaveAmp * calm + wFxSlope;
@@ -341,16 +341,19 @@ export function makeWaterMaterial(field, opts = {}) {
         }`)
       // Sky fresnel + sun glint on top of three's lighting
       .replace('#include <opaque_fragment>', `{
+          // The shared noon sun/environment otherwise contributes a broad
+          // white Standard-material lobe on top of the explicit lake glint.
+          outgoingLight=max(vec3(0.0),outgoingLight-.78*(reflectedLight.directSpecular+reflectedLight.indirectSpecular));
           vec3 V = normalize(cameraPosition - vec3(vWXZ.x, 0.2, vWXZ.y));
           float fres = 0.04 + 0.96 * pow(1.0 - max(dot(wN, V), 0.0), 5.0);
-          outgoingLight = mix(outgoingLight, uSky * 0.85, fres * 0.45 * (1.0 - wFoam));
+          outgoingLight = mix(outgoingLight, uSky * 0.68, fres * 0.28 * (1.0 - wFoam));
           vec3 R = reflect(-V, wN);
           float g = pow(max(dot(R, uSunDir), 0.0), 380.0);
-          outgoingLight += uSunCol * g * 1.0 * (1.0 - wFoam);
+          outgoingLight += uSunCol * g * 0.20 * (1.0 - wFoam);
         }
         #include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => 'chi-water-shorewash-v2';
+  mat.customProgramCacheKey = () => 'chi-water-lakefront-v3';
   return mat;
 }
 

@@ -1,10 +1,11 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.11.128', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.11.132', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
 import { firstPersonEnvironment, lightFirstPerson, followSoldierShadow, applyEnvironmentStrength, soldierSunExposure } from './firstPersonLighting.js';
 import { resolveStructureContact } from './buildingCollision.js';
+import { StructureRayQuery, cameraFollowAlpha } from './structureRayQuery.js';
 window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -69,6 +70,7 @@ function _setLevel(level) {
   if (!LEVELS[level]) return;
   selectedLevel = level;
   try { localStorage.setItem(LEVEL_KEY, level); } catch (e) { /* not persisted */ }
+  _syncDeployment();
 }
 
 // Mobile + quality flags now live in src/quality.js so the VFX manager and
@@ -374,6 +376,11 @@ if (RP.post) {
     Q_HIGH ? 0.25 : 0.22,                    // narrow halo preserves texture detail
     1.10                                     // ordinary smoke/white surfaces stay out of bloom
   );
+  // Composer supplies drawing-buffer dimensions. Keep bloom at its existing
+  // CSS-sized budget here, rather than allocating a full-sized target first
+  // and immediately resizing it again in fitRenderer().
+  const resizeBloom=bloomPass.setSize.bind(bloomPass);
+  bloomPass.setSize=(w,h)=>resizeBloom(w/_curPR*RP.bloomScale,h/_curPR*RP.bloomScale);
   composer.addPass(bloomPass);
   if (RP.bloomMips && RP.bloomMips < bloomPass.nMips) {
     // Phones: fewer blur levels (-2 levels x 2 draws). The composite still
@@ -1071,11 +1078,11 @@ const _TOKYO_LOOK = {
 // sky with a pale horizon, light haze pushed back, a near-neutral grade;
 // no stars, nebula or neon.
 const _CHICAGO_LOOK = {
-  bg: 0x9ec3e6, fog: 0xcad8e6, fogDensity: 0.0016,
+  bg: 0x91bce0, fog: 0xb4cce0, fogDensity: 0.00095,
   hemiSky: 0xdcecff, hemiGround: 0x6b6355, hemiI: Q_HIGH ? 0.55 : (Q_MED ? 0.68 : 0.75),
   sun: 0xfff3e2, sunI: 2.35, rim: 0xb4cdf5, rimI: Q_LOW ? 0.30 : 0.40,
   amb: 0x8a9bb0, ambI: Q_HIGH ? 0.18 : (Q_MED ? 0.30 : 0.42), neonI: _neonLights.map(() => 0),
-  sky: { horizon: [0.80, 0.88, 0.96], midCol: [0.50, 0.68, 0.92], zenith: [0.20, 0.42, 0.82], sunRim: [1.0, 0.97, 0.88] },
+  sky: { horizon: [0.68, 0.80, 0.91], midCol: [0.39, 0.61, 0.88], zenith: [0.17, 0.37, 0.73], sunRim: [1.0, 0.97, 0.88] },
   // Direction to the sun: elevation ~70 deg, azimuth just south of overhead
   sunOffset: [6, 140, 50],
   nebula: 0.0, env: 0.85,
@@ -1259,6 +1266,9 @@ function _requestPointerLock() {
 
 const keys = {};
 window.addEventListener('keydown', (e) => {
+  if(e.code==='Space' && lone && !state.paused && !state.gameOver){
+    e.preventDefault();if(!e.repeat&&lone.role==='infantry')lone.jumpRequested=true;
+  }
   keys[e.code] = true;
   if (e.code === 'Escape') togglePause();
 });
@@ -1282,35 +1292,42 @@ window.addEventListener('mousemove', (e) => {
   }
 });
 
+let _fitWidth=0,_fitHeight=0,_fitPR=-1,_fitQueued=false,_fitCount=0;
 function fitRenderer() {
   // Prefer visualViewport on iOS Safari -- it tracks the actually-visible area
   // (excludes the dynamic URL bar / keyboard) and updates after rotation.
   const vv = window.visualViewport;
-  const w = vv ? vv.width  : window.innerWidth;
-  const h = vv ? vv.height : window.innerHeight;
+  const w = Math.max(1,Math.round(vv ? vv.width  : window.innerWidth));
+  const h = Math.max(1,Math.round(vv ? vv.height : window.innerHeight));
+  const sizeChanged=w!==_fitWidth||h!==_fitHeight,prChanged=_curPR!==_fitPR;
+  if(!sizeChanged&&!prChanged)return;
+  _fitWidth=w;_fitHeight=h;_fitPR=_curPR;_fitCount++;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(_curPR);
-  renderer.setSize(w, h, true); // updateStyle=true: also sets canvas style.width/height
+  if(prChanged)renderer.setPixelRatio(_curPR);
+  if(sizeChanged)renderer.setSize(w, h, true); // pixel-ratio-only changes keep the CSS size
   if (composer) {
-    composer.setPixelRatio(_curPR);
-    composer.setSize(w, h);
-    if (bloomPass) bloomPass.setSize(w * RP.bloomScale, h * RP.bloomScale);
+    if(prChanged)composer.setPixelRatio(_curPR);
+    if(sizeChanged)composer.setSize(w, h);
   }
   updateOrientationClass();
 }
+function queueFitRenderer(){
+  if(_fitQueued)return;_fitQueued=true;
+  requestAnimationFrame(()=>{_fitQueued=false;fitRenderer();});
+}
 fitRenderer();
-window.addEventListener('resize', fitRenderer);
+window.addEventListener('resize', queueFitRenderer);
 window.addEventListener('orientationchange', () => {
   // iOS Safari fires orientationchange before layout settles; re-fit a few times.
-  fitRenderer();
-  setTimeout(fitRenderer, 120);
-  setTimeout(fitRenderer, 400);
-  setTimeout(fitRenderer, 900);
+  queueFitRenderer();
+  setTimeout(queueFitRenderer, 120);
+  setTimeout(queueFitRenderer, 400);
+  setTimeout(queueFitRenderer, 900);
 });
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', fitRenderer);
-  window.visualViewport.addEventListener('scroll', fitRenderer);
+  window.visualViewport.addEventListener('resize', queueFitRenderer);
+  window.visualViewport.addEventListener('scroll', queueFitRenderer);
 }
 // iOS sometimes leaves the page scrolled after rotation -- snap back to top
 window.addEventListener('scroll', () => window.scrollTo(0, 0), { passive: true });
@@ -1624,7 +1641,7 @@ document.getElementById('quit-btn')?.addEventListener('click', () => {
 // Camera drag: any touch outside the controls (and the joystick zone) looks
 function isOnControl(target) {
   if (!target || !target.closest) return false;
-  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #powers, #menu, #gameover, #pause-menu, #upgrade-modal');
+  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal');
 }
 window.addEventListener('touchstart', (e) => {
   if (!touchUI || state.gameOver || !state.kaiju) return;
@@ -1717,18 +1734,34 @@ const POWER_ICONS = {
 
 let lone = null;
 const modePicker = document.getElementById('game-mode');
-modePicker.addEventListener('change', () => {
+function _syncDeployment() {
   const active = modePicker.value === 'lone';
   document.getElementById('lone-role-label').hidden = !active;
   document.getElementById('lone-menu-help').hidden = !active;
   document.getElementById('startBtn').textContent = active ? 'DEPLOY · LONE SOLDIER' : 'UNLEASH HAVOC';
-});
+  document.getElementById('menu').classList.toggle('soldier-deployment',active);
+  document.querySelector('#menu .starring').textContent=active?'CHOOSE YOUR OPPONENT':'STARRING · 出演';
+  document.querySelector('#rotate-hint .rh-sub').textContent=active?'Move with your left thumb · Look and fire with your right':'Kaiju Havoc plays sideways: one thumb moves, the other smashes';
+  const hints={infantry:'SPACE / A JUMP · RMB / LT AIM · R / X RELOAD',tank:'MOUSE AIM · LMB / RT CANNON · SHIFT MOVE FASTER',helicopter:'E / SPACE ASCEND · Q / C DESCEND · LMB / RT FIRE'};
+  document.querySelector('#menu .menu-hint').innerHTML=active
+    ? `WASD MOVE · MOUSE LOOK · LMB / RT FIRE<br>${hints[document.getElementById('lone-role').value]}`
+    : 'WASD MOVE · MOUSE LOOK · LMB ATTACK · 1-3 POWERS · SPACE STOMP<br>← → / D-PAD to navigate · ENTER / A to confirm · START to launch';
+  const monster=MONSTERS[state.monsterKey],role=document.getElementById('lone-role').selectedOptions[0]?.textContent.split(' · ')[0];
+  document.getElementById('deployment-selection').textContent=monster
+    ? `${active?`${role} vs `:''}${monster.name} · ${LEVELS[selectedLevel].name}`
+    : active?'CHOOSE YOUR OPPONENT':'CHOOSE YOUR KAIJU';
+}
+modePicker.addEventListener('change',_syncDeployment);
+document.getElementById('lone-role').addEventListener('change',_syncDeployment);
+_syncDeployment();
 function updateLoneSoldier(dt) {
   readGamepad();
+  if(padInput.pressed.pause){togglePause();return;}
   lone.update(dt, {
     x: (+!!keys.KeyD)-(+!!keys.KeyA)+touchInput.moveX+padInput.moveX,
     z: (+!!keys.KeyW)-(+!!keys.KeyS)+touchInput.moveZ+padInput.moveZ,
-    vertical: (+!!(keys.KeyE || keys.Space))-(+!!(keys.KeyQ || keys.KeyC)),
+    vertical: (+!!(keys.KeyE || keys.Space || lone.touchAscend))-(+!!(keys.KeyQ || keys.KeyC || lone.touchDescend)),
+    jump: keys.Space || padInput.attack || lone.touchJump || lone.jumpRequested,
     sprint: keys.ShiftLeft || padInput.soldierSprint || touchInput.sprint,
     fire: state.mouseDown || touchInput.attackHeld || padInput.soldierFire,
     aim: state.aimDown || padInput.soldierAim || lone.touchAim,
@@ -1736,6 +1769,7 @@ function updateLoneSoldier(dt) {
     lookX: padInput.lookX, lookY: padInput.lookY,
   });
   lone.touchReload=false;
+  lone.jumpRequested=false;
   followSoldierShadow(sun,soldierShadowAnchor,lone.pos,_sunOffset);
   world._fxSpawned = world._dbSpawned = 0;
   vfx.tickParticles(dt); updateAtomicBlasts(dt);
@@ -1777,6 +1811,7 @@ for (const key of Object.keys(MONSTERS)) {
     card.classList.add('selected');
     state.monsterKey = key;
     document.getElementById('startBtn').disabled = false;
+    _syncDeployment();
   });
   cardsDiv.appendChild(card);
   _cardEls[key] = card;
@@ -1846,7 +1881,6 @@ document.getElementById('startBtn').addEventListener('click', () => {
 }
 
 // Resume audio after iOS suspends it on tab background
-document.addEventListener('visibilitychange', () => { if (!document.hidden) audio.resume(); });
 window.addEventListener('touchstart', () => audio.resume(), { passive: true, once: false });
 window.addEventListener('mousedown', () => audio.resume());
 
@@ -2256,6 +2290,8 @@ window.__restartInPlace = restartInPlace;
 if (/[?&]debug\b/.test(location.search)) {
   // composer(): the post chain (bloom, grade) for in-game-look screenshots
   window.__qa = { state, world, camera, renderer,
+    graphics:()=>({width:_fitWidth,height:_fitHeight,pixelRatio:_fitPR,resizeCount:_fitCount,cameraCandidates:_cameraQuery.candidates||0}),
+    soldier:()=>lone,
     power: (name) => {
       const action = { beam: fireBeam, roar: fireRoar, charge: fireCharge, stomp: fireStomp, ult: fireUltimate }[name];
       if (action && state.kaiju) { state.rage = 100; state.cooldowns[name] = 0; action(); }
@@ -2419,7 +2455,6 @@ async function _startGameInner(key) {
       loadingStatus.textContent = `WARMING UP SHADERS \u2022 ${ready}/${total}`;
     });
     await _hudPrewarmEnd();
-    loadingScreen.classList.remove('visible');
 
     k = { root: glb.root, head: glb.head, tail: glb.tail, mixer: glb.mixer, glb };
   } else {
@@ -2494,6 +2529,7 @@ async function _startGameInner(key) {
     const role = document.getElementById('lone-role').value;
     const viewModel = await loadLoneView(role);
     lone = new LoneSoldier({world, state, camera, role, viewModel,
+      pause:()=>togglePause(),
       sound: () => audio.shoot(role==='infantry'?'rifle':role==='helicopter'?'heli':'tank'),
       handlingSound: phase=>audio.reloadPhase(phase), finish: won => {
         gameOver(won); lone.hud.style.display = 'none';
@@ -2506,6 +2542,12 @@ async function _startGameInner(key) {
     document.getElementById('minimap').classList.add('hidden');
   } else startWave(1);
   applyEnvironmentStrength(scene,scene.userData.envStrength);
+  if(lone){
+    loadingStatus.textContent=`DEPLOYING ${lone.unit.name.toUpperCase()}`;
+    if(renderer.compileAsync)await renderer.compileAsync(scene,camera);
+    else renderer.compile(scene,camera);
+  }
+  loadingScreen.classList.remove('visible');
   // Effects not linked behind the menu: phones queue them all now, desktop
   // links them one at a time after the first frames
   if (isMobile) _queueVfxLinks();
@@ -4359,15 +4401,13 @@ function updateDamageIndicators(dt) {
   }
 }
 
-const _camRay = new THREE.Raycaster();
+const _camRay = new THREE.Ray();
+const _cameraQuery = new StructureRayQuery();
 const _camHead = new THREE.Vector3();
 const _camOffset = new THREE.Vector3();
 const _camTarget = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
-const _camCandidates = []; // reused across frames -- we only mutate length
-const _camBox = new THREE.Box3();
-const _camHit = new THREE.Vector3();
-function updateCamera() {
+function updateCamera(dt=1/60) {
   if (lone) { lone.cameraUpdate(); return; }
   const k = state.kaiju;
   if (!k) return;
@@ -4386,35 +4426,8 @@ function updateCamera() {
 
   let dist = desiredDist;
   _camRay.set(_camHead, _camOffset);
-  _camRay.far = desiredDist + 2;
-  _camRay.near = 0.1;
-
-  // One raycast against the global building InstancedMesh -- Three.js does
-  // the per-instance bounds tests internally, no candidate filtering needed.
-  if (world.bodiesIM) {
-    const hit = _camRay.intersectObject(world.bodiesIM, false)[0];
-    if (hit && hit.distance < dist) dist = Math.max(11, hit.distance - 1.5);
-  }
-  // GLB towers and landmarks are separate customMesh roots, not instances
-  // in bodiesIM, so the raycast above misses them and the camera dives
-  // inside. Test the ray against each nearby building's footprint AABB
-  // (w/d/h are rewritten to the GLB's scaled bounds on placement). Boxes
-  // that already contain the head are skipped so smashing through a
-  // building doesn't yank the camera in.
-  if (world.buildingGrid) {
-    const midX = _camHead.x + _camOffset.x * desiredDist * 0.5;
-    const midZ = _camHead.z + _camOffset.z * desiredDist * 0.5;
-    world.buildingGrid.forEachNear(midX, midZ, desiredDist * 0.5 + 30, (b) => {
-      if (b.destroyed || !b.customMesh) return;
-      _camBox.min.set(b.x - b.w / 2, 0, b.z - b.d / 2);
-      _camBox.max.set(b.x + b.w / 2, b.h, b.z + b.d / 2);
-      if (_camBox.containsPoint(_camHead)) return;
-      if (_camRay.ray.intersectBox(_camBox, _camHit)) {
-        const d = _camHit.distanceTo(_camHead);
-        if (d < dist) dist = Math.max(11, d - 1.5);
-      }
-    });
-  }
+  const obstruction=_cameraQuery.nearest(world,_camRay,desiredDist+2,true,.1);
+  if(obstruction&&obstruction.distance<dist)dist=Math.max(11,obstruction.distance-1.5);
 
   _camTarget.copy(_camHead).addScaledVector(_camOffset, dist);
   const target = _camTarget;
@@ -4437,10 +4450,10 @@ function updateCamera() {
     target.x += (Math.random() - 0.5) * world._shakeMag * 2;
     target.y += (Math.random() - 0.5) * world._shakeMag * 2;
     target.z += (Math.random() - 0.5) * world._shakeMag * 2;
-    world._shakeTime -= 1 / 60;
+    world._shakeTime -= dt;
     if (world._shakeTime <= 0) world._shakeMag = 0;
   }
-  camera.position.lerp(target, 0.18);
+  camera.position.lerp(target, cameraFollowAlpha(dt));
   _camLook.copy(_camHead);
   _camLook.y += state.pitch * 27;
   camera.lookAt(_camLook);
@@ -5123,6 +5136,10 @@ let last = performance.now();
 // a ceiling for 30 s so it doesn't oscillate. Only measured during
 // gameplay frames (menus are throttled to ~15 fps).
 const _dyn = { ema: 16.7, slowT: 0, fastT: 0, ceil: Infinity, ceilUntil: 0 };
+document.addEventListener('visibilitychange',()=>{
+  last=performance.now();_dyn.ema=16.7;_dyn.slowT=_dyn.fastT=0;
+  if(!document.hidden)audio.resume();
+});
 function _dynResTick(dtRaw) {
   if (!RP.dynRes || dtRaw <= 0 || dtRaw > 0.25) return;
   const ms = dtRaw * 1000;
@@ -5152,9 +5169,14 @@ window.__dynRes = () => ({ pr: _curPR, emaMs: +_dyn.ema.toFixed(1) });
 function tick(now) {
   const dtRaw = (now - last) / 1000;
   last = now;
+  if(document.hidden){requestAnimationFrame(tick);return;}
   const slowActive = now < state.slowMoUntil;
   const dt = Math.min(0.05, dtRaw) * (slowActive ? state.slowMoScale : 1);
-  if (!state.paused && !state.gameOver) {
+  if(state.paused&&state.kaiju&&!state.gameOver&&!state.upgradePending){
+    readGamepad();if(padInput.pressed.pause)togglePause(false);
+  }
+  const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible');
+  if (!state.paused && !state.gameOver && !loadingUp) {
     state.elapsedTime += dtRaw;
     world.time += dt;
     skyMat.uniforms.time.value = world.time;
@@ -5163,7 +5185,7 @@ function tick(now) {
       else { updatePlayer(dt); updateWorld(dt); }
       _dynResTick(dtRaw);
     }
-    updateCamera();
+    updateCamera(Math.min(.1,dtRaw));
     updateHUD();
     // Minimap is a full canvas redraw; ~15Hz is plenty
     if (now - (state._lastMini || 0) > 66) { drawMinimap(); state._lastMini = now; }
@@ -5174,7 +5196,7 @@ function tick(now) {
       state.kaiju.mixer.update(Math.min(0.05, dtRaw));
       if (state._topple) _updateTopple(Math.min(0.05, dtRaw));
     }
-    updateCamera();
+    updateCamera(Math.min(.1,dtRaw));
   }
   // Menu navigation (gamepad) -- runs whenever the menu or upgrade modal
   // is on screen, regardless of paused/gameOver state.
@@ -5207,7 +5229,6 @@ function tick(now) {
   // No draws behind the (opaque) loading screen: a draw there would link the
   // just-flushed GLB buildings' programs on first use, behind the
   // compileAsync queue (_prewarmShaders).
-  const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible');
   if (!loadingUp && (!idleScreen || now - _lastIdleRender >= IDLE_RENDER_MS)) {
     _lastIdleRender = now;
     if (RP.shadows && RP.shadowEvery > 1 && ++_shadowFrame >= RP.shadowEvery) {

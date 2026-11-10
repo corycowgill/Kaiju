@@ -9,10 +9,11 @@
 // in a shipped build); ?fest=1 turns it on, ?fest=0 off. Flip FEST_DEFAULT
 // to true in the commit that adds the last fest_* GLB.
 import * as THREE from 'three';
-import { dressFestival } from './festivalDressing.js';
+import { dressFestival, dressStageProduction } from './festivalDressing.js';
 import { chicagoGround, chicagoFestivalSurface } from './chicagoMaterials.js';
 import { animateCrowd } from './festivalCrowd.js';
 import { loadFestivalPeople, createFestivalPeople } from './festivalPeople.js';
+import { festivalCrowdWeight } from './chicagoLandscape.js';
 import { assetURL } from '../assetCache.js';
 
 const FEST_URL = './assets/levels/chicago_fest.json';
@@ -518,12 +519,11 @@ function _makeCrowd(scene, lawns, uTime, obstacles) {
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const [x, z] of poly) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
     const far = Math.hypot(x1 - x0, z1 - z0);
-    for (let tries = 0, got = 0; got < n && tries < n * 12; tries++) {
+    for (let tries = 0, got = 0; got < n && tries < n * 24; tries++) {
       const x = x0 + Math.random() * (x1 - x0), z = z0 + Math.random() * (z1 - z0);
       if (!_inPoly(x, z, poly)) continue;
       if (obstacles.some(b => Math.abs(x - b.x) < b.w / 2 + .25 && Math.abs(z - b.z) < b.d / 2 + .25)) continue;
-      const near = 1 - Math.min(1, Math.hypot(x - it.x, z - it.z) / far);
-      if (Math.random() > 0.3 + 0.7 * near * near) continue;
+      if (Math.random() > festivalCrowdWeight(x,z,it,far)) continue;
       pts.push(x, z); yaw.push(Math.atan2(it.x - x, it.z - z)); got++;
     }
   }
@@ -727,6 +727,7 @@ export function buildFest(scene, F, ctx) {
   }
 
   dressFestival(scene, F, buildings, trampled, animators, lite);
+  if(glb)dressStageProduction(scene,stages,animators);
 
   // ---- crowds: instanced festival-goers on the lawns (phones fewer, LOW minimal) ----
   const crowds = [];

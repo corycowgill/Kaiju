@@ -1261,6 +1261,76 @@
   .lone-infantry-actions button { color:var(--c-gold); background:var(--glass-strong); border:var(--stroke); border-radius:var(--r); padding:14px; touch-action:none; }
   body.touch .lone-infantry-actions { display:flex; }
   @media(max-width:700px) { #lone-status { max-width:42%; font-size:14px; } #lone-target { left:auto; right:var(--safe-r); width:48%; font-size:16px; } .lone-controls { max-width:90%; font-size:10px; } }
+  /* Deployment stays reachable while the choices above it scroll. */
+  #menu { justify-content:flex-start; padding-top:max(18px,env(safe-area-inset-top)); padding-bottom:120px; }
+  #menu > * { flex-shrink:0; }
+  #menu h1 { font-size:clamp(40px,7.5vh,72px); margin-top:0; }
+  #menu h2 { margin:12px 0; }
+  #menu .deployment-options { margin:12px auto; }
+  #menu .monster-card { width:220px; padding:14px; }
+  #menu .monster-card .preview { height:100px; margin-bottom:8px; }
+  #menu .monster-card h3 { font-size:23px; }
+  #menu.soldier-deployment .monster-card .stat { display:none; }
+  #menu > .deployment-bar { position:fixed; left:0; right:0; bottom:0; z-index:103; display:flex; justify-content:center; align-items:center; gap:24px; padding:12px max(18px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)); background:linear-gradient(#18050bea,#090205); border-top:1px solid #70404a; }
+  #deployment-selection { max-width:260px; color:var(--c-muted); font:14px var(--f-display); letter-spacing:1.2px; }
+  #menu .deployment-bar .start-btn { margin:0; min-height:48px; padding:12px 28px; font-size:24px; letter-spacing:4px; }
+  @media(max-height:650px) {
+    #menu { padding-top:8px; padding-bottom:82px; gap:4px; }
+    #menu h1 { font-size:30px; line-height:1; }
+    #menu h2 { font-size:10px; margin:2px 0 4px; padding:2px 8px; }
+    #menu .levels { margin:0; }
+    #menu .level-card { padding:3px 18px; }
+    #menu .level-card b { font-size:14px; }
+    #menu .level-card > span,#highscore-display,#menu .studio,#menu .menu-hint,#lone-menu-help,#menu .starring,#menu .trailer-btn { display:none; }
+    #menu .deployment-options { margin:4px auto; gap:10px; flex-wrap:nowrap; }
+    #menu .deployment-field { min-width:0; gap:3px; }
+    #menu .deployment-field span { font-size:10px; letter-spacing:1px; }
+    #menu .deployment-field select { min-height:34px; padding:6px 26px 6px 10px; font-size:15px; }
+    #menu .deployment-field::after { bottom:6px; }
+    #menu .monsters { flex-wrap:nowrap; gap:10px; }
+    #menu .monster-card { flex:1; width:180px; max-width:30vw; padding:6px 8px; }
+    #menu .monster-card .preview { height:48px; margin-bottom:3px; }
+    #menu .monster-card h3 { font-size:15px; margin-bottom:0; }
+    #menu .monster-card p,#menu .monster-card .stat { display:none; }
+    #menu > .deployment-bar { gap:16px; padding-top:8px; }
+    #menu .deployment-bar .start-btn { min-height:44px; font-size:17px; padding:8px 20px; }
+    #deployment-selection { font-size:12px; max-width:170px; }
+  }
+  @media(max-width:520px) { #deployment-selection { display:none; } #menu .deployment-bar .start-btn { width:90%; } }
+
+  /* Soldier information stays distinct from the kaiju power HUD. */
+  #lone-status { display:flex; align-items:center; gap:16px; max-width:none; padding:9px 12px; letter-spacing:1px; }
+  .lone-unit { color:var(--c-muted); font-size:14px; }
+  .lone-vital { display:flex; align-items:baseline; gap:7px; white-space:nowrap; }
+  .lone-vital small { font-size:11px; color:var(--c-muted); }
+  .lone-vital b { font-size:26px; font-variant-numeric:tabular-nums; }
+  #lone-pause { pointer-events:auto; background:transparent; border:1px solid #967451; border-radius:50%; color:var(--c-gold); width:36px; height:36px; font-size:18px; touch-action:manipulation; cursor:pointer; }
+  #lone-target { left:50%; transform:translateX(-50%); width:min(320px,34vw); padding:9px 12px; letter-spacing:1px; font-size:17px; }
+  .lone-target-head { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  #lone-distance { font-size:13px; color:var(--c-muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .lone-health-track { height:5px; margin-top:5px; }
+  .lone-health-fill { height:100%; width:100%; transform-origin:left; transition:transform .12s; }
+  .lone-warning { min-height:0; margin-top:0; font-size:12px; }
+  .lone-warning:not(:empty) { margin-top:5px; }
+  #lone-ammo { position:absolute; right:var(--safe-r); bottom:var(--safe-b); text-align:right; min-width:100px; padding:10px 14px; }
+  #lone-ammo > small { font-size:11px; color:var(--c-muted); letter-spacing:2px; }
+  #lone-ammo-count { font-size:36px; line-height:1.1; font-variant-numeric:tabular-nums; }
+  #lone-mag-size { color:var(--c-muted); font-size:16px; }
+  #lone-weapon-state { display:block; min-height:16px; color:var(--c-gold); font-size:12px; letter-spacing:1px; }
+  #lone-bearing { position:absolute; top:90px; left:50%; transform:translateX(-50%); padding:6px 12px; border-radius:16px; color:var(--c-gold); background:#160d0ce6; font-size:13px; letter-spacing:1px; }
+  #lone-hud.critical #lone-status { border-color:var(--c-red-hi); color:#ffb49e; }
+  .lone-vehicle-actions { display:none; }
+  body.touch .lone-controls { display:none; }
+  body.touch #lone-status { padding:6px 8px; gap:10px; }
+  body.touch .lone-unit { font-size:11px; }
+  body.touch .lone-vital b { font-size:22px; }
+  body.touch #lone-target { width:28vw; font-size:14px; padding:6px 10px; }
+  body.touch #lone-ammo { bottom:calc(var(--safe-b) + 102px); padding:7px 10px; min-width:80px; }
+  body.touch #lone-ammo-count { font-size:28px; }
+  body.touch .lone-infantry-actions,body.touch .lone-vehicle-actions { display:flex; position:absolute; right:calc(var(--safe-r) + 104px); bottom:calc(var(--safe-b) + 12px); gap:8px; pointer-events:auto; }
+  body.touch .lone-infantry-actions button,body.touch .lone-vehicle-actions button { width:54px; min-height:48px; padding:6px; touch-action:none; color:var(--c-gold); background:#231917ed; border:1px solid #947249; border-radius:8px; font:13px var(--f-display); }
+  body.lone-mode #attack-btn { font-size:21px; }
+  body.lone-helicopter #sprint-btn { display:none; }
 </style>
 </head>
 <body>
@@ -1327,7 +1397,7 @@
   <p id="lone-menu-help" hidden>Defend the city against an AI Kaiju. Choose your Kaiju opponent below.</p>
   <div class="starring">STARRING · 出演</div>
   <div class="monsters" id="monsterCards"></div>
-  <button class="start-btn" id="startBtn" disabled>UNLEASH HAVOC</button>
+  <div class="deployment-bar"><span id="deployment-selection">CHOOSE YOUR KAIJU</span><button class="start-btn" id="startBtn" disabled>UNLEASH HAVOC</button></div>
   <button class="trailer-btn" id="trailerBtn" type="button">▶ WATCH TRAILER</button>
   <p class="menu-hint" style="margin-top:14px; color:#888; font-size:12px;">WASD MOVE · MOUSE LOOK · LMB ATTACK · 1-3 POWERS · SPACE STOMP<br>← → / D-PAD to navigate · ENTER / A to confirm · START to launch</p>
   <div id="quality-picker" style="margin-top:8px; font-size:11px; color:#aa9988; letter-spacing:3px; display:flex; gap:8px; justify-content:center; align-items:center;">
@@ -1526,39 +1596,43 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.128",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.128",
-    "./src/audio.js": "./src/audio.js?v=1.11.128",
-    "./src/city.js": "./src/city.js?v=1.11.128",
-    "./src/effects.js": "./src/effects.js?v=1.11.128",
-    "./src/carBatch.js": "./src/carBatch.js?v=1.11.128",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.128",
-    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.11.128",
-    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.11.128",
-    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.11.128",
-    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.11.128",
-    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.11.128",
-    "./src/game.js": "./src/game.js?v=1.11.128",
-    "./src/intro.js": "./src/intro.js?v=1.11.128",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.128",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.128",
-    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.11.128",
-    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.11.128",
-    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.11.128",
-    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.11.128",
-    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.11.128",
-    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.11.128",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.128",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.128",
-    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.11.128",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.128",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.128",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.128",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.128",
-    "./src/quality.js": "./src/quality.js?v=1.11.128",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.128",
-    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.11.128",
-    "./src/waterPlay.js": "./src/waterPlay.js?v=1.11.128"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.132",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.132",
+    "./src/audio.js": "./src/audio.js?v=1.11.132",
+    "./src/city.js": "./src/city.js?v=1.11.132",
+    "./src/effects.js": "./src/effects.js?v=1.11.132",
+    "./src/carBatch.js": "./src/carBatch.js?v=1.11.132",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.132",
+    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.11.132",
+    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.11.132",
+    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.11.132",
+    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.11.132",
+    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.11.132",
+    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.11.132",
+    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.11.132",
+    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.11.132",
+    "./src/game.js": "./src/game.js?v=1.11.132",
+    "./src/intro.js": "./src/intro.js?v=1.11.132",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.132",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.132",
+    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.11.132",
+    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.11.132",
+    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.11.132",
+    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.11.132",
+    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.11.132",
+    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.11.132",
+    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.11.132",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.132",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.132",
+    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.11.132",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.132",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.132",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.132",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.132",
+    "./src/quality.js": "./src/quality.js?v=1.11.132",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.132",
+    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.11.132",
+    "./src/waterPlay.js": "./src/waterPlay.js?v=1.11.132"
   }
 }
 </script>
@@ -1572,7 +1646,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.128"></script>
-<script type="module" async src="./src/intro.js?v=1.11.128"></script>
+<script type="module" src="./src/game.js?v=1.11.132"></script>
+<script type="module" async src="./src/intro.js?v=1.11.132"></script>
 </body>
 </html>

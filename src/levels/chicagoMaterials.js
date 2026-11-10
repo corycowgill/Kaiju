@@ -31,15 +31,16 @@ export function chicagoWeather(material,kind,wear=0,tile=2.4) {
   if(material.userData.chicagoWeather)return material;
   material.userData.chicagoWeather=true;
   material.userData.chicagoSurface={kind,wear,tile};
-  const uniforms={chiKind:{value:kind},chiWear:{value:wear},chiTile:{value:tile},chiFabric:{value:texture('chi_canvas_color.jpg',true)}};
+  const uniforms={chiKind:{value:kind},chiWear:{value:wear},chiTile:{value:tile},chiTreeColors:{value:material.userData.treeColors?1:0},chiStructure:{value:material.userData.neutralStage?1:0},chiFabric:{value:texture('chi_canvas_color.jpg',true)}};
   material.onBeforeCompile=shader=>{
     Object.assign(shader.uniforms,uniforms,shared);
-    shader.vertexShader='uniform float chiKind;uniform float chiTile;uniform float chiTime;varying vec3 chiWorld;varying float chiSeed;\n'+shader.vertexShader
+    shader.vertexShader='uniform float chiKind;uniform float chiTile;uniform float chiTime;attribute vec3 chiTint;varying vec3 chiTreeTint;varying vec3 chiWorld;varying float chiSeed;\n'+shader.vertexShader
       .replace('#include <uv_vertex>',`#include <uv_vertex>
         vec4 chiPosition=vec4(position,1.0);vec4 chiOrigin=vec4(0,0,0,1);
         #ifdef USE_INSTANCING
           chiPosition=instanceMatrix*chiPosition;chiOrigin=instanceMatrix*chiOrigin;
         #endif
+        chiTreeTint=chiTint;
         chiWorld=(modelMatrix*chiPosition).xyz;chiOrigin=modelMatrix*chiOrigin;
         chiSeed=fract(sin(dot(chiOrigin.xz,vec2(12.9898,78.233)))*43758.5453);
         if(chiKind<2.5){
@@ -64,7 +65,7 @@ export function chicagoWeather(material,kind,wear=0,tile=2.4) {
           mvPosition.xyz+=mat3(viewMatrix)*vec3(breeze*crown,0.0,breeze*crown*.4);
           gl_Position=projectionMatrix*mvPosition;
         }`);
-    shader.fragmentShader='uniform float chiKind;uniform float chiWear;uniform sampler2D chiFabric;uniform sampler2D chiWearField;uniform vec4 chiWearBounds;varying vec3 chiWorld;varying float chiSeed;\n'+noise+shader.fragmentShader
+    shader.fragmentShader='uniform float chiKind;uniform float chiWear;uniform float chiTreeColors;uniform float chiStructure;uniform sampler2D chiFabric;uniform sampler2D chiWearField;uniform vec4 chiWearBounds;varying vec3 chiTreeTint;varying vec3 chiWorld;varying float chiSeed;\n'+noise+shader.fragmentShader
       .replace('#include <color_fragment>',`#include <color_fragment>
         float macro=chiNoise(chiWorld.xz*.075),grain=chiNoise(chiWorld.xz*1.7);
         vec2 wearUv=(chiWorld.xz-chiWearBounds.xy)/chiWearBounds.zw;
@@ -96,7 +97,15 @@ export function chicagoWeather(material,kind,wear=0,tile=2.4) {
             float weave=dot(fabric,vec3(.333));
             diffuseColor.rgb*=.90+weave*.18;
             diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.45,.43,.37),smoothstep(1.5,6.0,chiWorld.y)*.08);
+            float fabricLuma=dot(diffuseColor.rgb,vec3(.2126,.7152,.0722));
+            diffuseColor.rgb=mix(vec3(fabricLuma)*vec3(1.04,1.01,.95),diffuseColor.rgb,.38+step(.65,chiSeed)*.42);
           }else diffuseColor.rgb*=.96+grain*.06;
+          if(chiStructure>.5){
+            float structureValue=dot(diffuseColor.rgb,vec3(.2126,.7152,.0722));
+            diffuseColor.rgb=vec3(.035,.044,.052)+structureValue*vec3(.07,.075,.08);
+          }
+        }else if(chiTreeColors>.5){
+          diffuseColor.rgb*=chiTreeTint*(.94+macro*.10);
         }else{
           float leaf=smoothstep(.012,.07,diffuseColor.g-max(diffuseColor.r,diffuseColor.b));
           float yellowLeaf=smoothstep(.20,.35,(diffuseColor.r+diffuseColor.g)*.5)*smoothstep(.02,.15,diffuseColor.g-diffuseColor.b)*smoothstep(-.03,.10,diffuseColor.g-diffuseColor.r*.65);
@@ -107,7 +116,23 @@ export function chicagoWeather(material,kind,wear=0,tile=2.4) {
           diffuseColor.rgb*=mix(vec3(.96,.94,.91),summer,leaf);
         }`);
   };
-  material.customProgramCacheKey=()=> 'chicago-materials-wear-wind-v2';material.needsUpdate=true;return material;
+  material.customProgramCacheKey=()=> 'chicago-materials-lakefront-v3';material.needsUpdate=true;return material;
+}
+
+export function chicagoTreeSurface(material) {
+  material.userData.treeColors=true;
+  material.normalMap=texture('chi_canvas_normal.png');material.normalScale=new THREE.Vector2(.08,.08);
+  return chicagoWeather(material,5);
+}
+
+export function chicagoFacade(material,file) {
+  if(!material.isMeshStandardMaterial||material.userData.chicagoFacade)return;
+  material.userData.chicagoFacade=true;
+  const glass=/glass|mies|modern/.test(file),stone=/limestone|granite|deco|chicago_school|bank/.test(file);
+  material.color.multiply(new THREE.Color(glass?0xcadce5:stone?0xf7ead5:0xe8d8ca));
+  material.roughness=glass?.38:stone?.82:.92;
+  material.metalness=glass?.16:0;
+  material.emissiveIntensity=Math.min(material.emissiveIntensity,.25);
 }
 
 export function chicagoGround(material,surface,wear=0) {
@@ -124,6 +149,7 @@ export function chicagoGround(material,surface,wear=0) {
 
 export function chicagoFestivalSurface(material,file) {
   if(!material.isMeshStandardMaterial||/sign|led_screen/i.test(material.name))return;
+  material.userData.neutralStage=/kp_scrim_stripes|(?:main|side)_stage_palette/.test(material.name);
   const fabric=/vendor_tent|tent_stage/.test(file)&&!/truss|lattice/i.test(material.name);
   material.roughness=Math.max(material.roughness,fabric?.86:.65);
   material.metalness=Math.min(material.metalness,/truss|lattice/i.test(material.name)?.65:.18);

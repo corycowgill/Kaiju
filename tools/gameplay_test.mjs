@@ -5,6 +5,9 @@ import { resolveStructureContact } from '../src/buildingCollision.js';
 import { crowdGeometry, crowdMaterial, animateCrowd } from '../src/levels/festivalCrowd.js';
 import { followSoldierShadow, applyEnvironmentStrength, structureClearance, soldierSunExposure } from '../src/firstPersonLighting.js';
 import { buildChicagoWear } from '../src/levels/chicagoWear.js';
+import { chooseSoldierSpawn } from '../src/soldierSpawn.js';
+import { BuildingGrid } from '../src/buildingGrid.js';
+import { StructureRayQuery, cameraFollowAlpha } from '../src/structureRayQuery.js';
 
 globalThis.window = { innerWidth: 1440, innerHeight: 900 };
 globalThis.location = { search: '?q=high' };
@@ -12,6 +15,94 @@ globalThis.localStorage = { getItem: () => null };
 const effects = await import('../src/effects.js');
 const vfx = await import('../src/vfx.js');
 vfx.registerAllBuilders(effects);
+const {planParkGroves,festivalCrowdWeight}=await import('../src/levels/chicagoLandscape.js');
+
+test('grid cover queries retain wide resized buildings, destroyed cover and inside-origin rules',()=>{
+  const grid=new BuildingGrid(60),small={x:30,z:0,w:8,d:8,h:12},wide={x:80,z:100,w:20,d:20,h:30};
+  grid.add(small);grid.add(wide);
+  const world={buildings:[small,wide],buildingGrid:grid},query=new StructureRayQuery(),ray=new THREE.Ray(new THREE.Vector3(-20,5,0),new THREE.Vector3(1,0,0));
+  assert.equal(query.nearest(world,ray,200).building,small);
+  small.destroyed=true;assert.equal(query.nearest(world,ray,200),null);
+  wide.d=220;grid.expandBounds(wide);
+  assert.equal(query.nearest(world,ray,200).building,wide,'off-ray centre is retained after bounds change');
+  ray.origin.set(80,5,0);
+  assert.equal(query.nearest(world,ray,30).distance,10,'shots exit cover containing the origin');
+  assert.equal(query.nearest(world,ray,30,true),null,'camera ignores containing cover');
+  grid.remove(wide);assert.equal(query.nearest(world,ray,200),null);
+});
+
+test('grid ray queries match exhaustive hits for diagonal, parallel and vertical rays',()=>{
+  const grid=new BuildingGrid(40),buildings=[];
+  for(let x=-8;x<=8;x++)for(let z=-8;z<=8;z++) {
+    const b={x:x*25,z:z*25,w:5+(x+8)%7,d:8+(z+8)%9,h:6+(x*z+64)%24};grid.add(b);buildings.push(b);
+  }
+  const indexed=new StructureRayQuery(),reference=new StructureRayQuery();
+  for(let i=0;i<180;i++) {
+    const origin=new THREE.Vector3(Math.sin(i*3.17)*180,2+i%40,Math.cos(i*1.73)*180);
+    const direction=i%9===0?new THREE.Vector3(0,-1,0):i%9===1?new THREE.Vector3(-1,0,0):new THREE.Vector3(Math.sin(i*.37),Math.sin(i*.11)*.3,Math.cos(i*.37)).normalize();
+    const ray=new THREE.Ray(origin,direction),a=indexed.nearest({buildings,buildingGrid:grid},ray,250,i%2===0),b=reference.nearest({buildings},ray,250,i%2===0);
+    assert.equal(a?.building,b?.building,`ray ${i}`);
+    if(a)assert.ok(Math.abs(a.distance-b.distance)<1e-8);
+  }
+});
+
+test('short camera rays test a local subset of a ten-thousand-building city',()=>{
+  const grid=new BuildingGrid(60),buildings=[];
+  for(let x=-50;x<50;x++)for(let z=-50;z<50;z++) {
+    const b={x:x*20,z:z*20,w:8,d:8,h:20};grid.add(b);buildings.push(b);
+  }
+  const query=new StructureRayQuery();query.nearest({buildings,buildingGrid:grid},new THREE.Ray(new THREE.Vector3(0,5,0),new THREE.Vector3(.3,0,.95).normalize()),51,true);
+  assert.ok(query.candidates>0&&query.candidates<100,`${query.candidates} candidates of ${buildings.length}`);
+});
+
+test('camera follow has the same response at 30, 60 and 144 Hz',()=>{
+  assert.ok(Math.abs(cameraFollowAlpha(1/60)-.18)<1e-12);
+  const positions=[30,60,144].map(fps=>{let p=0;for(let i=0;i<fps;i++)p+=(1-p)*cameraFollowAlpha(1/fps);return p;});
+  assert.ok(Math.abs(positions[0]-positions[1])<1e-12&&Math.abs(positions[1]-positions[2])<1e-12);
+  assert.equal(cameraFollowAlpha(0),0);
+});
+
+test('Chicago groves are deterministic, bounded and respect exclusion areas',()=>{
+  const parks=[{name:'Grant Park',kind:'lawn',polygon:[[0,0],[100,0],[100,100],[0,100]]}];
+  const allowed=(x,z)=>x>0&&x<100&&z>0&&z<100&&!(x>40&&x<60);
+  const trees=planParkGroves(parks,allowed);
+  assert.ok(trees.length>10&&trees.length<=150);
+  assert.deepEqual(planParkGroves(parks,allowed),trees);
+  for(const p of trees){assert.ok(allowed(p.x,p.z));assert.ok(Math.min(p.x,100-p.x,p.z,100-p.z)<8);}
+  assert.ok(planParkGroves(parks,allowed,true).length<=64);
+  assert.deepEqual(planParkGroves(parks,()=>false),[]);
+});
+
+test('festival crowd density favors stages and retains aisles under rotation',()=>{
+  const stage={x:0,z:0,rot:0,w:10};
+  assert.ok(festivalCrowdWeight(4,8,stage,100)>festivalCrowdWeight(4,80,stage,100)*4);
+  assert.equal(festivalCrowdWeight(0,20,stage,100),0,'central access aisle');
+  assert.equal(festivalCrowdWeight(4,-8,stage,100),0,'backstage stays clear');
+  assert.ok(Math.abs(festivalCrowdWeight(8,-4,{...stage,rot:Math.PI/2},100)-festivalCrowdWeight(4,8,stage,100))<1e-6);
+});
+
+test('soldier deployment avoids water, building footprints and blocked sightlines',()=>{
+  const target=new THREE.Vector3(),wall={x:0,z:40,w:80,d:8,h:30};
+  const world={scene:new THREE.Scene(),bounds:{minX:-200,maxX:200,minZ:-200,maxZ:200},buildings:[wall],isWater:(x,z)=>x>0};
+  const spawn=chooseSoldierSpawn(world,target,1.8);
+  assert.ok(spawn.x<=0&&!world.isWater(spawn.x,spawn.z));
+  const ray=new THREE.Ray(spawn,new THREE.Vector3(0,12,0).sub(spawn).normalize());
+  const box=new THREE.Box3(new THREE.Vector3(-40,0,36),new THREE.Vector3(40,30,44));
+  assert.equal(ray.intersectBox(box,new THREE.Vector3()),null,'opening target is not behind the wall');
+});
+
+test('soldier deployment rejects a clear-ground position hidden behind a tree canopy',()=>{
+  const world={scene:new THREE.Scene(),bounds:{minX:-200,maxX:200,minZ:-200,maxZ:200},buildings:[]};
+  const target=new THREE.Vector3(),before=chooseSoldierSpawn(world,target,1.8);
+  assert.equal(before.x,85);assert.equal(before.z,0);
+  const geometry=new THREE.SphereGeometry(4,8,6);geometry.userData.soldierOccluder=true;
+  const trees=new THREE.InstancedMesh(geometry,new THREE.MeshBasicMaterial(),1);
+  trees.setMatrixAt(0,new THREE.Matrix4().makeTranslation(70,5,0));world.scene.add(trees);
+  const after=chooseSoldierSpawn(world,target,1.8);
+  assert.ok(Math.abs(after.z)>3,'chooses another sightline instead of spawning behind foliage');
+  assert.ok(Math.abs(after.length()-before.length())<.001,'keeps engagement distance');
+  geometry.dispose();trees.material.dispose();trees.dispose();
+});
 
 const structure = (h, extra = {}) => ({ x: 0, z: 0, w: 4, d: 4, h, hp: 50,
   damage(n) { this.hp -= n; if (this.hp <= 0) this.destroyed = true; }, ...extra });
@@ -170,13 +261,83 @@ test('Lone Soldier roles move, fire at the AI Kaiju, and respect cover', () => {
       world.buildings=[];
       const idle={x:0,z:0,lookX:0,lookY:0,vertical:0};
       const hp=mode.hp;let warned=false;
-      for(let frame=0;frame<300;frame++){mode.update(1/60,idle);warned ||= mode.warning>0;}
+      for(let frame=0;frame<(role==='helicopter'?300:900);frame++){mode.update(1/60,idle);warned ||= mode.warning>0;}
       assert.ok(warned,'attack is telegraphed');
       assert.ok(mode.hp<hp,'stationary unit takes attack damage');
       mode.kaijuHP=0;mode.update(.01,{x:0,z:0,lookX:0,lookY:0,vertical:0});assert.equal(result,true);
       mode.dispose();assert.equal(camera.children.length,0);
     }
   } finally {globalThis.document=oldDocument;}
+});
+
+test('soldier target bounds follow translated and rotated kaiju between shots',()=>{
+  const previous=globalThis.document,nodes=new Map();
+  globalThis.document={body:{append(){}},createElement:()=>({remove(){},innerHTML:''}),
+    getElementById:id=>{if(!nodes.has(id))nodes.set(id,{});return nodes.get(id);}};
+  try {
+    const root=new THREE.Mesh(new THREE.BoxGeometry(4,20,12),new THREE.MeshBasicMaterial());root.position.y=10;
+    const scene=new THREE.Scene();scene.add(root);
+    const state={kaiju:{root,head:root},yaw:0,pitch:0,score:0},lengths=[];
+    const world={scene,bounds:{minX:-200,maxX:200,minZ:-200,maxZ:200},buildings:[],spawnWeaponTracer:(o,d,length)=>lengths.push(length)};
+    const c=new LoneSoldier({world,state,camera:new THREE.PerspectiveCamera(),role:'infantry',sound(){},finish(){}});
+    state.pitch=0;c.shoot();assert.equal(c.kaijuHP,2382);assert.ok(Math.abs(lengths[0]-82)<1e-6);
+    root.position.x=10;root.rotation.y=Math.PI/2;c.cooldown=0;c.shoot();
+    assert.equal(c.kaijuHP,2364);assert.ok(Math.abs(lengths[1]-68)<1e-6,'rotated and moved cover distance is current');
+    c.dispose();root.geometry.dispose();root.material.dispose();
+  } finally {globalThis.document=previous;}
+});
+
+test('infantry jumps consistently, lands, and requires a new press for another jump',()=>{
+  const previous=globalThis.document,labels=new Map();
+  globalThis.document={body:{append(){}},createElement:()=>({remove(){},innerHTML:''}),
+    getElementById:id=>{if(!labels.has(id))labels.set(id,{});return labels.get(id);}};
+  try {
+    for(const fps of [30,60,144]) {
+      const root=new THREE.Group(),camera=new THREE.PerspectiveCamera();
+      const state={kaiju:{root,head:root},yaw:0,pitch:0,score:0};
+      const world={scene:new THREE.Scene(),bounds:{minX:-500,maxX:500,minZ:-500,maxZ:500},buildings:[]};
+      const c=new LoneSoldier({world,state,camera,role:'infantry',sound(){},finish(){}});c.ai.update=()=>{};
+      const idle={x:0,z:0,lookX:0,lookY:0,vertical:0};
+      c.update(1/fps,{...idle,jump:true,z:1,sprint:true});
+      assert.ok(c.pos.y>c.unit.eye);assert.equal(c.grounded,false);
+      assert.equal(camera.position.y,c.pos.y,'camera follows jump height');
+      let apex=c.pos.y;
+      for(let i=0;i<fps*2;i++){c.update(1/fps,{...idle,jump:true});apex=Math.max(apex,c.pos.y);}
+      assert.ok(Math.abs(apex-c.unit.eye-1.171875)<.015,`${fps} FPS jump apex`);
+      assert.equal(c.pos.y,c.unit.eye,'held jump stays landed');assert.equal(c.verticalSpeed,0);
+      c.update(1/fps,idle);c.update(1/fps,{...idle,jump:true});assert.ok(c.verticalSpeed>0);
+      c.update(1/fps,idle);const velocity=c.verticalSpeed;
+      c.update(1/fps,{...idle,jump:true});assert.ok(c.verticalSpeed<velocity,'airborne press cannot double jump');
+      c.dispose();
+    }
+  } finally {globalThis.document=previous;}
+});
+
+test('infantry slides along walls, clears low obstacles and falls from destroyed platforms',()=>{
+  const previous=globalThis.document;
+  globalThis.document={body:{append(){}},createElement:()=>({remove(){},innerHTML:''})};
+  try {
+    const root=new THREE.Group(),state={kaiju:{root,head:root},yaw:0,pitch:0,score:0};
+    const world={scene:new THREE.Scene(),bounds:{minX:-500,maxX:500,minZ:-500,maxZ:500},buildings:[]};
+    const c=new LoneSoldier({world,state,camera:new THREE.PerspectiveCamera(),role:'infantry',sound(){},finish(){}});
+    const wall={x:2,z:0,w:1,d:20,h:10};world.buildings=[wall];c.pos.set(0,c.unit.eye,0);
+    c.moveInfantry(.3,{},9,9);
+    assert.ok(c.pos.x<1.11,'solid wall blocks horizontal movement');assert.ok(c.pos.z>2,'movement slides along wall');
+    const platform={x:2,z:0,w:1,d:4,h:.6};world.buildings=[platform];c.pos.set(0,c.unit.eye,0);
+    c.grounded=true;c.verticalSpeed=0;c.jumpHeld=false;
+    c.moveInfantry(.1,{},9,0);assert.ok(c.pos.x<1.11);
+    c.pos.set(0,c.unit.eye,0);
+    for(let i=0;i<30;i++)c.moveInfantry(1/60,{jump:true},i<14?9:0,0);
+    assert.ok(c.pos.x>1.5,'jump clears obstacle edge');
+    for(let i=0;i<60;i++)c.moveInfantry(1/60,{},0,0);
+    assert.ok(Math.abs(c.pos.y-c.unit.eye-platform.h)<1e-6,'lands on platform');
+    platform.destroyed=true;
+    for(let i=0;i<60;i++)c.moveInfantry(1/60,{},0,0);
+    assert.equal(c.pos.y,c.unit.eye,'destroyed support releases the soldier');
+    world.buildings=[];world.isWater=()=>true;
+    const x=c.pos.x;c.moveInfantry(.2,{jump:true},9,0);assert.equal(c.pos.x,x,'jump does not bypass water boundary');
+    c.dispose();
+  } finally {globalThis.document=previous;}
 });
 
 test('infantry magazines, reload lock, aim transition, recoil and camera restoration',()=>{

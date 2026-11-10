@@ -1,5 +1,31 @@
 import * as THREE from 'three';
 
+// Production hardware anchors the bright stage art in a believable event.
+// One instanced draw, rebuilt only when a stage is destroyed.
+export function dressStageProduction(scene,stages,animators) {
+  if(!stages.length)return;
+  const geometry=new THREE.BoxGeometry(1,1,1);
+  const material=new THREE.MeshStandardMaterial({color:0x20272a,roughness:.9});
+  const speakers=new THREE.InstancedMesh(geometry,material,stages.length*6);
+  speakers.name='Festival suspended speaker arrays';speakers.count=0;
+  speakers.frustumCulled=false;speakers.receiveShadow=true;
+  const pose=new THREE.Object3D();let last=-1;
+  const animator={update(){
+    const destroyed=stages.reduce((n,s)=>n+!!s.b.destroyed,0);if(destroyed===last)return;last=destroyed;speakers.count=0;
+    for(const {it,b} of stages)if(!b.destroyed) {
+      const c=Math.cos(it.rot),s=Math.sin(it.rot),h=Math.max(1,it.h);
+      for(const side of [-1,1])for(let j=0;j<3;j++) {
+        const x=side*it.w*.41,z=it.d*.37;
+        pose.position.set(it.x+c*x+s*z,h*(.43+j*.16),it.z-s*x+c*z);
+        pose.rotation.set(.08*j,it.rot,0);pose.scale.set(Math.max(.45,h*.20),h*.15,Math.max(.35,h*.14));
+        pose.updateMatrix();speakers.setMatrixAt(speakers.count++,pose.matrix);
+      }
+    }
+    speakers.visible=speakers.count>0;speakers.instanceMatrix.needsUpdate=true;
+  }};
+  animator.update();animators.push(animator);scene.add(speakers);
+}
+
 // Cheap wind-reactive fabric, batched and attached to destructible stalls.
 export function dressFestival(scene, F, buildings, trampled, animators, lite) {
   // Fabric pennants along the concessions and entrance gateways. One draw,

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { BuildingGrid } from './buildingGrid.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -408,7 +409,7 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST, sm
       const e = m.matrixWorld.elements;
       const key = `${m.geometry.uuid}|${m.material.uuid}|${t}:${Math.floor(e[12] / t)},${Math.floor(e[14] / t)}`;
       let b = buckets.get(key);
-      if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, recv: m.receiveShadow, matrices: [] });
+      if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, recv: m.receiveShadow, lodDistance:c.userData.instanceLodDistance, matrices: [] });
       b.matrices.push(m.matrixWorld.clone());
     });
   }
@@ -434,7 +435,7 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST, sm
     if (ims.length === 2) ims[1].visible = false;
     if (ims.length === 2 || cull2) {
       const bs = ims[0].boundingSphere;
-      lodPairs.push({ near: ims[0], far: ims[1] || null, center: bs.center, cull2: cull2 && (Math.sqrt(cull2) + bs.radius) ** 2 });
+      lodPairs.push({ near: ims[0], far: ims[1] || null, center: bs.center, dist2:b.lodDistance?b.lodDistance*b.lodDistance:0, cull2: cull2 && (Math.sqrt(cull2) + bs.radius) ** 2 });
     }
   }
   if (lodPairs.length) _makeLodController(scene, lodPairs, lodDist);
@@ -485,7 +486,7 @@ function _makeLodController(scene, pairs, dist = LOD1_DIST) {
         if (p.far) p.far.visible = false;
         continue;
       }
-      const far = !!p.far && c2 > d2;
+      const far = !!p.far && c2 > (p.dist2||d2);
       p.near.visible = !far;
       if (p.far) p.far.visible = far;
     }
@@ -1971,46 +1972,7 @@ export function setBuildingLite(v) { LITE_MODE = !!v; }
 // Spatial grid keyed by 60u cells. Lets per-frame queries (collisions, AOE
 // damage, camera collision raycast) skip the 90% of buildings that aren't
 // nearby instead of iterating the whole list.
-export class BuildingGrid {
-  constructor(cellSize = 60) {
-    this.cellSize = cellSize;
-    this.cells = new Map();
-  }
-  _key(cx, cz) { return cx + ':' + cz; }
-  add(b) {
-    const cs = this.cellSize;
-    const k = this._key(Math.floor(b.x / cs), Math.floor(b.z / cs));
-    let arr = this.cells.get(k);
-    if (!arr) { arr = []; this.cells.set(k, arr); }
-    arr.push(b);
-    b._gridKey = k;
-    b._grid = this;
-  }
-  remove(b) {
-    if (!b._gridKey) return;
-    const arr = this.cells.get(b._gridKey);
-    if (arr) {
-      const i = arr.indexOf(b);
-      if (i >= 0) arr.splice(i, 1);
-    }
-    b._gridKey = null;
-  }
-  // Run cb against every building whose cell footprint overlaps the query AABB.
-  forEachNear(x, z, radius, cb) {
-    const cs = this.cellSize;
-    const minX = Math.floor((x - radius) / cs);
-    const maxX = Math.floor((x + radius) / cs);
-    const minZ = Math.floor((z - radius) / cs);
-    const maxZ = Math.floor((z + radius) / cs);
-    for (let cx = minX; cx <= maxX; cx++) {
-      for (let cz = minZ; cz <= maxZ; cz++) {
-        const arr = this.cells.get(this._key(cx, cz));
-        if (!arr) continue;
-        for (let i = 0; i < arr.length; i++) cb(arr[i]);
-      }
-    }
-  }
-}
+export { BuildingGrid };
 
 // Global window pipeline. Buildings push their window matrices here;
 // after all buildings exist, buildCity merges them into 2 InstancedMesh
@@ -2858,6 +2820,7 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
   const boxScaled = P.box();
   building.w = boxScaled.max.x - boxScaled.min.x;
   building.d = boxScaled.max.z - boxScaled.min.z;
+  building._grid?.expandBounds(building);
   building.h = boxScaled.max.y - boxScaled.min.y;
 
   const yOffset = Math.abs(boxScaled.min.y) > 0.5 ? -boxScaled.min.y : 0;
@@ -2955,6 +2918,7 @@ function _placeFillGLB(entry, scene) {
     cells.push(P);
   }
   b.w = W; b.d = D; b.h = h;
+  b._grid?.expandBounds(b);
   _bucketGLBNodes(cells.flatMap((P) => P.nodes(rootW)), u0, b);
 }
 
@@ -5318,6 +5282,7 @@ const CITY_KIT = {
   Building, BuildingGrid, setBuildingLite, buildGlobalBodies, buildGlobalWindows,
   instanceStaticClones: _instanceStaticClones, mergeStaticMeshes: _mergeStaticMeshes,
   makeTree, makePigeonFlock, onCamera: _onCamera, lod1Of: (geom) => _lod1ByGeom.get(geom) || null, cloneProp: _cloneProp, hasProp: (n) => _propTemplates.has(n),
+  registerLod1: (geometry, lod) => _lod1ByGeom.set(geometry, lod),
   propSize: (n) => _propTemplates.get(n)?.size || null,
   propScene: (n) => _propTemplates.get(n)?.scene || null,
   loadTileTex: _loadTileTex, loadDataTex: _loadDataTex,
