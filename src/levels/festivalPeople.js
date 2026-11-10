@@ -212,7 +212,17 @@ export function createFestivalPeople(count, time) {
     const motion = group.geometry.getAttribute('crowdMotion');
     if (!motion) return;
     for (const pair of buckets) for (const mesh of pair) mesh.count = 0;
-    let closeCount = 0;
+    // Reserve the detail budget for the nearest people, independent of spawn order.
+    const close = [];
+    for (let i=0;i<count;i++) {
+      const at=i*16;
+      if (transforms[at]===0 && transforms[at+5]===0) continue;
+      const dx=transforms[at+12]-(viewpoint?.x||0),dz=transforms[at+14]-(viewpoint?.z||0);
+      const distance=dx*dx+dz*dz,radius=lodState[i]===0?27:22;
+      if(distance<radius*radius) close.push([i,distance]);
+    }
+    close.sort((a,b)=>a[1]-b[1]);
+    const detailed=new Set(close.slice(0,count>2000?144:64).map(entry=>entry[0]));
     contacts.count=0;
     for (let i = 0; i < count; i++) {
       const at = i * 16;
@@ -225,9 +235,7 @@ export function createFestivalPeople(count, time) {
         contactPose.updateMatrix();contacts.setMatrixAt(contacts.count++,contactPose.matrix);
       }
       // Hysteresis prevents detail/texture popping as camera bob crosses a boundary.
-      const nearRadius = lodState[i] === 0 ? 27 : 22;
-      const near = d2 < nearRadius*nearRadius && closeCount < (count > 2000 ? 144 : 64);
-      if (near) closeCount++;
+      const near = detailed.has(i);
       const midRadius = lodState[i] === 1 ? 72 : 60;
       const lod = isMobile&&Q_LOW ? (d2<30*30?1:2) : near ? 0 : d2 < midRadius*midRadius ? 1 : 2;
       lodState[i] = lod;

@@ -1,10 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const base = new URL('../assets/enemies/festival/', import.meta.url);
 const manifest = JSON.parse(fs.readFileSync(new URL('manifest.json', base)));
+test('all crowd LODs stay within deformation limits across locomotion, dancing and falling',()=>{
+  const report=JSON.parse(execFileSync(process.execPath,[fileURLToPath(new URL('./audit_crowd_deformation.mjs',import.meta.url)),'--all-lods'],{encoding:'utf8'}));
+  assert.equal(report.length,27);
+  for(const item of report){
+    assert.ok(Number.isFinite(item.maxStretch)&&item.maxStretch<7,`${item.id}/${item.lod}: excessive skin stretch`);
+    assert.ok(item.p99<1.75,`${item.id}/${item.lod}: widespread deformation`);
+    assert.ok(item.spikes<25,`${item.id}/${item.lod}: garment triangles pulled apart`);
+  }
+  assert.ok(report.filter(item=>item.lod==='near').reduce((sum,item)=>sum+item.spikes,0)<25,
+    'close-up mesh spikes regress (original transferred weights produced 1405)');
+});
 function read(file) {
   const b = fs.readFileSync(new URL(file, base));
   const length = b.readUInt32LE(12);

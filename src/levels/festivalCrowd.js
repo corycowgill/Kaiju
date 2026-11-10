@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createCrowdRoutes } from './crowdRoutes.js';
 
 let authoredPerson = null, shirtAtlas = null;
 export async function loadCrowdGeometry() {
@@ -131,7 +132,7 @@ export function animateCrowd(c, { world, buildings, gates, isWater, bounds }) {
   for (let i = 0; i < n; i++) {
     c.im.getMatrixAt(i, pose.matrix); pose.matrix.decompose(pose.position, pose.quaternion, pose.scale);
     sizes[i] = pose.scale.x; c.heading[i] = pose.rotation.y;
-    speeds[i] = 2.7 + Math.random() * 1.6; delay[i] = .12 + Math.random() * .65;
+    speeds[i] = 2.7 + Math.random() * 1.6; delay[i] = .45 + Math.random() * 2.7;
     motion.setXYZ(i, Math.random() * Math.PI * 2, 0, 1);
   }
   // Static obstacle bins retain live building references, so destroyed fences
@@ -153,12 +154,29 @@ export function animateCrowd(c, { world, buildings, gates, isWater, bounds }) {
     const bs = cells.get(`${Math.floor(x / cell)}:${Math.floor(z / cell)}`);
     return bs?.some(b => !b.destroyed && Math.abs(x - b.x) < b.w / 2 + .3 && Math.abs(z - b.z) < b.d / 2 + .3);
   };
-  let acc = 0;
+  const routes=createCrowdRoutes(c.pts,gates,blocked,bounds);
+  const reconsider=new Float32Array(n),loads=new Uint16Array(gates.length);
+  const neighbors=new Map(),next=new Int32Array(n),neighborPositions=new Float32Array(n*2),spacing=.75;
+  let acc = 0, clock=0, obstacleClock=0;
+  let destroyed=buildings.reduce((sum,b)=>sum+!!b.destroyed,0);
   return {
     update(dt) {
       acc += dt;
       if (acc < 1 / 30) return;
       const step = Math.min(acc, .1); acc = 0;
+      clock+=step;obstacleClock+=step;
+      if(obstacleClock>1){
+        obstacleClock=0;
+        const changed=buildings.reduce((sum,b)=>sum+!!b.destroyed,0);
+        if(changed!==destroyed){destroyed=changed;routes.rebuild();reconsider.fill(0);}
+      }
+      // Snapshot neighbors once per tick; steering remains independent of update order.
+      neighbors.clear();loads.fill(0);neighborPositions.set(c.pts);
+      for(let i=0;i<n;i++)if(c.alive[i]){
+        const key=`${Math.floor(c.pts[i*2]/spacing)}:${Math.floor(c.pts[i*2+1]/spacing)}`;
+        next[i]=neighbors.get(key)??-1;neighbors.set(key,i);
+        if(target[i]>=0)loads[target[i]]++;
+      }
       const kp = world?.kaijuPos;
       let dirty = false;
       for (let i = 0; i < n; i++) {
@@ -175,22 +193,46 @@ export function animateCrowd(c, { world, buildings, gates, isWater, bounds }) {
           if (motion.getY(i)) { motion.setY(i, 0); dirty = true; }
           continue;
         }
-        if (target[i] < 0 && gates.length) {
-          let best = Infinity;
+        if ((target[i] < 0 || clock>=reconsider[i]) && gates.length) {
+          let best = Infinity,choice=target[i];
           gates.forEach((g, j) => {
             const safety = kp ? Math.hypot(g.x - kp.x, g.z - kp.z) : 100;
-            const score = Math.hypot(g.x - x, g.z - z) + Math.max(0, 70 - safety) * 3;
-            if (score < best) { best = score; target[i] = j; }
+            const route=routes.distance(j,x,z);
+            const score = (Number.isFinite(route)?route:Math.hypot(g.x-x,g.z-z)+200)
+              + Math.max(0,70-safety)*3 + loads[j]*.035 + (target[i]===j?-6:0);
+            if (score < best) { best = score; choice = j; }
           });
+          if(target[i]>=0)loads[target[i]]--;
+          target[i]=choice;if(choice>=0)loads[choice]++;
+          reconsider[i]=clock+1.4+(i%11)*.13;
         }
         const gate = gates[target[i]];
         // Immediate radial flight blends into an exit route once clear.
         const urgency = Math.max(0, 1 - d / 42);
-        let gx = gate ? gate.x - x : dx, gz = gate ? gate.z - z : dz;
+        // Offset exit lanes instead of funneling everyone onto one coordinate.
+        const lane=gate?Math.sin(i*2.399)*Math.min(1.2,(gate.w||4)*.22):0;
+        const exitX=gate?gate.x+lane:0,exitZ=gate?gate.z:0;
+        const route=gate&&Math.hypot(exitX-x,exitZ-z)>3?routes.direction(target[i],x,z):null;
+        let gx = route?route.x:gate?exitX-x:dx, gz = route?route.z:gate?exitZ-z:dz;
         const gl = Math.hypot(gx, gz) || 1;
         gx = gx / gl * (1 - urgency) + dx / (d || 1) * urgency * 2;
         gz = gz / gl * (1 - urgency) + dz / (d || 1) * urgency * 2;
-        const yaw = Math.atan2(gx, gz) + Math.sin(i * 2.4) * .16;
+        let sx=0,sz=0,checked=0;
+        const cx=Math.floor(x/spacing),cz=Math.floor(z/spacing);
+        for(let ox=-1;ox<=1;ox++)for(let oz=-1;oz<=1;oz++){
+          let j=neighbors.get(`${cx+ox}:${cz+oz}`)??-1;
+          while(j>=0&&checked<36){
+            if(j!==i){checked++;let ax=x-neighborPositions[j*2],az=z-neighborPositions[j*2+1];const distance=Math.hypot(ax,az);
+              if(distance<.68){if(distance<.001){ax=Math.sin(i*2.399);az=Math.cos(i*2.399);}
+                const strength=(.68-distance)/.68;
+                sx+=ax/(distance||1)*strength;sz+=az/(distance||1)*strength;
+              }
+            }j=next[j];
+          }
+        }
+        const separation=Math.hypot(sx,sz)||1;
+        gx+=sx/Math.max(1,separation)*1.25;gz+=sz/Math.max(1,separation)*1.25;
+        const yaw = Math.atan2(gx, gz) + Math.sin(i * 2.4) * .06;
         const travel = speeds[i] * step;
         let moved = false;
         // Probe around obstacles with a consistent passing side per person.
@@ -207,7 +249,7 @@ export function animateCrowd(c, { world, buildings, gates, isWater, bounds }) {
         pose.updateMatrix(); c.im.setMatrixAt(i, pose.matrix);
         motion.setY(i, motion.getY(i) + ((moved ? 1 : .2) - motion.getY(i)) * Math.min(1, step * 8)); dirty = true;
         // Reaching an exit retires the person instead of piling bodies on it.
-        if (gate && Math.hypot(gate.x - pose.position.x, gate.z - pose.position.z) < 1.8 && d > 26) {
+        if (gate && Math.hypot(exitX - pose.position.x, exitZ - pose.position.z) < 1.8 && d > 26) {
           c.alive[i] = 0; c.im.setMatrixAt(i, pose.matrix.makeScale(0, 0, 0));
         }
       }
