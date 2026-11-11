@@ -283,12 +283,15 @@ const _VS = `
 const _FS = `
   uniform sampler2D uAtlas;
   varying vec2 vUv; varying vec4 vCol; varying vec2 vK;
+  const float OCC = 0.55;
   void main() {
     vec4 t = texture2D(uAtlas, vUv);
     float a = t.r * vCol.a * smoothstep(vK.x, vK.x + 0.18, t.b);
-    vec3 hot = mix(vCol.rgb, vec3(max(vCol.r, max(vCol.g, vCol.b))), 0.75) * 1.7;
+    vec3 hot = mix(vCol.rgb, vec3(max(vCol.r, max(vCol.g, vCol.b))), 0.6) * 1.5;
     vec3 col = mix(vCol.rgb * (0.7 + 0.6 * t.g), mix(vCol.rgb, hot, t.g), vK.y);
-    gl_FragColor = vec4(col * a, a * (1.0 - vK.y));   // premultiplied: additive sprites write no alpha
+    // premultiplied. Glows are not purely additive: they also hold back OCC of what is behind them, so a
+    // signature colour still reads as that colour over a bright hazy sky instead of clipping to white
+    gl_FragColor = vec4(col * a, min(1.0, a) * (1.0 - vK.y * (1.0 - OCC)));
     #include <colorspace_fragment>
   }`;
 
@@ -523,10 +526,10 @@ export function createVfx(ctx, W) {
     if (A && V) dir2(A.pos.x, A.pos.z, V.pos.x, V.pos.z); else { _dx = 0; _dz = 1; }
     const x = e.x, y = e.y, z = e.z, dx = _dx, dz = _dz;
     // starburst + a hot centre, held through the hit-stop
-    P(T_BURST, M_BILL, x, y, z, 0, 0, 0, 0.13 + 0.12 * w, 9 + 10 * w, 16 + 26 * w, col, 1.5, 1, 0, 0, rnd() * TAU, 0, 1, 0, 0.1);
-    P(T_GLOW, M_BILL, x, y, z, 0, 0, 0, 0.1 + 0.08 * w, 6 + 8 * w, 3, WHITE, 1.3, 1);
+    P(T_BURST, M_BILL, x, y, z, 0, 0, 0, 0.13 + 0.12 * w, 9 + 10 * w, 16 + 24 * w, col, 1.0, 1, 0, 0, rnd() * TAU, 0, 1, 0, 0.1);
+    P(T_GLOW, M_BILL, x, y, z, 0, 0, 0, 0.09 + 0.06 * w, 4 + 5 * w, 2, WHITE, 0.8, 1);
     // the shock arc: a ring in the plane the blow travels through
-    P(T_RING, M_PLANE, x, y, z, dx, 0.12, dz, 0.2 + 0.14 * w, 5, 20 + 30 * w, col, 1.1, 1, 0, 0, 0, 0, 1, 0, 0.15);
+    P(T_RING, M_PLANE, x, y, z, dx, 0.12, dz, 0.2 + 0.14 * w, 5, 20 + 30 * w, col, 0.9, 1, 0, 0, 0, 0, 1, 0, 0.15);
     if (heavy) P(T_ARC, M_PLANE, x - dx * 2, y, z - dz * 2, dx, 0.1, dz, 0.3, 14, 36 + 20 * w, WHITE, 0.9, 1, 0, 0, rnd() * TAU, 3, 1, 0, 0.2);
     sparks(x, y, z, dx, 0.35, dz, cnt(7 + 22 * w), 40, 80 + 60 * w, 0.75, col, 1.1 + 0.5 * w, 0.4, 60);
     if (w > 0.5) {
@@ -555,10 +558,10 @@ export function createVfx(ctx, W) {
     if (D0 && A) dir2(D0.pos.x, D0.pos.z, A.pos.x, A.pos.z); else { _dx = 0; _dz = 1; }
     const dx = _dx, dz = _dz;
     // gold parry rings + a big four-point flash: the loudest read in the set
-    P(T_RING, M_PLANE, x, y, z, dx, 0.05, dz, 0.4, 6, 62, GOLD, 1.8, 1, 0, 0, 0, 0, 1, 0, 0.15);
+    P(T_RING, M_PLANE, x, y, z, dx, 0.05, dz, 0.4, 6, 62, GOLD, 1.4, 1, 0, 0, 0, 0, 1, 0, 0.15);
     P(T_RING, M_PLANE, x, y, z, dx, 0.05, dz, 0.4, 4, 44, WHITE, 1.2, 1, 0, 0, 0, 0, 1, 0, 0.15, 0, 0.07);
-    P(T_GLINT, M_BILL, x, y, z, 0, 0, 0, 0.38, 60, 14, GOLD, 1.8, 1, 0, 0, 0.6, -1.4, 1, 0, 0.25);
-    P(T_GLOW, M_BILL, x, y, z, 0, 0, 0, 0.16, 16, 6, WHITE, 1.5, 1);
+    P(T_GLINT, M_BILL, x, y, z, 0, 0, 0, 0.38, 46, 12, GOLD, 1.1, 1, 0, 0, 0.6, -1.4, 1, 0, 0.25);
+    P(T_GLOW, M_BILL, x, y, z, 0, 0, 0, 0.14, 9, 4, GOLD, 1.0, 1);
     for (let i = 0; i < cnt(18); i++) {
       const a = rnd() * TAU, el = rr(-0.4, 0.9), sp = rr(50, 110);
       P(T_STREAK, M_VEL, x, y, z, Math.cos(a) * Math.cos(el) * sp, Math.sin(el) * sp, Math.sin(a) * Math.cos(el) * sp, rr(0.3, 0.55), 1.3, 0.4, GOLD, 1.8, 1, 2.2, 50, 0, 0, 6);
@@ -631,6 +634,11 @@ export function createVfx(ctx, W) {
     if (FULL && w > 0.7) P(T_RIPPLE, M_FLAT, x, 0.3, z, 0, 0, 0, 1.0, R, R * 8, DUST, 0.3, 1, 0, 0, rnd() * TAU, 0, 1, 0, 0.1, 0, 0.22);
     dustRing(x, z, cnt(9 + 16 * w), R * 0.5, 26 + 22 * w, 44 + 40 * w, 5 + 2 * w, 13 + 7 * w, 1.3 + 0.5 * w, DUST, 0.62);
     if (w > 0.6) dustRing(x, z, cnt(8 * w), 2, 6, 16, 7, 18 + 6 * w, 2 + 0.5 * w, DUST, 0.5);
+    // seen from the low fight camera the ground rings are thin lines: the read is this crown of dirt thrown up around the body
+    for (let i = 0, n = cnt(7 + 9 * w); i < n; i++) {
+      const a = i / n * TAU + rr(-0.2, 0.2), r = R * rr(0.55, 0.95), lean = rr(4, 12);
+      P(T_COL, M_BEAM, x + Math.cos(a) * r, 0.2, z + Math.sin(a) * r, Math.cos(a) * lean, rr(14, 26) * (0.6 + 0.6 * w), Math.sin(a) * lean, rr(0.7, 1.1), rr(3, 5), rr(7, 11), DUST, 0.7, 0, 3.5, 0, 0, 0, 1, 0, 0.25, 1, rr(0, 0.06));
+    }
     chips(x, 0.6, z, 0, 0, cnt(8 + 20 * w), 8, 26 + 14 * w, 28, 54 + 30 * w, EARTH, 0.9, 2.2 + 0.6 * w);
     if (FULL) chips(x, 0.6, z, 0, 0, cnt(8 * w), 6, 22, 20, 60, GRASS, 0.7, 1.5);
     sparks(x, 1.5, z, 0, 1, 0, cnt(6 + 10 * w), 30, 70, 1.2, col, 1, 0.45, 60, 1.2);
@@ -780,7 +788,7 @@ export function createVfx(ctx, W) {
     column(p.x, 0.3, p.z, 70, 16, 30, 0.6, col, 0.7, 1, 6, 1);
     for (let i = 0; i < cnt(22); i++) {
       const a = rnd() * TAU, r = rr(6, 14);
-      P(T_FLAME, M_BILL, p.x + Math.cos(a) * r, rr(1, 14), p.z + Math.sin(a) * r, 0, rr(26, 50), 0, rr(0.5, 0.9), rr(6, 10), 3, col, 1, 1, 1, 0, 0, 0, 0.6, 0.1, 0.2, 1);
+      P(T_FLAME, M_BILL, p.x + Math.cos(a) * r, rr(1, 14), p.z + Math.sin(a) * r, 0, rr(20, 40), 0, rr(0.4, 0.7), rr(5, 8), 2, col, 1, 1, 1, 0, rr(-0.2, 0.2), 0, 0.7, 0.1, 0.1, 1);
     }
     chest(f, _a);
     P(T_BURST, M_BILL, _a.x, _a.y, _a.z, 0, 0, 0, 0.25, 20, 60, col, 0.9, 1, 0, 0, rnd() * TAU);
@@ -800,12 +808,12 @@ export function createVfx(ctx, W) {
         LV(T_GLOW, M_FLAT, p.x, 0.35, p.z, 62, col, 0.3 * pulse, 1);
         LV(T_RETICLE, M_FLAT, p.x, 0.45, p.z, (f.radius + 9) * 2.5, col, 0.7, 1, -T * 0.8);
       }
-      s.auraAcc += dt * (full ? 30 : 12 * k) * (FULL ? 1 : 0.4);
+      s.auraAcc += dt * (full ? 70 : 24 * k) * (FULL ? 1 : 0.4);
       while (s.auraAcc >= 1) {
         s.auraAcc -= 1;
         const a = rnd() * TAU, r = rr(f.radius * 0.6, f.radius * 1.05);
-        P(T_FLAME, M_BILL, p.x + Math.cos(a) * r, p.y + rr(1, full ? 22 : 12), p.z + Math.sin(a) * r, 0, rr(12, 22) * (full ? 1.4 : 1), 0, rr(0.5, 0.85),
-          rr(4, 7) * (full ? 1.3 : 1), 2, col, full ? 0.85 : 0.55, 1, 0.5, 0, 0, 0, 0.55, 0.15, 0.2, 1);
+        P(T_FLAME, M_BILL, p.x + Math.cos(a) * r, p.y + rr(0.5, full ? 20 : 10), p.z + Math.sin(a) * r, rr(-2, 2), rr(9, 16) * (full ? 1.3 : 1), rr(-2, 2), rr(0.45, 0.75),
+          rr(3.2, 5.5) * (full ? 1.25 : 1), 1.5, col, full ? 1.0 : 0.6, 1, 0.5, 0, rr(-0.25, 0.25), 0, 0.7, 0.15, 0.1, 1);
       }
     }
     // -- exhaustion: steam off the head and shoulders, sweat falling
@@ -835,14 +843,17 @@ export function createVfx(ctx, W) {
     if (f.state === 'blocking') {
       const fx = Math.sin(f.yaw), fz = Math.cos(f.yaw);
       _col.copy(GUARD).lerp(col, 0.25);
-      LV(T_SHELL, M_PLANE, p.x + fx * f.radius * 0.85, p.y + f.height * 0.55, p.z + fz * f.radius * 0.85, 27, _col, 0.3 + 0.08 * Math.sin(T * 12) + 0.8 * s.blockK, 1, 0, 1, fx, 0, fz);
+      // (a billboard lens, not a plane across the facing: the fight camera is side-on and would see that edge-on)
+      const gx = p.x + fx * f.radius * 0.95, gy = p.y + f.height * 0.55, gz = p.z + fz * f.radius * 0.95, ga = 0.55 + 0.1 * Math.sin(T * 12) + 0.9 * s.blockK;
+      LV(T_SHELL, M_BILL, gx, gy, gz, 30, _col, ga, 1, 0, 0.5);
+      LV(T_RETICLE, M_BILL, gx, gy, gz, 22, _col, ga * 0.7, 1, T * 1.5, 0.5);
     }
     // -- strike telegraph: a glint on the striking hand that tightens until contact
     const te = s.tele;
     if (te.on) {
       te.t += dt;
       const k = te.t / te.dur;
-      if (k >= 1 || (f.state !== 'attacking' && te.t > 0.08)) te.on = false;
+      if (k >= 1 || f.helpless) te.on = false;
       else {
         const late = k > 0.7, c1 = late ? WHITE : col, sz = te.heavy ? 1 : 0.5;
         for (let h = 0; h < (te.both ? 2 : 1); h++) {
@@ -890,6 +901,11 @@ export function createVfx(ctx, W) {
         LV(T_RING, M_FLAT, t.x, 0.5, t.z, t.r * 2.5 * (0.15 + 0.85 * k), WHITE, 0.7, 1);
         LV(T_GLOW, M_FLAT, t.x, 0.45, t.z, t.r * 2.2, _col, 0.16 + 0.2 * k, 1);
         LV(T_RETICLE, M_FLAT, t.x, 0.55, t.z, t.r * 2.2, _col, 0.5, 1, T * 0.7);
+        // pickets on the rim: from the low fight camera a ground ring is a line, these stand up out of it
+        for (let j = 0; j < 12; j++) {
+          const a = j / 12 * TAU + T * 0.6;
+          LV(T_COL, M_BEAM, t.x + Math.cos(a) * t.r, 0.3, t.z + Math.sin(a) * t.r, 2.6, _col, (0.5 + 0.6 * k) * urgent, 1, 0, 1, 0, 7 + 12 * k, 0);
+        }
       } else {
         // a line: from the attacker's head toward its target, thin, tightening
         const V = fighter(t.target) || f.opponent;
@@ -1342,6 +1358,7 @@ export function createVfx(ctx, W) {
       resetState();
       setPal('player', W.player); setPal('rival', W.rival);
 
+      on(EV.MATCH_START, () => { if (W.player && W.rival) { setPal('player', W.player); setPal('rival', W.rival); } }); // a title defense swaps the rival
       on(EV.STRIKE_START, (e) => {
         const f = fighter(e.who);
         if (!f) return;

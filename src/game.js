@@ -2145,6 +2145,7 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
   // collapse of a run linked their instanced variants and made their buffers.
   let destr = null;
   try { destr = stageDestruction(stage); } catch (e) { warnOnce('prewarm|debris', '[prewarm] debris not prewarmed:', e); }
+  for (const t of ['hp', 'rage', 'score']) stage.add(new Pickup(t, 0, 0, 0).root); // the first building's drop
   try { batchMovers([[spawnCars(stage, 16, 10, 40).concat(destr ? destr.cars : []), (c) => c.root], [destr ? destr.debris : null, (d) => d]], stage, camera, false); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
   try { spawnCivilians(stage, 2, 10); } catch (e) { warnOnce('prewarm|civs', '[prewarm] civilian spawn failed:', e); }
   // Gameplay set first: kaiju + enemies, and the whole scene (the GLB
@@ -3133,9 +3134,27 @@ function addRage(amount) {
 }
 
 // ---- Drop helper: spawn a pickup at world pos ----
+// A burst (an ultimate, a finisher, a body through a block) rolled a drop per
+// building: ~130 pickups in one frame, 4-6 draws each for 14 s (two thirds of
+// the frame's draw calls). At most MAX_PICKUPS lie around and two drop per
+// frame. A heart the player needs (under half health) still drops: one more
+// that frame, and over the cap it takes the place of the oldest non-heart.
+const MAX_PICKUPS = isMobile ? 10 : 24;
+let _dropT = -1, _dropN = 0;
 function maybeDropPickup(pos, source = 'building') {
   const t = rollDrop(source);
   if (!t) return;
+  const heart = t === 'hp' && state.hp < state.maxHp * 0.5;
+  if (_dropT !== world.time) { _dropT = world.time; _dropN = 0; }
+  if (_dropN >= (heart ? 3 : 2)) return;
+  let live = 0;
+  for (const q of state.pickups) if (!q.dead) live++;
+  if (live >= MAX_PICKUPS) {
+    const old = heart && state.pickups.find((q) => !q.dead && q.type !== 'hp');
+    if (!old) return;
+    old.destroy(); // spliced by updateWorld's pickup loop
+  }
+  _dropN++;
   const p = new Pickup(t, pos.x, 2.5, pos.z);
   scene.add(p.root);
   state.pickups.push(p);
@@ -4795,6 +4814,10 @@ function updateWorld(dt, dtReal = dt) {
     const drop = world.effects.length - MAX_EFFECTS;
     for (let i = 0; i < drop; i++) {
       const e = world.effects[i];
+      // End it through its own cleanup: an effect owns more than e.mesh (sprites
+      // and layers it added to the scene, pooled materials and lights);
+      // dropping only the mesh left the rest frozen in the scene for good
+      if (e && e.maxLife !== undefined && !e.dead) { e.life = 0; e.tick(0); }
       if (e && e.mesh && e.mesh.parent) e.mesh.parent.remove(e.mesh);
       if (e && e.mesh) disposeInstance(e.mesh);
     }

@@ -43,7 +43,8 @@ export function createIntent() {
     heavy: false,         // pressed: heavy strike (downed foe in reach: diving splash)
     block: false,         // held
     grab: false,          // pressed: grab / pick up a downed foe
-    grabHeld: false,      // held: pin a downed foe
+    grabHeld: false,      // held (a reach for a downed foe that is still held at contact is a pin)
+    pin: false,           // pressed: cover a downed foe for the pin
     dirX: 0, dirZ: 0,     // move choice in a lock-up, relative to own facing: z +1 forward (whip), -1 back (suplex); x +-1 sideways (swing); 0,0 = slam
     taunt: false,         // pressed
     finisher: false,      // pressed (the ultimate button)
@@ -53,7 +54,7 @@ export function createIntent() {
 }
 /** Clear the one-frame edges (the composer calls this after every update). */
 export function clearIntentEdges(it) {
-  it.strike = false; it.heavy = false; it.grab = false; it.taunt = false; it.finisher = false;
+  it.strike = false; it.heavy = false; it.grab = false; it.pin = false; it.taunt = false; it.finisher = false;
   it.mash = 0; it.power = '';
 }
 
@@ -68,13 +69,13 @@ export function clearIntentEdges(it) {
  * target (else staggers); next: the string continues into that move.
  */
 export const MOVES = Object.freeze({
-  light1:      { id: 'light1', kind: 'light', combo: 1, anim: 'strike_1', startup: 0.22, active: 0.10, recover: 0.30, dmg: 5, stam: 3, reach: 7, lunge: 3, stagger: 0.40, push: 12, impact: 0.22, mom: 4, blockStam: 5, hs: 0.04, high: true, next: 'light2' },
-  light2:      { id: 'light2', kind: 'light', combo: 2, anim: 'strike_2', startup: 0.20, active: 0.10, recover: 0.30, dmg: 6, stam: 3, reach: 7, lunge: 3, stagger: 0.36, push: 12, impact: 0.26, mom: 4, blockStam: 5, hs: 0.045, high: false, next: 'light3' },
-  light3:      { id: 'light3', kind: 'light', combo: 3, anim: 'strike_3', startup: 0.28, active: 0.12, recover: 0.46, dmg: 9, stam: 4, reach: 8, lunge: 5, stagger: 0.95, push: 28, impact: 0.42, mom: 6, blockStam: 8, hs: 0.07, high: true },
-  heavy:       { id: 'heavy', kind: 'heavy', combo: 1, anim: 'heavy', startup: 0.55, active: 0.14, recover: 0.60, dmg: 16, stam: 10, reach: 9, lunge: 7, stagger: 1.10, push: 42, impact: 0.66, mom: 8, blockStam: 16, hs: 0.12, high: true, kd: 'weak' },
-  clothesline: { id: 'clothesline', kind: 'clothesline', combo: 1, anim: 'clothesline', startup: 0.30, active: 0.32, recover: 0.70, dmg: 14, stam: 12, reach: 5, dash: 64, stagger: 1.0, push: 48, impact: 0.72, mom: 9, blockStam: 14, hs: 0.14, high: true, kd: 'always' },
-  stomp:       { id: 'stomp', kind: 'stomp', combo: 1, anim: 'stomp', startup: 0.40, active: 0.12, recover: 0.42, dmg: 7, stam: 4, reach: 6, lunge: 2, push: 0, impact: 0.4, mom: 3, hs: 0.07, high: false, ground: true },
-  splash:      { id: 'splash', kind: 'splash', combo: 1, anim: 'splash', startup: 0.30, active: 0.62, recover: 0.75, dmg: 18, stam: 12, reach: 34, push: 0, impact: 0.8, mom: 9, hs: 0.16, high: false, ground: true, ext: true, peak: 22 },
+  light1:      { id: 'light1', kind: 'light', combo: 1, anim: 'strike_1', startup: 0.22, active: 0.10, recover: 0.30, dmg: 5, stam: 3, reach: 7, lunge: 3, stagger: 0.40, push: 12, impact: 0.22, mom: 2, blockStam: 5, hs: 0.04, high: true, next: 'light2' },
+  light2:      { id: 'light2', kind: 'light', combo: 2, anim: 'strike_2', startup: 0.20, active: 0.10, recover: 0.30, dmg: 6, stam: 3, reach: 7, lunge: 3, stagger: 0.36, push: 12, impact: 0.26, mom: 2, blockStam: 5, hs: 0.045, high: false, next: 'light3' },
+  light3:      { id: 'light3', kind: 'light', combo: 3, anim: 'strike_3', startup: 0.28, active: 0.12, recover: 0.46, dmg: 9, stam: 4, reach: 8, lunge: 5, stagger: 0.95, push: 28, impact: 0.42, mom: 4, blockStam: 8, hs: 0.07, high: true },
+  heavy:       { id: 'heavy', kind: 'heavy', combo: 1, anim: 'heavy', startup: 0.55, active: 0.14, recover: 0.60, dmg: 16, stam: 10, reach: 9, lunge: 7, stagger: 1.10, push: 42, impact: 0.66, mom: 5, blockStam: 16, hs: 0.12, high: true, kd: 'weak' },
+  clothesline: { id: 'clothesline', kind: 'clothesline', combo: 1, anim: 'clothesline', startup: 0.30, active: 0.32, recover: 0.70, dmg: 14, stam: 12, reach: 5, dash: 64, stagger: 1.0, push: 48, impact: 0.72, mom: 6, blockStam: 14, hs: 0.14, high: true, kd: 'always' },
+  stomp:       { id: 'stomp', kind: 'stomp', combo: 1, anim: 'stomp', startup: 0.40, active: 0.12, recover: 0.42, dmg: 7, stam: 4, reach: 6, lunge: 2, push: 0, impact: 0.4, mom: 2, hs: 0.07, high: false, ground: true },
+  splash:      { id: 'splash', kind: 'splash', combo: 1, anim: 'splash', startup: 0.30, active: 0.62, recover: 0.75, dmg: 18, stam: 12, reach: 34, push: 0, impact: 0.8, mom: 6, hs: 0.16, high: false, ground: true, ext: true, peak: 22 },
   grab:        { id: 'grab', kind: 'grab', combo: 1, anim: 'grab_reach', startup: 0.28, active: 0.10, recover: 0.52, dmg: 0, stam: 8, reach: 6, lunge: 5 },
   reach:       { id: 'reach', kind: 'reach', combo: 1, anim: 'grab_reach', startup: 0.32, active: 0.05, recover: 0.30, dmg: 0, stam: 0, reach: 10, lunge: 2, ground: true },
 });
@@ -94,20 +95,21 @@ export const POWERS = Object.freeze({
 
 /** Tuning shared by both fighters (see the report for how each was arrived at). */
 export const TUNE = {
+  dmg: 0.88,           // global scale on every move's damage (the fall-length knob)
   // stamina
   stamRegen: 11, stamRegenDown: 7, stamDelay: 0.7, stamRecoverAt: 30, sprintDrain: 4, tiredMove: 0.62,
   // block
   blockDrain: 4, blockMove: 0.35, reversalWindow: 0.20, reblockLock: 0.45, chip: 0.15, powerChip: 0.3,
-  blockStun: 0.22, guardBreakStun: 1.8, reversalStagger: 1.0, reversalMom: 10,
+  blockStun: 0.22, guardBreakStun: 1.8, reversalStagger: 1.0, reversalMom: 8,
   // hit reactions
   counterMult: 1.25, tauntHitMult: 1.4, friction: 85, lockMax: 2.4,
   // ground
   fallDur: 0.45, downBase: 1.7, downImpact: 1.6, downHurt: 1.4, downMin: 0.9, downMax: 5.2, mashGetup: 0.13, groundHitsMax: 2,
   getupDur: 0.8, getupInvuln: 0.5,
   // momentum
-  momPassive: 1.0, momDrain: 0.22, tauntDur: 2.0, tauntMom: 25, tauntMomDown: 35, tauntStam: 20,
+  momPassive: 0.6, momDrain: 0.2, tauntDur: 2.0, tauntMom: 20, tauntMomDown: 30, tauntStam: 20,
   // what a classic player attack does to a kaiju: fraction of its raw damage (they are tuned to one-shot tanks)
-  taken: { melee: 0.15, beam: 0.12, atomic: 0.05, roar: 0.08, charge: 0.075, stomp: 0.06, ult: 0.145, military: 0.25, aoe: 0.06 },
+  taken: { melee: 0.12, beam: 0.095, atomic: 0.04, roar: 0.064, charge: 0.06, stomp: 0.048, ult: 0.115, military: 0.25, aoe: 0.05 },
   splashMult: 1.7,
 };
 const POWER_OF = { beam: 'beam', atomic: 'beam', roar: 'roar', charge: 'charge', stomp: 'stomp', ult: 'ult' };
@@ -166,7 +168,7 @@ export class Fighter {
     this.invuln = false;
     this.speedMult = 1;
     /** Strike damage scale: the kaiju's melee stat (60 = 1) ... */
-    this.power = (o.cfg.stats.melee || 60) / 60;
+    this.power = 0.75 + 0.25 * (o.cfg.stats.melee || 60) / 60;
     /** ... times this (the match raises the rival's per fall / defense; the player's damage upgrade is read live). */
     this.atkMult = 1;
     this._hp = 1; this._maxHp = 1;
@@ -202,7 +204,8 @@ export class Fighter {
     this.lie = 0; this._lieP = 0; this.lieTarget = 0; this.lieByClip = false;
     this.lean = 0;                    // extra pitch (rad) a move asks for
     this.sink = 0;                    // wading depth (u)
-    this._buf = { strike: 0, heavy: 0, grab: 0, finisher: 0 };
+    this._buf = { strike: 0, heavy: 0, grab: 0, pin: 0, finisher: 0 };
+    this._reachPin = false;
     this._regenDelay = 0;
     this._kindLock = { k: '', t: 0 };
     this._cdPrev = { beam: 0, roar: 0, charge: 0, stomp: 0, ult: 0 };
@@ -232,7 +235,7 @@ export class Fighter {
   get alive() { return this.state !== 'ko'; }
   get helpless() { return HELPLESS.has(this.state); }
   /** Damage multiplier of this fighter's own moves right now. */
-  get dmgMult() { return this.power * this.atkMult * (this.isPlayer ? (this.ctx.player.upgrades ? this.ctx.player.upgrades.dmgMult || 1 : 1) : 1); }
+  get dmgMult() { return TUNE.dmg * this.power * this.atkMult * (this.isPlayer ? (this.ctx.player.upgrades ? this.ctx.player.upgrades.dmgMult || 1 : 1) : 1); }
 
   // ---- reads for the AI, the HUD and the camera ----
   /** Free to start an action this frame. */
@@ -251,6 +254,13 @@ export class Fighter {
   get hittable() { return !this.invuln && this.invulnT <= 0 && this.state !== 'ko' && !this.held && this.state !== 'downed'; }
   /** A grab on it right now cannot be reversed or mashed out of. */
   get grabLocked() { return (this.state === 'staggered' || this.state === 'stunned' || this.tired) && this.grabChain < 2; }
+  /** 0..1 progress of this fighter's kick-out (pinned) or escape (held); 0 when neither. For the HUD's mash meter. */
+  get struggle() {
+    const g = this.W.grapple;
+    if (g.pin.active && g.pin.V === this) return Math.min(1, g.pin.meter);
+    if (g.hold.active && g.hold.V === this) return Math.min(1, g.hold.escape);
+    return 0;
+  }
   /** Gap between the two bodies (u): 0 = chest to chest. */
   gapTo(o) { return this.distTo(o) - this.radius - o.radius; }
   /**
@@ -317,7 +327,7 @@ export class Fighter {
     this.groundHits = 0; this.falling = 0; this.lastImpact = 0; this.kickouts = 0; this.finished = 0;
     this.armor = false; this._koPending = false; this._critical = false;
     this.lie = 0; this._lieP = 0; this.lieTarget = 0; this.lieByClip = false; this.lean = 0; this.sink = 0;
-    this._buf.strike = 0; this._buf.heavy = 0; this._buf.grab = 0; this._buf.finisher = 0;
+    this._buf.strike = 0; this._buf.heavy = 0; this._buf.grab = 0; this._buf.pin = 0; this._buf.finisher = 0;
     this._flinch = 0; this._taunt = 0;
     this._setGlow(0);
     this.state = 'neutral'; this.prevState = 'neutral'; this.stateT = 0; this.stateDur = 0;
@@ -631,7 +641,7 @@ export class Fighter {
   /** Busy for dur seconds, then neutral (the tail of a throw, a whiffed dive...). */
   recover(dur) {
     this.held = false;
-    this._buf.strike = 0; this._buf.heavy = 0; this._buf.grab = 0; this._buf.finisher = 0;
+    this._buf.strike = 0; this._buf.heavy = 0; this._buf.grab = 0; this._buf.pin = 0; this._buf.finisher = 0;
     this.setState('attacking', dur, null);
     this.move = RECOVERY; this.moveHit = 1; this.moveEta = 0;
     this._syncGate();
@@ -708,7 +718,7 @@ export class Fighter {
         } else if (m.kind === 'reach') {
           if (foe && foe.state === 'downed' && !foe.held && foe.falling <= 0 && this.groundGap(foe) <= m.reach + 4) {
             this.moveHit = 1;
-            if (it.grabHeld ? this.W.grapple.startPin(this, foe, false) : this.W.grapple.startPickup(this, foe)) return;
+            if (this._reachPin || it.grabHeld || it.pin ? this.W.grapple.startPin(this, foe, false) : this.W.grapple.startPickup(this, foe)) return;
           }
         } else if (this._resolveStrike(m)) this.moveHit = 1;
       } else {
@@ -722,6 +732,12 @@ export class Fighter {
       }
     }
     // The string: the next press during the back half of a hit flows into the next one
+    if (m.kind === 'light' && t >= m.startup + m.active && this._buf.heavy > 0 && this.state === 'attacking') {
+      // ...and a held button turns the jab into the heavy
+      this._buf.heavy = 0; this._buf.strike = 0;
+      this._startMove(MOVES.heavy);
+      return;
+    }
     if (m.next && t >= m.startup + m.active && this._buf.strike > 0 && this.state === 'attacking') {
       this._buf.strike = 0;
       this._startMove(MOVES[m.next]);
@@ -1007,7 +1023,7 @@ export class Fighter {
     this.stateT += dt;
     this._tick(dt);
     // One-frame presses are remembered for a moment so a press during recovery still counts
-    if (it.strike) B.strike = 0.24; if (it.heavy) B.heavy = 0.24; if (it.grab) B.grab = 0.24; if (it.finisher) B.finisher = 0.2;
+    if (it.strike) B.strike = 0.24; if (it.heavy) B.heavy = 0.24; if (it.grab) B.grab = 0.24; if (it.pin) B.pin = 0.24; if (it.finisher) B.finisher = 0.2;
     // HP can also run out outside applyDamage: the player's, to military fire through game.js
     if (this.state !== 'ko' && this.hp <= 0) {
       const p = this.root.position;
@@ -1043,7 +1059,7 @@ export class Fighter {
 
   _tick(dt) {
     const B = this._buf, s = this.state;
-    if (B.strike > 0) B.strike -= dt; if (B.heavy > 0) B.heavy -= dt; if (B.grab > 0) B.grab -= dt; if (B.finisher > 0) B.finisher -= dt;
+    if (B.strike > 0) B.strike -= dt; if (B.heavy > 0) B.heavy -= dt; if (B.grab > 0) B.grab -= dt; if (B.pin > 0) B.pin -= dt; if (B.finisher > 0) B.finisher -= dt;
     if (this.blockStun > 0) this.blockStun -= dt;
     if (this.blockLock > 0) this.blockLock -= dt;
     if (this.reblock > 0) this.reblock -= dt;
@@ -1081,7 +1097,7 @@ export class Fighter {
     if (sprint) this.spend(TUNE.sprintDrain * dt);
     if (!this.isPlayer) {
       // The player's neutral movement is updatePlayer's; the rival walks its intent
-      const wet = this.sink > 1 ? 0.8 : 1;
+      const wet = this.waterSlow || (this.sink > 1 ? 0.8 : 1);
       const speed = this.cfg.stats.speed * (sprint ? 32 : 18) * this.speedMult * (this.tired ? TUNE.tiredMove : 1) * wet;
       const p = this.root.position;
       p.x += it.moveX * speed * dt;
@@ -1094,8 +1110,15 @@ export class Fighter {
     if (B.finisher > 0 && g.tryFinisher(this)) { B.finisher = 0; return; }
     if (it.power && !this.isPlayer && this._startPower(it.power)) return;
     const down = foe && foe.state === 'downed' && !foe.held && foe.falling <= 0;
+    if (B.pin > 0 && down && this.groundGap(foe) <= MOVES.reach.reach + 8) {
+      B.pin = 0; B.grab = 0;
+      this._reachPin = true;
+      this._startMove(MOVES.reach);
+      return;
+    }
     if (B.grab > 0) {
       B.grab = 0;
+      this._reachPin = false;
       this._startMove(down && this.groundGap(foe) <= MOVES.reach.reach + 8 ? MOVES.reach : MOVES.grab);
       return;
     }
@@ -1200,7 +1223,14 @@ export class Fighter {
         q.x -= dx * push; q.z -= dz * push;
       }
     }
-    const wet = ctx.isWater(p.x, p.z) ? 3 : 0;
+    this._wade(dt);
+  }
+
+  // Wading depth: game.js keeps the rival's (waterSink); the player's own wade is off while its root is taken away
+  _wade(dt) {
+    const p = this.root.position, ctx = this.ctx;
+    if (!this.isPlayer && this.waterSink !== undefined) { this.sink = this.waterSink; return; }
+    const wet = ctx.waterDepth ? ctx.waterDepth(p.x, p.z) * 3.2 : ctx.isWater(p.x, p.z) ? 3 : 0;
     this.sink += (wet - this.sink) * (1 - Math.exp(-3 * dt));
   }
 

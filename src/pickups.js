@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { disposeInstance } from './assetCache.js';
+import { disposeInstance, markShared } from './assetCache.js';
 
 // Pickups dropped from destroyed buildings / kills.
 // types: 'hp' (red cross), 'rage' (blue orb), 'score' (gold star)
@@ -10,6 +10,32 @@ const TYPE_INFO = {
   score: { color: 0xffcc44, glow: 0xffeeaa, name: 'BONUS +500' },
 };
 
+// One set of geometry and one set of materials per type, shared by every
+// pickup. Each `new Pickup` used to build 4-5 geometries and 3 materials of
+// its own: an ultimate that levelled 200 buildings dropped ~130 at once, i.e.
+// ~600 geometry uploads and ~390 program lookups in one frame.
+const _G = {
+  hp:    [new THREE.BoxGeometry(2.0, 0.6, 0.6), new THREE.BoxGeometry(0.6, 2.0, 0.6)],
+  rage:  [new THREE.SphereGeometry(0.9, 14, 14)],
+  score: [new THREE.BoxGeometry(1.8, 0.4, 0.4), new THREE.BoxGeometry(0.4, 1.8, 0.4), new THREE.BoxGeometry(0.4, 0.4, 1.8)],
+  halo:  new THREE.SphereGeometry(1.6, 12, 12),
+  beam:  new THREE.CylinderGeometry(0.2, 0.6, 6, 8, 1, true),
+};
+markShared(..._G.hp, ..._G.rage, ..._G.score, _G.halo, _G.beam);
+const _M = {};
+function _mats(type) {
+  if (_M[type]) return _M[type];
+  const info = TYPE_INFO[type];
+  return (_M[type] = {
+    // Emissive kept below the bloom threshold's blow-out range: at 0.9 the
+    // blue rage orb (plus halo + beam stacking additively in bloom) read as
+    // a white-blue flare next to the kaiju when wave-end kills dropped several.
+    body: new THREE.MeshStandardMaterial({ color: info.color, emissive: info.color, emissiveIntensity: 0.4, roughness: 0.4, metalness: 0.2 }),
+    halo: new THREE.MeshBasicMaterial({ color: info.glow, transparent: true, opacity: 0.14, depthWrite: false }),
+    beam: new THREE.MeshBasicMaterial({ color: info.glow, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
+  });
+}
+
 export class Pickup {
   constructor(type, x, y, z) {
     this.type = type;
@@ -17,50 +43,25 @@ export class Pickup {
     this.life = 14.0; // expires after 14 seconds
     this.bobPhase = Math.random() * Math.PI * 2;
 
-    const info = TYPE_INFO[type];
+    const M = _mats(type);
     const root = new THREE.Group();
     root.position.set(x, y, z);
 
-    // Emissive kept below the bloom threshold's blow-out range: at 0.9 the
-    // blue rage orb (plus halo + beam stacking additively in bloom) read as
-    // a white-blue flare next to the kaiju when wave-end kills dropped several.
-    const mat = new THREE.MeshStandardMaterial({
-      color: info.color, emissive: info.color, emissiveIntensity: 0.4, roughness: 0.4, metalness: 0.2,
-    });
-
+    // hp: red cross; rage: orb; score: 4-point star (stretched cubes)
+    const parts = _G[type];
     let body;
-    if (type === 'hp') {
-      // red cross
-      body = new THREE.Group();
-      const a = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.6, 0.6), mat);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.6, 2.0, 0.6), mat);
-      body.add(a); body.add(b);
-    } else if (type === 'rage') {
-      body = new THREE.Mesh(new THREE.SphereGeometry(0.9, 14, 14), mat);
-    } else {
-      // 4-point star (two stretched cubes)
-      body = new THREE.Group();
-      const a = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 0.4), mat);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.8, 0.4), mat);
-      const c = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 1.8), mat);
-      body.add(a); body.add(b); body.add(c);
-    }
+    if (parts.length === 1) body = new THREE.Mesh(parts[0], M.body);
+    else { body = new THREE.Group(); for (const g of parts) body.add(new THREE.Mesh(g, M.body)); }
     root.add(body);
     this.body = body;
 
     // Glow halo (sprite-like billboard)
-    const halo = new THREE.Mesh(
-      new THREE.SphereGeometry(1.6, 12, 12),
-      new THREE.MeshBasicMaterial({ color: info.glow, transparent: true, opacity: 0.14, depthWrite: false })
-    );
+    const halo = new THREE.Mesh(_G.halo, M.halo);
     root.add(halo);
     this.halo = halo;
 
     // Beam of light connecting to ground
-    const beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2, 0.6, 6, 8, 1, true),
-      new THREE.MeshBasicMaterial({ color: info.glow, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })
-    );
+    const beam = new THREE.Mesh(_G.beam, M.beam);
     beam.position.y = -3;
     root.add(beam);
 

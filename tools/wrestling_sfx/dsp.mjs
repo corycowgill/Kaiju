@@ -274,7 +274,7 @@ export function loudness(x) {
     const w = N(len), hop = N(0.1);
     let best = 0;
     if (k.length <= w) best = sq[k.length] / w; // a clip shorter than the window is measured zero-padded
-    else for (let a = 0; a + w <= k.length; a += hop) best = Math.max(best, (sq[a + w] - sq[a]) / w);
+    else { for (let a = 0; a + w <= k.length; a += hop) best = Math.max(best, (sq[a + w] - sq[a]) / w); best = Math.max(best, (sq[k.length] - sq[k.length - w]) / w); }
     return -0.691 + 10 * Math.log10(Math.max(1e-12, best));
   };
   return { mmax: win(0.4), smax: win(3), integ: -0.691 + 10 * Math.log10(Math.max(1e-12, sq[k.length] / k.length)) };

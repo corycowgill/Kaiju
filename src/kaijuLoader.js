@@ -223,7 +223,13 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   }
 
   function _start(action, name, fadeTime, timeScale) {
-    if (currentAction && currentAction !== action) currentAction.fadeOut(fadeTime);
+    if (currentAction === action) {
+      // Restarting the clip that is already up: it cannot crossfade with itself
+      action.reset().setEffectiveTimeScale(timeScale).setEffectiveWeight(1).play();
+      currentName = name;
+      return;
+    }
+    if (currentAction) currentAction.fadeOut(fadeTime);
     action.reset();
     action.setEffectiveTimeScale(timeScale);
     action.setEffectiveWeight(1);
@@ -257,10 +263,11 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   // opts.commit: seconds during which locomotion can't interrupt
   //   (default: the whole clip).
   // opts.hold: stay on the final frame afterwards (death).
+  // opts.restart: start over even if this clip is already playing.
   function playOnce(name, fadeTime = 0.15, timeScale = 1, opts = {}) {
     const action = actions[name];
     if (!action) return false;
-    if (oneShot && oneShot.name === name && action.isRunning()) return true;
+    if (oneShot && oneShot.name === name && action.isRunning() && !opts.restart) return true;
     const clipDur = action.getClip().duration || 1;
     if (opts.duration) timeScale = clipDur / opts.duration;
     const realDur = clipDur / Math.max(1e-3, timeScale);

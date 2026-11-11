@@ -8,7 +8,10 @@
 // (UniformsUtils.clone copies typed arrays by reference), so writing it once a
 // frame updates every program: no extra programs, draws or lights. Materials
 // that never get the block (custom ShaderMaterials with fog) read zeros,
-// which select three's stock behaviour. The world-space parts are compiled
+// which select three's stock behaviour. Which treatment a material gets
+// (facade, glass, lamp, kaiju) is a CLASS number carried in a uniform every
+// standard material already uploads (see setLookClass), not a define, so the
+// layer adds no shader program variants. The world-space parts are compiled
 // only into fogged materials (the main scene; the menu previews, the env
 // capture and the depth passes have no fog).
 //
@@ -21,14 +24,14 @@
 //    without a shadow map;
 //  - palette convergence (saturation and value range) across asset families;
 //  - windows that light up as dusk comes on, and a sky glint on glass, in the
-//    building materials (LOOK_BLDG define);
-//  - the kaiju family treatment (LOOK_KAIJU define: albedo normalisation, a
-//    sun/sky rim, a rival tint);
+//    building materials;
+//  - the kaiju family treatment (albedo normalisation, a stepped key, a
+//    sun/sky rim, a rival tint, a glow the fight effects drive);
 //  - a time of day that slides from golden hour to dusk: lights, sky, fog,
 //    exposure, bloom and grade are all uniform writes.
 import * as THREE from 'three';
 
-const N = 24;
+const N = 28;
 // Shadow height field range: the map's R channel is height / HS_RANGE
 const HS_RANGE = 160;
 /** The uniform block (vec4 uLook[N]); see IDX for the layout. */
@@ -58,7 +61,13 @@ const IDX = {
   CLOUD: 21,  // rgb cloud lit colour, w: stars
   CLOUD2: 22, // rgb cloud shade colour, w: kaiju hero fill (share of the key that ignores shadows)
   RIMC: 23,   // rgb sky-side kaiju rim, w: rim strength
+  GLOWA: 24,  // player kaiju: rgb glow colour, w: amount (fight effects: setKaijuGlow)
+  GLOWB: 25,  // rival kaiju
+  ARENA: 26,  // floodlit ring: x, z, radius, strength (kaiju inside it take a cool top key)
+  FLOOD: 27,  // rgb floodlight colour
 };
+// Material classes (setLookClass)
+const CLS = { NONE: 0, FACADE: 1, GLASS: 2, LAMP: 3, KAIJU_A: 4, KAIJU_B: 5 };
 const set4 = (i, x, y, z, w) => { const o = i * 4; lookData[o] = x; lookData[o + 1] = y; lookData[o + 2] = z; lookData[o + 3] = w; };
 const setW = (i, w) => { lookData[i * 4 + 3] = w; };
 
@@ -67,6 +76,7 @@ const DECL = `
 #ifndef LOOK_DECL
 #define LOOK_DECL
 uniform vec4 uLook[${N}];
+float lkCls = 0.0; // this material's look class (set in main)
 #endif`;
 // Sky model shared by the dome, the fog and the reflections (glass, water)
 const SKY_GLSL = `
@@ -114,11 +124,6 @@ function fragPars(cfg) {
   varying vec3 vLookW;
   ${DECL}
   #define LOOK_Q ${cfg.q}
-  #ifdef LOOK_KAIJU
-    #define LOOK_KSLOT LOOK_KAIJU
-  #else
-    #define LOOK_KSLOT 0
-  #endif
   ${cfg.blob ? '#define LOOK_BLOB' : ''}
   #if defined( STANDARD ) || defined( LAMBERT ) || defined( PHONG )
     #define LOOK_WORLD
@@ -185,21 +190,28 @@ const FOG_FRAG = `
 
 // After the albedo and the normal are known: palette, ground variation, windows
 const ALBEDO = `
+#if defined( USE_AOMAP ) && defined( STANDARD )
+  // The class rides in the tens of aoMapIntensity (setLookClass)
+  lkCls = floor( aoMapIntensity * 0.1 + 0.05 );
+#endif
 #ifdef LOOK_WORLD
   #define LOOK_HAS_N
   vec3 lkN = inverseTransformDirection( normal, viewMatrix );
-  if ( uLook[0].w > 0.5 ) {
+  if ( lkCls > 3.5 ) {
+    // Kaiju (every level): albedo to the family's common value / saturation range
+    vec4 lkTint = lkCls > 4.5 ? uLook[15] : uLook[14];
+    float lkLk = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+    diffuseColor.rgb = mix( vec3( lkLk ), diffuseColor.rgb, lkTint.w ) * lkTint.rgb;
+  } else if ( uLook[0].w > 0.5 ) {
     float lkL = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
-    #ifdef LOOK_KAIJU
-      vec4 lkTint = uLook[13 + LOOK_KAIJU];
-      diffuseColor.rgb = mix( vec3( lkL ), diffuseColor.rgb, lkTint.w ) * lkTint.rgb;
-    #else
+    {
       float lkGlass = 0.0;
-      #ifdef LOOK_BLDG
+      bool lkFacade = lkCls > 0.5 && lkCls < 2.5;
+      if ( lkFacade ) {
         float lkWall = 1.0 - smoothstep( 0.3, 0.6, abs( lkN.y ) );
-        #ifdef LOOK_GLASS
+        if ( lkCls > 1.5 ) {
           lkGlass = lkWall;
-        #else
+        } else {
           // The mask reads the facade two mips down where it can: a whole pane
           // lights evenly instead of tracing the texture's painted reflections
           #if LOOK_Q > 0 && defined( USE_MAP )
@@ -209,8 +221,8 @@ const ALBEDO = `
           #endif
           float lkBlue = smoothstep( 0.03, 0.16, lkSoft.b - lkSoft.r );
           lkGlass = max( 1.0 - smoothstep( 0.015, 0.11, dot( lkSoft, vec3( 0.2126, 0.7152, 0.0722 ) ) ), lkBlue ) * lkWall;
-        #endif
-      #endif
+        }
+      }
       // One saturation and value range for every asset family (painted-dark
       // AI blocks come up, chalk-white massing comes down); glass keeps its depth
       float lkL2 = 0.035 + 0.60 * lkL / ( lkL * 0.55 + 0.45 );
@@ -222,18 +234,16 @@ const ALBEDO = `
         float lkV = lookNoise( vLookW.xz * 0.031 ) * 0.62 + lookNoise( vLookW.xz * 0.12 + 7.3 ) * 0.38;
         diffuseColor.rgb *= 1.0 + ( lkV - 0.5 ) * uLook[7].w * lkUp;
       #endif
-      #ifdef LOOK_LAMP
-        // Street lamps: the palette's white globe texels glow as the windows do
-        totalEmissiveRadiance += uLook[9].rgb * ( smoothstep( 0.5, 0.8, lkL ) * uLook[9].w * 1.6 );
-      #endif
-      #ifdef LOOK_BLDG
+      // Street lamps: the palette's white globe texels glow as the windows do
+      if ( lkCls > 2.5 ) totalEmissiveRadiance += uLook[9].rgb * ( smoothstep( 0.5, 0.8, lkL ) * uLook[9].w * 1.6 );
+      if ( lkFacade ) {
         totalEmissiveRadiance += lookWin( vLookW, lkN ) * ( lkGlass * uLook[9].w );
         vec3 lkVd = normalize( vLookW - cameraPosition );
         vec3 lkR = reflect( lkVd, lkN );
         float lkFr = 0.05 + 0.95 * pow( 1.0 - clamp( dot( - lkVd, lkN ), 0.0, 1.0 ), 4.0 );
         totalEmissiveRadiance += lookSkyCol( lkR ) * ( lkGlass * lkFr * uLook[10].y );
-      #endif
-    #endif
+      }
+    }
   }
 #endif`;
 
@@ -249,34 +259,28 @@ const SHADE = `
     #if LOOK_Q > 0
       vec2 lkM = texture2D( uLookMap, ( vLookW.xz + lkN.xz * 1.6 - uLook[11].xy ) * uLook[11].zw ).rg;
       lkSun = 1.0 - uLook[7].z * smoothstep( -0.4, 2.4, lkM.r * ${HS_RANGE.toFixed(1)} - vLookW.y - 0.9 );
-      #ifdef LOOK_KAIJU
-        lkSun = mix( 1.0, lkSun, 0.6 );
-      #endif
+      if ( lkCls > 3.5 ) lkSun = mix( 1.0, lkSun, 0.6 ); // the stars are never fully in a tower's shadow
       lkAO = 1.0 - uLook[7].x * min( lkM.g * 1.25, 1.0 ) * exp( - max( vLookW.y, 0.0 ) * uLook[7].y );
-    #elif defined( LOOK_BLDG )
-      lkAO = 1.0 - uLook[7].x * 0.6 * exp( - max( vLookW.y, 0.0 ) * uLook[7].y ) * ( 1.0 - abs( lkN.y ) );
+    #else
+      if ( lkCls > 0.5 && lkCls < 2.5 ) lkAO = 1.0 - uLook[7].x * 0.6 * exp( - max( vLookW.y, 0.0 ) * uLook[7].y ) * ( 1.0 - abs( lkN.y ) );
     #endif
     #ifdef LOOK_BLOB
       // No shadow map on this tier: each kaiju's shadow as a soft capsule laid along the ground
       vec2 lkPerp = vec2( - uLook[1].y, uLook[1].x );
-      #if LOOK_KSLOT != 1
-      if ( uLook[16].z > 0.0 ) {
+      if ( uLook[16].z > 0.0 && lkCls != 4.0 ) {
         vec2 r = vLookW.xz - uLook[16].xy;
         float len = min( uLook[16].w / uLook[1].z, 110.0 ), al = - dot( r, uLook[1].xy ), a = clamp( al, 0.0, len );
         float dd = length( vec2( al - a, dot( r, lkPerp ) ) );
         float top = uLook[16].w * ( 1.0 - a / len );
         lkSun *= 1.0 - 0.8 * ( 1.0 - smoothstep( uLook[16].z * 0.45, uLook[16].z * 1.2, dd ) ) * ( 1.0 - smoothstep( top - 1.0, top + 3.0, vLookW.y ) ) * ( 1.0 - 0.45 * a / len );
       }
-      #endif
-      #if LOOK_KSLOT != 2
-      if ( uLook[17].z > 0.0 ) {
+      if ( uLook[17].z > 0.0 && lkCls != 5.0 ) {
         vec2 r = vLookW.xz - uLook[17].xy;
         float len = min( uLook[17].w / uLook[1].z, 110.0 ), al = - dot( r, uLook[1].xy ), a = clamp( al, 0.0, len );
         float dd = length( vec2( al - a, dot( r, lkPerp ) ) );
         float top = uLook[17].w * ( 1.0 - a / len );
         lkSun *= 1.0 - 0.8 * ( 1.0 - smoothstep( uLook[17].z * 0.45, uLook[17].z * 1.2, dd ) ) * ( 1.0 - smoothstep( top - 1.0, top + 3.0, vLookW.y ) ) * ( 1.0 - 0.45 * a / len );
       }
-      #endif
     #endif
   }
 #endif
@@ -288,9 +292,16 @@ const SUN_VIS = `
 // Sun-side ambient: the warm half of the sky as an azimuth term (tiers with
 // IBL get it from the environment map and run this at low strength)
 const FILL = `
-#if defined( RE_IndirectDiffuse ) && defined( LOOK_KAIJU ) && defined( LOOK_WORLD ) && NUM_DIR_LIGHTS > 0
-  // The stars stay lit: a share of the key that no shadow takes away, wrapped round the form
-  irradiance += directionalLights[ 0 ].color * ( uLook[22].w * ( 0.3 + 0.7 * clamp( dot( geometryNormal, directionalLights[ 0 ].direction ) * 0.7 + 0.3, 0.0, 1.0 ) ) );
+#if defined( RE_IndirectDiffuse ) && defined( LOOK_WORLD ) && NUM_DIR_LIGHTS > 0
+  if ( lkCls > 3.5 ) {
+    // The stars stay lit: a share of the key that no shadow takes away, wrapped round the form
+    irradiance += directionalLights[ 0 ].color * ( uLook[22].w * ( 0.3 + 0.7 * clamp( dot( geometryNormal, directionalLights[ 0 ].direction ) * 0.7 + 0.3, 0.0, 1.0 ) ) );
+    // ...and inside the floodlit ring, the towers' cool top light
+    if ( uLook[26].w > 0.0 ) {
+      float lkFl = 1.0 - smoothstep( uLook[26].z * 0.85, uLook[26].z * 1.7, length( vLookW.xz - uLook[26].xy ) );
+      irradiance += uLook[27].rgb * ( uLook[26].w * lkFl * ( 0.3 + 0.7 * clamp( lkN.y * 0.65 + 0.5, 0.0, 1.0 ) ) );
+    }
+  }
 #endif
 #if defined( RE_IndirectDiffuse ) && defined( LOOK_WORLD )
   if ( uLook[0].w > 0.5 ) irradiance += uLook[20].rgb * ( uLook[8].w * ( 0.5 + 0.5 * dot( lkN.xz, uLook[1].xy ) ) * ( 0.6 + 0.4 * lkN.y ) );
@@ -299,17 +310,23 @@ const AO = `
 #ifdef LOOK_WORLD
   reflectedLight.indirectDiffuse *= lkAO;
   reflectedLight.indirectSpecular *= lkAO;
-  reflectedLight.directDiffuse *= 0.3 + 0.7 * lkAO;
+  reflectedLight.directDiffuse *= mix( 1.0, lkAO, 0.7 );
   reflectedLight.directSpecular *= lkAO;
 #endif`;
 // Just before the colour is written: kaiju rim, unlit world meshes
 const OUT = `
-#if defined( LOOK_KAIJU ) && defined( STANDARD )
-{
+#ifdef STANDARD
+if ( lkCls > 3.5 ) {
+  // Kaiju rim: warm toward the sun, sky-coloured away from it, so the
+  // silhouette separates from the city at every angle; plus the fight glow
+  vec4 lkRimC = lkCls > 4.5 ? uLook[13] : uLook[12];
+  vec4 lkGlow = lkCls > 4.5 ? uLook[25] : uLook[24];
   vec3 lkRn = inverseTransformDirection( normal, viewMatrix );
-  float lkFres = pow( 1.0 - clamp( dot( normal, normalize( vViewPosition ) ), 0.0, 1.0 ), uLook[11 + LOOK_KAIJU].w );
+  float lkNV = 1.0 - clamp( dot( normal, normalize( vViewPosition ) ), 0.0, 1.0 );
+  float lkFres = pow( lkNV, lkRimC.w );
   float lkSide = clamp( dot( lkRn, uLook[0].xyz ) * 0.6 + 0.5, 0.0, 1.0 );
-  outgoingLight += mix( uLook[23].rgb, uLook[11 + LOOK_KAIJU].rgb, lkSide ) * ( lkFres * uLook[23].w * ( 0.45 + 0.55 * clamp( lkRn.y + 0.75, 0.0, 1.0 ) ) );
+  outgoingLight += mix( uLook[23].rgb, lkRimC.rgb, lkSide ) * ( lkFres * uLook[23].w * ( 0.45 + 0.55 * clamp( lkRn.y + 0.75, 0.0, 1.0 ) ) );
+  outgoingLight += lkGlow.rgb * ( lkGlow.w * ( 0.18 + 1.5 * lkNV * lkNV ) );
 }
 #endif
 #if defined( LOOK_UNLIT ) && defined( USE_FOG )
@@ -344,13 +361,15 @@ export function initLook(cfg) {
   C.emissivemap_fragment += ALBEDO;
   C.lights_fragment_begin = SHADE + C.lights_fragment_begin
     .replace('getDirectionalLightInfo( directionalLight, directLight );', 'getDirectionalLightInfo( directionalLight, directLight );' + SUN_VIS) + FILL;
-  C.aomap_fragment += AO;
+  // (aoMapIntensity also carries the class in its tens: the AO term uses what is left)
+  C.aomap_fragment = C.aomap_fragment.replace('* aoMapIntensity + 1.0', '* ( aoMapIntensity - 10.0 * lkCls ) + 1.0') + AO;
+  if (!C.aomap_fragment.includes('10.0 * lkCls')) console.warn('[look] aomap_fragment has changed');
   // Kaiju: the key's falloff as a soft two-band ramp, so the form reads in
   // planes of light and shade (it also hides faceting and painted-in shading)
   C.lights_physical_pars_fragment = C.lights_physical_pars_fragment.replace(
     'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );\n\tvec3 irradiance = dotNL * directLight.color;',
-    'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );\n\t#ifdef LOOK_KAIJU\n\t\tdotNL = mix( dotNL, smoothstep( 0.0, 0.34, dotNL ) * ( 0.62 + 0.38 * dotNL ), uLook[20].w );\n\t#endif\n\tvec3 irradiance = dotNL * directLight.color;');
-  if (!C.lights_physical_pars_fragment.includes('LOOK_KAIJU')) console.warn('[look] kaiju ramp: lights_physical_pars_fragment has changed');
+    'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );\n\tif ( lkCls > 3.5 ) dotNL = mix( dotNL, smoothstep( 0.0, 0.34, dotNL ) * ( 0.62 + 0.38 * dotNL ), uLook[20].w );\n\tvec3 irradiance = dotNL * directLight.color;');
+  if (!C.lights_physical_pars_fragment.includes('lkCls')) console.warn('[look] kaiju ramp: lights_physical_pars_fragment has changed');
   C.opaque_fragment = OUT + C.opaque_fragment;
   // 1x1 until a level builds its map; clone() returns the texture itself so
   // every material's uniform set points at the one object
@@ -446,7 +465,7 @@ const KEYS = [
     sat: 0.86, val: 0.8, ao: 0.62, shadow: 0.9, groundVar: 0.34,
     unlit: [0.62, 0.56, 0.52],
     cloud: lin(0xfff0dc), cloudShade: lin(0x9a98b4), cover: 0.50, stars: 0,
-    rimSun: lin(0xffc890, 1.5), rimSky: lin(0x9dc4ff, 0.75), rimI: 1.0, hero: 0.22,
+    rimSun: lin(0xffc890, 1.5), rimSky: lin(0x9dc4ff, 0.75), rimI: 1.0, hero: 0.22, flood: 0.35,
     exposure: 1.02, bloomT: 0.95, bloomS: 0.38,
     gradeMix: 0.5, gradeShadow: [0.88, 0.94, 1.08], gradeHigh: [1.07, 1.0, 0.90],
   },
@@ -463,7 +482,7 @@ const KEYS = [
     sat: 0.86, val: 0.8, ao: 0.64, shadow: 0.88, groundVar: 0.34,
     unlit: [0.50, 0.42, 0.44],
     cloud: lin(0xffb087), cloudShade: lin(0x6f6590), cover: 0.52, stars: 0,
-    rimSun: lin(0xffa870, 1.6), rimSky: lin(0x94b4ff, 0.8), rimI: 1.05, hero: 0.26,
+    rimSun: lin(0xffa870, 1.6), rimSky: lin(0x94b4ff, 0.8), rimI: 1.05, hero: 0.26, flood: 0.42,
     exposure: 1.06, bloomT: 0.95, bloomS: 0.40,
     gradeMix: 0.52, gradeShadow: [0.86, 0.90, 1.10], gradeHigh: [1.08, 0.99, 0.88],
   },
@@ -480,7 +499,7 @@ const KEYS = [
     sat: 0.84, val: 0.8, ao: 0.66, shadow: 0.8, groundVar: 0.34,
     unlit: [0.30, 0.27, 0.36],
     cloud: lin(0xd97a66), cloudShade: lin(0x34325c), cover: 0.54, stars: 0.7,
-    rimSun: lin(0xff9060, 1.5), rimSky: lin(0x8aa6ff, 0.95), rimI: 1.15, hero: 0.34,
+    rimSun: lin(0xff9060, 1.5), rimSky: lin(0x8aa6ff, 0.95), rimI: 1.15, hero: 0.34, flood: 0.5,
     exposure: 1.14, bloomT: 0.95, bloomS: 0.42,
     gradeMix: 0.5, gradeShadow: [0.90, 0.91, 1.08], gradeHigh: [1.07, 0.99, 0.90],
   },
@@ -510,6 +529,7 @@ const L = {
   duration: 330,        // seconds of play from golden hour to dusk
   lightDir: new THREE.Vector3(0, 1, 0),
   discDir: new THREE.Vector3(0, 1, 0),
+  dipA: 0, dipB: 0,
   dip: 0,               // exposure dip (0..1) for full-screen flashes
   hasEnv: false,
 };
@@ -539,14 +559,17 @@ export function withLookEnvSky(fn) {
   try { fn(); } finally { _applyTime(L.todFixed != null ? L.todFixed : _todFromClock()); }
 }
 /** Brief exposure dip so a full-screen flash reads as light instead of clipping (0..1). */
-export function setLookDip(v) { L.dip = v; }
+export function setLookDip(v) { L.dipA = v; L.dip = Math.max(L.dipA, L.dipB); }
+/** The same dip for other callers (fight effects: a finisher flash); the larger of the two applies. */
+export function setLookFxDip(v) { L.dipB = v; L.dip = Math.max(L.dipA, L.dipB); }
 
 /** Switch the layer for a level. Tokyo keeps its own look: the layer is off
  *  there except for the kaiju rim. */
 export function setLookLevel(level) {
   L.level = level;
   if (level !== 'chicago') {
-    lookData.fill(0);
+    lookData.fill(0, 0, IDX.GLOWA * 4);
+    lookData.fill(0, IDX.ARENA * 4);
     // Tokyo's low west sun and cool back light, as the kaiju rim's two sides
     const d = new THREE.Vector3(-100, 100, 45).normalize();
     set4(IDX.SUN, d.x, d.y, d.z, 0);
@@ -592,6 +615,9 @@ function _applyTime(t) {
   set4(IDX.KTA, ka.tint[0], ka.tint[1], ka.tint[2], ka.sat);
   set4(IDX.KTB, kb.tint[0], kb.tint[1], kb.tint[2], kb.sat);
   set4(IDX.RIMC, c.rimSky[0], c.rimSky[1], c.rimSky[2], c.rimI);
+  // Floodlights come up as the daylight goes (the arena scales its lamps the same way: 0.55 -> 1)
+  set4(IDX.ARENA, _arena[0], _arena[1], _arena[2], _arena[2] > 0 ? c.flood * (0.55 + 0.45 * t) : 0);
+  set4(IDX.FLOOD, 0.80, 0.90, 1.0, 0);
   L.lightDir.set(SUN_AZ[0] * Math.cos(le), Math.sin(le), SUN_AZ[1] * Math.cos(le));
   if (!R) return;
   R.sun.color.setRGB(c.sun[0], c.sun[1], c.sun[2]); R.sun.intensity = c.sunI;
@@ -637,8 +663,8 @@ function _blob(i, root, slot) {
 // Per-slot treatment (0 player, 1 rival). rim multiplies the sun-side rim
 // colour; tint / sat normalise the albedo so the three read as one family.
 const _kaiju = [
-  { rim: [1, 1, 1], power: 2.4, tint: [1, 1, 1], sat: 1, radius: 9, height: 30 },
-  { rim: [1, 1, 1], power: 2.4, tint: [1, 1, 1], sat: 1, radius: 9, height: 30 },
+  { rim: [1, 1, 1], power: 2.4, tint: [1, 1, 1], sat: 1, radius: 9, height: 30, root: null },
+  { rim: [1, 1, 1], power: 2.4, tint: [1, 1, 1], sat: 1, radius: 9, height: 30, root: null },
 ];
 const KAIJU_RAMP = 0.75;
 // Albedo normalisation per model: value gain and saturation toward a common
@@ -661,39 +687,65 @@ export function styleKaiju(root, slot, key, opts = {}) {
   k.radius = st.radius; k.height = st.height;
   // The rival's sun-side rim leans magenta-red, the player's stays gold
   k.rim = opts.rim || (slot === 1 ? [1.25, 0.42, 0.55] : [1, 1, 1]);
+  k.root = root;
   root.traverse((o) => {
     if (!o.isMesh) return;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (let i = 0; i < mats.length; i++) {
       let m = mats[i];
       if (!m || !m.isMeshStandardMaterial) continue;
-      const want = slot + 1;
-      if (m.defines && m.defines.LOOK_KAIJU === want) continue;
-      // A material another slot already claimed (a mirror match): its own copy
-      if (m.defines && m.defines.LOOK_KAIJU !== undefined) {
+      if (m.userData.lookSlot === slot) continue;
+      // A material the other slot holds right now (a mirror match): its own copy
+      if (m.userData.lookSlot !== undefined && _kaiju[1 - slot].root && _kaiju[1 - slot].root !== root && _uses(_kaiju[1 - slot].root, m)) {
         m = m.clone();
         if (Array.isArray(o.material)) o.material[i] = m; else o.material = m;
       }
-      m.defines = Object.assign({}, m.defines, { LOOK_KAIJU: want });
+      m.userData.lookSlot = slot;
+      setLookClass(m, slot ? CLS.KAIJU_B : CLS.KAIJU_A);
       m.roughness = st.rough;
       // glTF specular colour factors over 1 (these files carry [2,2,2]) blow the highlights out
       if (m.specularColor) m.specularColor.setRGB(1, 1, 1);
       if (m.specularIntensity !== undefined) m.specularIntensity = 0.6;
       m.envMapIntensity = 0.8;
-      m.needsUpdate = true;
     }
   });
+}
+function _uses(root, mat) {
+  let hit = false;
+  root.traverse((o) => { if (o.material === mat || (Array.isArray(o.material) && o.material.includes(mat))) hit = true; });
+  return hit;
+}
+const _gc = new THREE.Color();
+/** Fight effects: a glow on a styled kaiju's body (rim-weighted emissive) in
+ *  colorHex, k 0..1+ (0 turns it off). root: the kaiju's root object. */
+export function setKaijuGlow(root, colorHex, k) {
+  const slot = _kaiju[1].root === root ? 1 : (_kaiju[0].root === root ? 0 : -1);
+  if (slot < 0) return;
+  _gc.setHex(colorHex);
+  set4(slot ? IDX.GLOWB : IDX.GLOWA, _gc.r, _gc.g, _gc.b, k);
+}
+
+/** Give a standard material a look class. The class is stored in the tens of
+ *  aoMapIntensity: every GLB material carries an AO map slot (the shared
+ *  white one where the file has none, see canonMaterialMaps), so that uniform
+ *  is always uploaded, and the shader strips the class back out before the
+ *  AO term uses it. A uniform, not a define: no extra shader programs. */
+export function setLookClass(m, cls) {
+  if (!m || !m.isMeshStandardMaterial) return;
+  m.aoMapIntensity = (m.aoMapIntensity % 10) + cls * 10;
 }
 
 // ---------------------------------------------------------------- scene tagging
 const NOT_FACADE = /^(kp_|fest_)|fence|tent|scrim|sign|banner|flag|stage/i;
+function _class(m) { return Math.floor(m.aoMapIntensity / 10 + 0.05); }
 function _define(m, name, value = '') {
   if (!m || (m.defines && m.defines[name] !== undefined)) return;
   m.defines = Object.assign({}, m.defines, { [name]: value });
   m.needsUpdate = true;
 }
-/** Classify the level's materials for the layer (before the prewarm links
- *  them): building facades, the unlit backdrop. Idempotent. */
+/** Classify the level's materials for the layer: building facades, glass,
+ *  street lamps (classes: uniforms) and the two unlit backdrop meshes
+ *  (defines, so before the prewarm links them). Idempotent. */
 export function tagLookScene(scene, world) {
   if (world.level !== 'chicago') return;
   // Facades: the GLB buildings' materials, minus the festival kit and other
@@ -703,8 +755,7 @@ export function tagLookScene(scene, world) {
     for (const s of b._glbSlots) {
       const m = s.im.material;
       if (!m || !m.isMeshStandardMaterial || NOT_FACADE.test(m.name)) continue;
-      _define(m, 'LOOK_BLDG');
-      if (/glass/i.test(m.name)) _define(m, 'LOOK_GLASS');
+      if (_class(m) === CLS.NONE) setLookClass(m, /glass/i.test(m.name) ? CLS.GLASS : CLS.FACADE);
     }
   }
   for (const o of scene.children) {
@@ -712,7 +763,7 @@ export function tagLookScene(scene, world) {
     if (!m || Array.isArray(m)) continue;
     if (o.userData.backdrop) { _define(m, 'LOOK_UNLIT'); _define(m, 'LOOK_UNLIT_WIN'); }
     else if (o.userData.outerGround) _define(m, 'LOOK_UNLIT');
-    else if (o.isInstancedMesh && /streetlamp/i.test(m.name)) _define(m, 'LOOK_LAMP');
+    else if (o.isInstancedMesh && /streetlamp/i.test(m.name)) setLookClass(m, CLS.LAMP);
   }
   _stampTrees(scene);
 }
@@ -720,6 +771,8 @@ export function tagLookScene(scene, world) {
 // ---------------------------------------------------------------- city map
 // World-edge fade: centre x, z and start / end radius (set with the map)
 const _edge = [0, 0, 1e6, 2e6];
+// The floodlit ring (world.arena): x, z, half-size; 0 when the level has none
+const _arena = [0, 0, 0];
 let _map = null;
 
 /** Build the level's top-down map from its buildings: G = occlusion near
@@ -728,6 +781,8 @@ let _map = null;
 export function buildLookMap(world, edge) {
   _map = null;
   if (edge) { _edge[0] = edge.x; _edge[1] = edge.z; _edge[2] = edge.r0; _edge[3] = edge.r1; }
+  const ar = world.level === 'chicago' ? world.arena : null;
+  _arena[0] = ar ? ar.cx : 0; _arena[1] = ar ? ar.cz : 0; _arena[2] = ar ? ar.half : 0;
   if (!_cfg || _cfg.q < 1 || world.level !== 'chicago' || !world.buildings) {
     set4(IDX.MAPBOX, 0, 0, 0, 0);
     return;
@@ -749,6 +804,8 @@ export function buildLookMap(world, edge) {
     _rasterH(M, b, b.h);
     _splatA(M, b, 1);
   }
+  // The ring's posts, stands and gateway cast too (chicago_arena.js lists them)
+  for (const c of (world.arena && world.arena.casters) || []) { _rasterH(M, c, c.h); _splatA(M, c, 1); }
   M.tanE = lookData[IDX.SUNH * 4 + 2];
   _sweep(M, 1, 1, S - 2, S - 2, Infinity);
   _toBytes(M, 0, 0, S - 1, S - 1);

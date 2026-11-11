@@ -2,7 +2,7 @@
 // usage: node tools/wrestling_sfx/make.mjs [--only substr] [--wav dir] [--no-encode]
 //   --wav: where the 16-bit masters go (default ../devtools/audio/wav, outside the repo)
 // Pipeline per clip: render (seeded) -> DC check -> level (momentary-max LUFS, or peak for
-// the sub layers) -> lookahead limit to -1.5 dBFS -> WAV -> libvorbis q3 + AAC 96k.
+// the sub layers) -> lookahead limit to -1.5 dBFS -> WAV -> libvorbis q3 + AAC 128k.
 // Loops are written at their exact loop length (no fades); the lengths printed at the end
 // go into LOOP_SAMPLES in src/audio.js. Needs ffmpeg on PATH.
 import fs from 'node:fs';
@@ -52,13 +52,15 @@ for (const [name, def] of Object.entries(SOUNDS)) {
         for (let i = 0; i < x.length; i++) { const a = Math.abs(x[i]); if (a > T) x[i] = Math.sign(x[i]) * (T + (C - T) * Math.tanh((a - T) / (C - T))); }
       }
     }
+    if (!def.loop) x = hp(x, 16); // the asymmetric clip can leave a little DC
     x = limit(x, -1.5);
     const L = loudness(x);
     const wav = path.join(wavDir, base + '.wav');
     writeWav(wav, x);
     if (!args.includes('--no-encode')) {
       ffmpeg(['-i', wav, '-c:a', 'libvorbis', '-q:a', '3', '-ac', '1', path.join(outDir, base + '.ogg')]);
-      ffmpeg(['-i', wav, '-c:a', 'aac', '-b:a', '96k', '-ac', '1', '-movflags', '+faststart', path.join(outDir, base + '.m4a')]);
+      // aac_coder fast: ffmpeg's default (twoloop) coder overshoots hard low-frequency onsets by up to 5 dB at these rates
+      ffmpeg(['-i', wav, '-c:a', 'aac', '-b:a', '128k', '-aac_coder', 'fast', '-ac', '1', '-movflags', '+faststart', path.join(outDir, base + '.m4a')]);
     }
     console.log(`${base.padEnd(22)} ${(x.length / SR).toFixed(2).padStart(5)} s  M ${L.mmax.toFixed(1)} LUFS  peak ${db(peak(x)).toFixed(1)} dBFS` +
       `${pre > lin(-1.5) ? `  (peaks shaved ${(db(pre) + 1.5).toFixed(1)} dB)` : ''}  ${((Date.now() - t0) / 1000).toFixed(1)} s`);
@@ -74,7 +76,7 @@ if (!args.includes('--no-encode') && (!only || only.includes('theme'))) {
     const src = path.join(REPO, `assets/music/score_${k}.ogg`), out = path.join(REPO, `assets/music/wr_theme_${k}`);
     const af = 'afade=t=in:st=0:d=0.03,afade=t=out:st=10:d=2';
     ffmpeg(['-ss', String(ss), '-t', '12', '-i', src, '-af', af, '-c:a', 'libvorbis', '-q:a', '4', out + '.ogg']);
-    ffmpeg(['-ss', String(ss), '-t', '12', '-i', src, '-af', af, '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out + '.m4a']);
+    ffmpeg(['-ss', String(ss), '-t', '12', '-i', src, '-af', af, '-c:a', 'aac', '-b:a', '128k', '-aac_coder', 'fast', '-movflags', '+faststart', out + '.m4a']);
     console.log(`wr_theme_${k}  12.00 s from ${ss} s`);
   }
 }

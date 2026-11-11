@@ -210,7 +210,7 @@ export function solvePose(R, P, outQ, outHip) {
     let drop = 0;
     for (let s = 0; s < 2; s++) {
       const L = R.leg[s], fkW = s === 0 ? P.lLfk : P.lRfk;
-      if (fkW > 0.5 || L.kneeOnly) continue;
+      if (fkW > 0.5 || L.kneeOnly || (s === 0 ? P.fLy : P.fRy) > 0.4) continue;   // (a lifted foot does not pull the hips down)
       const hip = _v1.copy(wp[L.iUp]).sub(wp[iH]).applyQuaternion(D[iH]).add(pos[iH]);
       const fx = s === 0 ? P.fLx : P.fRx, fy = s === 0 ? P.fLy : P.fRy, fz = s === 0 ? P.fLz : P.fRz;
       const tx = L.ankle0.x + L.sign * fx - hip.x, ty = L.ankle0.y + fy - hip.y, tz = L.ankle0.z + fz - hip.z;

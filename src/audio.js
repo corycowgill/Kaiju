@@ -96,8 +96,82 @@ const STAGE_FAR = 80;           // silent beyond this (u); the main stage carrie
 const STAGE_FAR_MAIN = 95;
 const STAGE_GAIN = 0.8;
 
-// Monster variant (monsters.js cfg.variant) -> per-kaiju SFX suffix
-const KAIJU_SFX = { gojira: 'gorrak', ghidorah: 'tridon', mecha: 'mechra' };
+// Monster variant (monsters.js cfg.variant) or monster key -> per-kaiju SFX suffix
+// Takes the compressor node's built-in make-up gain back out (see _buildMatchMix)
+const LIMIT_TRIM = 1;
+const KAIJU_SFX = { gojira: 'gorrak', ghidorah: 'tridon', mecha: 'mechra', godzilla: 'gorrak', gorrak: 'gorrak', tridon: 'tridon', mechra: 'mechra' };
+
+// ---- Wrestling pack (Chicago title match). Synthesized offline by tools/wrestling_sfx/
+// (OGG + M4A), fetched only when a match starts, played through the match mix below.
+// name: [variations, gain, maxVoices, cooldown (s), rate jitter (+/-)]
+const WR = {
+  wr_sub:           [3, 1.0,  1, 0.09, 0.03],   // the ONLY low end of an impact; one voice, newest wins (WR_CHOKE)
+  wr_slam:          [3, 1.0,  2, 0.12, 0.06],
+  wr_body:          [3, 0.9,  3, 0.06, 0.08],
+  wr_strike_l:      [4, 0.85, 3, 0.05, 0.09],
+  wr_strike_h:      [3, 1.0,  2, 0.08, 0.07],
+  wr_block:         [2, 0.9,  2, 0.06, 0.06],
+  wr_reversal:      [2, 1.0,  1, 0.25, 0.03],
+  wr_whoosh:        [2, 0.8,  2, 0.10, 0.10],
+  wr_dive:          [1, 0.9,  1, 0.30, 0],      // ends on the hit: no jitter
+  wr_rope_stretch:  [1, 0.8,  1, 0.20, 0.08],
+  wr_rope_twang:    [2, 1.0,  2, 0.15, 0.05],
+  wr_rope_snap:     [1, 1.0,  1, 0.40, 0.04],
+  wr_post:          [2, 0.9,  2, 0.12, 0.04],
+  wr_crash:         [2, 1.0,  2, 0.12, 0.07],
+  wr_dizzy:         [1, 0.7,  1, 0.80, 0.04],
+  wr_bell:          [1, 0.9,  4, 0.12, 0],
+  wr_ui_callout:    [1, 0.8,  1, 0.15, 0.03],
+  wr_ui_big:        [1, 0.9,  1, 0.30, 0.02],
+  wr_ui_prompt:     [1, 0.8,  1, 0.12, 0],
+  wr_slow_in:       [1, 0.8,  1, 0.40, 0],
+  wr_slow_out:      [1, 0.7,  1, 0.40, 0],
+  wr_fin_start:     [1, 1.0,  1, 1.00, 0],
+  wr_fin_riser:     [1, 0.9,  1, 1.00, 0],
+  wr_fin_apex:      [1, 0.9,  1, 0.50, 0],
+  wr_fin_impact:    [1, 1.0,  1, 1.00, 0],
+  wr_loop_crowd_lo: [1, 1.0,  1, 0,    0],
+  wr_loop_crowd_hi: [1, 1.0,  1, 0,    0],
+  wr_loop_chant:    [1, 1.0,  1, 0,    0],
+  wr_crowd_pop:     [3, 0.9,  2, 0.45, 0.04],
+  wr_crowd_ooh:     [2, 0.9,  1, 0.50, 0.04],
+  wr_crowd_gasp:    [2, 0.9,  1, 0.50, 0.03],
+  wr_crowd_boo:     [2, 0.85, 1, 1.20, 0.04],
+  wr_crowd_count:   [3, 1.0,  2, 0.20, 0],      // variation = the number: played by index, never at random
+  wr_crowd_roar:    [1, 1.0,  1, 3.00, 0],
+};
+// Decode order: what the opening bell and the first exchange need comes first
+const WR_FIRST = ['wr_bell', 'wr_loop_crowd_lo', 'wr_loop_crowd_hi', 'wr_strike_l', 'wr_sub', 'wr_slam', 'wr_body', 'wr_crowd_pop', 'wr_strike_h', 'wr_block'];
+const WR_LOOP_SAMPLES = { wr_loop_crowd_lo: 441000, wr_loop_crowd_hi: 441000, wr_loop_chant: 176400 };
+// A new voice of these fades out the one already playing instead of being dropped
+const WR_CHOKE = { wr_sub: 1, wr_dizzy: 1, wr_fin_riser: 1 };
+// While one of these speaks, everything under it gives up its low end (sub side-chain): [dip dB, hold s]
+const WR_SUB_DUCK = { wr_sub: [-9, 0.22], wr_fin_impact: [-12, 0.9], wr_fin_start: [-8, 0.5] };
+const WR_THEME_DIR = 'assets/music/';
+// Kaiju vocal efforts, cut from samples the bank already has (the roars for the two
+// animals, the boss power-up for the machine): kind -> [sample, variation, offset s,
+// length s of sample, rate at start, rate at end, gain]. A falling rate is a yelp or a
+// moan; a low steady one is a strain.
+const VOX = {
+  gorrak: {
+    effort: [['roar_gorrak', 0, 0.38, 0.32, 0.92, 0.84, 0.75], ['roar_gorrak', 1, 0.45, 0.35, 0.9, 0.82, 0.75]],
+    pain:   [['roar_gorrak', 1, 0.70, 0.42, 1.24, 0.96, 0.8], ['roar_gorrak', 0, 0.55, 0.36, 1.2, 0.95, 0.8]],
+    strain: [['roar_gorrak', 0, 0.10, 0.80, 0.72, 0.76, 0.55], ['roar_gorrak', 1, 0.20, 0.85, 0.7, 0.75, 0.55]],
+    ko:     [['roar_gorrak', 1, 0.50, 1.40, 1.0, 0.58, 0.9]],
+  },
+  tridon: {
+    effort: [['roar_tridon', 0, 0.15, 0.30, 0.9, 0.82, 0.75], ['roar_tridon', 0, 0.42, 0.30, 0.88, 0.8, 0.75]],
+    pain:   [['roar_tridon', 1, 0.35, 0.38, 1.18, 0.92, 0.75], ['roar_tridon', 1, 0.70, 0.36, 1.22, 0.95, 0.75]],
+    strain: [['roar_tridon', 0, 0.10, 0.80, 0.74, 0.78, 0.55], ['roar_tridon', 1, 0.95, 0.80, 0.7, 0.74, 0.5]],
+    ko:     [['roar_tridon', 1, 0.90, 1.30, 1.0, 0.6, 0.9]],
+  },
+  mechra: {
+    effort: [['boss_spawn', 0, 0.38, 0.36, 1.15, 1.05, 0.7], ['boss_spawn', 0, 0.60, 0.32, 1.2, 1.08, 0.7]],
+    pain:   [['boss_windup', 0, 0.50, 0.36, 1.35, 0.9, 0.9], ['boss_windup', 1, 0.48, 0.36, 1.3, 0.85, 0.9]],
+    strain: [['boss_spawn', 0, 0.10, 0.85, 0.85, 0.95, 0.5]],
+    ko:     [['boss_spawn', 0, 0.90, 1.50, 1.0, 0.52, 0.8]],
+  },
+};
 
 // Called every frame by the stage mix and the water beds: an AudioParam only gets a new target
 // when it moved by more than eps (each setTargetAtTime queues an automation
@@ -127,6 +201,12 @@ class Audio {
     this._stageV = {};      // stage id -> { src, g, lp, pan } or { dead: true }
     this._stageBuf = {};    // stage id -> AudioBuffer | Promise | 'failed' (lazy)
     this._stageT = 0;
+    this.sfxOut = null;     // where one-shots go: master, or the match mix's classic bus during a match
+    this.wrSfx = {};        // wrestling pack: name -> [AudioBuffer]
+    this._wrTheme = {};     // kaiju -> AudioBuffer | Promise | 'failed'
+    this._mm = null;        // match mix nodes + state (built on the first match)
+    this._wrV = [];         // wrestling voice pool (fixed slots, see _wrSlot)
+    for (let i = 0; i < 28; i++) this._wrV.push({ src: null, g: null, end: 0, prio: 9, name: '' });
   }
 
   // Must be called from a user gesture (click / touchstart) to satisfy autoplay policies.
@@ -138,6 +218,7 @@ class Audio {
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.45;
     this.master.connect(this.ctx.destination);
+    this.sfxOut = this.master;
     // Background music goes through its own duck stage so festival stages can pull it down
     this.musicDuck = this.ctx.createGain();
     this.musicDuck.connect(this.master);
@@ -150,6 +231,7 @@ class Audio {
       if (this.stageBus && this.ctx && this._now() - this._stageT > 0.5) this._fadeStages();
       if (this._shore && this.ctx && this._now() - this._shoreT > 0.5) _aim(this._shore.g.gain, 0, this._now(), 0.4, 0);
       if (this._wade && this.ctx && this._now() - this._wadeT > 0.5) _aim(this._wade.g.gain, 0, this._now(), 0.3, 0);
+      if (this._mm && this._mm.beds && this._now() - this._mm.bedT > 0.5) this._wrBedSilence();
     }, 250);
   }
 
@@ -229,7 +311,7 @@ class Audio {
     src.playbackRate.value = r;
     const g = this.ctx.createGain();
     g.gain.value = baseGain * gain;
-    src.connect(g); g.connect(this.master);
+    src.connect(g); g.connect(this.sfxOut);
     src.onended = () => { try { src.disconnect(); g.disconnect(); } catch (e) {} };
     src.start(at);
     this._lastPlay[name] = at;
@@ -237,8 +319,9 @@ class Audio {
     return true;
   }
 
-  // Kaiju-specific sample name, e.g. beam -> beam_tridon
-  _k(kind) { return kind + '_' + this._kaiju; }
+  // Kaiju-specific sample name, e.g. beam -> beam_tridon. who (optional): a monster key
+  // or variant ('godzilla' / 'gojira', 'ghidorah', 'mecha'); omitted = the player's kaiju.
+  _k(kind, who) { return kind + '_' + (who ? KAIJU_SFX[who] || this._kaiju : this._kaiju); }
 
   // ============ Ambience loops ============
   // Call once per frame with the live enemy list and the kaiju position:
@@ -275,7 +358,7 @@ class Audio {
       if (e.type === 'heli') heli += w; else tank += w;
     }
     this._ambT = this._now();
-    this._setAmbience(Math.min(1, heli * 1.2) * 0.9, Math.min(1, tank * 0.9) * 0.7, 0.5);
+    this._setAmbience(Math.min(1, heli * 1.2) * 0.9, Math.min(1, tank * 0.9) * 0.7, this._mm && this._mm.on ? 0.2 : 0.5);
   }
 
   // Called every frame: a gain only gets a new target when it moved by more
@@ -550,7 +633,7 @@ class Audio {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol), t + 0.012);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(g); g.connect(this.master);
+    osc.connect(g); g.connect(this.sfxOut);
     osc.start(t);
     osc.stop(t + dur + 0.05);
   }
@@ -571,7 +654,7 @@ class Audio {
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(filter); filter.connect(g); g.connect(this.master);
+    src.connect(filter); filter.connect(g); g.connect(this.sfxOut);
     src.start(t);
     src.stop(t + dur + 0.05);
   }
@@ -596,22 +679,24 @@ class Audio {
     this.tone(140, 0.12, 'square', 0.4, -80); this.noise(0.08, 400, 0.4);
   }
 
-  beam() {
-    if (this._play(this._k('beam'))) return;
+  // beam / roar / charge / ult take the kaiju explicitly (who: monster key or variant) so
+  // two kaiju can each have their own voice; without it they are the player's, as before.
+  beam(who) {
+    if (this._play(this._k('beam', who))) return;
     this.tone(220, 0.55, 'sawtooth', 0.4);
     this.tone(110, 0.55, 'square', 0.3);
     this.tone(440, 0.55, 'sine', 0.2, 220);
   }
 
-  roar() {
-    if (this._play(this._k('roar'))) return;
+  roar(who) {
+    if (this._play(this._k('roar', who))) return;
     this.tone(60, 0.7, 'sawtooth', 0.6, 60);
     this.tone(110, 0.7, 'square', 0.4, 30);
     this.noise(0.5, 700, 0.45);
   }
 
-  charge() {
-    if (this._play(this._k('charge'))) return;
+  charge(who) {
+    if (this._play(this._k('charge', who))) return;
     this.tone(180, 0.35, 'sawtooth', 0.55, 180);
     this.noise(0.3, 500, 0.4);
   }
@@ -629,9 +714,9 @@ class Audio {
     this.noise(0.1, 220, 0.18);
   }
 
-  ult() {
+  ult(who) {
     if (this._play('ult')) {
-      this._play(this._k('roar'), 0.6, 0.9, 0.15); // monster cry layered on the blast
+      this._play(this._k('roar', who), 0.6, 0.9, 0.15); // monster cry layered on the blast
       return;
     }
     this.tone(80, 1.2, 'sawtooth', 0.6, 40);
@@ -684,6 +769,7 @@ class Audio {
   }
 
   gameOver() {
+    if (this._mm && this._mm.on && this._mm.won) return; // a won title match ends on its own fanfare
     if (this._play('game_over')) return;
     this.tone(220, 0.3, 'sawtooth', 0.5, -120); this.tone(110, 0.5, 'sawtooth', 0.5, -60);
   }
@@ -754,6 +840,411 @@ class Audio {
     } else if (type === 'jet') {
       if (this._play('kill_jet')) return;
       this.noise(0.6, 1500, 0.45); this.tone(600, 0.6, 'sawtooth', 0.2, -480);
+    }
+  }
+
+
+  // ============ Wrestling match mix (Chicago title match) ============
+  // Nothing here exists until matchBegin(); matchEnd() puts the graph back exactly as
+  // init() built it, so the classic game is untouched outside a match.
+  //
+  //   classic one-shots (sfxOut) -+
+  //   music (musicDuck) -> music -+-> shelf (sub side-chain) -> lp (slow-mo) -> bedDuck -+
+  //   crowd beds / reactions -----+                                                      +-> master
+  //   wrestling impacts, kaiju voices (fx) ----------------------------------------------+     |
+  //   bell, stings, themes (ui) ---------------------------------------------------------+     |
+  //   master -> limiter (compressor -> make-up trim -> soft clip) -> destination <-------------+
+  _buildMatchMix() {
+    const c = this.ctx, mm = { on: false, won: null, maxVoices: 24, wide: true, vars: 9, beds: null, bedT: 0, chant: null, theme: null, loading: false };
+    const gain = () => c.createGain();
+    mm.pre = gain(); mm.fx = gain(); mm.ui = gain(); mm.crowd = gain(); mm.classic = gain(); mm.music = gain(); mm.bedDuck = gain();
+    mm.shelf = c.createBiquadFilter(); mm.shelf.type = 'lowshelf'; mm.shelf.frequency.value = 140; mm.shelf.gain.value = 0;
+    mm.lp = c.createBiquadFilter(); mm.lp.type = 'lowpass'; mm.lp.frequency.value = 20000; mm.lp.Q.value = 0.5;
+    mm.crowdLp = c.createBiquadFilter(); mm.crowdLp.type = 'lowpass'; mm.crowdLp.frequency.value = 16000; mm.crowdLp.Q.value = 0.5;
+    mm.crowd.connect(mm.crowdLp); mm.crowdLp.connect(mm.shelf);
+    mm.classic.connect(mm.shelf); mm.music.connect(mm.shelf);
+    mm.shelf.connect(mm.lp); mm.lp.connect(mm.bedDuck); mm.bedDuck.connect(mm.pre);
+    mm.fx.connect(mm.pre); mm.ui.connect(mm.pre); mm.pre.connect(this.master);
+    // Limiter for the worst pile-up (finisher + collapses + crowd roar): a fast compressor
+    // does the work, a soft clip guarantees the ceiling. The compressor node adds its own
+    // make-up gain (0 dBFS in -> its curve's output, to the power 0.6); `trim` takes that
+    // back out so anything under the threshold leaves at exactly the level it came in.
+    mm.comp = c.createDynamicsCompressor();
+    mm.comp.threshold.value = -5; mm.comp.knee.value = 4; mm.comp.ratio.value = 20; mm.comp.attack.value = 0.003; mm.comp.release.value = 0.18;
+    mm.trim = gain(); mm.trim.gain.value = LIMIT_TRIM;
+    mm.clip = c.createWaveShaper();
+    const n = 2049, curve = new Float32Array(n), T = 0.8, C = 0.98;
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * 2 - 1, a = Math.abs(x);
+      curve[i] = a <= T ? x : Math.sign(x) * (T + (C - T) * Math.tanh((a - T) / (C - T)));
+    }
+    mm.clip.curve = curve;
+    mm.comp.connect(mm.trim); mm.trim.connect(mm.clip); mm.clip.connect(c.destination);
+    return mm;
+  }
+
+  // A match starts. o: { player, rival (monster keys), phone, low (phone LOW tier) }.
+  // Safe to call again for the next match / a new rival (title defense).
+  matchBegin(o) {
+    if (!this.ctx) return;
+    const mm = this._mm || (this._mm = this._buildMatchMix());
+    const phone = !!(o && o.phone), low = !!(o && o.low);
+    mm.maxVoices = low ? 10 : phone ? 14 : 24;
+    mm.wide = !phone;
+    mm.vars = phone ? 2 : 9;
+    mm.won = null;
+    const t = this._now();
+    if (!mm.on) {
+      mm.on = true;
+      this.sfxOut = mm.classic;
+      try { this.musicDuck.disconnect(); } catch (e) {}
+      this.musicDuck.connect(mm.music);
+      try { this.master.disconnect(); } catch (e) {}
+      this.master.connect(mm.comp);
+    }
+    _aim(mm.music.gain, 1, t, 0.05, 0); _aim(mm.bedDuck.gain, 1, t, 0.05, 0);
+    _aim(mm.lp.frequency, 20000, t, 0.05, 0); _aim(mm.crowdLp.frequency, 16000, t, 0.05, 0);
+    mm.shelf.gain.cancelScheduledValues(t); mm.shelf.gain.setTargetAtTime(0, t, 0.05);
+    this._loadWr();
+    if (!low && o) { this._loadTheme(KAIJU_SFX[o.player]); this._loadTheme(KAIJU_SFX[o.rival]); }
+  }
+
+  // The match is over / torn down: stop everything the match owns, restore the classic graph.
+  matchEnd() {
+    const mm = this._mm;
+    if (!this.ctx || !mm || !mm.on) return;
+    const t = this._now();
+    for (let i = 0; i < this._wrV.length; i++) if (this._wrV[i].src) this._wrKill(this._wrV[i], t, 0.15);
+    this._wrStopLoops(0.3);
+    this.themeStop(0.3);
+    mm.on = false; mm.won = null;
+    this.sfxOut = this.master;
+    try { this.musicDuck.disconnect(); } catch (e) {}
+    this.musicDuck.connect(this.master);
+    try { this.master.disconnect(); } catch (e) {}
+    this.master.connect(this.ctx.destination);
+    _aim(mm.music.gain, 1, t, 0.05, 0); _aim(mm.bedDuck.gain, 1, t, 0.05, 0); _aim(mm.lp.frequency, 20000, t, 0.05, 0);
+  }
+
+  // The result is in (true = the player won): decides whether game.js's gameOver() sting plays.
+  matchResult(won) { if (this._mm) this._mm.won = !!won; }
+
+  // Fetch + decode the wrestling pack (first match only; later calls top up missing clips).
+  async _loadWr() {
+    const mm = this._mm;
+    if (!this.ctx || !mm || mm.loading) return;
+    mm.loading = true;
+    const probe = document.createElement('audio');
+    const exts = probe.canPlayType && probe.canPlayType('audio/ogg; codecs="vorbis"') ? ['ogg', 'm4a'] : ['m4a', 'ogg'];
+    const names = WR_FIRST.concat(Object.keys(WR).filter((n) => !WR_FIRST.includes(n)));
+    const jobs = [];
+    // phones keep two takes of each sound (decoded RAM); the count shouts are never trimmed
+    for (let pass = 0; pass < 2; pass++) for (const name of names) {
+      const n = WR[name][0], keep = name === 'wr_crowd_count' ? n : Math.min(n, mm.vars);
+      for (let i = pass ? 1 : 0; i < (pass ? keep : 1); i++) {
+        if (!(this.wrSfx[name] && this.wrSfx[name][i])) jobs.push([name, i, n > 1 ? `${name}_${i + 1}` : name]);
+      }
+    }
+    const worker = async () => {
+      while (jobs.length) {
+        const [name, i, base] = jobs.shift();
+        for (const ext of exts) {
+          try {
+            const arr = await cachedFetch(SFX_DIR + base + '.' + ext);
+            const buf = await new Promise((resolve, reject) => { this.ctx.decodeAudioData(arr, resolve, reject); });
+            buf._ext = ext;
+            (this.wrSfx[name] || (this.wrSfx[name] = []))[i] = buf;
+            break;
+          } catch (e) { /* try next format */ }
+        }
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    mm.loading = false;
+  }
+
+  _loadTheme(k) {
+    if (!k || this._wrTheme[k]) return;
+    const probe = document.createElement('audio');
+    const exts = probe.canPlayType && probe.canPlayType('audio/ogg; codecs="vorbis"') ? ['ogg', 'm4a'] : ['m4a', 'ogg'];
+    this._wrTheme[k] = (async () => {
+      for (const ext of exts) {
+        try {
+          const arr = await cachedFetch(WR_THEME_DIR + 'wr_theme_' + k + '.' + ext);
+          this._wrTheme[k] = await new Promise((resolve, reject) => { this.ctx.decodeAudioData(arr, resolve, reject); });
+          return;
+        } catch (e) { /* try next format */ }
+      }
+      this._wrTheme[k] = 'failed';
+    })();
+  }
+
+  // ---- voice pool: a fixed number of slots per tier (24 desktop / 14 phone / 10 phone LOW).
+  // prio 0 = must play (bell, count, finisher), 1 = big impacts, 2 = crowd reactions,
+  // 3 = strikes and voices, 4 = detail. A full pool gives a new sound the slot of the
+  // least important voice below its own priority (30 ms fade); if there is none, the new
+  // sound is the one that is dropped.
+  _wrSlot(prio, t) {
+    const V = this._wrV, n = this._mm.maxVoices;
+    let worst = null;
+    for (let i = 0; i < n; i++) {
+      const v = V[i];
+      if (!v.src || v.end <= t) return v;
+      if (!worst || v.prio > worst.prio || (v.prio === worst.prio && v.end < worst.end)) worst = v;
+    }
+    if (!worst || worst.prio <= prio) return null;
+    this._wrKill(worst, t, 0.03);
+    return worst;
+  }
+
+  _wrKill(v, t, fade) {
+    if (!v.src) return;
+    try {
+      v.g.gain.cancelScheduledValues(t);
+      v.g.gain.setTargetAtTime(0, t, fade / 3);
+      v.src.stop(t + fade + 0.02);
+    } catch (e) {}
+    v.src = null; v.end = 0;
+  }
+
+  // Start a buffer on a pool slot. bus 0 impacts / voices, 1 crowd, 2 ceremony + UI.
+  // dur > 0 plays that much of the buffer from offset under a short envelope (vocal cuts);
+  // rate1 glides the pitch over the clip.
+  _wrStart(buf, name, gain, rate, at, pan, prio, offset, dur, bus, rate1) {
+    const mm = this._mm, t = this._now(), c = this.ctx;
+    const v = this._wrSlot(prio, t);
+    if (!v) return true;
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = rate;
+    const g = c.createGain();
+    const out = bus === 1 ? mm.crowd : bus === 2 ? mm.ui : mm.fx;
+    let last = g;
+    src.connect(g);
+    if (pan && c.createStereoPanner) { last = c.createStereoPanner(); last.pan.value = Math.max(-1, Math.min(1, pan)); g.connect(last); }
+    last.connect(out);
+    let len = (buf.duration - offset) / rate;
+    if (dur > 0) {
+      // vocal cut: 12 ms in, hold, ease out over the last third; the pitch glides rate -> rate1
+      len = dur / ((rate + rate1) / 2);
+      g.gain.setValueAtTime(0, at);
+      g.gain.linearRampToValueAtTime(gain, at + 0.012);
+      g.gain.setTargetAtTime(0, at + len * 0.62, len * 0.11);
+      src.playbackRate.setValueAtTime(rate, at);
+      src.playbackRate.linearRampToValueAtTime(rate1, at + len);
+      src.start(at, offset, dur * 1.1);
+      src.stop(at + len + 0.02);
+    } else {
+      g.gain.value = gain;
+      src.start(at, offset);
+    }
+    src.onended = () => { try { src.disconnect(); g.disconnect(); if (last !== g) last.disconnect(); } catch (e) {} if (v.src === src) { v.src = null; v.end = 0; } };
+    v.src = src; v.g = g; v.end = at + len; v.prio = prio; v.name = name;
+    return true;
+  }
+
+  // Play a wrestling-pack sound. Returns false only when it is not decoded yet (the caller
+  // falls back to a classic sound); dropped / rate-limited / muted calls return true.
+  // pan -1..1, prio as in _wrSlot, bus 0 impacts, 1 crowd, 2 ceremony / UI, vari >= 0
+  // forces a variation (the count shouts), offset starts that far into the clip.
+  wr(name, gain = 1, rate = 1, when = 0, pan = 0, prio = 3, bus = 0, vari = -1, offset = 0) {
+    const mm = this._mm;
+    if (!this.ctx || !mm || !mm.on) return false;
+    const bank = this.wrSfx[name];
+    if (!bank || !bank[0]) return false;
+    if (this.muted) return true;
+    const row = WR[name], t = this._now(), at = t + when;
+    if (Math.abs(at - (this._lastPlay[name] ?? -1e9)) < row[3]) return true;
+    const V = this._wrV;
+    let live = 0;
+    for (let i = 0; i < V.length; i++) if (V[i].src && V[i].name === name && V[i].end > t) live++;
+    if (live >= row[2]) {
+      if (!WR_CHOKE[name]) return true;
+      for (let i = 0; i < V.length; i++) if (V[i].src && V[i].name === name) this._wrKill(V[i], Math.max(t, at - 0.01), 0.04);
+    }
+    let k = vari;
+    if (k < 0 || !bank[k]) {
+      k = Math.floor(Math.random() * bank.length);
+      if (bank.length > 1 && (k === this._lastPick[name] || !bank[k])) k = (k + 1) % bank.length;
+      if (!bank[k]) k = 0;
+      this._lastPick[name] = k;
+    }
+    const r = rate * (1 + (Math.random() * 2 - 1) * row[4]);
+    this._lastPlay[name] = at;
+    const duck = WR_SUB_DUCK[name];
+    if (duck) {
+      // the sub owns the low end while it speaks: classic SFX, music and crowd dip under 140 Hz
+      const sh = mm.shelf.gain;
+      sh.cancelScheduledValues(at);
+      sh.setTargetAtTime(duck[0] * Math.min(1, gain), at, 0.008);
+      sh.setTargetAtTime(0, at + duck[1], 0.14);
+    }
+    return this._wrStart(bank[k], name, row[1] * gain, r, at, pan, prio, offset, 0, bus, r);
+  }
+
+  // Fade out whatever is playing of one pack sound (the finisher riser at the apex, the dizzy birds)
+  wrStop(name, fade = 0.06) {
+    if (!this.ctx || !this._mm) return;
+    const V = this._wrV, t = this._now();
+    for (let i = 0; i < V.length; i++) if (V[i].src && V[i].name === name) this._wrKill(V[i], t, fade);
+  }
+
+  // A kaiju's vocal effort. who: monster key / variant. kind: 'effort' (strike, throw,
+  // getting up), 'pain', 'strain' (lock-up, lift), 'ko'. Returns false if the source
+  // sample is not loaded.
+  vox(who, kind, gain = 1, pan = 0, when = 0, prio = 3) {
+    const mm = this._mm;
+    if (!this.ctx || !mm || !mm.on) return false;
+    const set = VOX[KAIJU_SFX[who] || this._kaiju], cuts = set && set[kind];
+    if (!cuts) return false;
+    const key = 'vox_' + kind + (KAIJU_SFX[who] || this._kaiju);
+    let k = Math.floor(Math.random() * cuts.length);
+    if (cuts.length > 1 && k === this._lastPick[key]) k = (k + 1) % cuts.length;
+    this._lastPick[key] = k;
+    const cut = cuts[k], bank = this.sfx[cut[0]], buf = bank && (bank[cut[1]] || bank[0]);
+    if (!buf) return false;
+    if (this.muted) return true;
+    const t = this._now(), at = t + when;
+    if (Math.abs(at - (this._lastPlay[key] ?? -1e9)) < 0.18) return true;
+    this._lastPlay[key] = at;
+    const j = 1 + (Math.random() * 2 - 1) * 0.05;
+    return this._wrStart(buf, key, cut[6] * gain, cut[4] * j, at, pan, prio, Math.min(cut[2], Math.max(0, buf.duration - cut[3] - 0.05)), cut[3], 0, cut[5] * j);
+  }
+
+  // ---- crowd beds. Call every frame of a match with the two layer gains (0..1 each;
+  // lo = the arena waiting, hi = on its feet), a playback rate (slow-mo) and a low-pass
+  // (distance from the ring). Desktop runs each layer twice, half a loop apart, panned
+  // left / right for width; phones run one centred copy.
+  crowdBed(lo, hi, rate = 1, lpHz = 16000) {
+    const mm = this._mm;
+    if (!this.ctx || !mm || !mm.on) return;
+    const t = this._now();
+    if (!mm.beds) {
+      const a = this.wrSfx.wr_loop_crowd_lo, b = this.wrSfx.wr_loop_crowd_hi;
+      if (!a || !a[0] || !b || !b[0]) return;
+      mm.beds = { lo: this._wrLoop('wr_loop_crowd_lo', mm.wide), hi: this._wrLoop('wr_loop_crowd_hi', mm.wide) };
+    }
+    mm.bedT = t;
+    const B = mm.beds;
+    _aim(B.lo.g.gain, lo, t, 0.3, 0.004);
+    _aim(B.hi.g.gain, hi, t, 0.3, 0.004);
+    for (let i = 0; i < B.lo.src.length; i++) { _aim(B.lo.src[i].playbackRate, rate, t, 0.12, 0.01); _aim(B.hi.src[i].playbackRate, rate, t, 0.12, 0.01); }
+    _aim(mm.crowdLp.frequency, lpHz, t, 0.3, 150);
+  }
+
+  // The stadium clap-chant loop (momentum full, between falls). level 0..1, called every frame.
+  crowdChant(level) {
+    const mm = this._mm;
+    if (!this.ctx || !mm || !mm.on) return;
+    if (!mm.chant) {
+      const a = this.wrSfx.wr_loop_chant;
+      if (level <= 0 || !a || !a[0]) return;
+      mm.chant = this._wrLoop('wr_loop_chant', false);
+    }
+    _aim(mm.chant.g.gain, level, this._now(), 0.5, 0.004);
+  }
+
+  _wrLoop(name, wide) {
+    const c = this.ctx, g = c.createGain(), buf = this.wrSfx[name][0], src = [], nodes = [];
+    g.gain.value = 0;
+    g.connect(this._mm.crowd);
+    const copies = wide && c.createStereoPanner ? 2 : 1;
+    for (let i = 0; i < copies; i++) {
+      const s = c.createBufferSource();
+      s.buffer = buf; s.loop = true;
+      this._setLoopPoints(s, WR_LOOP_SAMPLES[name]);
+      const len = WR_LOOP_SAMPLES[name] / 44100;
+      if (copies > 1) {
+        // two decorrelated copies at -3 dB each, hard-ish left / right
+        const p = c.createStereoPanner(), h = c.createGain();
+        p.pan.value = i ? 0.75 : -0.75; h.gain.value = 0.7071;
+        s.connect(h); h.connect(p); p.connect(g); nodes.push(h, p);
+      } else s.connect(g);
+      s.start(0, s.loopStart + (i ? len * 0.47 : 0));
+      src.push(s);
+    }
+    return { src, g, nodes };
+  }
+
+  _wrBedSilence() {
+    const mm = this._mm, t = this._now();
+    if (mm.beds) { _aim(mm.beds.lo.g.gain, 0, t, 0.3, 0); _aim(mm.beds.hi.g.gain, 0, t, 0.3, 0); }
+    if (mm.chant) _aim(mm.chant.g.gain, 0, t, 0.3, 0);
+  }
+
+  _wrStopLoops(fade) {
+    const mm = this._mm, t = this._now();
+    for (const L of [mm.beds && mm.beds.lo, mm.beds && mm.beds.hi, mm.chant]) {
+      if (!L) continue;
+      L.g.gain.cancelScheduledValues(t);
+      L.g.gain.setTargetAtTime(0, t, fade / 3);
+      const done = () => { try { for (const s of L.src) s.disconnect(); for (const n of L.nodes) n.disconnect(); L.g.disconnect(); } catch (e) {} };
+      L.src[0].onended = done;
+      for (const s of L.src) { try { s.stop(t + fade + 0.05); } catch (e) {} }
+    }
+    mm.beds = null; mm.chant = null;
+  }
+
+  // ---- entrance / victory theme (12 s of the kaiju's battle score). Returns false if not loaded.
+  theme(who, gain = 0.6) {
+    const mm = this._mm, k = KAIJU_SFX[who];
+    if (!this.ctx || !mm || !mm.on) return false;
+    const buf = this._wrTheme[k];
+    if (!(buf instanceof AudioBuffer)) return false;
+    this.themeStop(0.4);
+    const t = this._now(), src = this.ctx.createBufferSource(), g = this.ctx.createGain();
+    src.buffer = buf;
+    g.gain.value = this.muted ? 0 : gain;
+    src.connect(g); g.connect(mm.ui);
+    const th = { src, g };
+    src.onended = () => { try { src.disconnect(); g.disconnect(); } catch (e) {} if (mm.theme === th) mm.theme = null; };
+    src.start(t);
+    mm.theme = th;
+    return true;
+  }
+
+  themeStop(fade = 1.2) {
+    const mm = this._mm, th = mm && mm.theme;
+    if (!th) return;
+    const t = this._now();
+    mm.theme = null;
+    try {
+      th.g.gain.cancelScheduledValues(t);
+      th.g.gain.setTargetAtTime(0, t, fade / 3);
+      th.src.stop(t + fade + 0.05);
+    } catch (e) {}
+  }
+
+  // ---- mix moves, all safe to call every frame (they only write when the target moved).
+  // music 0..1: the score under the match (ducks for the pin count, the finisher, a theme).
+  // bed 0..1: everything that is not a wrestling impact (hit-stop pulls it down so the hit stands alone).
+  matchDuck(music, bed) {
+    const mm = this._mm;
+    if (!this.ctx || !mm || !mm.on) return;
+    const t = this._now();
+    _aim(mm.music.gain, music, t, 0.12, 0.01);
+    _aim(mm.bedDuck.gain, bed, t, 0.03, 0.01);
+  }
+
+  // Slow motion: the world's top end closes (lpHz, 20000 = open).
+  matchLowpass(lpHz) {
+    const mm = this._mm;
+    if (!this.ctx || !mm || !mm.on) return;
+    _aim(mm.lp.frequency, lpHz, this._now(), 0.06, lpHz * 0.03);
+  }
+
+  // Bell for the opening seconds before the pack has decoded (the integrator's stand-in)
+  bellFallback(when = 0) {
+    if (!this.ctx || this.muted) return;
+    const t = this._now() + when;
+    for (const [f, type, vol, dur] of [[1180, 'triangle', 0.4, 1.1], [1777, 'sine', 0.2, 0.7], [590, 'sine', 0.2, 1.3]]) {
+      const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+      osc.type = type; osc.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g); g.connect(this.sfxOut);
+      osc.start(t); osc.stop(t + dur + 0.05);
     }
   }
 

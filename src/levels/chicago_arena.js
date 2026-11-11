@@ -1509,10 +1509,10 @@ export function createArena(ctx, W) {
       dirV.set(A.cx + p.dx * 60 * s - posV.x, -posV.y, A.cz + p.dz * 60 * s - posV.z);
       const len = dirV.length() * 1.06;
       qB.setFromUnitVectors(down, dirV.normalize());
-      const rad = 30;
+      const rad = 21;
       sclV.set(rad / 0.55, len, rad / 0.55);
       im.setMatrixAt(i, mB.compose(posV, qB, sclV));
-      const k = l.on * (0.03 + 0.19 * tod) * (0.9 + 0.1 * Math.sin(t * 1.3 + i));
+      const k = l.on * (0.012 + 0.075 * tod) * (0.9 + 0.1 * Math.sin(t * 1.3 + i));
       im.setColorAt(i, col.setRGB(1.0 * k, 0.95 * k, 0.82 * k));
     }
     // movers: parked dim over the crowd, sweeping hard on a pop

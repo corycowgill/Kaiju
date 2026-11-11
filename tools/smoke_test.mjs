@@ -262,8 +262,9 @@ if (mode === 'wrestling') await step('wrestling', async () => {
     if (!(W.rival.takeHit(100, 'melee', p.x, p.z) > 0) || !(W.rival.hp < hp0)) fail('wrestling: a player melee hit did not reduce the rival\'s HP');
     if (!qa.events.counts[EV.STRIKE_LANDED]) fail('wrestling: no strike:landed event for the hit');
     qa.force('rival', 'downed', 0.2);
-    for (let f = 0; f < 30; f++) wr.update(1 / 60, 1 / 60);
-    if (W.rival.state !== 'neutral') fail(`wrestling: a forced timed state did not expire (rival is '${W.rival.state}')`);
+    // (a downed fighter may pass through other states on its way up: get-up, its invulnerable window)
+    for (let f = 0; f < 600 && W.rival.state !== 'neutral'; f++) wr.update(1 / 60, 1 / 60);
+    if (W.rival.state !== 'neutral') fail(`wrestling: a forced timed state did not lead back to neutral within 10 s (rival is '${W.rival.state}')`);
     qa.ko('rival');
     for (let f = 0; f < 150 && !over; f++) wr.update(1 / 60, 1 / 60);
     if (!over || over.victory !== true || !over.text || !over.text.title) fail('wrestling: a rival KO did not end the match as a win with result text');
