@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.11.135', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.11.137', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -15,7 +15,8 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { KaijuDuelRival, duelHealth, findDuelSpawn } from './kaijuDuel.js';
+import { KaijuDuelRival, duelHealth, findDuelSpawns } from './kaijuDuel.js';
+import { KaijuWrestling } from './kaijuWrestling.js';
 import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, loadLevelTemplates, loadLevelData, flushPendingGLBBuildings, enableKTX2, cullRubble } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
@@ -871,11 +872,14 @@ function _spawnBossTelegraph(pos, radius, delay) {
       const pulse = 0.5 + 0.5 * Math.sin(t * (8 + 14 * k));
       discMat.opacity = 0.12 + 0.22 * k * pulse;
       ringMat.opacity = 0.55 + 0.45 * pulse;
-      if (t >= delay) {
-        this.dead = true;
-        scene.remove(g);
-        discMat.dispose(); ringMat.dispose();
-      }
+      if (t >= delay) this.cancel();
+    },
+    cancel() {
+      if (this.dead) return;
+      this.dead = true;
+      scene.remove(g);
+      discMat.dispose();
+      ringMat.dispose();
     },
   };
 }
@@ -1014,6 +1018,7 @@ const world = {
     audio.charge();
     if(!this._fxRoom())return;
     const e=vfx.spawn('kaijuCharge',{world:this,source,life});if(e)this.effects.push(e);
+    return e;
   },
   spawnEnergyImpact: function (pos, normal) {
     audio.beam();
@@ -1021,7 +1026,9 @@ const world = {
     const e=vfx.spawn('beamImpact',{world:this,pos,normal});if(e)this.effects.push(e);
   },
   spawnBossTelegraph: function (pos, radius, delay) {
-    this.effects.push(_spawnBossTelegraph(pos, radius, delay));
+    const effect = _spawnBossTelegraph(pos, radius, delay);
+    this.effects.push(effect);
+    return effect;
   },
   spawnShell: function (origin, dir, type) {
     const profile = SHELL_PROFILES[type] || SHELL_PROFILES.tank;
@@ -1287,6 +1294,10 @@ function _requestPointerLock() {
 const keys = {};
 window.addEventListener('keydown', (e) => {
   if (galleryDialog.open) return;
+  if (wrestling && !state.paused && !state.gameOver && !e.repeat) {
+    if (e.code === 'KeyE') wrestleInput.grab = true;
+    if (e.code === 'KeyF') wrestleInput.kick = true;
+  }
   if(e.code==='Space' && lone && !state.paused && !state.gameOver){
     e.preventDefault();if(!e.repeat&&lone.role==='infantry')lone.jumpRequested=true;
   }
@@ -1359,7 +1370,7 @@ const padInput = {
   lookX: 0, lookY: 0,
   attack: false, sprint: false, soldierFire:false, soldierAim:false, soldierSprint:false,
   // edge-trigger latches: button-X-pressed-this-frame
-  pressed: { beam: false, roar: false, charge: false, stomp: false, ult: false, pause: false },
+  pressed: { beam: false, roar: false, charge: false, stomp: false, ult: false, pause: false, grab: false, kick: false },
   prevDown: {},
 };
 
@@ -1398,6 +1409,8 @@ function readGamepad() {
   padInput.pressed.charge = press(3); // Y
   padInput.pressed.stomp  = press(5); // RB
   padInput.pressed.ult    = press(7) || ((pad.buttons[7]?.value || 0) > 0.6 && !padInput.prevDown[7]); // RT
+  padInput.pressed.grab = press(12); // D-pad up
+  padInput.pressed.kick = press(13); // D-pad down
   padInput.pressed.pause  = press(9) || press(8); // Start / Back
 
   // Cache button-down state for edge-detection next frame
@@ -1638,6 +1651,7 @@ if (joystickEl && joyZone) {
 if (attackBtn) {
   attackBtn.addEventListener('touchstart', (e) => {
     e.preventDefault(); touchInput.attackHeld = true;
+    if (wrestling && !state.gameOver && !state.paused) wrestleInput.punch = true;
   }, { passive: false });
   const endAtk = (e) => { e.preventDefault(); touchInput.attackHeld = false; };
   attackBtn.addEventListener('touchend', endAtk);
@@ -1672,7 +1686,7 @@ document.getElementById('quit-btn')?.addEventListener('click', () => {
 // Camera drag: any touch outside the controls (and the joystick zone) looks
 function isOnControl(target) {
   if (!target || !target.closest) return false;
-  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal');
+  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #vs-moves, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal');
 }
 window.addEventListener('touchstart', (e) => {
   if (!touchUI || state.gameOver || !state.kaiju) return;
@@ -1765,6 +1779,18 @@ const POWER_ICONS = {
 
 let lone = null;
 let duel = null;
+let wrestling = null;
+const wrestleInput = { grab: false, kick: false, punch: false };
+const grapplePrompt = document.getElementById('grapple-prompt');
+const grappleControls = document.getElementById('vs-moves');
+const grappleButton = document.getElementById('vs-grab');
+for (const [id, key] of [['vs-grab', 'grab'], ['vs-kick', 'kick']]) {
+  document.getElementById(id).addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (wrestling && !state.gameOver && !state.paused) wrestleInput[key] = true;
+  });
+}
 const modePicker = document.getElementById('game-mode');
 const rivalPicker = document.getElementById('vs-rival');
 for (const [key, monster] of Object.entries(MONSTERS)) rivalPicker.add(new Option(monster.name, key));
@@ -2341,6 +2367,7 @@ if (/[?&]debug\b/.test(location.search)) {
     graphics:()=>({width:_fitWidth,height:_fitHeight,pixelRatio:_fitPR,resizeCount:_fitCount,cameraCandidates:_cameraQuery.candidates||0}),
     soldier:()=>lone,
     duel:()=>duel,
+    wrestling:()=>wrestling,
     power: (name) => {
       const action = { beam: fireBeam, roar: fireRoar, charge: fireCharge, stomp: fireStomp, ult: fireUltimate }[name];
       if (action && state.kaiju) { state.rage = 100; state.cooldowns[name] = 0; action(); }
@@ -2374,6 +2401,11 @@ async function startGame(key) {
 }
 
 function clearDuel() {
+  wrestling?.reset();
+  wrestling = null;
+  wrestleInput.grab = wrestleInput.kick = wrestleInput.punch = false;
+  grappleControls.hidden = true;
+  document.getElementById('vs-controls-hint').hidden = true;
   if (!duel) return;
   const index = world.enemies.indexOf(duel);
   if (index >= 0) world.enemies.splice(index, 1);
@@ -2391,15 +2423,18 @@ async function startDuel(playerKey, loadingStatus) {
   const key = rivalKey(playerKey);
   const config = MONSTERS[key];
   loadingStatus.textContent = `LOADING RIVAL · ${config.name.toUpperCase()}`;
+  const spawns = findDuelSpawns(world);
   const glb = await loadKaijuModel(key);
   const player = state.kaiju.root;
-  const spawn = findDuelSpawn(world, player.position, state.yaw);
+  player.position.copy(spawns.player);
+  const spawn = spawns.rival;
   state.yaw = Math.atan2(spawn.x - player.position.x, spawn.z - player.position.z);
   player.rotation.y = state.yaw;
   glb.root.rotation.y = state.yaw + Math.PI;
   duel = new KaijuDuelRival(glb, config, spawn, {
     hurtPlayer(amount, source) {
       if (state.gameOver) return;
+      if (duel.kind === 'punch' && !wrestling?.action) wrestling?.markPlayerStagger();
       const dealt = hurtKaiju(amount);
       state.damageFlash = Math.min(1, state.damageFlash + dealt / 85);
       world.shake(.35, .22);
@@ -2413,6 +2448,35 @@ async function startDuel(playerKey, loadingStatus) {
       if (!state.gameOver) gameOver(true);
     },
   });
+  const rivalSize = new THREE.Box3().setFromObject(glb.root).getSize(new THREE.Vector3());
+  glb.root.userData.wrestleHeight = rivalSize.y;
+  player.userData.wrestleHeight = state.kaiju._camH;
+  wrestling = new KaijuWrestling(world, {...state.kaiju, config: state.monsterCfg}, duel, {
+    hurtPlayer: (amount, source) => duel.hurtPlayer(amount, source),
+    feedback(kind) {
+      world.shake(kind === 'slam' ? 1.7 : .42, kind === 'slam' ? .55 : .22);
+      audio.meleeImpact(kind === 'slam' ? 'stomp' : 'punch', 1);
+    },
+    prompt(label) {
+      grapplePrompt.textContent = label;
+      grapplePrompt.hidden = !label;
+      grappleButton.textContent = label.startsWith('HOLDING') ? 'SLAM' : label.startsWith('HELD') ? 'BREAK' : 'GRAB';
+    },
+  });
+  duel.cancelTelegraph = () => {
+    if (duel.telegraph?.cancel) duel.telegraph.cancel();
+    else finishEffect(duel.telegraph);
+    duel.telegraph = null;
+    duel.onWarning('');
+    if (_warnInd?.src === duel) {
+      _warnInd.t = 0;
+      _warnInd.el.style.opacity = '0';
+    }
+  };
+  duel.tryWrestle = () => wrestling?.tryRival();
+  duel.wantsGrab = () => wrestling?.rivalWantsGrab();
+  grappleControls.hidden = !touchUI;
+  document.getElementById('vs-controls-hint').hidden = touchUI;
   markShadowCaster(glb.root);
   scene.add(glb.root);
   world.enemies.push(duel);
@@ -2678,6 +2742,8 @@ function _hideRunHUD() {
   document.getElementById('powers').classList.add('hidden');
   document.getElementById('help').classList.add('hidden');
   document.getElementById('boss-bar').style.display = 'none';
+  grappleControls.hidden = true;
+  document.getElementById('vs-controls-hint').hidden = true;
   const oo = document.getElementById('wave-objective');
   if (oo) oo.style.display = 'none';
   const ce = document.getElementById('combo');
@@ -3307,6 +3373,7 @@ world.spawnArtilleryShell = (origin, target) => {
 function gameOver(victory) {
   if (state.gameOver) return;
   state.gameOver = true;
+  wrestling?.reset();
   // Play death or dance animation on GLB model
   if (state.kaiju && state.kaiju.glb) {
     const glb = state.kaiju.glb;
@@ -3623,7 +3690,7 @@ function beginAtomicBreath(cfg) {
 }
 
 function fireBeam() {
-  if (lone) { return; }
+  if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   const cfg = state.monsterCfg.beam;
   if (state.rage < cfg.cost || state.cooldowns.beam > 0) return;
   state.rage -= cfg.cost;
@@ -3773,7 +3840,7 @@ function fireBeam() {
 }
 
 function fireRoar() {
-  if (lone) { return; }
+  if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   const cfg = state.monsterCfg.roar;
   if (state.rage < cfg.cost || state.cooldowns.roar > 0) return;
   state.rage -= cfg.cost;
@@ -3840,7 +3907,7 @@ function fireRoar() {
 }
 
 function fireCharge() {
-  if (lone) { return; }
+  if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   const cfg = state.monsterCfg.charge;
   if (state.rage < cfg.cost || state.cooldowns.charge > 0) return;
   state.rage -= cfg.cost;
@@ -3909,7 +3976,7 @@ function fireCharge() {
 }
 
 function fireStomp() {
-  if (lone) { return; }
+  if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   if (state.rage < 15 || state.cooldowns.stomp > 0) return;
   state.rage -= 15;
   state.cooldowns.stomp = 1.5;
@@ -3929,7 +3996,7 @@ function fireStomp() {
 }
 
 function fireUltimate() {
-  if (lone) { return; }
+  if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   if (state.rage < 100 || state.cooldowns.ult > 0) return;
   state.rage = 0;
   // Long cooldown to keep ultimates as a real moment of power instead
@@ -4055,6 +4122,7 @@ function fireUltimate() {
 
 function fireMelee() {
   if (lone) { lone.shoot(); return; }
+  if (wrestling) { wrestling.punch(state.yaw); return; }
   if (state.cooldowns.melee > 0) return;
   state.cooldowns.melee = 0.6;
   const forward = _fwd.set(Math.sin(state.yaw), 0, Math.cos(state.yaw));
@@ -4108,6 +4176,21 @@ function updatePlayer(dt) {
     state.yaw   -= padInput.lookX * 0.045;
     state.pitch -= padInput.lookY * 0.030;
     state.pitch = THREE.MathUtils.clamp(state.pitch, lone ? -1.35 : -0.6, lone ? 1.35 : 0.4);
+  }
+  if (wrestling) {
+    if (padInput.pressed.pause) { togglePause(); return; }
+    wrestling.step(dt);
+    if (state.gameOver) return;
+    if (wrestleInput.grab || padInput.pressed.grab) wrestling.grabInput(state.yaw);
+    if (wrestleInput.kick || padInput.pressed.kick) wrestling.kick(state.yaw);
+    if (wrestleInput.punch) wrestling.punch(state.yaw);
+    wrestleInput.grab = wrestleInput.kick = wrestleInput.punch = false;
+    if (wrestling.locked(wrestling.player)) {
+      state.vel.set(0, 0, 0);
+      state._stompJumpT = state._stompJumpD = 0;
+      for (const name of Object.keys(state.cooldowns)) state.cooldowns[name] = Math.max(0, state.cooldowns[name] - dt);
+      return;
+    }
   }
   const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
   // Speed multipliers bumped: walk ~16 (was 11), sprint ~28 (was 18). Combined
@@ -4612,13 +4695,36 @@ function updateCamera(dt=1/60) {
     sun.position.copy(k.root.position).add(_sunOffset);
   }
   k.head.getWorldPosition(_camHead);
-  const desiredDist = 51;
+  let desiredDist = 51;
+  const grapple = wrestling?.action;
+  const paired = grapple?.paired;
+  if (paired) {
+    const a = grapple.attacker.root.position, b = grapple.defender.root.position;
+    _camHead.addVectors(a, b).multiplyScalar(.5);
+    _camHead.y += 14;
+    desiredDist = 51 + Math.min(19, a.distanceTo(b) * .32);
+  }
   _camOffset.set(
     -Math.sin(state.yaw),
     (28 - state.pitch * 25) / desiredDist,
     -Math.cos(state.yaw)
   ).normalize();
 
+  if (paired) {
+    const {x, z} = grapple.direction;
+    _camOffset.set(z, .49, -x).normalize();
+    if (!grapple.cameraSide) {
+      _camRay.set(_camHead, _camOffset);
+      const right = _cameraQuery.nearest(world, _camRay, desiredDist, true, .1)?.distance ?? desiredDist;
+      _camOffset.x *= -1;
+      _camOffset.z *= -1;
+      _camRay.set(_camHead, _camOffset);
+      const left = _cameraQuery.nearest(world, _camRay, desiredDist, true, .1)?.distance ?? desiredDist;
+      grapple.cameraSide = left > right ? -1 : 1;
+    }
+    _camOffset.set(z * grapple.cameraSide - x * .16, .49,
+      -x * grapple.cameraSide - z * .16).normalize();
+  }
   let dist = desiredDist;
   _camRay.set(_camHead, _camOffset);
   const obstruction=_cameraQuery.nearest(world,_camRay,desiredDist+2,true,.1);
@@ -4650,7 +4756,7 @@ function updateCamera(dt=1/60) {
   }
   camera.position.lerp(target, cameraFollowAlpha(dt));
   _camLook.copy(_camHead);
-  _camLook.y += state.pitch * 27;
+  if (!paired) _camLook.y += state.pitch * 27;
   camera.lookAt(_camLook);
 }
 
@@ -4740,6 +4846,7 @@ function updateWorld(dt) {
   for (let i = world.enemies.length - 1; i >= 0; i--) {
     const e = world.enemies[i];
     if (e.dead) { world.enemies.splice(i, 1); continue; }
+    if (e === duel && wrestling?.locked(wrestling.rival)) continue;
     e.update(dt, world, kpos);
   }
   audio.updateAmbience(world.enemies, kpos);
@@ -5377,7 +5484,7 @@ function tick(now) {
     skyMat.uniforms.time.value = world.time;
     if (state.kaiju) {
       if (lone) updateLoneSoldier(dt);
-      else { updatePlayer(dt); updateWorld(dt); }
+      else { updatePlayer(dt); if (!state.paused && !state.gameOver) updateWorld(dt); }
       _dynResTick(dtRaw);
     }
     updateCamera(Math.min(.1,dtRaw));

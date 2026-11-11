@@ -10,37 +10,63 @@ export function duelHealth(config) {
   return config.stats.hp * 4;
 }
 
-export function findDuelSpawn(world, player, yaw) {
-  const query = new StructureRayQuery();
-  const origin = player.clone().setY(13);
-  const ray = new THREE.Ray(origin);
-  const direction = ray.direction;
-  let fallback;
-  for (const radius of [74, 56, 98, 38]) {
-    for (let i = 0; i < 40; i++) {
-      const angle = yaw + Math.ceil(i / 2) * (i % 2 ? 1 : -1) * Math.PI / 20;
-      direction.set(Math.sin(angle), 0, Math.cos(angle));
-      const point = player.clone().setY(0).addScaledVector(direction, radius);
-      const b = world.bounds;
-      if (b && (point.x < b.minX + 10 || point.x > b.maxX - 10 || point.z < b.minZ + 10 || point.z > b.maxZ - 10)) continue;
-      if (world.isWater?.(point.x, point.z)) continue;
+// Chicago's north and south Grant Park lawns, and Tokyo's central plaza
+// and the park across the river. Search locally for clearance from festival props,
+// landmark footprints and quality-dependent buildings.
+const SPAWN_AREAS = {
+  chicago: [
+    {x: -31, z: -169, minX: -50, maxX: -12, minZ: -178, maxZ: -146},
+    {x: -38, z: 173, minX: -49, maxX: -29, minZ: 151, maxZ: 181},
+  ],
+  tokyo: [
+    {x: 0, z: 0, minX: -25, maxX: 25, minZ: -25, maxZ: 25},
+    {x: 200, z: 200, minX: 180, maxX: 220, minZ: 180, maxZ: 220},
+  ],
+};
 
-      let occupied = false;
-      const check = building => {
-        if (!building.destroyed && Math.abs(building.x - point.x) < building.w / 2 + 10 &&
-            Math.abs(building.z - point.z) < building.d / 2 + 10) occupied = true;
-      };
-      if (world.buildingGrid) world.buildingGrid.forEachNear(point.x, point.z,
-        10 + Math.max(world.buildingGrid.maxHalfX, world.buildingGrid.maxHalfZ), check);
-      else for (const building of world.buildings || []) check(building);
-      if (occupied) continue;
-      fallback ??= point;
-      if (!query.nearest(world, ray, radius, true)) return point;
+function spawnIsClear(world, x, z) {
+  const clearance = 9;
+  const bounds = world.bounds;
+  if (bounds && (x < bounds.minX + clearance || x > bounds.maxX - clearance ||
+      z < bounds.minZ + clearance || z > bounds.maxZ - clearance)) return false;
+  if (world.isWater?.(x, z)) return false;
+
+  let occupied = false;
+  const check = building => {
+    if (occupied || building.destroyed) return;
+    const dx = Math.max(0, Math.abs(building.x - x) - building.w / 2);
+    const dz = Math.max(0, Math.abs(building.z - z) - building.d / 2);
+    occupied = dx * dx + dz * dz < clearance * clearance;
+  };
+  if (world.buildingGrid) {
+    const grid = world.buildingGrid;
+    grid.forEachNear(x, z, clearance + Math.max(grid.maxHalfX, grid.maxHalfZ), check);
+  } else {
+    for (const building of world.buildings || []) check(building);
+  }
+  return !occupied;
+}
+
+function findOpenSpawn(world, area) {
+  if (spawnIsClear(world, area.x, area.z)) return new THREE.Vector3(area.x, 0, area.z);
+  let best, bestDistance = Infinity;
+  for (let x = area.minX; x <= area.maxX; x += 2) {
+    for (let z = area.minZ; z <= area.maxZ; z += 2) {
+      const distance = (x - area.x) ** 2 + (z - area.z) ** 2;
+      if (distance >= bestDistance || !spawnIsClear(world, x, z)) continue;
+      best = new THREE.Vector3(x, 0, z);
+      bestDistance = distance;
     }
   }
-  if (fallback) return fallback;
-  const [x, z] = world.landPoint?.() || [player.x, player.z + 38];
-  return new THREE.Vector3(x, 0, z);
+  return best;
+}
+
+export function findDuelSpawns(world) {
+  const [first, second] = SPAWN_AREAS[world.level] || SPAWN_AREAS.tokyo;
+  const player = findOpenSpawn(world, first);
+  const rival = findOpenSpawn(world, second);
+  if (!player || !rival) throw new Error('No clear duel spawn in the selected arena');
+  return {player, rival};
 }
 
 export class KaijuDuelRival {
@@ -91,13 +117,13 @@ export class KaijuDuelRival {
     }
   }
 
-  clearShot(world, point, height) {
+  shotBlocker(world, point, height, range = Infinity, padding = 0) {
     this.ray.origin.copy(this.root.position);
     this.ray.origin.y += height;
     this.ray.direction.subVectors(point, this.ray.origin);
     const distance = this.ray.direction.length();
     this.ray.direction.normalize();
-    return !this.cover.nearest(world, this.ray, distance, true);
+    return this.cover.nearest(world, this.ray, Math.min(distance, range), padding === 0, 0, padding);
   }
 
   update(dt, world, player) {
@@ -124,19 +150,7 @@ export class KaijuDuelRival {
       return;
     }
 
-    this.body.copy(player);
-    this.body.y += 12;
-    if (this.timer === 0 && distance <= BEAM_RANGE && this.clearShot(world, this.body, 12)) {
-      if (distance <= MELEE_REACH) {
-        const kind = distance < 20 ? 'stomp' : 'punch';
-        this.windup(world, kind, player);
-        return;
-      }
-      if (this.beamCooldown === 0 && distance > 40) {
-        this.windup(world, 'beam', this.body);
-        return;
-      }
-    }
+    if (this.timer === 0 && (this.tryWrestle?.() || this.chooseAttack(world, player, distance))) return;
 
     const beforeX = position.x, beforeZ = position.z;
     const speed = this.config.stats.speed * (world.isWater?.(position.x, position.z) ? 10 : 17);
@@ -152,9 +166,53 @@ export class KaijuDuelRival {
     this.glb.play(moving ? 'walk' : 'idle');
   }
 
-  windup(world, kind, target) {
+  chooseAttack(world, player, distance) {
+    this.body.copy(player);
+    this.body.y += 12;
+    const shot = this.shotBlocker(world, this.body, 12, BEAM_RANGE);
+    const shotBuilding = shot?.building;
+    const shotDistance = shot?.distance ?? Infinity;
+    if (!shotBuilding && distance <= MELEE_REACH && !(distance > 23 && this.wantsGrab?.())) {
+      this.windup(world, distance < 20 ? 'stomp' : 'punch', player);
+      return true;
+    }
+
+    // Low obstacles and corners can stop movement even when the rival
+    // can see over them. Search the short, body-width approach corridor.
+    this.body.copy(player).setY(3);
+    const pathBuilding = this.shotBlocker(world, this.body, 3, MELEE_REACH, this._bodyR)?.building;
+    const nearby = pathBuilding || (shotDistance <= MELEE_REACH ? shotBuilding : null);
+    if (nearby) {
+      this.aimAtBuilding(nearby);
+      this.windup(world, 'punch', this.point, nearby);
+      return true;
+    }
+    if (this.beamCooldown === 0 && shotBuilding) {
+      this.aimAtBuilding(shotBuilding);
+      this.windup(world, 'beam', this.point, shotBuilding);
+      return true;
+    }
+    if (this.beamCooldown === 0 && distance > 40 && distance <= BEAM_RANGE) {
+      this.body.copy(player);
+      this.body.y += 12;
+      this.windup(world, 'beam', this.body);
+      return true;
+    }
+    return false;
+  }
+
+  aimAtBuilding(building) {
+    this.point.set(building.x, Math.min(12, building.h * .6), building.z);
+  }
+
+  damageBlocker(building, world, baseDamage, fraction) {
+    building.damage(Math.max(baseDamage, (building.maxHp || 0) * fraction), this.point, world);
+  }
+
+  windup(world, kind, target, building = null) {
     this.phase = 'windup';
     this.kind = kind;
+    this.attackBuilding = building;
     this.target.copy(target);
     this.timer = kind === 'beam' ? 1.15 : kind === 'stomp' ? .92 : .72;
     const motion = this.glb.melee?.[kind];
@@ -165,12 +223,12 @@ export class KaijuDuelRival {
 
     if (kind === 'beam') {
       this.beamCooldown = 7;
-      world.spawnKaijuCharge?.(this.head, this.timer);
-      this.onWarning(this.config.beam.name + ' · MOVE SIDEWAYS');
+      this.telegraph = world.spawnKaijuCharge?.(this.head, this.timer);
+      this.onWarning(building ? 'RIVAL TARGETING COVER' : this.config.beam.name + ' · MOVE SIDEWAYS');
     } else {
       this.point.copy(target).setY(.2);
-      world.spawnBossTelegraph?.(this.point, kind === 'stomp' ? 17 : 12, this.timer);
-      this.onWarning(kind === 'stomp' ? 'STOMP · BACK AWAY' : 'PUNCH · DODGE');
+      this.telegraph = world.spawnBossTelegraph?.(this.point, kind === 'stomp' ? 17 : 12, this.timer);
+      this.onWarning(building ? 'RIVAL BREAKING THROUGH' : kind === 'stomp' ? 'STOMP · BACK AWAY' : 'PUNCH · DODGE');
     }
     world.onBossWindup?.(kind === 'beam' ? 'volley' : 'slam', this, this.timer);
   }
@@ -179,6 +237,9 @@ export class KaijuDuelRival {
     this.phase = 'recover';
     this.timer = this.followThrough + (this.kind === 'beam' ? 1.5 : .95);
     this.onWarning('');
+    const building = this.attackBuilding;
+    this.attackBuilding = null;
+    if (building?.destroyed) return;
     if (this.kind === 'beam') {
       this.head.getWorldPosition(this.ray.origin);
       this.ray.direction.subVectors(this.target, this.ray.origin).normalize();
@@ -194,8 +255,23 @@ export class KaijuDuelRival {
       }
       if (cover) {
         this.ray.at(length, this.point);
-        cover.building.damage(cfg.damage * .65, this.point, world);
+        this.damageBlocker(cover.building, world, cfg.damage * 1.1, .45);
         world.spawnExplosion?.(this.point.clone(), .8);
+      }
+      return;
+    }
+
+    if (building) {
+      const position = this.root.position;
+      // Use the near face, even for a long building whose centre is far away.
+      this.point.set(
+        THREE.MathUtils.clamp(position.x, building.x - building.w / 2, building.x + building.w / 2),
+        Math.min(8, building.h * .6),
+        THREE.MathUtils.clamp(position.z, building.z - building.d / 2, building.z + building.d / 2)
+      );
+      if (Math.hypot(position.x - this.point.x, position.z - this.point.z) <= MELEE_REACH + this._bodyR) {
+        world.spawnDustBurst?.(this.point, 10, 10);
+        this.damageBlocker(building, world, this.config.stats.melee * 3, .32);
       }
       return;
     }
@@ -210,7 +286,7 @@ export class KaijuDuelRival {
     const inReach = Math.hypot(player.x - position.x, player.z - position.z) < MELEE_REACH + 5;
     this.body.copy(player);
     this.body.y += 8;
-    if (inWarning && inReach && player.y < (stomp ? 8 : 17) && this.clearShot(world, this.body, 8)) {
+    if (inWarning && inReach && player.y < (stomp ? 8 : 17) && !this.shotBlocker(world, this.body, 8)) {
       this.hurtPlayer(this.config.stats.melee * (stomp ? 1.35 : 1.1), this.root.position);
     }
   }

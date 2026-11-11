@@ -229,6 +229,16 @@ await new Promise((r) => setTimeout(r, 300)); // flipbooks + ground textures (as
 for (const e of globalThis.__loadErrors || []) fail(`__loadErrors: ${e.bug ? 'CODE BUG ' : ''}${e.where} ${e.url}: ${e.message}`);
 if (!res || !res.buildings || !res.buildings.length) fail('buildCity returned no buildings');
 
+if (res?.buildings?.length) {
+  const {findDuelSpawns} = await import('../src/kaijuDuel.js');
+  const {player, rival} = findDuelSpawns({
+    level, bounds: res.bounds, isWater: res.isWater, buildings: res.buildings, buildingGrid: res.grid,
+  });
+  if (player.distanceTo(rival) < (level === 'chicago' ? 295 : 245)) fail('VS spawns are too close');
+  log(`VS SPAWNS ${player.toArray()} / ${rival.toArray()}`);
+}
+
+
 // The mech rig's authored toe direction should agree with the actor's muzzle.
 for (const name of ['Mech', 'BossMech']) {
   const actor = spawned[name];

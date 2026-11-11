@@ -9,18 +9,23 @@ export class StructureRayQuery {
     this.visit=b=>{
       this.candidates++;
       if(b.destroyed||b.h<=0)return;
-      this.box.min.set(b.x-b.w/2,0,b.z-b.d/2);this.box.max.set(b.x+b.w/2,b.h,b.z+b.d/2);
-      if(this.skipContaining&&this.box.containsPoint(this.ray.origin))return;
-      if(!this.ray.intersectBox(this.box,this.point))return;
+      const x = b.w / 2 + this.padding, z = b.d / 2 + this.padding;
+      this.box.min.set(b.x - x, 0, b.z - z);
+      this.box.max.set(b.x + x, b.h, b.z + z);
+      if (this.box.containsPoint(this.ray.origin)) {
+        if (this.skipContaining) return;
+        if (this.padding > 0) this.point.copy(this.ray.origin);
+        else if (!this.ray.intersectBox(this.box, this.point)) return;
+      } else if (!this.ray.intersectBox(this.box, this.point)) return;
       const d2=this.point.distanceToSquared(this.ray.origin);
       if(d2<this.minDistance*this.minDistance||d2>=this.result.distance*this.result.distance)return;
       this.result.building=b;this.result.distance=Math.sqrt(d2);this.result.point.copy(this.point);
     };
   }
-  nearest(world,ray,maxDistance,skipContaining=false,minDistance=0) {
-    this.ray=ray;this.skipContaining=skipContaining;this.minDistance=minDistance;this.candidates=0;
+  nearest(world,ray,maxDistance,skipContaining=false,minDistance=0,padding=0) {
+    this.ray=ray;this.skipContaining=skipContaining;this.minDistance=minDistance;this.padding=padding;this.candidates=0;
     this.result.building=null;this.result.distance=maxDistance;
-    if(world.buildingGrid?.forEachRay)world.buildingGrid.forEachRay(ray,maxDistance,this.visit);
+    if(world.buildingGrid?.forEachRay)world.buildingGrid.forEachRay(ray,maxDistance,this.visit,padding);
     else for(const b of world.buildings||[])this.visit(b);
     return this.result.building?this.result:null;
   }

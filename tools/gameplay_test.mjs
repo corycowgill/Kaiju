@@ -500,16 +500,126 @@ test('VS rival telegraphs a beam and only applies damage on release', async () =
   assert.equal(beams, 1);
 });
 
-test('VS rival spawn selects a clear dry position inside the map', async () => {
-  const {findDuelSpawn} = await import('../src/kaijuDuel.js');
-  const player = new THREE.Vector3();
+test('VS spawns use opposite Grant Park lawns and separated Tokyo openings', async () => {
+  const {findDuelSpawns} = await import('../src/kaijuDuel.js');
   const world = {
-    bounds: {minX: -110, maxX: 110, minZ: -110, maxZ: 110},
-    isWater: (x, z) => z > 45,
-    buildings: [{x: 0, z: 28, w: 12, d: 14, h: 25}],
+    level: 'chicago',
+    bounds: {minX: -330, maxX: 330, minZ: -330, maxZ: 330},
+    isWater: x => x > 60,
+    buildings: [{x: -31, z: -169, w: 6, d: 6, h: 7}],
   };
-  const spawn = findDuelSpawn(world, player, 0);
-  assert.ok(!world.isWater(spawn.x, spawn.z));
-  assert.ok(Math.abs(spawn.x) <= 100 && Math.abs(spawn.z) <= 100);
-  assert.ok(spawn.distanceTo(player) >= 38);
+  const chicago = findDuelSpawns(world);
+  assert.ok(chicago.player.z < -146 && chicago.rival.z > 150);
+  assert.ok(chicago.player.distanceTo(chicago.rival) > 300);
+  assert.ok(chicago.player.distanceTo(new THREE.Vector3(-31, 0, -169)) >= 9);
+  assert.ok(!world.isWater(chicago.player.x, chicago.player.z));
+  assert.ok(!world.isWater(chicago.rival.x, chicago.rival.z));
+  const tokyo = findDuelSpawns({...world, level: 'tokyo', isWater: () => false});
+  assert.ok(tokyo.player.distanceTo(tokyo.rival) > 250);
+});
+
+test('VS rival demolishes near and ranged blockers before attacking the player', async () => {
+  const {KaijuDuelRival} = await import('../src/kaijuDuel.js');
+  const {MONSTERS} = await import('../src/monsters.js');
+  for (const [x, z, h, attack] of [[9, 17, 7, 'punch'], [0, 57, 25, 'beam']]) {
+    const root = new THREE.Group(), head = new THREE.Object3D();
+    head.position.y = 12;
+    root.add(head);
+    let playerHits = 0, structureHits = 0;
+    const rival = new KaijuDuelRival({
+      root, head, actions: {}, mixer: {update() {}}, play() {}, playOnce() { return true; },
+    }, MONSTERS.mecha, new THREE.Vector3(), {
+      hurtPlayer() { playerHits++; }, onWarning() {}, onDefeat() {},
+    });
+    const grid = new BuildingGrid(20);
+    const building = {x, z, h, w: 8, d: 10, maxHp: 100, damage() {
+      structureHits++;
+      this.destroyed = true;
+      grid.remove(this);
+    }};
+    grid.add(building);
+    const world = {buildings: [building], buildingGrid: grid, spawnBeam() {}};
+    const player = new THREE.Vector3(0, 0, 100);
+    rival.timer = 0;
+    rival.update(1 / 60, world, player);
+    assert.equal(rival.kind, attack);
+    assert.equal(rival.attackBuilding, building);
+    assert.equal(structureHits, 0);
+    rival.update(1.2, world, player);
+    assert.equal(structureHits, 1);
+    assert.equal(playerHits, 0);
+    assert.ok(building.destroyed);
+    rival.update(3, world, player);
+    rival.beamCooldown = 0;
+    rival.update(1 / 60, world, player);
+    assert.equal(rival.kind, 'beam');
+    assert.equal(rival.attackBuilding, null);
+    rival.update(1.2, world, player);
+    assert.equal(playerHits, 1);
+  }
+});
+
+async function wrestlingFixture(buildings = []) {
+  const {KaijuWrestling} = await import('../src/kaijuWrestling.js');
+  const {MONSTERS} = await import('../src/monsters.js');
+  const actor = config => ({
+    root: new THREE.Group(), config,
+    glb: { resetAnim() {}, mixer: {update() {}}, playOnce() {}, play() {},
+      melee: {punch: {name:'punch', duration:1, contact:.4}} },
+  });
+  const player = actor(MONSTERS.godzilla), rival = actor(MONSTERS.mecha);
+  rival.root.position.z = 19;
+  rival.root.rotation.y = Math.PI;
+  rival.onWarning = () => {};
+  const result = { rivalHits: [], playerHits: [], effects: [] };
+  rival.damage = amount => result.rivalHits.push(amount);
+  const world = {buildings, bounds:{minX:-100,maxX:100,minZ:-100,maxZ:100}};
+  const wrestling = new KaijuWrestling(world, player, rival, {
+    hurtPlayer: amount => result.playerHits.push(amount),
+    feedback: kind => result.effects.push(kind), prompt() {},
+  });
+  const step = seconds => { for (let i = 0; i < Math.ceil(seconds * 60); i++) wrestling.step(1/60); };
+  return {player, rival, result, wrestling, step};
+}
+
+test('VS slam lifts the rival and collapses the first building at contact once', async () => {
+  const building = z => ({x:0,z,w:16,d:8,h:35,hp:500,hits:0,
+    damage(amount) {this.hits++;this.hp-=amount;this.destroyed=this.hp<=0;}});
+  const first = building(43), second = building(63);
+  const {wrestling:w,rival,result,step} = await wrestlingFixture([first,second]);
+  w.punch(0);step(.25);assert.equal(result.rivalHits.length,0);
+  step(1);assert.equal(result.rivalHits.length,1);
+  w.grabInput(0);step(.3);
+  assert.equal(w.action.phase,'hold');
+  assert.ok(w.locked(w.player)&&w.locked(w.rival));
+  w.grabInput(0);step(.2);
+  assert.ok(rival.root.position.y>0);assert.equal(first.hits,0);
+  step(1.1);assert.equal(first.hits,1);assert.ok(first.destroyed);assert.equal(second.hits,0);
+  assert.deepEqual(result.effects,['punch','slam']);
+  assert.equal(result.rivalHits.length,2);
+  step(1);assert.equal(w.action,null);assert.equal(first.hits,1);
+});
+
+test('VS grapples can be broken and cover prevents grabbing through a wall', async () => {
+  const {wrestling:w,result,step} = await wrestlingFixture();
+  w.grab(w.rival,w.player);step(.52);
+  assert.equal(w.action.phase,'hold');
+  w.grabInput(0);step(.7);
+  assert.equal(w.action,null);assert.deepEqual(result.playerHits,[]);
+  const blocked = await wrestlingFixture([{x:0,z:9,w:11,d:4,h:20}]);
+  blocked.wrestling.grabInput(0);
+  assert.equal(blocked.wrestling.action.phase,'recover');
+  assert.equal(blocked.wrestling.locked(blocked.wrestling.rival),false);
+});
+
+test('VS dropkick hits once and a miss commits the attacker to recovery', async () => {
+  const hit = await wrestlingFixture();
+  hit.rival.root.position.z=31;hit.wrestling.kick(0);hit.step(.25);
+  assert.equal(hit.result.rivalHits.length,0);
+  hit.step(1);assert.equal(hit.result.rivalHits.length,1);
+  const miss = await wrestlingFixture();
+  miss.rival.root.position.x=40;miss.wrestling.kick(0);miss.step(1);
+  assert.equal(miss.wrestling.action.phase,'recover');
+  assert.ok(miss.wrestling.locked(miss.wrestling.player));
+  assert.equal(miss.result.rivalHits.length,0);
 });

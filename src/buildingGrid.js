@@ -47,10 +47,10 @@ export class BuildingGrid {
   // The grid stores centres. Expand each tested cell by the largest live
   // footprint so a wide building is retained even when its centre is off-ray.
   // Cell/segment slab tests avoid scanning the square around a diagonal ray.
-  forEachRay(ray,distance,cb) {
+  forEachRay(ray,distance,cb,padding=0) {
     if(!(distance>=0)||!Number.isFinite(distance))return;
     const cs=this.cellSize,ox=ray.origin.x,oz=ray.origin.z,dx=ray.direction.x,dz=ray.direction.z;
-    const ex=ox+dx*distance,ez=oz+dz*distance,hx=this.maxHalfX,hz=this.maxHalfZ;
+    const ex=ox+dx*distance,ez=oz+dz*distance,hx=this.maxHalfX+padding,hz=this.maxHalfZ+padding;
     const x0=Math.floor((Math.min(ox,ex)-hx)/cs),x1=Math.floor((Math.max(ox,ex)+hx)/cs);
     const z0=Math.floor((Math.min(oz,ez)-hz)/cs),z1=Math.floor((Math.max(oz,ez)+hz)/cs);
     for(let x=x0;x<=x1;x++)for(let z=z0;z<=z1;z++) {
