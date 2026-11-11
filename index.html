@@ -196,6 +196,8 @@
   @keyframes chipPop { 0% { transform: scale(0.92); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
 
   /* Boss bar (centre column, above the chip) */
+  #vs-warning { color:#ffca8a; font:clamp(12px,2vw,17px) var(--f-display); letter-spacing:.08em; margin-top:5px; }
+  #vs-menu-help { font-size:13px; color:#e5c7ae; margin:6px 8px; }
   #boss-bar { display: none; width: clamp(200px, 40vw, 520px); }
   #boss-name { text-align: center; font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 5px; color: #ff5566; margin-bottom: 3px; }
   .boss-track { height: clamp(8px, 1.6vmin, 14px); background: rgba(30, 0, 0, 0.6); border: var(--stroke-hot); border-radius: var(--r-pill); overflow: hidden; box-shadow: var(--glow); }
@@ -626,6 +628,7 @@
     display: flex; justify-content: space-between;
     border-bottom: 1px solid rgba(255,255,255,0.06);
   }
+  #gameover .stats-row[hidden] { display:none; }
   #gameover .stats-row b { color: #ffcc66; font-size: 19px; }
   #gameover .stats-divider {
     width: 60%; height: 1px; margin: 12px auto;
@@ -860,7 +863,8 @@
     #gameover .stats-grid { gap: 0 36px; margin: 4px auto; max-width: 480px; }
     #gameover .stats-row { gap: 12px; }
     #gameover .stats-row { font-size: 13px; padding: 2px 0; }
-    #gameover .stats-row b { font-size: 14px; }
+    #gameover .stats-row[hidden] { display:none; }
+  #gameover .stats-row b { font-size: 14px; }
     #gameover .stats-divider { margin: 4px auto; }
     /* body-prefixed: these base rules come later in the sheet */
     body #upgrade-modal { gap: 10px; }
@@ -1281,7 +1285,7 @@
     #menu .levels { margin:0; }
     #menu .level-card { padding:3px 18px; }
     #menu .level-card b { font-size:14px; }
-    #menu .level-card > span,#highscore-display,#menu .studio,#menu .menu-hint,#lone-menu-help,#menu .starring,#menu #trailerBtn { display:none; }
+    #menu .level-card > span,#highscore-display,#menu .studio,#menu .menu-hint,#lone-menu-help,#vs-menu-help,#menu .starring,#menu #trailerBtn { display:none; }
     #menu .deployment-options { margin:4px auto; gap:10px; flex-wrap:nowrap; }
     #menu .deployment-field { min-width:0; gap:3px; }
     #menu .deployment-field span { font-size:10px; letter-spacing:1px; }
@@ -1421,9 +1425,11 @@
   <div class="levels" id="levelCards"></div>
   <div id="highscore-display"></div>
   <div class="deployment-options">
-    <label class="deployment-field"><span>MODE · 作戦</span><select id="game-mode"><option value="havoc">Kaiju Havoc</option><option value="lone">Lone Soldier · First Person</option></select></label>
+    <label class="deployment-field"><span>MODE · 作戦</span><select id="game-mode"><option value="havoc">Kaiju Havoc</option><option value="vs">VS · Kaiju Duel</option><option value="lone">Lone Soldier · First Person</option></select></label>
+    <label class="deployment-field" id="vs-rival-label" hidden><span>AI RIVAL</span><select id="vs-rival"><option value="">Choose automatically</option></select></label>
     <label class="deployment-field" id="lone-role-label" hidden><span>DEPLOY AS · 部隊</span><select id="lone-role"><option value="infantry">Infantry · Rifle</option><option value="tank">Tank · Cannon</option><option value="helicopter">Helicopter · Autocannon</option></select></label>
   </div>
+  <p id="vs-menu-help" hidden>Two Kaiju Enter, One Kaiju Leaves. Pick your fighter and battle a rival in the city.</p>
   <p id="lone-menu-help" hidden>Defend the city against an AI Kaiju. Choose your Kaiju opponent below.</p>
   <div class="starring">STARRING · 出演</div>
   <div class="monsters" id="monsterCards"></div>
@@ -1482,6 +1488,7 @@
     <div id="boss-bar">
       <div id="boss-name">&#9888;&#xFE0E; MEGA-MECH ZX &#9888;&#xFE0E;</div>
       <div class="boss-track"><div id="boss-hp"></div></div>
+      <div id="vs-warning" role="status" hidden></div>
     </div>
     <div id="wave-objective">
       <span class="obj-tag">目標</span>
@@ -1495,7 +1502,7 @@
     <div id="stats">
       <div class="label">SCORE <span class="jp-sub">得点</span></div>
       <div id="score">0</div>
-      <div class="stat-line"><span class="label">WAVE <span class="jp-sub">波</span></span><b id="waveText">1</b><span class="label">· <b id="bldText">0</b> RAZED</span></div>
+      <div class="stat-line"><span id="wave-label" class="label">WAVE <span class="jp-sub">波</span></span><b id="waveText">1</b><span id="vs-hud-tag" class="label" hidden>VS</span><span class="label">· <b id="bldText">0</b> RAZED</span></div>
       <div id="combo"><div class="combo-track"><div id="combo-bar"></div></div><span id="combo-mult">x1.0</span></div>
     </div>
     <button id="pause-btn" class="hud-btn" type="button" title="Pause (Esc)" aria-label="Pause menu"><i></i><i></i></button>
@@ -1552,7 +1559,7 @@
   <div class="stats-divider"></div>
   <div class="stats-grid">
     <div class="stats-row"><span>High Score</span> <b id="goHighScore">0</b></div>
-    <div class="stats-row"><span>Waves Survived</span> <b id="finalWave">0</b></div>
+    <div class="stats-row"><span id="finalWaveLabel">Waves Survived</span> <b id="finalWave">0</b></div>
     <div class="stats-row"><span>Buildings Razed</span> <b id="finalBuildings">0</b></div>
     <div class="stats-row"><span>Military Destroyed</span> <b id="finalTanks">0</b></div>
     <div class="stats-row"><span>Civilians Trampled</span> <b id="finalCivs">0</b></div>
@@ -1650,46 +1657,47 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.134",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.134",
-    "./src/audio.js": "./src/audio.js?v=1.11.134",
-    "./src/city.js": "./src/city.js?v=1.11.134",
-    "./src/effects.js": "./src/effects.js?v=1.11.134",
-    "./src/carBatch.js": "./src/carBatch.js?v=1.11.134",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.134",
-    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.11.134",
-    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.11.134",
-    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.11.134",
-    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.11.134",
-    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.11.134",
-    "./src/modelGallery.js": "./src/modelGallery.js?v=1.11.134",
-    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.11.134",
-    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.11.134",
-    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.11.134",
-    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.11.134",
-    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.11.134",
-    "./src/game.js": "./src/game.js?v=1.11.134",
-    "./src/intro.js": "./src/intro.js?v=1.11.134",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.134",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.134",
-    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.11.134",
-    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.11.134",
-    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.11.134",
-    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.11.134",
-    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.11.134",
-    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.11.134",
-    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.11.134",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.134",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.134",
-    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.11.134",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.134",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.134",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.134",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.134",
-    "./src/quality.js": "./src/quality.js?v=1.11.134",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.134",
-    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.11.134",
-    "./src/waterPlay.js": "./src/waterPlay.js?v=1.11.134"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.135",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.135",
+    "./src/audio.js": "./src/audio.js?v=1.11.135",
+    "./src/city.js": "./src/city.js?v=1.11.135",
+    "./src/effects.js": "./src/effects.js?v=1.11.135",
+    "./src/carBatch.js": "./src/carBatch.js?v=1.11.135",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.135",
+    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.11.135",
+    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.11.135",
+    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.11.135",
+    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.11.135",
+    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.11.135",
+    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.11.135",
+    "./src/modelGallery.js": "./src/modelGallery.js?v=1.11.135",
+    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.11.135",
+    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.11.135",
+    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.11.135",
+    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.11.135",
+    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.11.135",
+    "./src/game.js": "./src/game.js?v=1.11.135",
+    "./src/intro.js": "./src/intro.js?v=1.11.135",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.135",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.135",
+    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.11.135",
+    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.11.135",
+    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.11.135",
+    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.11.135",
+    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.11.135",
+    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.11.135",
+    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.11.135",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.135",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.135",
+    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.11.135",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.135",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.135",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.135",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.135",
+    "./src/quality.js": "./src/quality.js?v=1.11.135",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.135",
+    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.11.135",
+    "./src/waterPlay.js": "./src/waterPlay.js?v=1.11.135"
   }
 }
 </script>
@@ -1703,7 +1711,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.134"></script>
-<script type="module" async src="./src/intro.js?v=1.11.134"></script>
+<script type="module" src="./src/game.js?v=1.11.135"></script>
+<script type="module" async src="./src/intro.js?v=1.11.135"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 // Cached local routes for the lone kaiju. A bounded flood search runs only
 // when the direct route is blocked; movement still checks every short segment.
 export class KaijuPursuit {
-  constructor(){this.path=[];this.next=0;this.cooldown=0;this.goalX=NaN;this.goalZ=NaN;this.plans=0;this.obstacles=[];this.cornerDelay=0;}
+  constructor({allowWater=false}={}){this.allowWater=allowWater;this.path=[];this.next=0;this.cooldown=0;this.goalX=NaN;this.goalZ=NaN;this.plans=0;this.obstacles=[];this.cornerDelay=0;}
   collect(world,x,z,r) {
     this.obstacles.length=0;
     const visit=b=>{if(!b.destroyed&&b.h>0&&!(!b.isBridge&&(b.isFence||b.crushOnContact||b.h<3.4)))this.obstacles.push(b);};
@@ -11,7 +11,7 @@ export class KaijuPursuit {
   blocked(world,x,z,from=null) {
     const b=world.bounds,r=4;
     if(b&&(x<b.minX+r||x>b.maxX-r||z<b.minZ+r||z>b.maxZ-r))return true;
-    if(world.isWater?.(x,z)&&!(from&&world.isWater?.(from.x,from.z)))return true;
+    if(!this.allowWater&&world.isWater?.(x,z)&&!(from&&world.isWater?.(from.x,from.z)))return true;
     for(const o of this.obstacles) {
       if(o.destroyed)continue;
       const hx=o.w/2+r,hz=o.d/2+r;
@@ -35,7 +35,7 @@ export class KaijuPursuit {
       if(near<far&&far>0&&near<1)return false;
     }
     const steps=Math.max(1,Math.ceil(Math.hypot(nx-x,nz-z)));
-    const bounds=world.bounds,wading=from&&world.isWater?.(from.x,from.z);
+    const bounds=world.bounds,wading=this.allowWater||(from&&world.isWater?.(from.x,from.z));
     for(let i=1;i<=steps;i++) {
       const px=x+(nx-x)*i/steps,pz=z+(nz-z)*i/steps;
       if(bounds&&(px<bounds.minX+4||px>bounds.maxX-4||pz<bounds.minZ+4||pz>bounds.maxZ-4))return false;

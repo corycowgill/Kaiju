@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.11.134', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.11.135', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -15,6 +15,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
+import { KaijuDuelRival, duelHealth, findDuelSpawn } from './kaijuDuel.js';
 import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, loadLevelTemplates, loadLevelData, flushPendingGLBBuildings, enableKTX2, cullRubble } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
@@ -812,6 +813,7 @@ for (const p of Object.values(SHELL_PROFILES)) p.mat.color.multiplyScalar(2.6);
 // and stamps the time for out-of-combat regen. Shells are also stopped
 // by buildings (see _shellHitsBuilding), so cover matters.
 function incomingDamageMult() {
+  if (duel) return 1;
   return Math.min(1, 0.20 + 0.16 * Math.max(0, (state.wave || 1) - 1));
 }
 const OOC_REGEN_DELAY = 5.0; // seconds without taking damage
@@ -823,6 +825,7 @@ const OOC_REGEN_RATE  = 2.5; // HP per second once out of combat
 // HP in 5 s) from deleting the player before they can react.
 const DPS_WINDOW = 3.0;
 function dpsCapFrac() {
+  if (duel) return .10;
   const w = state.wave || 1;
   const base = w <= 3 ? 0.025 + 0.005 * (w - 1) : Math.min(0.10, 0.035 + 0.008 * (w - 3));
   // Boss waves (every 4th) get 20% headroom off: the boss fight should be
@@ -1761,25 +1764,41 @@ const POWER_ICONS = {
 };
 
 let lone = null;
+let duel = null;
 const modePicker = document.getElementById('game-mode');
+const rivalPicker = document.getElementById('vs-rival');
+for (const [key, monster] of Object.entries(MONSTERS)) rivalPicker.add(new Option(monster.name, key));
+const vsWarning = document.getElementById('vs-warning');
+const bossName = document.getElementById('boss-name');
+const militaryBossName = bossName.textContent;
+
+function rivalKey(playerKey) {
+  return rivalPicker.value || Object.keys(MONSTERS).find(key => key !== playerKey);
+}
+
 function _syncDeployment() {
   const active = modePicker.value === 'lone';
+  const vs = modePicker.value === 'vs';
+  document.getElementById('vs-rival-label').hidden = !vs;
+  document.getElementById('vs-menu-help').hidden = !vs;
   document.getElementById('lone-role-label').hidden = !active;
   document.getElementById('lone-menu-help').hidden = !active;
-  document.getElementById('startBtn').textContent = active ? 'DEPLOY · LONE SOLDIER' : 'UNLEASH HAVOC';
+  document.getElementById('startBtn').textContent = active ? 'DEPLOY · LONE SOLDIER' : vs ? 'FIGHT · VS' : 'UNLEASH HAVOC';
   document.getElementById('menu').classList.toggle('soldier-deployment',active);
-  document.querySelector('#menu .starring').textContent=active?'CHOOSE YOUR OPPONENT':'STARRING · 出演';
+  document.querySelector('#menu .starring').textContent=active?'CHOOSE YOUR OPPONENT':vs?'CHOOSE YOUR FIGHTER':'STARRING · 出演';
   document.querySelector('#rotate-hint .rh-sub').textContent=active?'Move with your left thumb · Look and fire with your right':'Kaiju Havoc plays sideways: one thumb moves, the other smashes';
   const hints={infantry:'SPACE / A JUMP · RMB / LT AIM · R / X RELOAD',tank:'MOUSE AIM · LMB / RT CANNON · SHIFT MOVE FASTER',helicopter:'E / SPACE ASCEND · Q / C DESCEND · LMB / RT FIRE'};
   document.querySelector('#menu .menu-hint').innerHTML=active
     ? `WASD MOVE · MOUSE LOOK · LMB / RT FIRE<br>${hints[document.getElementById('lone-role').value]}`
     : 'WASD MOVE · MOUSE LOOK · LMB ATTACK · 1-3 POWERS · SPACE STOMP<br>← → / D-PAD to navigate · ENTER / A to confirm · START to launch';
   const monster=MONSTERS[state.monsterKey],role=document.getElementById('lone-role').selectedOptions[0]?.textContent.split(' · ')[0];
+  const matchup = vs && monster ? `${monster.name} vs ${MONSTERS[rivalKey(state.monsterKey)].name}` : null;
   document.getElementById('deployment-selection').textContent=monster
-    ? `${active?`${role} vs `:''}${monster.name} · ${LEVELS[selectedLevel].name}`
+    ? `${matchup || `${active?`${role} vs `:''}${monster.name}`} · ${LEVELS[selectedLevel].name}`
     : active?'CHOOSE YOUR OPPONENT':'CHOOSE YOUR KAIJU';
 }
 modePicker.addEventListener('change',_syncDeployment);
+rivalPicker.addEventListener('change', _syncDeployment);
 document.getElementById('lone-role').addEventListener('change',_syncDeployment);
 _syncDeployment();
 function updateLoneSoldier(dt) {
@@ -2251,6 +2270,7 @@ async function _preuploadTextures(roots) {
 // the city itself), rebuilds a fresh city from the cached templates,
 // resets per-run state and returns to the monster-select menu.
 function restartInPlace() {
+  clearDuel();
   lone?.dispose(); lone = null;
   _teardownScene();
   resetAtomicBlasts();
@@ -2320,6 +2340,7 @@ if (/[?&]debug\b/.test(location.search)) {
   window.__qa = { state, world, camera, renderer,
     graphics:()=>({width:_fitWidth,height:_fitHeight,pixelRatio:_fitPR,resizeCount:_fitCount,cameraCandidates:_cameraQuery.candidates||0}),
     soldier:()=>lone,
+    duel:()=>duel,
     power: (name) => {
       const action = { beam: fireBeam, roar: fireRoar, charge: fireCharge, stomp: fireStomp, ult: fireUltimate }[name];
       if (action && state.kaiju) { state.rage = 100; state.cooldowns[name] = 0; action(); }
@@ -2339,6 +2360,11 @@ async function startGame(key) {
     await _startGameInner(key);
   } catch (e) {
     reportLoadError('startGame', key, e);
+    if (modePicker.value === 'vs') {
+      clearDuel();
+      state.kaiju?.root.removeFromParent();
+      state.kaiju = null;
+    }
     document.getElementById('loading-screen')?.classList.remove('visible');
     if (_hudPrewarm) { _hudPrewarm.restore(); _hudPrewarm = null; }
     toast('LOADING FAILED · TAP START TO RETRY', 'bad');
@@ -2347,7 +2373,64 @@ async function startGame(key) {
   }
 }
 
+function clearDuel() {
+  if (!duel) return;
+  const index = world.enemies.indexOf(duel);
+  if (index >= 0) world.enemies.splice(index, 1);
+  _disposeKaijuGLB(duel.glb);
+  if (state.boss === duel) state.boss = null;
+  duel = null;
+  vsWarning.hidden = true;
+  bossName.textContent = militaryBossName;
+  document.getElementById('wave-label').hidden = false;
+  document.getElementById('waveText').hidden = false;
+  document.getElementById('vs-hud-tag').hidden = true;
+}
+
+async function startDuel(playerKey, loadingStatus) {
+  const key = rivalKey(playerKey);
+  const config = MONSTERS[key];
+  loadingStatus.textContent = `LOADING RIVAL · ${config.name.toUpperCase()}`;
+  const glb = await loadKaijuModel(key);
+  const player = state.kaiju.root;
+  const spawn = findDuelSpawn(world, player.position, state.yaw);
+  state.yaw = Math.atan2(spawn.x - player.position.x, spawn.z - player.position.z);
+  player.rotation.y = state.yaw;
+  glb.root.rotation.y = state.yaw + Math.PI;
+  duel = new KaijuDuelRival(glb, config, spawn, {
+    hurtPlayer(amount, source) {
+      if (state.gameOver) return;
+      const dealt = hurtKaiju(amount);
+      state.damageFlash = Math.min(1, state.damageFlash + dealt / 85);
+      world.shake(.35, .22);
+      addDamageIndicator(source.x, source.z);
+    },
+    onWarning(text) {
+      vsWarning.textContent = text;
+      vsWarning.hidden = !text;
+    },
+    onDefeat() {
+      if (!state.gameOver) gameOver(true);
+    },
+  });
+  markShadowCaster(glb.root);
+  scene.add(glb.root);
+  world.enemies.push(duel);
+  state.boss = duel;
+  state.rage = 55;
+  bossName.textContent = config.name.toUpperCase() + ' · RIVAL';
+  document.getElementById('wave-label').hidden = true;
+  document.getElementById('waveText').hidden = true;
+  document.getElementById('vs-hud-tag').hidden = false;
+  hudRefs.bossHp.style.transform = 'scaleX(1)';
+  document.getElementById('boss-bar').style.display = 'block';
+  loadingStatus.textContent = 'WARMING UP RIVAL';
+  await _linkAsync(glb.root);
+}
+
 async function _startGameInner(key) {
+  clearDuel();
+  const gameMode = modePicker.value;
   // Clean up any previous kaiju from scene (restart / retry)
   if (state.kaiju && state.kaiju.root) {
     scene.remove(state.kaiju.root);
@@ -2358,7 +2441,7 @@ async function _startGameInner(key) {
   state.monsterKey = key;
   state.monsterCfg = MONSTERS[key];
   audio.setMonster(state.monsterCfg.variant);
-  state.maxHp = state.monsterCfg.stats.hp;
+  state.maxHp = gameMode === 'vs' ? duelHealth(state.monsterCfg) : state.monsterCfg.stats.hp;
   state.hp = state.maxHp;
   state.score = 0;
   state.rage = 0;
@@ -2520,6 +2603,7 @@ async function _startGameInner(key) {
   scene.add(sun.target);
   scene.add(k.root);
   state.kaiju = k;
+  if (gameMode === 'vs') await startDuel(key, loadingStatus);
   // _startingGame reset is handled by the outer try/finally in startGame().
 
   document.getElementById('menu').classList.add('hidden');
@@ -2553,7 +2637,7 @@ async function _startGameInner(key) {
   // falls back to a procedural ambient drone if no asset is present.
   audio.startMusic();
 
-  if (modePicker.value === 'lone') {
+  if (gameMode === 'lone') {
     const role = document.getElementById('lone-role').value;
     const viewModel = await loadLoneView(role);
     lone = new LoneSoldier({world, state, camera, role, viewModel,
@@ -2569,6 +2653,8 @@ async function _startGameInner(key) {
     document.getElementById('help').classList.add('hidden');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('minimap').classList.add('hidden');
+  } else if (duel) {
+    showWaveBanner('VS', `${state.monsterCfg.name} vs ${duel.config.name}`);
   } else startWave(1);
   applyEnvironmentStrength(scene,scene.userData.envStrength);
   if(lone){
@@ -3219,6 +3305,7 @@ world.spawnArtilleryShell = (origin, target) => {
 };
 
 function gameOver(victory) {
+  if (state.gameOver) return;
   state.gameOver = true;
   // Play death or dance animation on GLB model
   if (state.kaiju && state.kaiju.glb) {
@@ -3242,16 +3329,27 @@ function gameOver(victory) {
   document.getElementById('goSubtitle').textContent = victory
     ? 'The kaiju reigns supreme.'
     : 'The military has prevailed...';
+  if (duel) {
+    if (!victory) duel.glb.playOnce('dance', .3);
+    const winner = victory ? state.monsterCfg.name : duel.config.name;
+    const loser = victory ? duel.config.name : state.monsterCfg.name;
+    document.getElementById('goTitle').textContent = `${winner.toUpperCase()} WINS`;
+    document.getElementById('goSubtitle').textContent = `${loser} went down in ${LEVELS[world.level || 'tokyo'].name}.`;
+  }
   if (victory) goEl.classList.add('victory');
   else goEl.classList.remove('victory');
   audio.gameOver();
   audio.stopMusic();
-  const isNewHigh = trySetHighScore(state.score);
+  const isNewHigh = !duel && trySetHighScore(state.score);
   const newHighEl = document.getElementById('newHighScore');
   if (newHighEl) newHighEl.style.display = isNewHigh ? 'block' : 'none';
-  document.getElementById('goHighScore').textContent = getHighScore().toLocaleString();
+  const highScore = document.getElementById('goHighScore');
+  highScore.textContent = getHighScore().toLocaleString();
+  highScore.closest('.stats-row').hidden = !!duel;
   document.getElementById('finalScore').textContent = state.score.toLocaleString();
-  document.getElementById('finalWave').textContent = state.wave;
+  document.getElementById('finalWaveLabel').textContent = duel ? 'Duel Result' : 'Waves Survived';
+  document.getElementById('finalWave').textContent = duel ? (victory ? 'Won' : 'Lost') : state.wave;
+  document.getElementById('finalTanks').closest('.stats-row').hidden = !!duel;
   document.getElementById('finalBuildings').textContent = state.buildingsDestroyed;
   const totalKills = state.tanksKilled + state.helisKilled + state.mechsKilled +
                      state.jetsKilled + state.artilleryKilled + state.soldiersKilled +
@@ -3268,7 +3366,7 @@ function gameOver(victory) {
 // isTrample = true means the damage source is a footstep stomp. Armoured
 // enemies (mech, boss) shrug most of it off - the player has to commit
 // to a real attack to kill them rather than just jogging through.
-function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample = false) {
+function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample = false, rivalScale = 1) {
   amount = amount * (state.upgrades?.dmgMult || 1);
   const radiusSq = radius * radius;
   // Spatial-grid query so we only touch buildings in nearby cells
@@ -3296,7 +3394,7 @@ function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample =
     const dz = ep.z - center.z;
     if (dx * dx + dz * dz < radiusSq) {
       const dealt = (isTrample && e.armored) ? amount * 0.15 : amount;
-      e.damage(dealt, world);
+      e.damage(e === duel ? dealt * rivalScale : dealt, world);
       _tmpV1.set(ep.x, ep.y + 4, ep.z);
       world.spawnHitPulse(_tmpV1, 0xffffff);
     }
@@ -3363,7 +3461,7 @@ function _assistTarget(origin, dir, maxAngle, maxDist, groundOnly, maxAngleGroun
 // bounds once (lazily cached; 0.35x the max horizontal extent so arms and
 // cannons don't hold the kaiju off), kaiju radius matches the building
 // collision. Small units are crushed instead (crushUnderfoot).
-const _SOLID_TYPES = new Set(['boss', 'mech']);
+const _SOLID_TYPES = new Set(['boss', 'mech', 'rival']);
 const _solidBox = new THREE.Box3();
 const _solidSize = new THREE.Vector3();
 function resolveBigEnemyCollisions(pos) {
@@ -3451,8 +3549,8 @@ function _atomicDetonate(pos) {
   world.spawnSmokeColumn(_tmpV2.set(pos.x, 0, pos.z).clone(), isMobile ? 28 : 55);
   if (!isMobile) world.spawnExplosion(_tmpV2.set(pos.x, Math.max(pos.y, 6), pos.z).clone(), 3); // fireball + pooled light
   world.shake(1.5, 0.9);
-  damageInRadius(pos, ATOMIC_CORE_R, cfg.damage * 2.2, true);
-  damageInRadius(pos, ATOMIC_OUTER_R, cfg.damage * 0.5, true);
+  damageInRadius(pos, ATOMIC_CORE_R, cfg.damage * 2.2, true, false, .3);
+  damageInRadius(pos, ATOMIC_OUTER_R, cfg.damage * 0.5, true, false, .3);
   waterImpact(world, pos.x, pos.z, 3, 'ult');
   if (typeof audio.atomicBlast === 'function') audio.atomicBlast(isMobile ? 0.8 : 1);
   else audio.explosion(3);
@@ -3483,7 +3581,7 @@ function beginAtomicBreath(cfg) {
     if (enemy && !enemy.dead) {
       _tmpV1.copy(enemy.root.position);
       _tmpV1.y += 3;
-      if (_tmpV1.distanceToSquared(pos) <= 100) enemy.damage(damage * .7, world);
+      if (_tmpV1.distanceToSquared(pos) <= 100) enemy.damage(damage * (enemy === duel ? .55 : .7), world);
     }
     _atomicDetonate(pos);
   }, {
@@ -4701,14 +4799,14 @@ function updateWorld(dt) {
   }
 
   // Slowly regenerate small rage when idle (rageGain upgrade)
-  state.rage = Math.min(state.maxRage, state.rage + dt * 1.5 * state.upgrades.rageGainMult);
+  state.rage = Math.min(state.maxRage, state.rage + dt * (duel ? 5 : 1.5) * state.upgrades.rageGainMult);
   // Passive HP regen if upgraded
   if (state.upgrades.regenRate > 0) {
     state.hp = Math.min(state.maxHp, state.hp + state.upgrades.regenRate * dt);
   }
   if (state._dmgWindow) state._dmgWindow *= Math.exp(-dt / DPS_WINDOW);
   // Out-of-combat regen: after OOC_REGEN_DELAY s without taking damage.
-  if (!state.gameOver && state.hp > 0 && world.time - (state._lastHurtT || 0) > OOC_REGEN_DELAY) {
+  if (!duel && !state.gameOver && state.hp > 0 && world.time - (state._lastHurtT || 0) > OOC_REGEN_DELAY) {
     state.hp = Math.min(state.maxHp, state.hp + OOC_REGEN_RATE * dt);
   }
   // Decay damage flash
@@ -5292,6 +5390,7 @@ function tick(now) {
       state.kaiju.mixer.update(Math.min(0.05, dtRaw));
       if (state._topple) _updateTopple(Math.min(0.05, dtRaw));
     }
+    if (state.gameOver) duel?.updateResult(Math.min(.05, dtRaw));
     updateCamera(Math.min(.1,dtRaw));
   }
   // Menu navigation (gamepad) -- runs whenever the menu or upgrade modal

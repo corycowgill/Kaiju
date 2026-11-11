@@ -462,3 +462,54 @@ test('atomic breath resolves once at the released bolt endpoint and resets pendi
     resetAtomicBlasts();
   }
 });
+
+test('VS rival telegraphs a beam and only applies damage on release', async () => {
+  const {KaijuDuelRival, duelHealth} = await import('../src/kaijuDuel.js');
+  const {MONSTERS} = await import('../src/monsters.js');
+  const root = new THREE.Group(), head = new THREE.Object3D();
+  head.position.y = 12;
+  root.add(head);
+  const warnings = [], hits = [];
+  let beams = 0, results = 0;
+  const config = MONSTERS.mecha;
+  const rival = new KaijuDuelRival({
+    root, head, actions: {}, mixer: {update() {}}, play() {}, playOnce() { return true; },
+  }, config, new THREE.Vector3(), {
+    hurtPlayer: amount => hits.push(amount),
+    onWarning: label => warnings.push(label),
+    onDefeat: () => results++,
+  });
+
+
+  const player = new THREE.Vector3(0, 0, 60);
+  const world = {buildings: [], spawnBeam() { beams++; }};
+  rival.windup(world, 'beam', player.clone().setY(12));
+  rival.update(.6, world, player);
+  assert.equal(beams, 0);
+  assert.deepEqual(hits, []);
+  assert.match(warnings[0], /PLASMA CANNON/);
+  rival.update(.56, world, player);
+  assert.equal(beams, 1);
+  assert.deepEqual(hits, [config.beam.damage * .45]);
+  assert.equal(warnings.at(-1), '');
+  rival.damage(duelHealth(config));
+  rival.damage(500);
+  rival.update(5, world, player);
+  assert.equal(results, 1);
+  assert.equal(rival.hp, 0);
+  assert.equal(beams, 1);
+});
+
+test('VS rival spawn selects a clear dry position inside the map', async () => {
+  const {findDuelSpawn} = await import('../src/kaijuDuel.js');
+  const player = new THREE.Vector3();
+  const world = {
+    bounds: {minX: -110, maxX: 110, minZ: -110, maxZ: 110},
+    isWater: (x, z) => z > 45,
+    buildings: [{x: 0, z: 28, w: 12, d: 14, h: 25}],
+  };
+  const spawn = findDuelSpawn(world, player, 0);
+  assert.ok(!world.isWater(spawn.x, spawn.z));
+  assert.ok(Math.abs(spawn.x) <= 100 && Math.abs(spawn.z) <= 100);
+  assert.ok(spawn.distanceTo(player) >= 38);
+});
