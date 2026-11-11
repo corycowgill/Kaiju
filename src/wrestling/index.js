@@ -50,6 +50,30 @@ export function createWrestling(ctx) {
       e.scale = scale; e.dur = sec;
       bus.emit(EV.TIME_SLOWMO);
     },
+    /**
+     * Swap the rival for another kaiju between matches (a title defense):
+     * loads it (ctx.loadRival), replaces W.rival with a new Fighter at the
+     * old one's spot and re-registers it with game.js. Resolves to the new
+     * Fighter (null if the run was restarted meanwhile). Nobody may keep a
+     * reference to W.rival across 'match:start'.
+     */
+    async swapRival(key) {
+      const old = W.rival;
+      const x = old.pos.x, z = old.pos.z, yaw = old.yaw;
+      ctx.setRivalBody(null);
+      old.dispose();
+      if (old.root.parent) old.root.parent.remove(old.root);
+      const r = await ctx.loadRival(key); // frees the old model
+      if (!W.running || W.rival !== old) return null;
+      W.rival = createFighter(ctx, W, { id: 'rival', key: r.key, cfg: r.cfg, glb: r.glb });
+      W.player.opponent = W.rival; W.rival.opponent = W.player;
+      r.glb.resetAnim();
+      ctx.scene.add(W.rival.root);
+      W.rival.reset(x, z, yaw, r.cfg.stats.hp * 2);
+      ctx.markShadowCaster(W.rival.root);
+      ctx.setRivalBody(W.rival);
+      return W.rival;
+    },
   };
   W.anims = createAnims(ctx, W);
   W.match = createMatch(ctx, W);

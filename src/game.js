@@ -28,10 +28,10 @@ import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadE
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
 import { batchCars, batchMovers } from './carBatch.js';
 import { fireAtomicBreath, updateAtomicBlasts, resetAtomicBlasts } from './atomicBlast.js';
-import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk } from './waterPlay.js';
+import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk, waterDepth } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures, flipbooksReady } from './vfx.js';
 import { createWrestling } from './wrestling/index.js';
-import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, withLookEnvSky, setLookDip } from './look.js';
+import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, lookSunUp, withLookEnvSky, setLookDip } from './look.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
 // ------------------------- High score (localStorage) -------------------------
@@ -1312,7 +1312,12 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => { _setKey(e.code, false); });
 
-window.addEventListener('mousedown', (e) => { if (e.button === 0) state.mouseDown = true; if (e.button < 3) _setKey('Mouse' + e.button, true); });
+window.addEventListener('mousedown', (e) => {
+  if (e.button === 0) state.mouseDown = true;
+  if (e.button < 3) _setKey('Mouse' + e.button, true);
+  // (middle button: a gameplay button outside the classic mode, not autoscroll)
+  if (e.button === 1 && state.kaiju && !state.gameOver && _mode !== MODES.waves) e.preventDefault();
+});
 window.addEventListener('mouseup', (e) => { if (e.button === 0) state.mouseDown = false; if (e.button < 3) _setKey('Mouse' + e.button, false); });
 // The right button is a gameplay button outside the classic mode: no browser menu mid-match
 window.addEventListener('contextmenu', (e) => { if (state.kaiju && !state.gameOver && _mode !== MODES.waves) e.preventDefault(); });
@@ -1404,14 +1409,15 @@ function readGamepad() {
   const isDown = (i) => !!(pad.buttons[i] && pad.buttons[i].pressed);
   const press = (i) => isDown(i) && !padInput.prevDown[i];
   // Continuous
-  padInput.attack = isDown(0); // A held = melee
+  // (a button a mode has reserved - ctx.input.pad.reserve - skips its job here)
+  padInput.attack = !_padReserved.has(0) && isDown(0); // A held = melee
   padInput.sprint = isDown(4) || (!_padReserved.has(6) && (pad.buttons[6]?.value || 0) > 0.4); // LB or LT
   // Edge-triggered: only fire once per press
-  padInput.pressed.beam   = press(2); // X
-  padInput.pressed.roar   = press(1); // B
-  padInput.pressed.charge = press(3); // Y
-  padInput.pressed.stomp  = press(5); // RB
-  padInput.pressed.ult    = press(7) || ((pad.buttons[7]?.value || 0) > 0.6 && !padInput.prevDown[7]); // RT
+  padInput.pressed.beam   = !_padReserved.has(2) && press(2); // X
+  padInput.pressed.roar   = !_padReserved.has(1) && press(1); // B
+  padInput.pressed.charge = !_padReserved.has(3) && press(3); // Y
+  padInput.pressed.stomp  = !_padReserved.has(5) && press(5); // RB
+  padInput.pressed.ult    = !_padReserved.has(7) && (press(7) || ((pad.buttons[7]?.value || 0) > 0.6 && !padInput.prevDown[7])); // RT
   padInput.pressed.pause  = press(9) || (!_padReserved.has(8) && press(8)); // Start / Back
 
   padInput.connected = true;
@@ -2139,7 +2145,7 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
   // collapse of a run linked their instanced variants and made their buffers.
   let destr = null;
   try { destr = stageDestruction(stage); } catch (e) { warnOnce('prewarm|debris', '[prewarm] debris not prewarmed:', e); }
-  try { batchMovers([[spawnCars(stage, 16, 10, 40), (c) => c.root], [destr ? destr.debris : null, (d) => d]], stage, camera, false); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
+  try { batchMovers([[spawnCars(stage, 16, 10, 40).concat(destr ? destr.cars : []), (c) => c.root], [destr ? destr.debris : null, (d) => d]], stage, camera, false); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
   try { spawnCivilians(stage, 2, 10); } catch (e) { warnOnce('prewarm|civs', '[prewarm] civilian spawn failed:', e); }
   // Gameplay set first: kaiju + enemies, and the whole scene (the GLB
   // buildings were just flushed in; after a level switch nothing of the new
@@ -2207,10 +2213,28 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
     });
     stage.add(_vfxStaged);
   }
-  scene.add(stage);
+  // ...and the whole level, in view or not, shown or not (far tiles, the LOD
+  // twins the camera hooks keep hidden, batched parts): what first came into
+  // view during play paid its first draw there. With the quantized GLBs that
+  // is a real cost: ANGLE/D3D11 builds a vertex shader per program x attribute
+  // format set on the first draw that uses the pair (0.4-0.7 s stalls walking
+  // into the Loop on a cold shader cache). Lights are left alone: their count
+  // is in every program's key.
+  const wasHidden = [], wasCulled = [];
+  scene.traverse((o) => {
+    if (o.isLight) return;
+    if (!o.visible) { o.visible = true; wasHidden.push(o); }
+    if ((o.isMesh || o.isPoints || o.isLine) && o.frustumCulled) { o.frustumCulled = false; wasCulled.push(o); }
+  });
+  scene.add(stage); // (after the sweep: the stage's hidden parts are the batched ones, drawn through their batches)
+  const camHook = scene.onBeforeRender;
+  scene.onBeforeRender = () => {}; // the LOD and band switches would hide half of it again
   try { if (composer) composer.render(); else renderer.render(scene, camera); } catch (e) {
     warnOnce('prewarm|frame', '[prewarm] warm frame failed:', e && e.message);
   }
+  scene.onBeforeRender = camHook;
+  for (const o of wasHidden) o.visible = false;
+  for (const o of wasCulled) o.frustumCulled = true;
   scene.remove(stage);
   if (fxLink) {
     stage.remove(_vfxStaged);
@@ -2692,6 +2716,7 @@ function buildPowersBar() {
     hudRefs.cd[it.id] = w.querySelector('.cd-num');
     const fire = (e) => {
       e.preventDefault();
+      _setKey('Power_' + it.id, true); // also a raw button for a mode's own bindings (ctx.input)
       if (_pctl.external || !_pctl.powers || (it.id === 'ult' && !_pctl.ult)) return; // the body is spoken for
       if (it.id === 'beam') fireBeam();
       else if (it.id === 'roar') fireRoar();
@@ -2701,6 +2726,8 @@ function buildPowersBar() {
     };
     pwEl.addEventListener('touchstart', fire, { passive: false });
     pwEl.addEventListener('mousedown', fire);
+    const fireEnd = () => _setKey('Power_' + it.id, false);
+    for (const t of ['touchend', 'touchcancel', 'mouseup', 'mouseleave']) pwEl.addEventListener(t, fireEnd);
   }
 }
 
@@ -4884,6 +4911,7 @@ function updateWorld(dt, dtReal = dt) {
 
   // The game mode's turn: the wave check (waves), or the match (wrestling)
   _mode.update(dt, dtReal);
+  if (_rival) _rivalWorldTick(dt); // the rival kaiju wades and crushes what it stands on, as the player does
 
   // Slowly regenerate small rage when idle (rageGain upgrade)
   if (_rules.passiveRage) state.rage = Math.min(state.maxRage, state.rage + dt * 1.5 * state.upgrades.rageGainMult);
@@ -4922,9 +4950,15 @@ function updateWorld(dt, dtReal = dt) {
   // ----- City animators (pigeon flocks etc.) -----
   if (world.cityAnimators) {
     world.kaijuPos = state.kaiju ? state.kaiju.root.position : null; // L train stomp test
+    // The level's boats and trains know one kaiju position: with a rival
+    // kaiju on the ground, the two take quarter-second turns being it (and
+    // what the rival wrecks is not the player's score)
+    const rivalTurn = _rival && _rival.root.position.y < 8 && (world.time % 0.5) < 0.25;
+    if (rivalTurn) { world.kaijuPos = _rival.root.position; _dmgSrc = 'rival'; }
     for (let i = 0; i < world.cityAnimators.length; i++) {
       world.cityAnimators[i].update(dt, world.time);
     }
+    if (rivalTurn) _dmgSrc = null;
   }
 
   // ----- Boundary barrier pulse -----
@@ -5505,6 +5539,61 @@ function resolveRivalCollision(pos) {
   pos.x += dx / d * push * (1 - give); pos.z += dz / d * push * (1 - give);
   rp.x -= dx / d * push * give; rp.z -= dz / d * push * give;
 }
+// The rival's share of what updatePlayer does for the player's body, every
+// frame it is registered: its own wading state, written onto the body for
+// its owner to apply (waterDepth 0..1, waterSink = how far to lower the root,
+// waterSlow = speed multiplier), ripples and splashes as it moves through
+// water, and whatever it stands on crushed (cars, civilians, crowd, small
+// military) with nobody scoring. Skipped while it is in the air (root above
+// 8 u) or has body.crushes === false.
+const _rw = { depth: 0, x: 0, z: 0, rippleT: 0, wasIn: false };
+function _rivalWorldTick(dt) {
+  const b = _rival, p = b.root.position;
+  const grounded = p.y < 8;
+  // wading
+  const raw = grounded ? waterDepth(p.x, p.z) : 0;
+  _rw.depth += (raw - _rw.depth) * (1 - Math.exp(-dt / 0.4));
+  b.waterDepth = _rw.depth;
+  b.waterSink = 3.2 * _rw.depth;
+  b.waterSlow = 1 - 0.22 * _rw.depth;
+  const moved = Math.hypot(p.x - _rw.x, p.z - _rw.z);
+  _rw.x = p.x; _rw.z = p.z;
+  if (raw > 0 && world.water) {
+    // (the lake's wake trail is a single uniform, the player's: rings and spray instead)
+    if (!_rw.wasIn) waterImpact(world, p.x, p.z, 2, 'stomp');
+    _rw.rippleT -= dt * (moved > 0.02 ? 3 : 1);
+    if (_rw.rippleT <= 0) {
+      _rw.rippleT = 1.6;
+      world.water.ripple?.(p.x, p.z, moved > 0.02 ? 0.5 : 0.2);
+      if (moved > 0.02) world.water.splash?.(p.x, p.z, 0.5 + 0.5 * _rw.depth, 'foot');
+    }
+  }
+  _rw.wasIn = raw > 0;
+  if (!grounded || b.crushes === false || dt <= 0) return;
+  // underfoot
+  const r = KAIJU_BODY_RADIUS + 1, r2 = r * r;
+  _dmgSrc = 'rival';
+  for (let i = 0; i < state.cars.length; i++) {
+    const c = state.cars[i];
+    if (c.dead) continue;
+    const dx = c.root.position.x - p.x, dz = c.root.position.z - p.z;
+    if (dx * dx + dz * dz < r2) c.explode(world);
+  }
+  for (let i = 0; i < state.civilians.length; i++) {
+    const cv = state.civilians[i];
+    if (cv.dead) continue;
+    const dx = cv.root.position.x - p.x, dz = cv.root.position.z - p.z;
+    if (dx * dx + dz * dz < r2) cv.die(world);
+  }
+  for (let i = 0; i < world.enemies.length; i++) {
+    const e = world.enemies[i];
+    if (e.dead || !_CRUSH_TYPES.has(e.type)) continue;
+    const dx = e.root.position.x - p.x, dz = e.root.position.z - p.z;
+    if (dx * dx + dz * dz < r2) e.damage(999, world);
+  }
+  if (world.crowdHit && moved > 0.02) world.crowdHit(p.x, p.z, r2);
+  _dmgSrc = null;
+}
 function _pickRivalKey(playerKey) {
   const others = Object.keys(MONSTERS).filter((k) => k !== playerKey);
   const m = location.search.match(/[?&]rival=(\w+)/); // QA: force the opponent
@@ -5658,6 +5747,24 @@ function spawnRunIn(kind, count = 1, o) {
   return count;
 }
 
+// The powers by id (function declarations: hoisted)
+const _POWER_FN = { beam: fireBeam, roar: fireRoar, charge: fireCharge, stomp: fireStomp, ult: fireUltimate };
+/** Take the result screen back down and carry on with the same run (a title
+ *  defense after a win): the simulation runs again, the run HUD and music
+ *  return. The mode resets its own actors. False if no result screen is up. */
+function continueRun() {
+  if (!state.gameOver || !state.kaiju) return false;
+  state.gameOver = false;
+  document.getElementById('gameover').classList.add('hidden');
+  document.getElementById('hud').classList.remove('hidden');
+  document.getElementById('powers').classList.remove('hidden');
+  if (!touchUI) document.getElementById('help').classList.remove('hidden');
+  else for (const id of ['joy-zone', 'joystick', 'attack-btn', 'sprint-btn']) document.getElementById(id)?.classList.remove('hidden');
+  audio.startMusic();
+  if (!touchUI) _requestPointerLock();
+  return true;
+}
+
 // ---- the player as a mode sees it ----
 const _playerView = {
   get root() { return state.kaiju ? state.kaiju.root : null; },
@@ -5680,6 +5787,14 @@ const _playerView = {
   control: _pctl,
   releaseControl() { Object.assign(_pctl, _PCTL_DEFAULTS); },
   playOnce: kaijuOneShot,
+  /** Fire 'beam' | 'roar' | 'charge' | 'stomp' | 'ult' as its key would (same gate, rage and cooldown checks); true if it fired. */
+  firePower(id) {
+    const fn = _POWER_FN[id];
+    if (!fn || !state.kaiju || state.gameOver || _pctl.external || !_pctl.powers || (id === 'ult' && !_pctl.ult)) return false;
+    const cd = state.cooldowns[id];
+    fn();
+    return state.cooldowns[id] > cd;
+  },
 };
 
 // ---- ctx: the one object the wrestling modules get ----
@@ -5716,6 +5831,8 @@ const ctx = {
     pos.z = THREE.MathUtils.clamp(pos.z, bd.minZ, bd.maxZ);
   },
   isWater(x, z) { return !!world.isWater && world.isWater(x, z); },
+  /** 0 on land, 0..1 with the depth of the water at (x, z). */
+  waterDepth,
   // effects (the budgeted world.spawn* family is on ctx.world)
   fx: {
     dustBurst(pos, radius = 14, count = 8) { const e = makeDustBurst(world, pos, radius, count); if (e) world.effects.push(e); },
@@ -5749,7 +5866,7 @@ const ctx = {
       axis(i) { return padInput.axes[i] || 0; },
       get lt() { return padInput.lt; },
       get rt() { return padInput.rt; },
-      /** Take button i off its classic job (6 = LT sprint, 8 = Back pause) or give it back. */
+      /** Take button i off its classic job (0 A melee, 1 B roar, 2 X beam, 3 Y charge, 5 RB stomp, 6 LT sprint, 7 RT ult, 8 Back pause) or give it back. */
       reserve(i, on = true) { if (on) _padReserved.add(i); else _padReserved.delete(i); },
     },
     /** A new on-screen control: touches on it no longer start a camera drag. */
@@ -5767,7 +5884,7 @@ const ctx = {
   // flow
   rules: _rules,
   addScore, addRage,
-  gameOver, offerUpgrades,
+  gameOver, offerUpgrades, continueRun,
   military: {
     spawn: spawnRunIn,
     get count() { return world.enemies.length; },
@@ -5970,7 +6087,8 @@ function tick(now) {
     );
     // Cull god rays when sun is well off-screen (clip space outside +/-1.4)
     const off = Math.max(Math.abs(_tmpSun.x), Math.abs(_tmpSun.y)) > 1.4 || _tmpSun.z > 1;
-    window.__cinePass.uniforms.godStr.value = off ? 0.0 : (Q_HIGH ? 0.55 : 0.30);
+    // (Chicago: fading out as its sun sets; lit windows would streak instead)
+    window.__cinePass.uniforms.godStr.value = off ? 0.0 : (Q_HIGH ? 0.55 : 0.30) * (_lookLevel === 'chicago' ? lookSunUp() * 0.8 : 1);
   }
   vfx.tick(dt);
   // Behind the title/monster menu, loading screen and pause overlay the

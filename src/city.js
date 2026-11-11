@@ -2883,7 +2883,18 @@ export function cullRubble(camera, all = false) {
  *  buffers and link the instanced variants on its own frame. Call release()
  *  after the warm frame. */
 export function stageDestruction(stage) {
-  const debris = [], ims = [];
+  const debris = [], ims = [], cars = [];
+  // Every vehicle model of the level, near and far (LOD1) geometry: traffic is a
+  // weighted random pick, so a handful of staged cars missed the rare models,
+  // and none of them was far
+  for (const tpl of _carTemplates.filter(_carFor)) {
+    for (const far of [false, true]) {
+      const c = new Car(0, 0, 'z', 1, tpl);
+      if (far) { if (!c._lodMeshes || !c._lodMeshes.length) continue; for (const l of c._lodMeshes) l.mesh.geometry = l.g1; }
+      stage.add(c.root);
+      cars.push(c);
+    }
+  }
   for (const tpl of _debrisTemplates) {
     const d = _cloneDebris(1, tpl);
     stage.add(d);
@@ -2899,7 +2910,7 @@ export function stageDestruction(stage) {
     ims.push(_boxRubble.im);
   }
   return {
-    debris,
+    debris, cars,
     release() {
       for (const d of debris) if (d.parent) d.parent.remove(d);
       // Off the stage with nothing in them: the first real piece re-adds each to the scene
@@ -4896,7 +4907,7 @@ const _lightBarMat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive:
 const markSharedGeom = (g) => { g.userData.shared = true; return g; };
 
 export class Car {
-  constructor(x, z, axis /* 'x' or 'z' */, dir /* +1/-1 */) {
+  constructor(x, z, axis /* 'x' or 'z' */, dir /* +1/-1 */, model = null /* a _carTemplates entry: this one, not a weighted pick */) {
     this.dead = false;
     this.axis = axis; this.dir = dir;
     this.speed = 12 + Math.random() * 8;
@@ -4911,6 +4922,7 @@ export class Car {
       let pick = Math.random() * tpls.reduce((s, t) => s + t.weight, 0);
       let tpl = tpls[tpls.length - 1];
       for (const t of tpls) { pick -= t.weight; if (pick < 0) { tpl = t; break; } }
+      if (model) tpl = model;
       const clone = _cloneCarScene(tpl);
       // Long vehicles (buses, 10 m+; or a model's own minRoadW) keep to the
       // major streets: Loop bus routes run on State, Michigan, Madison,

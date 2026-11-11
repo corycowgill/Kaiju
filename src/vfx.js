@@ -368,6 +368,7 @@ const _FLIP_FS = `
   uniform vec3 tint;
   uniform float opacity;
   uniform float glow;
+  uniform float rot;
   varying vec2 vUv;
   #include <fog_pars_fragment>
   vec4 frameTex(float f) {
@@ -382,6 +383,20 @@ const _FLIP_FS = `
     vec3 col = c.rgb * tint;
     float hot = max(col.r, max(col.g, col.b));
     col *= 1.0 + glow * smoothstep(0.55, 1.0, hot);
+    #ifdef USE_FOG
+    if (uLook[0].w > 0.5) {
+      // Look layer on (look.js): the sheets' smoke was lit for flat daylight.
+      // It takes the scene's ambient instead and catches the low sun on the
+      // side that faces it; flame texels stay as they are.
+      // (only the fire sheets carry glow; smoke and dust sheets are all smoke)
+      float smoke = glow > 0.0 ? 1.0 - smoothstep(0.3, 0.75, hot) : 1.0;
+      float cr = cos(rot), sr = sin(rot);
+      vec2 q = vUv - 0.5;
+      q = vec2(cr * q.x - sr * q.y, sr * q.x + cr * q.y);
+      float lit = clamp(dot(q, (viewMatrix * vec4(uLook[0].xyz, 0.0)).xy) * 1.8 + 0.45, 0.0, 1.0);
+      col = mix(col, col * uLook[19].rgb * 1.5 + uLook[3].rgb * (0.05 + 0.2 * lit * lit), smoke);
+    }
+    #endif
     // Soft quad border (5%) so a card edge never reads as a hard line.
     vec2 eb = smoothstep(vec2(0.0), vec2(0.05), vUv) * smoothstep(vec2(0.0), vec2(0.05), 1.0 - vUv);
     gl_FragColor = vec4(col, c.a * opacity * vNearFade * eb.x * eb.y);
@@ -892,8 +907,11 @@ const _DOME_FS = `
     float n  = texture2D(noiseTex, nuv).r;
     float n2 = texture2D(noiseTex, nuv * 2.0 + vec2(0.13, 0.91)).r;
     float energy = mix(n, n2, 0.5);
-    float fres = 1.0 - max(dot(vNormal, vViewDir), 0.0);
-    fres = pow(fres, 2.0);
+    // abs(): these shells are double-sided and the camera is often inside
+    // one (the ultimate's dome); with max() every back face had fres = 1,
+    // a full-white additive layer across the whole frame
+    float fres = clamp(1.0 - abs(dot(vNormal, vViewDir)), 0.0, 1.0);
+    fres = fres * fres;
     vec3 col = baseColor + vec3(1.0) * energy * 0.4;
     col += vec3(1.0) * fres * 1.5;
     float a = (fres * 0.7 + 0.3 + energy * 0.2) * (1.0 - t01) * 0.7;

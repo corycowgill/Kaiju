@@ -75,7 +75,8 @@ export const EVENTS = Object.freeze({
   // power: 'beam' | 'roar' | 'charge' | 'stomp' | 'ult'. name: the kaiju's own name for it ('ATOMIC BREATH').
   // who telegraphs a power: dur seconds until it fires, radius/x/z = the threatened area (radius 0 = a line toward target).
   'power:telegraph':    P({ who: '', target: '', power: '', name: '', dur: 0, radius: 0, x: 0, z: 0 }),
-  'power:fired':        P({ who: '', power: '', name: '', x: 0, y: 0, z: 0 }),
+  // fired from x/y/z. dirX/dirZ (unit, world) + range: the line of a beam / charge; radius: the area of a roar / stomp / ult (0 = n/a).
+  'power:fired':        P({ who: '', power: '', name: '', x: 0, y: 0, z: 0, dirX: 0, dirZ: 0, range: 0, radius: 0 }),
   'power:hit':          P({ who: '', target: '', power: '', damage: 0, blocked: false, impact: 0, x: 0, y: 0, z: 0 }),
 
   // ---- stagger / stun / block ----
@@ -99,6 +100,9 @@ export const EVENTS = Object.freeze({
   'grab:reversed':      P({ who: '', target: '' }),
   // who broke free of target's hold. by: 'mash' | 'timeout' | 'hit' (a third party hit the holder).
   'grab:escaped':       P({ who: '', target: '', by: '' }),
+  // who (the holder) commits to a move out of the lock-up. type: 'whip' | 'suplex' | 'slam' | 'swing' | 'pickup';
+  // dur = seconds until its throw:launch / lift:start.
+  'grab:move':          P({ who: '', target: '', type: '', dur: 0 }),
   // who hoists target overhead (gorilla press); who may now walk a few steps.
   'lift:start':         P({ who: '', target: '' }),
   // One full turn of a giant swing (turns = count so far).
@@ -120,6 +124,8 @@ export const EVENTS = Object.freeze({
   'rope:rebound':       P({ who: '', side: '', speed: 0, ropeHp: 0, x: 0, z: 0 }),
   // That side's ropes snapped (who = the body that broke them).
   'rope:snap':          P({ who: '', side: '', x: 0, z: 0 }),
+  // who (thrown / whipped) hit corner post `post` (index into W.arena.info.posts, 0..3) at speed u/s. toppled: the post goes down.
+  'post:impact':        P({ who: '', post: 0, speed: 0, impact: 0, toppled: false, x: 0, z: 0 }),
   // who left / re-entered the ring square.
   'ring:out':           P({ who: '', side: '', x: 0, z: 0 }),
   'ring:in':            P({ who: '' }),
@@ -175,7 +181,8 @@ export const EVENTS = Object.freeze({
   'crowd:pop':          P({ kind: '', impact: 0, x: 0, z: 0 }),
   // Big on-screen move name. tier: 'move' | 'landmark' | 'finisher' | 'result'. sub: small second line ('' = none).
   'callout':            P({ text: '', sub: '', tier: 'move', who: '' }),
-  // Context prompt for the player: id 'grab' | 'pickup' | 'pin' | 'kickout' | 'escape' | 'finisher' | 'skip'; show false hides it.
+  // Context prompt for the player: id 'grab' | 'pickup' | 'pin' | 'kickout' | 'escape' | 'getup' (downed: mash) | 'finisher' | 'skip' |
+  // 'defend' (after a win: confirm to start a title defense); show false hides it.
   'prompt':             P({ id: '', show: true }),
   // One commentary-ticker line. tone: 'neutral' | 'hype' | 'shock'.
   'commentary':         P({ text: '', tone: 'neutral' }),

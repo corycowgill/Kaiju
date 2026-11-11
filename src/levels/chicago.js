@@ -1899,7 +1899,8 @@ export function buildChicago(scene, world, opts, K) {
   // ...and off the festival's stages, tents and crowd lawns
   const festPolys = L.fest ? festNoTree(L.fest) : [];
   noTree.push(...festPolys);
-  if (opts.mode === 'wrestling') noTree.push(arenaNoTree()); // nothing planted in the ring or at ringside
+  const ringPoly = opts.mode === 'wrestling' ? arenaNoTree() : null; // nothing planted or stood in the ring or at ringside
+  if (ringPoly) noTree.push(ringPoly);
   // Maggie Daley Park: no trees on the skating ribbon or the play garden
   const MD = REAL && L.mill?.maggieDaley;
   if (MD) noTree.push(MD.skatingRibbon.surfacePolygon, ...MD.playGarden.map((g) => g.polygon));
@@ -1911,7 +1912,8 @@ export function buildChicago(scene, world, opts, K) {
       if (d) noTree.push([[d.at[0] - hw, d.at[1] - hd], [d.at[0] + hw, d.at[1] - hd], [d.at[0] + hw, d.at[1] + hd], [d.at[0] - hw, d.at[1] + hd]]);
     }
   }
-  const onFest = (x, z) => festPolys.some((poly) => pointInPoly(x, z, poly));
+  // (street lamps, kerb trees and furniture keep off the festival's pieces and, in wrestling mode, the ring)
+  const onFest = (x, z) => festPolys.some((poly) => pointInPoly(x, z, poly)) || (!!ringPoly && pointInPoly(x, z, ringPoly));
   const onLandmark = (x, z) => lmBoxes.some(([lx, lz, hw, hd]) => Math.abs(x - lx) < hw && Math.abs(z - lz) < hd)
     || noTree.some((poly) => pointInPoly(x, z, poly));
   for (const q of L.paths) addBatch(ribbon(q.points, -Math.max(0.3, q.width / 2), Math.max(0.3, q.width / 2), 0.04), M.path);
@@ -2527,7 +2529,7 @@ export function buildChicago(scene, world, opts, K) {
   // its ringside crowd go in after the festival (they share its crowdHit).
   const ring = opts.mode === 'wrestling';
   const festF = L.fest && ring ? { ...L.fest, items: L.fest.items.filter((it) => !arenaDisplaces(it)) } : L.fest;
-  if (festF) buildFest(scene, festF, { K, buildings, grid, animators, world, lite, glb, addBatch, polygonGeom, M, S: L.scale || 0.2 });
+  if (festF) buildFest(scene, festF, { K, buildings, grid, animators, world, lite, glb, addBatch, polygonGeom, M, S: L.scale || 0.2, ring });
   if (ring) buildArena(scene, world, { lite, glb, animators, grid, inside: L.fest ? (x, z) => festInside(L.fest, x, z) : null });
 
   const bodiesIM = K.buildGlobalBodies(scene, buildings);

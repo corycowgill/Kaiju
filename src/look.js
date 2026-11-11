@@ -54,7 +54,7 @@ const IDX = {
   BLOB1: 17,  // rival kaiju shadow
   SUNC: 18,   // rgb sun glow, w: disc intensity
   UNLIT: 19,  // rgb multiplier for unlit world meshes (backdrop), w: cloud cover
-  FILLW: 20,  // rgb sun-side ambient, w: cloud drift
+  FILLW: 20,  // rgb sun-side ambient, w: kaiju key ramp strength
   CLOUD: 21,  // rgb cloud lit colour, w: stars
   CLOUD2: 22, // rgb cloud shade colour, w: kaiju hero fill (share of the key that ignores shadows)
   RIMC: 23,   // rgb sky-side kaiju rim, w: rim strength
@@ -134,15 +134,16 @@ function fragPars(cfg) {
     vec2 c = floor(g), f = fract(g);
     float h = lookHash(c + floor(n.xz * 2.0 + 0.5) * 17.0);
     float zone = lookNoise(vec2(t * 0.07, wp.y * 0.10) + 3.1);
-    float thr = 1.0 - uLook[10].x * (0.30 + 1.4 * zone);
+    float thr = 1.0 - uLook[10].x * (0.35 + 1.1 * zone);
     float lit = step(thr, h);
     float edge = smoothstep(0.0, 0.14, f.x) * (1.0 - smoothstep(0.86, 1.0, f.x)) * smoothstep(0.0, 0.18, f.y) * (1.0 - smoothstep(0.82, 1.0, f.y));
     float k = dot(uLook[9].rgb, vec3(0.3333));
     vec3 col = mix(uLook[9].rgb, vec3(0.62, 0.82, 1.0) * k, step(0.84, fract(h * 7.31)));
-    vec3 cell = col * (lit * edge * (0.5 + 0.5 * fract(h * 3.7)));
+    float br = fract(h * 3.7);
+    vec3 cell = col * (lit * edge * (0.22 + 0.78 * br * br));
     // Past the point where a cell is a pixel: its average, so far towers glow instead of sparkling
     float aa = clamp(1.6 - max(fwidth(g.x), fwidth(g.y)) * 1.4, 0.0, 1.0);
-    return mix(uLook[9].rgb * (clamp(1.0 - thr, 0.0, 1.0) * 0.42), cell, aa);
+    return mix(uLook[9].rgb * (clamp(1.0 - thr, 0.0, 1.0) * 0.30), cell, aa);
   }
 #endif`;
 }
@@ -207,7 +208,7 @@ const ALBEDO = `
             vec3 lkSoft = diffuseColor.rgb;
           #endif
           float lkBlue = smoothstep( 0.03, 0.16, lkSoft.b - lkSoft.r );
-          lkGlass = max( 1.0 - smoothstep( 0.02, 0.17, dot( lkSoft, vec3( 0.2126, 0.7152, 0.0722 ) ) ), lkBlue ) * lkWall;
+          lkGlass = max( 1.0 - smoothstep( 0.015, 0.11, dot( lkSoft, vec3( 0.2126, 0.7152, 0.0722 ) ) ), lkBlue ) * lkWall;
         #endif
       #endif
       // One saturation and value range for every asset family (painted-dark
@@ -344,6 +345,12 @@ export function initLook(cfg) {
   C.lights_fragment_begin = SHADE + C.lights_fragment_begin
     .replace('getDirectionalLightInfo( directionalLight, directLight );', 'getDirectionalLightInfo( directionalLight, directLight );' + SUN_VIS) + FILL;
   C.aomap_fragment += AO;
+  // Kaiju: the key's falloff as a soft two-band ramp, so the form reads in
+  // planes of light and shade (it also hides faceting and painted-in shading)
+  C.lights_physical_pars_fragment = C.lights_physical_pars_fragment.replace(
+    'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );\n\tvec3 irradiance = dotNL * directLight.color;',
+    'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );\n\t#ifdef LOOK_KAIJU\n\t\tdotNL = mix( dotNL, smoothstep( 0.0, 0.34, dotNL ) * ( 0.62 + 0.38 * dotNL ), uLook[20].w );\n\t#endif\n\tvec3 irradiance = dotNL * directLight.color;');
+  if (!C.lights_physical_pars_fragment.includes('LOOK_KAIJU')) console.warn('[look] kaiju ramp: lights_physical_pars_fragment has changed');
   C.opaque_fragment = OUT + C.opaque_fragment;
   // 1x1 until a level builds its map; clone() returns the texture itself so
   // every material's uniform set points at the one object
@@ -351,6 +358,8 @@ export function initLook(cfg) {
   _mapTex.magFilter = _mapTex.minFilter = THREE.LinearFilter;
   _mapTex.clone = () => _mapTex;
   _mapTex.needsUpdate = true;
+  // ShaderMaterials assembled from UniformsLib.fog (the effect flipbooks) get the block too
+  THREE.UniformsLib.fog.uLook = { value: lookData };
   for (const k of Object.keys(THREE.ShaderLib)) {
     const u = THREE.ShaderLib[k].uniforms;
     if (!u) continue;
@@ -382,7 +391,7 @@ export function makeLookSky(octaves = 4) {
         vec3 d = normalize(vP);
         vec3 col = lookSkyCol(d);
         float sd = max(dot(d, uLook[0].xyz), 0.0);
-        float t = uLook[6].w * uLook[20].w;
+        float t = uLook[6].w * 0.004;
         // Cloud decks: streaks stretched across the sun's bearing, lit from below on the sun side
         if (d.y > 0.0 && uLook[19].w > 0.0) {
           vec2 across = uLook[1].xy, along = vec2(-uLook[1].y, uLook[1].x);
@@ -397,7 +406,9 @@ export function makeLookSky(octaves = 4) {
           float low = 1.0 - smoothstep(0.05, 0.6, d.y);
           // Edges catch the low sun (brightest toward it), cores go to the shade colour
           vec3 lit = uLook[21].rgb * (0.62 + 0.75 * sdh * sdh * low + 0.9 * pow(sd, 12.0));
-          vec3 cc = mix(lit, uLook[22].rgb, core * 0.85);
+          // (low sun: only the decks near its bearing still catch it)
+          float lost = (1.0 - smoothstep(-0.05, 0.22, uLook[0].y)) * (1.0 - sdh * sdh * (0.4 + 0.6 * low));
+          vec3 cc = mix(lit, uLook[22].rgb, max(core * 0.85, lost * 0.9));
           col = mix(col, cc, c1 * smoothstep(0.02, 0.2, d.y) * 0.9);
         }
         // Stars as dusk deepens
@@ -425,8 +436,8 @@ const KEYS = [
   { // golden hour
     discElev: 16, lightElev: 23,
     sun: lin(0xffd0a0), sunI: 3.3,
-    fill: lin(0xa9c6f2), fillI: 0.55,
-    hemiSky: lin(0x9fbbe8), hemiGround: lin(0x6e5c4c), hemiI: 0.46,
+    fill: lin(0xc2d2ee), fillI: 0.55,
+    hemiSky: lin(0xb4c6e6), hemiGround: lin(0x6e5c4c), hemiI: 0.46,
     amb: lin(0x5c7090), ambI: 0.06,
     haze: lin(0xa8b6c8), hazeSun: lin(0xffc48a), hazeExp: 2.2, fogD: 0.00125, fogK: 0.011, fogMax: 0.93,
     zen: lin(0x3f6fb2), mid: lin(0x86abd6), glow: lin(0xffb066), disc: 9,
@@ -442,36 +453,36 @@ const KEYS = [
   { // sunset
     discElev: 6, lightElev: 17,
     sun: lin(0xffa066), sunI: 2.7,
-    fill: lin(0x9db4f0), fillI: 0.5,
-    hemiSky: lin(0x8c9fe0), hemiGround: lin(0x5c4a52), hemiI: 0.34,
+    fill: lin(0xb6c4ea), fillI: 0.5,
+    hemiSky: lin(0xa0aedc), hemiGround: lin(0x5c4a52), hemiI: 0.40,
     amb: lin(0x54608f), ambI: 0.09,
     haze: lin(0x7f88ad), hazeSun: lin(0xff9d62), hazeExp: 2.0, fogD: 0.00135, fogK: 0.011, fogMax: 0.93,
     zen: lin(0x2f4f96), mid: lin(0x7489c8), glow: lin(0xff8c4a), disc: 8,
     env: [0.64, 0.64, 0.70], fillW: lin(0xff9860), fillWI: 0.30,
-    win: lin(0xffbf74), winI: 1.3, winFrac: 0.36, glass: 0.6,
+    win: lin(0xffbf74), winI: 0.85, winFrac: 0.26, glass: 0.6,
     sat: 0.86, val: 0.8, ao: 0.64, shadow: 0.88, groundVar: 0.34,
     unlit: [0.50, 0.42, 0.44],
     cloud: lin(0xffb087), cloudShade: lin(0x6f6590), cover: 0.52, stars: 0,
     rimSun: lin(0xffa870, 1.6), rimSky: lin(0x94b4ff, 0.8), rimI: 1.05, hero: 0.26,
-    exposure: 1.06, bloomT: 0.92, bloomS: 0.44,
+    exposure: 1.06, bloomT: 0.95, bloomS: 0.40,
     gradeMix: 0.52, gradeShadow: [0.86, 0.90, 1.10], gradeHigh: [1.08, 0.99, 0.88],
   },
   { // dusk: the sun is down, its afterglow is the key
     discElev: -3, lightElev: 13,
     sun: lin(0xff8a5e), sunI: 1.45,
-    fill: lin(0x8ea2ee), fillI: 0.55,
-    hemiSky: lin(0x6f7fd0), hemiGround: lin(0x3c3350), hemiI: 0.40,
-    amb: lin(0x414a80), ambI: 0.12,
+    fill: lin(0xaab4e0), fillI: 0.55,
+    hemiSky: lin(0x7d88c4), hemiGround: lin(0x44394e), hemiI: 0.44,
+    amb: lin(0x4b5280), ambI: 0.12,
     haze: lin(0x4d527e), hazeSun: lin(0xf0794e), hazeExp: 1.8, fogD: 0.0014, fogK: 0.011, fogMax: 0.92,
     zen: lin(0x10173f), mid: lin(0x3d4690), glow: lin(0xff6a3c), disc: 0,
     env: [0.42, 0.44, 0.60], fillW: lin(0xff7c50), fillWI: 0.26,
-    win: lin(0xffb866), winI: 3.0, winFrac: 0.6, glass: 0.5,
+    win: lin(0xffb866), winI: 1.35, winFrac: 0.38, glass: 0.5,
     sat: 0.84, val: 0.8, ao: 0.66, shadow: 0.8, groundVar: 0.34,
     unlit: [0.30, 0.27, 0.36],
-    cloud: lin(0xf08a6c), cloudShade: lin(0x3c3a66), cover: 0.54, stars: 0.9,
+    cloud: lin(0xd97a66), cloudShade: lin(0x34325c), cover: 0.54, stars: 0.7,
     rimSun: lin(0xff9060, 1.5), rimSky: lin(0x8aa6ff, 0.95), rimI: 1.15, hero: 0.34,
-    exposure: 1.14, bloomT: 0.88, bloomS: 0.52,
-    gradeMix: 0.55, gradeShadow: [0.84, 0.87, 1.14], gradeHigh: [1.09, 0.98, 0.87],
+    exposure: 1.14, bloomT: 0.95, bloomS: 0.42,
+    gradeMix: 0.5, gradeShadow: [0.90, 0.91, 1.08], gradeHigh: [1.07, 0.99, 0.90],
   },
 ];
 const KEY_T = [0, 0.5, 1];
@@ -519,6 +530,8 @@ export function setLookTime(t) { L.todFixed = t; }
 export function lookTime() { return L.tod; }
 /** Direction to the sun disc (world), for screen-space sun effects. */
 export function lookSunDir() { return L.discDir; }
+/** 1 while the sun is up, falling to 0 as it sets (god rays have nothing to streak from after). */
+export function lookSunUp() { const y = L.discDir.y; return y > 0.12 ? 1 : y < 0.02 ? 0 : (y - 0.02) / 0.1; }
 /** Run fn (the environment capture) under a fixed mid-slide sky, then restore. */
 export function withLookEnvSky(fn) {
   if (L.level !== 'chicago') { fn(); return; }
@@ -542,6 +555,7 @@ export function setLookLevel(level) {
     set4(IDX.KB, ...lin(0xff5a7a, 1.1), 2.6);
     set4(IDX.KTA, 1, 1, 1, 1); set4(IDX.KTB, 1, 1, 1, 1);
     set4(IDX.RIMC, ...lin(0x6fa8ff, 0.7), 0.8);
+    setW(IDX.FILLW, KAIJU_RAMP);
     return;
   }
   set4(IDX.KTA, 1, 1, 1, 1); set4(IDX.KTB, 1, 1, 1, 1);
@@ -569,7 +583,7 @@ function _applyTime(t) {
   set4(IDX.WIN2, c.winFrac, c.glass, c.sat, c.val);
   set4(IDX.SUNC, c.glow[0], c.glow[1], c.glow[2], c.disc);
   set4(IDX.UNLIT, c.unlit[0], c.unlit[1], c.unlit[2], c.cover);
-  set4(IDX.FILLW, c.fillW[0], c.fillW[1], c.fillW[2], 0.004);
+  set4(IDX.FILLW, c.fillW[0], c.fillW[1], c.fillW[2], KAIJU_RAMP);
   set4(IDX.CLOUD, c.cloud[0], c.cloud[1], c.cloud[2], c.stars);
   set4(IDX.CLOUD2, c.cloudShade[0], c.cloudShade[1], c.cloudShade[2], c.hero);
   const ka = _kaiju[0], kb = _kaiju[1];
@@ -585,13 +599,13 @@ function _applyTime(t) {
   R.fill.color.setRGB(c.fill[0], c.fill[1], c.fill[2]); R.fill.intensity = c.fillI;
   R.fill.position.set(-SUN_AZ[0] * 70, 80, -SUN_AZ[1] * 70);
   // Without IBL the hemisphere carries the sky fill alone
-  const hk = L.hasEnv ? 1 : 1.75;
+  const hk = L.hasEnv ? 1 : 2.3;
   R.hemi.color.setRGB(c.hemiSky[0], c.hemiSky[1], c.hemiSky[2]); R.hemi.groundColor.setRGB(c.hemiGround[0], c.hemiGround[1], c.hemiGround[2]); R.hemi.intensity = c.hemiI * hk;
   R.ambient.color.setRGB(c.amb[0], c.amb[1], c.amb[2]); R.ambient.intensity = c.ambI * hk;
   // Stock-fog materials (effects that never get the block) fade to the plain haze
   R.scene.fog.color.setRGB(c.haze[0], c.haze[1], c.haze[2]); R.scene.fog.density = c.fogD * 0.9;
   R.scene.background.setRGB(c.haze[0], c.haze[1], c.haze[2]);
-  R.renderer.toneMappingExposure = c.exposure * (1 - 0.5 * L.dip);
+  R.renderer.toneMappingExposure = c.exposure * (1 - 0.3 * L.dip);
   const bloom = R.bloom && R.bloom();
   if (bloom) { bloom.threshold = c.bloomT; bloom.strength = c.bloomS * (R.bloomK || 1) * (1 - 0.35 * L.dip); }
   const cine = R.cine && R.cine();
@@ -626,12 +640,13 @@ const _kaiju = [
   { rim: [1, 1, 1], power: 2.4, tint: [1, 1, 1], sat: 1, radius: 9, height: 30 },
   { rim: [1, 1, 1], power: 2.4, tint: [1, 1, 1], sat: 1, radius: 9, height: 30 },
 ];
+const KAIJU_RAMP = 0.75;
 // Albedo normalisation per model: value gain and saturation toward a common
 // range (measured on the files' base colour), specular kept under control
 const KAIJU_STYLE = {
-  godzilla: { gain: 1.45, sat: 1.3, rough: 0.72, radius: 9, height: 30 },
-  ghidorah: { gain: 0.95, sat: 0.9, rough: 0.66, radius: 11, height: 36 },
-  mecha:    { gain: 1.4, sat: 1.3, rough: 0.5, radius: 8.5, height: 28 },
+  godzilla: { gain: 1.2, sat: 1.6, rough: 0.72, radius: 9, height: 30 },
+  ghidorah: { gain: 0.9, sat: 1.0, rough: 0.66, radius: 11, height: 36 },
+  mecha:    { gain: 1.15, sat: 1.4, rough: 0.5, radius: 8.5, height: 28 },
 };
 /** Tag a kaiju's materials for the family treatment. slot 0: the player,
  *  1: the rival (its own rim colour, so a mirror match stays readable;
@@ -906,6 +921,21 @@ function _queue(M, r) {
     return;
   }
   M.jobs.push(r);
+}
+/** A level's own tall static object (ring posts, masts) as a shadow caster in
+ *  the map: an axis-aligned box footprint, h units tall. After buildLookMap. */
+export function lookStampBox(x, z, w, d, h) {
+  const M = _map;
+  if (!M) return;
+  const b = { x, z, w, d, h };
+  _rasterH(M, b, h);
+  _splatA(M, b, 1);
+  const r = _rect(M, b, 14), S = M.S;
+  _toBytes(M, r[0], r[1], r[2], r[3]);
+  const len = Math.min(260, h / Math.max(M.tanE, 0.05)) + 8;
+  const ex = -lookData[IDX.SUNH * 4] * len / M.sx, ez = -lookData[IDX.SUNH * 4 + 1] * len / M.sz;
+  _queue(M, [Math.max(1, Math.floor(Math.min(r[0], r[0] + ex))), Math.max(1, Math.floor(Math.min(r[1], r[1] + ez))),
+    Math.min(S - 2, Math.ceil(Math.max(r[2], r[2] + ex))), Math.min(S - 2, Math.ceil(Math.max(r[3], r[3] + ez)))]);
 }
 /** Free the level map (level switch / teardown). */
 export function disposeLookMap() { _map = null; set4(IDX.MAPBOX, 0, 0, 0, 0); }

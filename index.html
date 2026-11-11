@@ -1244,6 +1244,386 @@
     transition: opacity 0.5s ease;
   }
   #loading-fact.fade { opacity: 0; }
+
+  /* =====================================================================
+     TITLE MATCH HUD (Chicago wrestling mode; src/wrestling/hud.js)
+     Everything here is inert in waves mode: hud.js sets body.wr-mode for the
+     length of a match and drives the #wr-* layers from bus events. Same rules
+     as the classic HUD: bars move with transform, state changes are opacity /
+     transform only, glows are static (never animated or re-rastered), and
+     every layer is in the hud-prewarm list at the end of this block.
+     Screen map: top band = both fighters + clock; under it, transient
+     callouts (attacker's side); centre stays clear except the pin count;
+     bottom centre = prompt pill / move wheel / mash meter.
+     ===================================================================== */
+  :root {
+    --wr-port: clamp(42px, 9.4vmin, 86px);            /* portrait height = top band height */
+    --wr-hp: clamp(11px, 2.5vmin, 22px);
+    --wr-sk: 14deg;                                   /* the slant every match bar shares */
+    --wr-band: calc(var(--wr-port) + var(--sp-1));
+    --wr-tb: clamp(54px, 14.5vmin, 68px);             /* GRAB / BLOCK touch buttons */
+    --wr-ts: 44px;                                    /* TAUNT / LOCK touch buttons */
+    --wr-ring: calc(var(--smash) / 2 + var(--wr-tb) / 2 + 8px);
+    --c-stam: #5cc8ff;
+    --c-fin: #ff5ce0;
+  }
+  /* The classic HUD in a match: vitals, wave line, objective and boss bar go;
+     score, menu button, minimap and the toast rails re-flow under the band. */
+  body.wr-mode #vitals, body.wr-mode #boss-bar, body.wr-mode #wave-objective,
+  body.wr-mode #stats .stat-line, body.wr-mode #combo { display: none !important; }
+  body.wr-mode #hud { padding-top: calc(var(--safe-t) + var(--wr-band) + var(--sp-2)); }
+  body.wr-mode { --map: clamp(84px, 14vmin, 132px); }
+  body.wr-mode #hud, body.wr-mode #powers, body.wr-mode #wr-touch > * { transition: opacity 0.25s; }
+  @media (max-height: 540px) {
+    body.wr-mode #minimap, body.wr-mode #stats > .label { display: none !important; }
+  }
+  /* A cinematic shot is running (entrance, finisher, KO, result): controls and
+     classic HUD fade out under the letterbox, still live for held inputs */
+  body.wr-cine #hud, body.wr-cine #powers, body.wr-cine #help,
+  body.wr-cine #mobile-ui > *, body.wr-cine #wr-touch > .wr-tb, body.wr-cine #wr-touch > .wr-ts { opacity: 0 !important; }
+
+  #wr-hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; overflow: hidden; text-shadow: var(--txt-outline); }
+  .wr-lb { position: absolute; left: 0; right: 0; height: 9vh; background: #000; transition: transform 0.4s ease; will-change: transform; }
+  .wr-lb.t { top: 0; transform: translateY(-101%); }
+  .wr-lb.b { bottom: 0; transform: translateY(101%); }
+  #wr-hud.lbox .wr-lb { transform: none; }
+
+  /* ---- top band: portrait | name, health, stamina, momentum | clock | mirrored ---- */
+  #wr-top {
+    position: absolute; top: var(--safe-t); left: var(--safe-l); right: var(--safe-r);
+    display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    column-gap: clamp(6px, 1.4vw, 24px); align-items: start;
+    transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.25s; will-change: transform, opacity;
+  }
+  #wr-hud.cine #wr-top { transform: translateY(-130%); opacity: 0; }
+  .wr-side { display: flex; gap: clamp(4px, 0.8vw, 12px); align-items: flex-start; min-width: 0; --sk: calc(var(--wr-sk) * -1); --o: 100%; }
+  .wr-side.p2 { flex-direction: row-reverse; --sk: var(--wr-sk); --o: 0%; }
+  .wr-port {
+    flex: none; position: relative; height: var(--wr-port); width: calc(var(--wr-port) * 1.2);
+    margin: 0 calc(var(--wr-port) * 0.13); transform: skewX(var(--sk)); overflow: hidden;
+    border: 2px solid var(--c-gold); border-radius: 3px; background: #14040a;
+  }
+  .wr-port i { position: absolute; inset: 0 -18%; transform: skewX(calc(var(--sk) * -1)); background: #14040a 50% 20% / 240% no-repeat; }
+  .wr-side.p2 .wr-port i { transform: skewX(calc(var(--sk) * -1)) scaleX(-1); }
+  .wr-port u { position: absolute; inset: 0; background: #fff; opacity: 0; }
+  .wr-side.out .wr-port i { opacity: 0.35; }
+  .wr-meters { flex: 1 1 auto; min-width: 0; max-width: 640px; display: grid; row-gap: clamp(2px, 0.5vmin, 5px); will-change: transform; }
+  .wr-side.p2 .wr-meters { justify-items: end; }
+  .wr-name { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; width: 100%; line-height: 1; }
+  .wr-side.p2 .wr-name { flex-direction: row-reverse; }
+  .wr-name b {
+    font-family: var(--f-display); font-weight: 400; font-size: clamp(15px, 8px + 1.9vmin, 30px); letter-spacing: 0.12em;
+    color: var(--c-cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .wr-name .role { font-family: var(--f-display); font-size: var(--fs-cap); letter-spacing: 3px; color: var(--c-gold); white-space: nowrap; }
+  .wr-name .chip {
+    margin-left: auto; padding: 1px 7px 0; border-radius: 3px; background: var(--c-red); color: #fff;
+    font-family: var(--f-display); font-size: var(--fs-cap); letter-spacing: 2px; white-space: nowrap; text-shadow: none;
+    opacity: 0; transition: opacity 0.12s;
+  }
+  .wr-side.p2 .wr-name .chip { margin-left: 0; margin-right: auto; }
+  .wr-name .chip.on { opacity: 1; }
+  .wr-name .chip.open { background: var(--c-score); color: var(--c-ink); }   /* an opening for the other fighter */
+  .wr-hp {
+    position: relative; width: 100%; height: var(--wr-hp); transform: skewX(var(--sk)); overflow: hidden;
+    background: rgba(8, 0, 3, 0.66); border: 1px solid rgba(255, 230, 200, 0.45); border-radius: 2px;
+  }
+  .wr-hp i { position: absolute; inset: 0; transform-origin: var(--o) 50%; will-change: transform; }
+  /* Ghost chunk: holds for half a second after the last hit, then drains to the real value */
+  .wr-hp .ghost { background: var(--c-cream); transition: transform 0.5s cubic-bezier(0.5, 0, 0.8, 0.4) 0.55s; }
+  .wr-hp .fill { background: linear-gradient(90deg, #ff2244, #ffaa44); transition: transform 0.09s linear; }
+  .wr-side.p2 .wr-hp .fill { background: linear-gradient(270deg, #ff2244, #ffaa44); }
+  .wr-hp .flash { background: #fff; opacity: 0; }
+  .wr-hp::after {   /* gloss + quarter ticks */
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 46%, rgba(0, 0, 0, 0.22)),
+      repeating-linear-gradient(90deg, transparent 0 calc(25% - 1px), rgba(8, 0, 3, 0.55) calc(25% - 1px) 25%);
+  }
+  .wr-side.crit .wr-hp { border-color: var(--c-red-hi); }
+  .wr-side.crit .wr-hp .fill { animation: wrPulse 0.45s ease-in-out infinite alternate; }
+  .wr-sta { width: 74%; height: clamp(4px, 0.9vmin, 7px); transform: skewX(var(--sk)); overflow: hidden; background: rgba(8, 0, 3, 0.6); border: 1px solid rgba(136, 204, 255, 0.4); border-radius: 1px; }
+  .wr-sta i { display: block; height: 100%; background: linear-gradient(90deg, #2f8fd8, var(--c-stam)); transform-origin: var(--o) 50%; transition: transform 0.15s linear; will-change: transform; }
+  .wr-side.p2 .wr-sta i { background: linear-gradient(270deg, #2f8fd8, var(--c-stam)); }
+  .wr-side.gassed .wr-sta { border-color: var(--c-red-hi); }
+  .wr-mom { width: 58%; display: flex; align-items: center; gap: var(--sp-2); }
+  .wr-side.p2 .wr-mom { flex-direction: row-reverse; }
+  .wr-mom .track { flex: 1 1 auto; height: clamp(5px, 1.1vmin, 9px); transform: skewX(var(--sk)); overflow: hidden; background: rgba(8, 0, 3, 0.6); border: 1px solid rgba(255, 204, 102, 0.42); border-radius: 1px; }
+  .wr-mom .track i { display: block; height: 100%; background: linear-gradient(90deg, #ffaa00, #ffee44); transform-origin: var(--o) 50%; transform: scaleX(0); transition: transform 0.2s; will-change: transform; }
+  .wr-side.p2 .wr-mom .track i { background: linear-gradient(270deg, #ffaa00, #ffee44); }
+  .wr-mom span { flex: none; font-family: var(--f-display); font-size: var(--fs-cap); line-height: 1; letter-spacing: 2px; color: var(--c-muted); white-space: nowrap; }
+  .wr-side.full .wr-mom .track { border-color: var(--c-score); }
+  .wr-side.full .wr-mom .track i { background: linear-gradient(90deg, #ffee44, #fff, var(--c-fin)); }
+  .wr-side.full .wr-mom span { color: var(--c-score); animation: wrPulse 0.6s ease-in-out infinite alternate; }
+  @keyframes wrPulse { from { opacity: 0.55; } to { opacity: 1; } }
+  .wr-mid { display: grid; justify-items: center; row-gap: 1px; }
+  .wr-clockrow { display: flex; align-items: center; gap: clamp(6px, 1vw, 14px); }
+  #wr-clock {
+    min-width: 2.5em; text-align: center; font-family: var(--f-display); font-size: clamp(24px, 10px + 3.4vmin, 50px); line-height: 0.92; letter-spacing: 2px;
+    color: var(--c-cream); font-variant-numeric: tabular-nums; text-shadow: 0 2px 0 #8a2a10, var(--txt-outline);
+  }
+  .wr-pips { display: flex; gap: clamp(5px, 0.8vmin, 9px); }
+  .wr-pips.p1 { flex-direction: row-reverse; }
+  .wr-pips i { width: clamp(8px, 1.5vmin, 13px); height: clamp(8px, 1.5vmin, 13px); transform: rotate(45deg); border: 1.5px solid var(--c-gold); background: rgba(8, 0, 3, 0.6); }
+  .wr-pips i.on { background: var(--c-score); box-shadow: 0 0 8px rgba(255, 204, 102, 0.9); }
+  #wr-fall { font-family: var(--f-display); font-size: var(--fs-cap); letter-spacing: 3px; color: var(--c-gold); white-space: nowrap; }
+
+  /* ---- callouts: move names on the attacker's side, landmarks / finishers / results centred ---- */
+  .wr-call {
+    --fs: clamp(30px, 10px + 6.4vmin, 84px);
+    position: absolute; top: 19%; left: 50%; width: 0; display: flex; flex-direction: column; align-items: center;
+    white-space: nowrap; opacity: 0; will-change: transform, opacity;
+  }
+  .wr-call.p1 { left: 26%; }
+  .wr-call.p2 { left: 74%; }
+  .wr-call .pre { font-family: var(--f-display); font-size: calc(var(--fs) * 0.36); line-height: 1.1; letter-spacing: 0.34em; margin-right: -0.34em; color: var(--c-gold); }
+  .wr-call b {
+    font-family: var(--f-display); font-weight: 400; font-size: var(--fs); line-height: 0.95; letter-spacing: 0.05em;
+    color: var(--c-cream); transform: skewX(-9deg);
+    text-shadow: 0 0 30px #ff2244, 0 0 10px #ffaa44, 0.055em 0.055em 0 #1a0006;
+  }
+  .wr-call small {
+    font-family: 'Yuji Mai', 'Noto Sans JP', serif; font-size: max(11px, calc(var(--fs) * 0.24)); letter-spacing: 0.3em; margin: 0.35em -0.3em 0 0;
+    color: #ff9966; padding-top: 0.3em; border-top: 1px solid rgba(255, 150, 100, 0.4);
+  }
+  .wr-call small:empty, .wr-call .pre:empty { display: none; }
+  .wr-call.t-defend b { color: var(--c-cool); text-shadow: 0 0 30px #2266ff, 0 0 10px #88ccff, 0.055em 0.055em 0 #00091a; }
+  .wr-call.t-landmark { --fs: clamp(34px, 10px + 7.6vmin, 100px); }
+  .wr-call.t-landmark b { color: var(--c-score); text-shadow: 0 0 30px #ff5a00, 0 0 10px #ffee66, 0.055em 0.055em 0 #1a0006; }
+  .wr-call.t-finisher { --fs: clamp(40px, 12px + 9vmin, 124px); top: 21%; }
+  .wr-call.t-finisher b { color: #fff; text-shadow: 0 0 36px var(--c-fin), 0 0 12px #ffcc66, 0.055em 0.055em 0 #1a0006; }
+  .wr-call.t-result { --fs: clamp(46px, 12px + 11.5vmin, 150px); top: 27%; }
+  .wr-call.t-result b { font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; text-shadow: 0 0 44px #ff2244, 0 0 14px #ff8866, 0 0.07em 0 #1a0006; }
+
+  /* ---- pin count ---- */
+  #wr-pin { position: absolute; top: 30%; left: 50%; width: 0; display: flex; flex-direction: column; align-items: center; white-space: nowrap; opacity: 0; will-change: transform, opacity; }
+  #wr-pin b {
+    font-family: var(--f-display); font-weight: 400; font-size: clamp(84px, 31vmin, 300px); line-height: 0.82; letter-spacing: 0.04em;
+    color: var(--c-cream); transform: skewX(-8deg);
+    text-shadow: 0 0 44px #ff2244, 0 0 14px #ffaa44, 0.05em 0.05em 0 #1a0006;
+  }
+  #wr-pin.c2 b { color: var(--c-score); }
+  #wr-pin.c3 b { color: #fff; text-shadow: 0 0 44px #ffb300, 0 0 14px #ffee66, 0.05em 0.05em 0 #1a0006; }
+  .wr-count { position: absolute; top: calc(30% + clamp(40px, 15vmin, 150px)); left: 50%; transform: translateX(-50%); display: flex; gap: clamp(8px, 1.6vmin, 16px); opacity: 0; transition: opacity 0.15s; }
+  .wr-count.on { opacity: 1; }
+  .wr-count i { width: clamp(22px, 5vmin, 46px); height: clamp(5px, 1vmin, 9px); transform: skewX(-14deg); background: rgba(8, 0, 3, 0.7); border: 1px solid rgba(255, 230, 200, 0.5); }
+  .wr-count i.on { background: var(--c-score); border-color: #fff; }
+
+  /* ---- kick-out / escape mash meter ---- */
+  #wr-mash { position: absolute; left: 50%; bottom: 23%; width: 0; display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); white-space: nowrap; opacity: 0; transition: opacity 0.12s; }
+  #wr-mash.on { opacity: 1; }
+  #wr-mash .t {
+    font-family: var(--f-display); font-size: clamp(26px, 8px + 5vmin, 62px); line-height: 1; letter-spacing: 0.12em; color: var(--c-score);
+    text-shadow: 0 0 24px #ff2244, 0 0 8px #ffaa44, 3px 3px 0 #1a0006;
+  }
+  #wr-mash.on .t { animation: wrJolt 0.16s steps(2, end) infinite; }
+  @keyframes wrJolt { from { transform: translate(-2px, 1px) rotate(-1deg); } to { transform: translate(2px, -1px) rotate(1deg); } }
+  #wr-mash .row { display: flex; align-items: center; gap: var(--sp-3); font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 2px; color: var(--c-cream); }
+  #wr-mash .track { width: clamp(170px, 32vw, 460px); height: clamp(12px, 2.4vmin, 20px); transform: skewX(-14deg); overflow: hidden; background: rgba(8, 0, 3, 0.72); border: 2px solid var(--c-gold); border-radius: 2px; }
+  #wr-mash .track i { display: block; height: 100%; background: linear-gradient(90deg, #ffaa00, #ffee44 72%, #fff); transform-origin: 0 50%; transform: scaleX(0); will-change: transform; }
+
+  /* ---- context prompts (one slot, bottom centre) + lock-up move wheel ---- */
+  #wr-prompt, #wr-wheel { position: absolute; left: 50%; bottom: calc(var(--safe-b) + 100px + 2vmin); transform: translateX(-50%); }
+  body.touch #wr-prompt, body.touch #wr-wheel { bottom: calc(var(--safe-b) + var(--sp-3)); }
+  #wr-prompt { display: flex; gap: var(--sp-2); justify-content: center; white-space: nowrap; transition: opacity 0.15s; }
+  #wr-prompt.off { opacity: 0; }
+  .wr-pill {
+    display: flex; align-items: center; gap: 7px; padding: 5px 14px 5px 8px; border-radius: var(--r-pill);
+    background: var(--glass-strong); border: var(--stroke);
+    font-family: var(--f-display); font-size: var(--fs-body); line-height: 1; letter-spacing: 2px; color: var(--c-cream);
+  }
+  .wr-pill.hot { border-color: var(--c-gold); color: var(--c-score); }
+  .wr-pill.note { padding-left: 14px; color: var(--c-muted); background: var(--glass); }
+  .wr-pill em { font-style: normal; font-size: 0.82em; color: var(--c-gold); }
+  /* Glyphs: keycap, mouse button, pad face / shoulder / d-pad, touch button name */
+  .wr-k {
+    display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: 1.75em; height: 1.6em; padding: 0 0.38em;
+    border-radius: 4px; background: var(--c-cream); color: var(--c-ink); text-shadow: none;
+    font-family: var(--f-display); font-style: normal; font-size: 0.95em; line-height: 1; letter-spacing: 1px; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
+  }
+  .wr-k.pb { min-width: 1.7em; height: 1.7em; padding: 0; border-radius: 50%; background: #14060c; color: var(--pc); border: 2px solid var(--pc); box-shadow: none; }
+  .wr-k.pb.a { --pc: #7bdc5a; } .wr-k.pb.b { --pc: #ff5a5a; } .wr-k.pb.x { --pc: #5aa8ff; } .wr-k.pb.y { --pc: #ffd24a; }
+  .wr-k.sh { border-radius: 7px 7px 3px 3px; background: #2a1c24; color: var(--c-cream); border: 1px solid rgba(255, 230, 200, 0.55); box-shadow: none; }
+  .wr-k.tk { border-radius: var(--r-pill); padding: 0 0.6em; background: var(--tc, var(--c-red)); color: #fff; border: 1px solid var(--c-gold); box-shadow: none; }
+  .wr-k.tk.grab { --tc: #b46a00; } .wr-k.tk.block { --tc: #1f5fa8; } .wr-k.tk.ult { --tc: #a02a8c; } .wr-k.tk.plain { --tc: #2a1c24; }
+  svg.wr-g { flex: none; width: 1.5em; height: 1.6em; overflow: visible; fill: none; stroke: var(--c-cream); stroke-width: 1.6; }
+  svg.wr-g .on { fill: var(--c-score); stroke: var(--c-score); }
+  #wr-wheel {
+    display: grid; grid-template-columns: auto auto auto; grid-template-areas: ". u ." "l c r" ". d ."; gap: 4px var(--sp-2);
+    align-items: center; justify-items: center; white-space: nowrap; opacity: 0; transition: opacity 0.12s;
+    font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 2px; color: var(--c-cream);
+  }
+  #wr-wheel.on { opacity: 1; }
+  #wr-wheel > div { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--r-pill); background: var(--glass-strong); border: var(--stroke); line-height: 1; }
+  #wr-wheel .u { grid-area: u; } #wr-wheel .d { grid-area: d; } #wr-wheel .l { grid-area: l; } #wr-wheel .r { grid-area: r; }
+  #wr-wheel .c { grid-area: c; color: var(--c-muted); background: var(--glass); }
+  #wr-wheel > div.sel { border-color: var(--c-score); color: var(--c-score); background: rgba(90, 40, 0, 0.9); }
+  #wr-wheel .ar { color: var(--c-gold); font-family: var(--f-jp); font-size: 0.8em; letter-spacing: 0; }
+
+  /* ---- commentary ticker (broadcast lower third; under the clock on phones) ---- */
+  #wr-ticker {
+    position: absolute; left: var(--safe-l); bottom: calc(var(--safe-b) + var(--sp-3)); max-width: min(36vw, 560px);
+    display: flex; align-items: center; gap: var(--sp-2); padding: 3px var(--sp-5) 3px 0;
+    background: linear-gradient(90deg, rgba(16, 3, 7, 0.8), rgba(16, 3, 7, 0.55) 70%, rgba(16, 3, 7, 0));
+    opacity: 0; transform: translateX(-14px); transition: opacity 0.3s, transform 0.3s;
+  }
+  #wr-ticker.on { opacity: 1; transform: none; }
+  #wr-ticker .tag { flex: none; padding: 3px 8px 2px; background: var(--c-red); color: #fff; font-family: var(--f-display); font-size: var(--fs-cap); letter-spacing: 3px; text-shadow: none; }
+  #wr-ticker .line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--f-jp); font-weight: 700; font-style: italic; font-size: var(--fs-body); color: var(--c-cream); }
+  #wr-ticker.hype .line { color: var(--c-score); }
+  #wr-ticker.shock .line { color: #ff8866; }
+  body.touch #wr-ticker {
+    left: 50%; bottom: auto; top: calc(var(--safe-t) + var(--wr-band) + 1px); max-width: 44vw; padding: 1px var(--sp-4);
+    transform: translate(-50%, -6px); background: linear-gradient(90deg, rgba(16, 3, 7, 0), rgba(16, 3, 7, 0.7) 18%, rgba(16, 3, 7, 0.7) 82%, rgba(16, 3, 7, 0));
+  }
+  body.touch #wr-ticker.on { transform: translate(-50%, 0); }
+  body.touch #wr-ticker .tag { display: none; }
+  body.touch #wr-ticker .line { font-size: var(--fs-cap); }
+  body.touch.wr-mode #hud-toasts { margin-top: 20px; }
+
+  /* ---- entrance name cards (lower third, each fighter from its own side) ---- */
+  .wr-card { position: absolute; bottom: 15%; left: calc(var(--safe-l) + var(--sp-4)); display: flex; align-items: flex-end; gap: clamp(10px, 2vw, 28px); opacity: 0; will-change: transform, opacity; }
+  .wr-card.p2 { left: auto; right: calc(var(--safe-r) + var(--sp-4)); flex-direction: row-reverse; text-align: right; }
+  .wr-card .pic {
+    flex: none; position: relative; height: clamp(72px, 21vmin, 200px); width: clamp(110px, 32vmin, 300px); transform: skewX(calc(var(--wr-sk) * -1)); overflow: hidden;
+    border: 2px solid var(--c-gold); background: #14040a; box-shadow: 0 0 24px rgba(211, 37, 60, 0.6);
+  }
+  .wr-card.p2 .pic { transform: skewX(var(--wr-sk)); }
+  .wr-card .pic i { position: absolute; inset: 0 -16%; transform: skewX(var(--wr-sk)); background: #14040a 50% 30% / cover no-repeat; }
+  .wr-card.p2 .pic i { transform: skewX(calc(var(--wr-sk) * -1)) scaleX(-1); }
+  .wr-card .role { display: inline-block; font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 0.5em; color: var(--c-gold); padding-bottom: 3px; border-bottom: 1px solid rgba(255, 204, 102, 0.55); }
+  .wr-card .nm {
+    font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif; font-size: clamp(40px, 12px + 9vmin, 124px); line-height: 1; letter-spacing: 0.06em; color: var(--c-cream);
+    text-shadow: 0 0 40px #ff2244, 0 0 14px #ff8866, 0 0.05em 0 #1a0006;
+  }
+  .wr-card .ep { font-family: 'Yuji Mai', 'Noto Sans JP', serif; font-size: var(--fs-value); letter-spacing: 0.24em; color: #ff9966; }
+  .wr-card .st { margin-top: 3px; font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 3px; color: #aaccff; }
+
+  /* ---- fall result band (between falls) ---- */
+  #wr-inter {
+    position: absolute; left: 0; right: 0; top: 31%; display: grid; justify-items: center; row-gap: 4px; padding: clamp(8px, 2vmin, 20px) 0;
+    background: linear-gradient(90deg, rgba(16, 3, 7, 0), rgba(16, 3, 7, 0.86) 24%, rgba(16, 3, 7, 0.86) 76%, rgba(16, 3, 7, 0));
+    opacity: 0; will-change: transform, opacity;
+  }
+  #wr-inter::before, #wr-inter::after { content: ''; position: absolute; left: 12%; right: 12%; height: 1px; background: linear-gradient(90deg, transparent, var(--c-gold), transparent); }
+  #wr-inter::before { top: 0; } #wr-inter::after { bottom: 0; }
+  #wr-inter .t1 { font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 0.5em; color: var(--c-gold); }
+  #wr-inter .t2 { font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif; font-size: var(--fs-banner); line-height: 1.05; letter-spacing: 0.1em; color: var(--c-cream); text-shadow: 0 0 36px #ff2244, 0 0 14px #ffaa44, 4px 4px 0 #1a0006; }
+  #wr-inter .t3 { display: flex; align-items: center; gap: var(--sp-4); font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 3px; color: var(--c-cream); }
+  #wr-inter .t3 b { font-weight: 400; font-size: var(--fs-score); color: var(--c-score); font-variant-numeric: tabular-nums; }
+
+  /* ---- skip (entrances): keyboard / pad hint, and the tap target on touch ---- */
+  #wr-skip {
+    position: fixed; left: 50%; bottom: max(var(--safe-b), 1.4vh); transform: translateX(-50%); z-index: 13;
+    display: flex; align-items: center; gap: 7px; padding: 5px 16px 5px 10px; border-radius: var(--r-pill);
+    background: var(--glass-strong); border: var(--stroke); cursor: pointer; pointer-events: auto; touch-action: none; user-select: none;
+    font-family: var(--f-display); font-size: var(--fs-body); line-height: 1; letter-spacing: 3px; color: var(--c-cream); text-shadow: var(--txt-outline);
+  }
+
+  /* ---- touch controls for a match (body.touch). Inner ring round SMASH =
+     the wrestling verbs (GRAB left of it, BLOCK above it); the classic power
+     arc stays outside; TAUNT and LOCK stack on the left edge above RUN. ---- */
+  #wr-touch { display: none; }
+  body.touch #wr-touch { display: block; }
+  .wr-tb, .wr-ts {
+    position: fixed; z-index: 12; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1;
+    font-family: var(--f-display); color: #fff; text-shadow: var(--txt-outline); pointer-events: auto; touch-action: none; user-select: none;
+  }
+  .wr-tb {
+    width: var(--wr-tb); height: var(--wr-tb); font-size: calc(var(--wr-tb) * 0.26); letter-spacing: 1px; border: 2px solid var(--c-gold);
+    right: calc(var(--safe-r) + var(--sp-3) + var(--smash) / 2 - var(--wr-tb) / 2 - cos(var(--a)) * var(--wr-ring));
+    bottom: calc(var(--safe-b) + var(--sp-3) + var(--smash) / 2 - var(--wr-tb) / 2 + sin(var(--a)) * var(--wr-ring));
+  }
+  .wr-tb small { font-family: var(--f-jp); font-weight: 700; font-size: 0.6em; color: var(--c-gold); letter-spacing: 0; margin-top: 2px; }
+  .wr-tb:active, .wr-tb.down { transform: scale(0.92); }
+  #wr-btn-grab { --a: 180deg; background: radial-gradient(circle at 35% 30%, rgba(255, 196, 96, 0.94), rgba(140, 72, 0, 0.94)); }
+  #wr-btn-block { --a: 90deg; background: radial-gradient(circle at 35% 30%, rgba(124, 196, 255, 0.94), rgba(18, 58, 120, 0.94)); }
+  /* Cue ring: the prompt on screen is asking for this button */
+  .wr-tb::after, .wr-ts::after {
+    content: ''; position: absolute; inset: -8px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: radial-gradient(closest-side, transparent 72%, rgba(255, 238, 102, 0.85) 78%, transparent 100%);
+  }
+  .wr-tb.cue::after, .wr-ts.cue::after { animation: readyPulse 0.5s ease-in-out infinite alternate; }
+  .wr-ts {
+    width: var(--wr-ts); height: var(--wr-ts); left: calc(var(--safe-l) + var(--sp-3) + 2px); font-size: 12px; letter-spacing: 1px;
+    background: var(--glass); border: 2px solid rgba(255, 204, 102, 0.55); color: var(--c-gold);
+  }
+  #wr-btn-taunt { bottom: calc(var(--safe-b) + var(--sp-3) + var(--joy) + var(--sp-3) + 48px + var(--sp-2)); }
+  #wr-btn-lock { bottom: calc(var(--safe-b) + var(--sp-3) + var(--joy) + var(--sp-3) + 48px + var(--sp-2) + var(--wr-ts) + var(--sp-2)); }
+  #wr-btn-lock.on { background: rgba(120, 70, 0, 0.85); color: #fff; border-color: var(--c-score); }
+  .wr-ts:active { transform: scale(0.92); }
+  body.touch.wr-mode #mini-toasts { margin-left: calc(var(--wr-ts) + var(--sp-3)); }
+  body.touch.wr-mode .power-wrap.ult .lbl { top: auto; bottom: calc(100% + 9px); }   /* BLOCK sits under the finisher button */
+  /* Kick-out / escape: the whole screen is the mash button */
+  #wr-mash-zone { position: fixed; inset: 0; z-index: 13; display: none; pointer-events: auto; touch-action: none; }
+  #wr-mash-zone.on { display: block; }
+
+  /* ---- help card, pause move list, corner advice (visible in a match only) ---- */
+  #help .help-wr { display: none; }
+  body.wr-mode #help .help-classic { display: none; }
+  body.wr-mode #help .help-wr { display: block; }
+  body.wr-mode #help { max-width: 270px; }
+  #help .help-wr .wr-k { font-size: 0.92em; height: 1.45em; min-width: 1.5em; margin: 1px 0; box-shadow: none; vertical-align: baseline; }
+  #wr-moves, #wr-corner { display: none; }
+  body.wr-mode #pause-menu { gap: var(--sp-4); }
+  body.wr-mode #wr-moves { display: block; width: min(430px, 48vw); text-align: left; padding: var(--sp-3) var(--sp-4) var(--sp-4); }
+  #wr-moves h4 { margin: var(--sp-2) 0 3px; font-family: var(--f-display); font-weight: 400; font-size: var(--fs-cap); letter-spacing: 4px; color: var(--c-gold); border-bottom: 1px solid rgba(255, 204, 102, 0.22); }
+  #wr-moves h4:first-child { margin-top: 0; }
+  #wr-moves .mv { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: 24px; font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 2px; color: var(--c-cream); }
+  #wr-moves .mv span { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  #wr-moves .mv em { font-style: normal; font-size: 0.82em; color: var(--c-gold); }
+  #wr-moves .mv .wr-k { font-size: 0.86em; box-shadow: none; }
+  @media (max-height: 420px) { #wr-moves .mv { min-height: 21px; font-size: 12px; } #wr-moves h4 { margin-top: 4px; } }
+  body.wr-mode #wr-corner { display: block; font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 4px; color: var(--c-gold); text-shadow: var(--txt-outline); margin-top: -10px; }
+
+  /* ---- result screen: champion (belt) / defeat, over the live celebration ---- */
+  .go-col { display: contents; }
+  #gameover .go-col > * { position: relative; z-index: 1; }
+  #wr-belt, #wr-defend-btn { display: none; }
+  #gameover.wr { background: radial-gradient(ellipse at 50% 48%, rgba(12, 1, 4, 0.9) 0%, rgba(12, 1, 4, 0.76) 36%, rgba(6, 0, 2, 0.3) 76%, rgba(0, 0, 0, 0.55) 100%); }
+  #gameover.wr.wr-loss { background: radial-gradient(ellipse at 50% 48%, rgba(14, 1, 4, 0.94) 0%, rgba(14, 1, 4, 0.84) 40%, rgba(20, 0, 4, 0.5) 100%); }
+  #gameover.wr::before { display: none; }
+  #gameover.wr-win #wr-belt { display: block; width: min(520px, 72vw); margin-bottom: 4px; animation: wrBeltIn 0.7s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
+  #wr-belt svg { display: block; width: 100%; height: auto; overflow: visible; filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.7)); }
+  #wr-belt .shine { animation: wrShine 3.2s ease-in-out 0.9s infinite; }
+  @keyframes wrBeltIn { from { opacity: 0; transform: translateY(-30px) scale(1.25); } to { opacity: 1; transform: none; } }
+  @keyframes wrShine { 0%, 55% { transform: translateX(-260px); } 100% { transform: translateX(260px); } }
+  #gameover.wr-win #goTitle {
+    font-family: var(--f-display); font-size: clamp(18px, 8px + 2.6vmin, 34px); letter-spacing: 0.5em; margin: 0 -0.5em 2px 0; color: var(--c-gold); text-shadow: var(--txt-outline);
+  }
+  #gameover.wr-win #goSubtitle {
+    font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif; font-size: clamp(22px, 8px + 4.4vmin, 52px); line-height: 1.1; letter-spacing: 0.08em; max-width: 92vw; text-wrap: balance;
+    color: var(--c-cream); text-shadow: 0 0 40px #ffb300, 0 0 14px #ffcc66, 0 4px 0 #1a0006; margin-bottom: 10px;
+  }
+  #gameover.wr-loss #goTitle { text-shadow: 0 0 40px #ff2244, 0 0 14px #ff8866, 0 4px 0 #1a0006; }
+  #gameover.wr-win #wr-defend-btn { display: inline-block; margin-top: 14px; }
+  #gameover.wr #wr-defend-btn small { display: block; font-family: var(--f-display); font-size: 0.5em; letter-spacing: 0.3em; color: var(--c-gold); text-shadow: none; margin-top: 2px; }
+  #gameover.wr-win #goAgainBtn { margin-top: 10px; padding: 8px 30px; font-size: 15px; letter-spacing: 6px; background: rgba(20, 2, 6, 0.7); border-color: #883344; box-shadow: none; }
+  #gameover.wr-win #goAgainBtn::before, #gameover.wr-win #goAgainBtn::after { display: none; }
+  @media (max-height: 540px) {
+    #gameover.wr { flex-direction: row; gap: 4vw; }
+    #gameover.wr .go-col { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; }
+    #gameover.wr .go-a { flex: 1 1 46%; }
+    #gameover.wr .go-b { flex: 0 1 auto; }
+    #gameover.wr-win #wr-belt { width: min(300px, 40vw); }
+    #gameover.wr .stats-divider { display: none; }
+    #gameover.wr .stats-grid { grid-template-columns: 1fr; gap: 0; min-width: 230px; }
+    #gameover.wr-win #wr-defend-btn { margin-top: 6px; }
+    #gameover.wr-win #goAgainBtn { margin-top: 6px; padding: 5px 20px; font-size: 12px; }
+  }
+
+  /* START prewarm: every match layer drawn once behind the loading screen (see body.hud-prewarm above) */
+  body.hud-prewarm #wr-hud, body.touch.hud-prewarm #wr-touch, body.touch.hud-prewarm #wr-touch > *, body.hud-prewarm #wr-skip {
+    display: block !important; opacity: 0.01 !important; z-index: 300 !important; pointer-events: none !important;
+  }
+  body.hud-prewarm #wr-hud .wr-call, body.hud-prewarm #wr-pin, body.hud-prewarm #wr-mash, body.hud-prewarm #wr-wheel,
+  body.hud-prewarm #wr-ticker, body.hud-prewarm .wr-card, body.hud-prewarm #wr-inter, body.hud-prewarm .wr-count,
+  body.hud-prewarm .wr-name .chip { opacity: 1 !important; }
+  body.hud-prewarm #wr-hud .wr-lb { transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .wr-side.crit .wr-hp .fill, .wr-side.full .wr-mom span, #wr-mash.on .t, .wr-tb.cue::after, .wr-ts.cue::after, #wr-belt, #wr-belt .shine { animation: none !important; }
+    .wr-hp .ghost, .wr-hp .fill, .wr-sta i, .wr-mom .track i, #wr-top, .wr-lb, #wr-ticker { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -1292,6 +1672,14 @@
   <div id="joystick" class="hidden"><div class="knob"></div></div>
   <div id="attack-btn" class="hidden" role="button" aria-label="Smash">SMASH<small>撃</small></div>
   <div id="sprint-btn" class="hidden" role="button" aria-label="Run toggle">RUN</div>
+</div>
+<!-- Title match touch controls (body.touch + wrestling mode; shown by src/wrestling/hud.js, bound by input.js) -->
+<div id="wr-touch" class="hidden">
+  <div id="wr-btn-grab" class="wr-tb" role="button" aria-label="Grab, hold to pin">GRAB<small>掴</small></div>
+  <div id="wr-btn-block" class="wr-tb" role="button" aria-label="Block">BLOCK<small>防</small></div>
+  <div id="wr-btn-taunt" class="wr-ts" role="button" aria-label="Taunt">TAUNT</div>
+  <div id="wr-btn-lock" class="wr-ts on" role="button" aria-label="Lock-on toggle">LOCK</div>
+  <div id="wr-mash-zone"></div>
 </div>
 
 <div id="rotate-hint">
@@ -1363,6 +1751,49 @@
 <!-- Powers bar (desktop) / ability arc round SMASH (touch) -->
 <div id="powers" class="hidden"></div>
 
+<!-- Title match HUD (Chicago wrestling mode; driven by src/wrestling/hud.js). The text in here is
+     placeholder so the START prewarm rasters every layer; hud.js writes the real strings. -->
+<div id="wr-hud" class="hidden" aria-hidden="true">
+  <div class="wr-lb t"></div><div class="wr-lb b"></div>
+  <div id="wr-top">
+    <div class="wr-side p1" id="wr-p1">
+      <div class="wr-port"><i></i><u></u></div>
+      <div class="wr-meters">
+        <div class="wr-name"><b>GORRAK</b><span class="role">CHALLENGER</span><span class="chip">DANGER</span></div>
+        <div class="wr-hp"><i class="ghost"></i><i class="fill"></i><i class="flash"></i></div>
+        <div class="wr-sta"><i></i></div>
+        <div class="wr-mom"><div class="track"><i></i></div><span>MOMENTUM</span></div>
+      </div>
+    </div>
+    <div class="wr-mid">
+      <div class="wr-clockrow"><div class="wr-pips p1"><i></i><i></i></div><div id="wr-clock">0:00</div><div class="wr-pips p2"><i></i><i></i></div></div>
+      <div id="wr-fall">FALL 1 <span class="jp-sub">一本目</span></div>
+    </div>
+    <div class="wr-side p2" id="wr-p2">
+      <div class="wr-port"><i></i><u></u></div>
+      <div class="wr-meters">
+        <div class="wr-name"><b>TRIDON</b><span class="role">CHAMPION</span><span class="chip">DANGER</span></div>
+        <div class="wr-hp"><i class="ghost"></i><i class="fill"></i><i class="flash"></i></div>
+        <div class="wr-sta"><i></i></div>
+        <div class="wr-mom"><div class="track"><i></i></div><span>MOMENTUM</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="wr-call p1"><span class="pre"></span><b>SUPLEX!</b><small></small></div>
+  <div class="wr-call t-landmark"><span class="pre">THROUGH THE</span><b>WILLIS TOWER!</b><small>シカゴ</small></div>
+  <div class="wr-call t-result"><span class="pre">FALL 1</span><b>FIGHT!</b><small></small></div>
+  <div id="wr-pin"><b>ONE!</b></div>
+  <div class="wr-count"><i></i><i></i><i></i></div>
+  <div id="wr-mash"><div class="t">KICK OUT!</div><div class="row"><span class="g"></span><div class="track"><i></i></div></div></div>
+  <div id="wr-prompt"><div class="wr-pill"><span class="wr-k">E</span>GRAB</div></div>
+  <div id="wr-wheel"><div class="u"></div><div class="l"></div><div class="c">SLAM</div><div class="r"></div><div class="d"></div></div>
+  <div id="wr-ticker"><span class="tag">RINGSIDE <span class="jp-sub" style="color:#ffd9c0">実況</span></span><span class="line">Welcome to Grant Park.</span></div>
+  <div class="wr-card p1"><div class="pic"><i></i></div><div><div class="role">CHALLENGER</div><div class="nm">GORRAK</div><div class="ep">THE ATOMIC TYRANT</div><div class="st"></div></div></div>
+  <div class="wr-card p2"><div class="pic"><i></i></div><div><div class="role">CHAMPION</div><div class="nm">TRIDON</div><div class="ep">THE THREE-HEADED STORM</div><div class="st"></div></div></div>
+  <div id="wr-inter"><div class="t1">FALL 1</div><div class="t2">PINFALL</div><div class="t3"><span>GORRAK</span><b>1 - 0</b><span>TRIDON</span></div></div>
+</div>
+<div id="wr-skip" class="hidden" role="button" aria-label="Skip"><span class="g"></span>SKIP</div>
+
 <!-- Center message -->
 <div id="message"></div>
 <div id="wave-banner"></div>
@@ -1380,16 +1811,20 @@
     <button class="sheet-btn ghost" id="quit-btn" type="button">QUIT TO MENU</button>
     <div class="sheet-hint">ESC / START TO RESUME</div>
   </div>
+  <!-- Title match move list for the active input device (filled by src/wrestling/hud.js) -->
+  <div id="wr-moves" class="sheet"></div>
 </div>
 
 <!-- Upgrade modal -->
 <div id="upgrade-modal">
-  <h2>CHOOSE A POWER <span class="jp-sub">強化</span></h2>
+  <h2 id="upgrade-title">CHOOSE A POWER <span class="jp-sub">強化</span></h2>
+  <div id="wr-corner"></div>
   <div class="cards" id="upgrade-cards"></div>
 </div>
 
 <!-- Help -->
 <div id="help" class="hidden">
+  <div class="help-classic">
   <b>WASD</b> Move · <b>Mouse</b> Look<br>
   <b>LMB</b> Melee Smash<br>
   <b>SPACE</b> Stomp Shockwave<br>
@@ -1397,13 +1832,53 @@
   <b>Q</b> ULTIMATE (full rage)<br>
   <b>SHIFT</b> Sprint · <b>ESC</b> Pause<br>
   <span style="color:#88ccff;">🎮 Xbox: A smash · X beam · B roar · Y charge · RB stomp · RT ult · LB sprint · Start pause</span>
+  </div>
+  <!-- Title match controls for the active device (filled by src/wrestling/hud.js) -->
+  <div class="help-wr" id="wr-help"></div>
 </div>
 
-<!-- Game Over -->
+<!-- Game Over (.go-col: two columns on a short screen in a title match, transparent wrappers otherwise) -->
 <div id="gameover" class="overlay hidden">
+  <div class="go-col go-a">
+  <!-- Chicago Heavyweight title belt (title match win; shown by #gameover.wr-win) -->
+  <div id="wr-belt" aria-hidden="true">
+    <svg viewBox="0 0 520 176" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="wrGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3b0"/><stop offset="0.3" stop-color="#ffcc33"/><stop offset="0.62" stop-color="#c8860a"/><stop offset="1" stop-color="#7a4a00"/></linearGradient>
+        <linearGradient id="wrGoldIn" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe680"/><stop offset="0.5" stop-color="#e8a818"/><stop offset="1" stop-color="#fff0a0"/></linearGradient>
+        <linearGradient id="wrLeather" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a0a16"/><stop offset="0.5" stop-color="#2a0409"/><stop offset="1" stop-color="#120103"/></linearGradient>
+        <linearGradient id="wrShineG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.75"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+        <clipPath id="wrPlate"><path d="M260 6 L338 30 Q352 88 338 146 L260 170 L182 146 Q168 88 182 30 Z"/></clipPath>
+        <path id="wrStar" d="M0-9 2.6-4.5 7.8-4.5 5.2 0 7.8 4.5 2.6 4.5 0 9-2.6 4.5-7.8 4.5-5.2 0-7.8-4.5-2.6-4.5Z"/>
+        <path id="wrArc" d="M196 70 Q260 26 324 70"/>
+      </defs>
+      <!-- strap -->
+      <path d="M22 62 Q4 88 22 114 L498 114 Q516 88 498 62 Z" fill="url(#wrLeather)" stroke="#000" stroke-width="2"/>
+      <path d="M30 68 L490 68 M30 108 L490 108" fill="none" stroke="#a8742a" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.7"/>
+      <!-- side plates -->
+      <g stroke="#5a3400" stroke-width="2">
+        <rect x="44" y="60" width="46" height="56" rx="9" fill="url(#wrGold)"/><rect x="110" y="56" width="52" height="64" rx="10" fill="url(#wrGold)"/>
+        <rect x="358" y="56" width="52" height="64" rx="10" fill="url(#wrGold)"/><rect x="430" y="60" width="46" height="56" rx="9" fill="url(#wrGold)"/>
+      </g>
+      <g fill="#c8102e" stroke="#5a0010" stroke-width="1">
+        <use href="#wrStar" transform="translate(67 88)"/><use href="#wrStar" transform="translate(136 88) scale(1.3)"/>
+        <use href="#wrStar" transform="translate(384 88) scale(1.3)"/><use href="#wrStar" transform="translate(453 88)"/>
+      </g>
+      <!-- main plate -->
+      <path d="M260 6 L338 30 Q352 88 338 146 L260 170 L182 146 Q168 88 182 30 Z" fill="url(#wrGold)" stroke="#5a3400" stroke-width="3"/>
+      <path d="M260 17 L329 38 Q340 88 329 138 L260 159 L191 138 Q180 88 191 38 Z" fill="url(#wrGoldIn)" stroke="#fff6c8" stroke-width="1.5" opacity="0.92"/>
+      <text font-family="'Bebas Neue', sans-serif" font-size="17" letter-spacing="3" fill="#5a1200" text-anchor="middle"><textPath href="#wrArc" startOffset="50%">CHICAGO HEAVYWEIGHT</textPath></text>
+      <text x="260" y="112" font-family="'Yuji Boku', 'Yuji Mai', serif" font-size="50" fill="#8e0a1c" stroke="#3a0006" stroke-width="0.8" text-anchor="middle">王者</text>
+      <text x="260" y="136" font-family="'Bebas Neue', sans-serif" font-size="18" letter-spacing="5" fill="#5a1200" text-anchor="middle">CHAMPION</text>
+      <g fill="#c8102e" stroke="#5a0010" stroke-width="0.8"><use href="#wrStar" transform="translate(236 149) scale(0.6)"/><use href="#wrStar" transform="translate(252 152) scale(0.6)"/><use href="#wrStar" transform="translate(268 152) scale(0.6)"/><use href="#wrStar" transform="translate(284 149) scale(0.6)"/></g>
+      <g clip-path="url(#wrPlate)"><rect class="shine" x="230" y="0" width="60" height="176" fill="url(#wrShineG)" transform="skewX(-20)"/></g>
+    </svg>
+  </div>
   <div id="goTitle">DEFEATED</div>
   <div id="goSubtitle">The military has prevailed...</div>
   <div id="newHighScore" style="font-size:24px; color:#ff66aa; letter-spacing:6px; margin-bottom:8px; display:none;">&#9733; NEW HIGH SCORE &#9733;</div>
+  </div>
+  <div class="go-col go-b">
   <div class="go-score-big" id="finalScore">0</div>
   <div class="go-score-label">FINAL SCORE</div>
   <div class="stats-divider"></div>
@@ -1416,7 +1891,9 @@
     <div class="stats-row"><span>Time Survived</span> <b id="finalTime">0:00</b></div>
   </div>
   <div class="stats-divider"></div>
-  <button class="start-btn" onclick="window.__restartInPlace ? window.__restartInPlace() : location.reload()">UNLEASH AGAIN</button>
+  <button class="start-btn" id="wr-defend-btn" type="button">DEFEND THE TITLE<small></small></button>
+  <button class="start-btn" id="goAgainBtn" onclick="window.__restartInPlace ? window.__restartInPlace() : location.reload()">UNLEASH AGAIN</button>
+  </div>
 </div>
 
 <!-- Mobile data warning -->

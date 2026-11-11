@@ -494,20 +494,99 @@ function _personGeom() {
 }
 const SHIRTS = [0xff3d8b, 0xff8a1f, 0xffd21f, 0x2fd4c0, 0x9b5cff, 0x4fb3ff, 0xd8d8d8, 0x222222, 0xe23030, 0x44cc55]; // white kept under the noon bloom threshold
 
-function _crowdMaterial(uTime) {
+/** Uniforms of the crowd shader at rest: the festival's own values (about
+ *  half the crowd bouncing to the beat, nothing else). The ringside audience
+ *  (chicago_arena.js) drives its own set from the match:
+ *   uBounce  x share NOT bouncing (0..1), y bounce height, z bounce rate, w pop (everyone jumps) 0..1
+ *   uWave    xy: centre (x, z) the stadium wave runs around, z: the crest's angle (rad), w: height 0..1
+ *   uFear[3] x, z, radius, strength: people shuffle and lean away (two kaiju + the last landing)
+ *   uShock   x, z, start time, strength: a flinch that spreads out from an impact
+ *   uRing    x, z centre of the floodlit ring, z: reach (u), w: light strength (emissive)
+ *   uSigns   share of people holding a sign up (the sign box is part of the arena's geometry) */
+function _crowdUniforms() {
+  return {
+    uTime: { value: 0 },
+    uBounce: { value: new THREE.Vector4(0.45, 0.22, 7.5, 0) },
+    uWave: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uFear: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+    uShock: { value: new THREE.Vector4(0, 0, -100, 0) },
+    uRing: { value: new THREE.Vector4(0, 0, 1, 0) },
+    uSigns: { value: 0 },
+  };
+}
+
+function _crowdMaterial(U) {
+  if (!U.uBounce) U = Object.assign(_crowdUniforms(), { uTime: U }); // (uTime) alone: the festival at rest
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = uTime;
-    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader
+    Object.assign(sh.uniforms, U);
+    sh.vertexShader = `uniform float uTime, uSigns;
+uniform vec4 uBounce, uWave, uShock, uRing, uFear[3];
+varying float vCrowdGlow;
+` + sh.vertexShader
       .replace('#include <color_vertex>', `#include <color_vertex>
 #ifdef USE_INSTANCING_COLOR
-        vColor = color.r + color.g + color.b > 2.99 ? instanceColor.rgb : color;
+        // white vertices take the shirt colour; red above 1.5 marks the sign board
+        vColor = color.r > 1.5 ? vec3(0.92, 0.9, 0.82) * (0.55 + 0.45 * instanceColor.rgb) : (color.r + color.g + color.b > 2.99 ? instanceColor.rgb : color);
 #endif`)
-      // Jumping to the beat: about half the crowd bounces, each on its own phase
       .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vCrowdGlow = 0.0;
+#ifdef USE_INSTANCING
         float ph = float(gl_InstanceID) * 1.618;
-        float jumper = step(0.45, fract(ph * 0.37));
-        transformed.y += jumper * max(0.0, sin(uTime * 7.5 + ph * 6.2831)) * 0.22;`);
+        float h1 = fract(ph * 0.37), h2 = fract(ph * 0.731 + 0.19);
+        vec3 ip = instanceMatrix[3].xyz;
+        float sc2 = dot(instanceMatrix[0].xyz, instanceMatrix[0].xyz);
+        // (a flattened spectator keeps still: its matrix is squashed in y)
+        float up = step(0.25, dot(instanceMatrix[1].xyz, instanceMatrix[1].xyz));
+        if (color.r > 1.5) {
+          // sign boards: only the people who brought one, pumped on a pop
+          float has = step(h2, uSigns) * up;
+          transformed *= has;
+          transformed.y += has * (0.10 + 0.25 * uBounce.w) * sin(uTime * 6.0 + ph * 6.2831);
+        }
+        // Jumping to the beat: a share of the crowd bounces, each on its own phase
+        float jumper = step(uBounce.x, h1);
+        float hop = jumper * max(0.0, sin(uTime * uBounce.z + ph * 6.2831)) * uBounce.y;
+        // A pop: everybody is off the ground
+        hop += uBounce.w * (0.35 + 0.65 * h2) * abs(sin(uTime * (8.0 + 3.0 * h1) + ph * 6.2831)) * 0.75;
+        // The wave: a crest running round the ring lifts people as it passes
+        vec2 wv = ip.xz - uWave.xy;
+        float wd = atan(wv.y, wv.x) - uWave.z;
+        wd = abs(mod(wd + 3.14159265, 6.2831853) - 3.14159265);
+        float crest = (1.0 - smoothstep(0.0, 0.55, wd)) * uWave.w;
+        float tall = 1.0 + 0.32 * crest;
+        hop += 0.35 * crest;
+        // The flinch: a ring spreading from an impact, people duck as it passes
+        vec2 sv = ip.xz - uShock.xy;
+        float sd = length(sv);
+        float st = uTime - uShock.z - sd / 70.0;
+        float flinch = uShock.w * exp(-sd / 110.0) * smoothstep(0.0, 0.07, st) * (1.0 - smoothstep(0.12, 0.85, st));
+        tall *= 1.0 - 0.34 * flinch;
+        vec2 push = sv / max(sd, 0.001) * flinch * 0.9;
+        // Fear: back away from a kaiju's feet (and from where one just landed), leaning as they go
+        float lean = 0.0;
+        for (int i = 0; i < 3; i++) {
+          vec2 fv = ip.xz - uFear[i].xy;
+          float fd = length(fv);
+          float f = (1.0 - smoothstep(uFear[i].z * 0.35, uFear[i].z, fd)) * uFear[i].w;
+          push += fv / max(fd, 0.001) * f * (2.2 + 1.6 * h2);
+          lean += f;
+          hop *= 1.0 - 0.8 * f;
+        }
+        transformed.y = transformed.y * mix(1.0, tall, up) + hop * up;
+        // world-space shove, carried into the instance's own frame
+        vec3 shove = vec3(push.x, 0.0, push.y) * (1.0 + min(lean, 1.0) * 0.45 * position.y) * up;
+        transformed += (shove * mat3(instanceMatrix)) / max(sc2, 1e-4);
+        // Floodlit side of the audience: emissive that falls off with distance from the ring
+        vec2 rv = uRing.xy - ip.xz;
+        float rd = length(rv);
+        vec3 wn = normalize(mat3(instanceMatrix) * normal);
+        float facing = 0.45 + 0.55 * clamp(dot(wn.xz, rv / max(rd, 0.001)) + 0.35 * wn.y, 0.0, 1.0);
+        vCrowdGlow = uRing.w * facing * (1.0 - smoothstep(uRing.z * 0.45, uRing.z, rd)) * up;
+#endif`);
+    sh.fragmentShader = 'varying float vCrowdGlow;\n' + sh.fragmentShader
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance += diffuseColor.rgb * vCrowdGlow;`);
   };
   mat.customProgramCacheKey = () => 'fest-crowd';
   return mat;
@@ -667,6 +746,7 @@ export function buildFest(scene, F, ctx) {
       for (; t < l; t += pl) {
         const x = a[0] + dx * t, z = a[1] + dz * t;
         if (gates.some((g) => Math.hypot(x - g.x, z - g.z) < g.w / 2 + pl * 0.5)) { flush(); continue; }
+        if (ctx.ring && festRingGap(x, z)) { flush(); continue; }
         if (run.length && Math.abs(Math.sin(ry - run[0].ry)) > 0.5) flush();
         run.push({ x, z, ry });
         if (run.length >= 14) flush();
@@ -733,7 +813,8 @@ export function buildFest(scene, F, ctx) {
     const geom = _personGeom(), mat = _crowdMaterial(uTime);
     const perU2 = !glb ? 0.08 : lite ? 0.22 : 0.62; // people per square unit
     const cap = !glb ? 450 : lite ? 1600 : 5200;
-    const lawns = stages.filter(({ it }) => it.crowdArea && (glb || it.tier === 'main'));
+    // (ctx.ring: the title match has drawn everyone to the ring; chicago_arena.js seats them there)
+    const lawns = ctx.ring ? [] : stages.filter(({ it }) => it.crowdArea && (glb || it.tier === 'main'));
     const area = (p) => { let s = 0; for (let i = 0; i < p.length; i++) { const [x0, z0] = p[i], [x1, z1] = p[(i + 1) % p.length]; s += x0 * z1 - x1 * z0; } return Math.abs(s) / 2; };
     const tot = lawns.reduce((s, { it }) => s + area(it.crowdArea), 0);
     const k = Math.min(perU2, cap / Math.max(1, tot));
@@ -852,4 +933,16 @@ export function buildFest(scene, F, ctx) {
 }
 
 // The ringside crowd (chicago_arena.js) stands the same people around the ring
-export { _personGeom as festPersonGeom, _crowdMaterial as festCrowdMaterial, SHIRTS as FEST_SHIRTS };
+export { _personGeom as festPersonGeom, _crowdMaterial as festCrowdMaterial, _crowdUniforms as festCrowdUniforms, SHIRTS as FEST_SHIRTS };
+
+/** Wrestling mode (ctx.ring): the stretches of fence left open for the two
+ *  entrances. East, the player's ramp from the lake; west, the rival's way
+ *  in from the Loop along Balbo Dr (either side of the Balbo gate). */
+export const FEST_RING_GAPS = Object.freeze([
+  Object.freeze({ x0: 40, x1: 70, z0: 47, z1: 77 }),
+  Object.freeze({ x0: -70, x1: -45, z0: 49, z1: 75 }),
+]);
+function festRingGap(x, z) {
+  for (const g of FEST_RING_GAPS) if (x > g.x0 && x < g.x1 && z > g.z0 && z < g.z1) return true;
+  return false;
+}
