@@ -1281,7 +1281,7 @@
     #menu .levels { margin:0; }
     #menu .level-card { padding:3px 18px; }
     #menu .level-card b { font-size:14px; }
-    #menu .level-card > span,#highscore-display,#menu .studio,#menu .menu-hint,#lone-menu-help,#menu .starring,#menu .trailer-btn { display:none; }
+    #menu .level-card > span,#highscore-display,#menu .studio,#menu .menu-hint,#lone-menu-help,#menu .starring,#menu #trailerBtn { display:none; }
     #menu .deployment-options { margin:4px auto; gap:10px; flex-wrap:nowrap; }
     #menu .deployment-field { min-width:0; gap:3px; }
     #menu .deployment-field span { font-size:10px; letter-spacing:1px; }
@@ -1331,6 +1331,36 @@
   body.touch .lone-infantry-actions button,body.touch .lone-vehicle-actions button { width:54px; min-height:48px; padding:6px; touch-action:none; color:var(--c-gold); background:#231917ed; border:1px solid #947249; border-radius:8px; font:13px var(--f-display); }
   body.lone-mode #attack-btn { font-size:21px; }
   body.lone-helicopter #sprint-btn { display:none; }
+
+  .menu-extras { display:flex; flex-wrap:wrap; justify-content:center; gap:10px; }
+  #model-gallery { box-sizing:border-box; width:min(920px, calc(100vw - 24px)); max-height:calc(100dvh - 24px);
+    margin:auto; padding:18px; background:#10141b; color:#f2e5d5; border:1px solid #785045; border-radius:12px; }
+  #model-gallery::backdrop { background:rgba(7,9,13,.82); }
+  .menu-extras .pad-focus { outline:2px solid #ffd166; outline-offset:3px; }
+  .gallery-header, .gallery-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .gallery-header { justify-content:space-between; margin-bottom:10px; }
+  .gallery-header h2, .gallery-details h3 { margin:0; letter-spacing:.04em; }
+  #model-gallery button, #model-gallery select { min-height:40px; border:1px solid #785045; border-radius:5px;
+    background:#25232a; color:#fff2e1; padding:6px 12px; font:inherit; }
+  #model-gallery button { cursor:pointer; }
+  #model-gallery :focus-visible { outline:2px solid #ffb472; outline-offset:2px; }
+  .gallery-tools select { min-width:0; flex:1 1 200px; }
+  .gallery-viewport { position:relative; height:clamp(180px, 52dvh, 500px); margin-top:10px;
+    overflow:hidden; border-radius:8px; background:#141b24; }
+  .gallery-viewport canvas { width:100%; height:100%; display:block; touch-action:none; }
+  #gallery-status { position:absolute; inset:0; display:grid; place-items:center; text-align:center; padding:12px; pointer-events:none; }
+  #gallery-status:empty { display:none; }
+  .gallery-details { margin:12px 0 0; }
+  .gallery-details p { margin:6px 0; line-height:1.4; }
+  .gallery-hint { color:#c0b2a6; font-size:.85rem; }
+  @media (max-height:520px) and (orientation:landscape) {
+    #model-gallery { padding:10px; }
+    .gallery-content { display:grid; grid-template-columns:minmax(0,1.85fr) minmax(0,1fr);
+      align-items:center; gap:14px; margin-top:10px; }
+    .gallery-viewport { height:clamp(140px, calc(100dvh - 138px), 260px); margin:0; }
+    .gallery-details { margin:0; }
+    #model-gallery button, #model-gallery select { min-height:34px; }
+  }
 </style>
 </head>
 <body>
@@ -1398,7 +1428,10 @@
   <div class="starring">STARRING · 出演</div>
   <div class="monsters" id="monsterCards"></div>
   <div class="deployment-bar"><span id="deployment-selection">CHOOSE YOUR KAIJU</span><button class="start-btn" id="startBtn" disabled>UNLEASH HAVOC</button></div>
-  <button class="trailer-btn" id="trailerBtn" type="button">▶ WATCH TRAILER</button>
+  <div class="menu-extras">
+    <button class="trailer-btn" id="trailerBtn" type="button">▶ WATCH TRAILER</button>
+    <button class="trailer-btn" id="galleryBtn" type="button">MODEL GALLERY</button>
+  </div>
   <p class="menu-hint" style="margin-top:14px; color:#888; font-size:12px;">WASD MOVE · MOUSE LOOK · LMB ATTACK · 1-3 POWERS · SPACE STOMP<br>← → / D-PAD to navigate · ENTER / A to confirm · START to launch</p>
   <div id="quality-picker" style="margin-top:8px; font-size:11px; color:#aa9988; letter-spacing:3px; display:flex; gap:8px; justify-content:center; align-items:center;">
     <span style="opacity:0.7;">QUALITY · 画質</span>
@@ -1408,6 +1441,27 @@
   </div>
   <div class="studio">PRESENTED BY · <b>HALLUCINATED GAMES</b> · ハルシネイテッド ゲームズ</div>
 </div>
+
+<dialog id="model-gallery" aria-labelledby="gallery-heading">
+  <div class="gallery-header">
+    <h2 id="gallery-heading">Model Gallery</h2>
+    <form method="dialog"><button type="submit" aria-label="Close gallery">Close</button></form>
+  </div>
+  <div class="gallery-tools">
+    <button type="button" data-gallery-step="-1" aria-label="Previous model">←</button>
+    <select id="gallery-model" aria-label="Choose a model"></select>
+    <button type="button" data-gallery-step="1" aria-label="Next model">→</button>
+    <label><input type="checkbox" id="gallery-spin" checked> Auto-rotate</label>
+  </div>
+  <div class="gallery-content">
+    <div class="gallery-viewport"><div id="gallery-status" role="status">Loading gallery…</div></div>
+    <div class="gallery-details">
+      <h3 id="gallery-name"></h3>
+      <p id="gallery-description"></p>
+      <p class="gallery-hint">Drag to rotate. Scroll or pinch to zoom.</p>
+    </div>
+  </div>
+</dialog>
 
 <!-- HUD: vitals | boss bar + objective chip + toasts | stats + menu + minimap -->
 <div id="hud" class="hidden">
@@ -1596,43 +1650,46 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.132",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.132",
-    "./src/audio.js": "./src/audio.js?v=1.11.132",
-    "./src/city.js": "./src/city.js?v=1.11.132",
-    "./src/effects.js": "./src/effects.js?v=1.11.132",
-    "./src/carBatch.js": "./src/carBatch.js?v=1.11.132",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.132",
-    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.11.132",
-    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.11.132",
-    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.11.132",
-    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.11.132",
-    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.11.132",
-    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.11.132",
-    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.11.132",
-    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.11.132",
-    "./src/game.js": "./src/game.js?v=1.11.132",
-    "./src/intro.js": "./src/intro.js?v=1.11.132",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.132",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.132",
-    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.11.132",
-    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.11.132",
-    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.11.132",
-    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.11.132",
-    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.11.132",
-    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.11.132",
-    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.11.132",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.132",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.132",
-    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.11.132",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.132",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.132",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.132",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.132",
-    "./src/quality.js": "./src/quality.js?v=1.11.132",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.132",
-    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.11.132",
-    "./src/waterPlay.js": "./src/waterPlay.js?v=1.11.132"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.11.134",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.134",
+    "./src/audio.js": "./src/audio.js?v=1.11.134",
+    "./src/city.js": "./src/city.js?v=1.11.134",
+    "./src/effects.js": "./src/effects.js?v=1.11.134",
+    "./src/carBatch.js": "./src/carBatch.js?v=1.11.134",
+    "./src/enemies.js": "./src/enemies.js?v=1.11.134",
+    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.11.134",
+    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.11.134",
+    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.11.134",
+    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.11.134",
+    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.11.134",
+    "./src/modelGallery.js": "./src/modelGallery.js?v=1.11.134",
+    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.11.134",
+    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.11.134",
+    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.11.134",
+    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.11.134",
+    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.11.134",
+    "./src/game.js": "./src/game.js?v=1.11.134",
+    "./src/intro.js": "./src/intro.js?v=1.11.134",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.134",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.134",
+    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.11.134",
+    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.11.134",
+    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.11.134",
+    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.11.134",
+    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.11.134",
+    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.11.134",
+    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.11.134",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.134",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.134",
+    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.11.134",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.134",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.134",
+    "./src/monsters.js": "./src/monsters.js?v=1.11.134",
+    "./src/pickups.js": "./src/pickups.js?v=1.11.134",
+    "./src/quality.js": "./src/quality.js?v=1.11.134",
+    "./src/vfx.js": "./src/vfx.js?v=1.11.134",
+    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.11.134",
+    "./src/waterPlay.js": "./src/waterPlay.js?v=1.11.134"
   }
 }
 </script>
@@ -1646,7 +1703,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.132"></script>
-<script type="module" async src="./src/intro.js?v=1.11.132"></script>
+<script type="module" src="./src/game.js?v=1.11.134"></script>
+<script type="module" async src="./src/intro.js?v=1.11.134"></script>
 </body>
 </html>

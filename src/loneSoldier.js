@@ -45,8 +45,8 @@ export const UNITS = {
 };
 
 export class LoneSoldier {
-  constructor({ world, state, camera, role, finish, sound, viewModel, handlingSound=()=>{}, pause=()=>{} }) {
-    Object.assign(this, { world, state, camera, finish, sound, handlingSound });
+  constructor({ world, state, camera, role, finish, sound, viewModel, handlingSound=()=>{}, impactSound=()=>{}, pause=()=>{} }) {
+    Object.assign(this, { world, state, camera, finish, sound, handlingSound, impactSound });
     this.unit = UNITS[role]; this.role = role; this.pos = new THREE.Vector3();
     const kp = state.kaiju.root.position;
     this.pos.copy(chooseSoldierSpawn(world,kp,this.unit.eye));
@@ -85,7 +85,7 @@ export class LoneSoldier {
       this.view.add(viewModel);
       this.visuals=attachViewDetails(viewModel,role,camera);
     }
-    this.motion = 0; this.recoil = 0;
+    this.motion = 0; this.recoil = 0;this.impactShake=0;
     this.steer=0;this.ai=new LoneKaijuAI();this.lookSway=new THREE.Vector2();this.sprintBlend=0;
     this.ammo=30;this.magSize=30;this.reloadTime=0;this.reloadHeld=false;
     this.reloadDuration=2.2;this.emptyReload=false;
@@ -131,6 +131,10 @@ export class LoneSoldier {
     if(bearing){bearing.hidden=Math.abs(delta)<horizontalFov*.9;write('lone-bearing',delta>0?'← KAIJU':'KAIJU →');}
     this.hud.classList?.toggle('critical',this.hp/this.unit.hp<.3);
   }
+  meleeImpact(kind,strength) {
+    this.impactShake=Math.max(this.impactShake,strength*(kind==='stomp'?.16:.09));
+    this.impactSound(kind,strength);
+  }
   cameraUpdate() {
     const kick = Math.sin(this.recoil * Math.PI / 2);
     const infantry=this.role==='infantry',heli=this.role==='helicopter';
@@ -154,8 +158,11 @@ export class LoneSoldier {
       if(Math.abs(this.camera.fov-fov)>.001){this.camera.fov=fov;this.camera.updateProjectionMatrix();}
     }
     this.camera.position.copy(this.pos);
+    const impact=this.impactShake||0;
+    this.camera.position.x+=Math.sin(this.time*67)*impact;
+    this.camera.position.y+=Math.sin(this.time*83)*impact*.65;
     const {yaw,pitch}=this.state;
-    this.camera.lookAt(this.pos.x+Math.sin(yaw)*Math.cos(pitch),this.pos.y+Math.sin(pitch),this.pos.z+Math.cos(yaw)*Math.cos(pitch));
+    this.camera.lookAt(this.camera.position.x+Math.sin(yaw)*Math.cos(pitch),this.camera.position.y+Math.sin(pitch),this.camera.position.z+Math.cos(yaw)*Math.cos(pitch));
     this.visuals?.cameraUpdate();
   }
   shoot() {
@@ -224,6 +231,7 @@ export class LoneSoldier {
     }
   }
   update(dt,input) {
+    this.impactShake=Math.max(0,this.impactShake-dt*.65);
     this.recoil=Math.max(0,this.recoil-dt*13);
     this.time+=dt;this.cooldown=Math.max(0,this.cooldown-dt);
     if(this.reloadTime>0){

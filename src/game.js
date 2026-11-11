@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.11.132', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.11.134', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -35,6 +35,23 @@ import { fireAtomicBreath, updateAtomicBlasts, resetAtomicBlasts } from './atomi
 import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures } from './vfx.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
+
+const galleryDialog = document.getElementById('model-gallery');
+let openModelGallery;
+document.getElementById('galleryBtn').addEventListener('click', async () => {
+  galleryDialog.showModal();
+  try {
+    if (!openModelGallery) {
+      const { createModelGallery } = await import('./modelGallery.js');
+      openModelGallery ??= createModelGallery(galleryDialog);
+    }
+    if (galleryDialog.open) openModelGallery();
+  } catch (error) {
+    galleryDialog.querySelector('#gallery-status').textContent = 'The 3D gallery could not open.';
+    console.warn('Gallery unavailable', error);
+  }
+});
+
 
 // ------------------------- High score (localStorage) -------------------------
 const HIGH_SCORE_KEY = 'kaiju_highscore';
@@ -1266,6 +1283,7 @@ function _requestPointerLock() {
 
 const keys = {};
 window.addEventListener('keydown', (e) => {
+  if (galleryDialog.open) return;
   if(e.code==='Space' && lone && !state.paused && !state.gameOver){
     e.preventDefault();if(!e.repeat&&lone.role==='infantry')lone.jumpRequested=true;
   }
@@ -1408,12 +1426,13 @@ function _setFocus(items, idx) {
     items[i].classList.toggle('pad-focus', i === idx);
   }
 }
-// Title menu rows, top to bottom: level cards, monster cards, START.
+// Title menu rows, top to bottom: level cards, monster cards, START and extras.
 function _menuRows() {
   return [
     Array.from(document.querySelectorAll('#levelCards .level-card')),
     Array.from(document.querySelectorAll('#monsterCards .monster-card')),
     [document.getElementById('startBtn')],
+    Array.from(document.querySelectorAll('.menu-extras button')).filter(button => button.getClientRects().length),
   ].filter((r) => r.length && r[0]);
 }
 function _menuTargets() {
@@ -1471,6 +1490,14 @@ function pollMenuGamepad(dt) {
   }
   _menuPad.cool = Math.max(0, _menuPad.cool - dt);
   const ax = pad.axes[0] || 0;
+  if (galleryDialog.open) {
+    const pressed = index => pad.buttons[index]?.pressed && !_menuPad.prevDown[index];
+    if (pressed(1)) galleryDialog.close();
+    if (pressed(14)) galleryDialog.querySelector('[data-gallery-step="-1"]').click();
+    if (pressed(15)) galleryDialog.querySelector('[data-gallery-step="1"]').click();
+    for (const index of [0, 1, 9, 12, 13, 14, 15]) _menuPad.prevDown[index] = !!pad.buttons[index]?.pressed;
+    return;
+  }
   const dpadL = !!(pad.buttons[14] && pad.buttons[14].pressed);
   const dpadR = !!(pad.buttons[15] && pad.buttons[15].pressed);
   const dpadU = !!(pad.buttons[12] && pad.buttons[12].pressed);
@@ -1509,7 +1536,8 @@ function pollMenuGamepad(dt) {
 
 // Keyboard fallback: arrow keys + Enter while the menu / upgrade modal are open.
 window.addEventListener('keydown', (e) => {
-  if (!_menuVisible() && !_upgradeVisible()) return;
+  if (galleryDialog.open || (!_menuVisible() && !_upgradeVisible())) return;
+  if (e.target?.closest?.('.menu-extras') && (e.key === 'Enter' || e.key === ' ')) return;
   if (e.key === 'ArrowLeft')  { e.preventDefault(); navigateMenu(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); navigateMenu(+1); }
   else if (e.key === 'ArrowDown' && _menuVisible() && !_upgradeVisible()) {
@@ -2531,6 +2559,7 @@ async function _startGameInner(key) {
     lone = new LoneSoldier({world, state, camera, role, viewModel,
       pause:()=>togglePause(),
       sound: () => audio.shoot(role==='infantry'?'rifle':role==='helicopter'?'heli':'tank'),
+      impactSound: (kind,strength)=>audio.meleeImpact(kind,strength),
       handlingSound: phase=>audio.reloadPhase(phase), finish: won => {
         gameOver(won); lone.hud.style.display = 'none';
         document.getElementById('goTitle').textContent = won ? 'KAIJU NEUTRALIZED' : 'SOLDIER DOWN';
@@ -3409,7 +3438,7 @@ function kaijuOneShot(names, fade = 0.15, timeScale = 1, opts) {
 }
 
 // Gorrak's atomic breath detonation (atomicBlast.js calls this at the
-// detonation instant, a beat after the bolt arrives). Radial damage with
+// detonation instant, when the bolt arrives). Radial damage with
 // falloff: the core flattens what it touches, the outer ring softens.
 const ATOMIC_RANGE = 190;
 const ATOMIC_CORE_R = 30, ATOMIC_OUTER_R = 60;
@@ -3429,6 +3458,72 @@ function _atomicDetonate(pos) {
   else audio.explosion(3);
 }
 
+const atomicCoverQuery = new StructureRayQuery();
+
+function beginAtomicBreath(cfg) {
+  const kaiju = state.kaiju;
+  const origin = new THREE.Vector3();
+  const aim = camera.getWorldDirection(new THREE.Vector3());
+  aim.y *= .4;
+  aim.normalize();
+  const dir = aim.clone();
+  const ray = new THREE.Ray(origin, dir);
+  let building, enemy;
+  const damage = cfg.damage * (state.upgrades.dmgMult || 1);
+  const getMouth = (point) => {
+    kaiju.head.getWorldPosition(point);
+    point.y += 1;
+    point.addScaledVector(dir, 5.5);
+  };
+  getMouth(origin);
+
+  fireAtomicBreath(scene, origin, dir, ATOMIC_RANGE, cfg.color, pos => {
+    if (state.gameOver || state.kaiju !== kaiju) return;
+    if (building && !building.destroyed) building.damage(damage, pos, world);
+    if (enemy && !enemy.dead) {
+      _tmpV1.copy(enemy.root.position);
+      _tmpV1.y += 3;
+      if (_tmpV1.distanceToSquared(pos) <= 100) enemy.damage(damage * .7, world);
+    }
+    _atomicDetonate(pos);
+  }, {
+    kaijuRoot: kaiju.root, world, getMouth,
+    onRelease() {
+      getMouth(origin);
+      const target = _assistTarget(origin, aim, .25, ATOMIC_RANGE, false, .35);
+      if (target) {
+        dir.copy(target.root.position);
+        dir.y += 3;
+        dir.sub(origin).normalize();
+      }
+
+      let distance = ATOMIC_RANGE;
+      if (dir.y < -1e-3) distance = Math.min(distance, -origin.y / dir.y);
+      const cover = atomicCoverQuery.nearest(world, ray, distance, true, .5);
+      if (cover) {
+        distance = cover.distance;
+        building = cover.building;
+      }
+      for (const candidate of world.enemies) {
+        if (candidate.dead) continue;
+        _tmpV1.copy(candidate.root.position).sub(origin);
+        _tmpV1.y += 3;
+        const along = _tmpV1.dot(dir);
+        if (along <= 0 || along >= distance) continue;
+        const lateralSq = Math.max(0, _tmpV1.lengthSq() - along * along);
+        if (lateralSq > 36) continue;
+        distance = along;
+        enemy = candidate;
+        building = null;
+      }
+      world.shake(.3, .4);
+      audio.beam();
+      return { origin, dir, distance };
+    },
+  });
+  audio.atomicCharge?.();
+}
+
 function fireBeam() {
   if (lone) { return; }
   const cfg = state.monsterCfg.beam;
@@ -3445,6 +3540,10 @@ function fireBeam() {
     const anim = v === 'ghidorah' ? 'cast1' : v === 'mecha' ? 'cast1' : 'skill1';
     kaijuOneShot([anim, 'skill1'], 0.15, 1.3, { commit: 0.6 });
   }
+  if (atomic) {
+    beginAtomicBreath(cfg);
+    return;
+  }
   state.kaiju.head.getWorldPosition(_beamOrigin);
   _beamOrigin.y += 1;
   // direction = camera forward, biased horizontally toward enemies
@@ -3452,7 +3551,7 @@ function fireBeam() {
   _beamDir.y *= 0.4; _beamDir.normalize();
   _beamOrigin.addScaledVector(_beamDir, 5.5);
 
-  const length = atomic ? ATOMIC_RANGE : 260;
+  const length = 260;
   // Snap onto an enemy near the aim (horizontal angle only): ground units
   // within ~20 deg (they sit far below the beam's pitch and are small),
   // air units within ~14 deg. The snapped target is hit directly below,
@@ -3462,12 +3561,9 @@ function fireBeam() {
     _tmpV1.copy(tgt.root.position); _tmpV1.y += 3;
     _beamDir.subVectors(_tmpV1, _beamOrigin).normalize();
   }
-  // The atomic breath travels as a bolt instead (fired below, once the
-  // detonation point is known)
 
   world.shake(0.3, 0.4);
   audio.beam();
-  if (atomic && typeof audio.atomicCharge === 'function') audio.atomicCharge();
 
   // Hit detection along ray -- single raycast against the global body IM
   _beamRay.set(_beamOrigin, _beamDir);
@@ -3494,8 +3590,7 @@ function fireBeam() {
   if (hitB) {
     const hp = _beamImpact.clone();
     hitB.damage(beamDmg, hp, world);
-    // (the atomic breath's impact visuals are its detonation)
-    if (!atomic) world.spawnExplosion(hp, 0.8);
+    world.spawnExplosion(hp, 0.8);
     // Variant-specific impact signature at the hit point
     if (variant === 'mecha') {
       // Plasma cannon: secondary explosion ring for double-impact
@@ -3552,16 +3647,7 @@ function fireBeam() {
     }
   }
 
-  if (atomic) {
-    // Detonate at the first building / ground hit, the snapped target, or
-    // max range, whichever comes first
-    let det = impactDist;
-    if (tgt) {
-      const td = _tmpV1.copy(tgt.root.position).sub(_beamOrigin).dot(_beamDir);
-      if (td > 0 && td < det) det = td;
-    }
-    fireAtomicBreath(scene, _beamOrigin, _beamDir, det, cfg.color, _atomicDetonate, { kaijuRoot: state.kaiju.root, world });
-  } else if (impactDist < length) {
+  if (impactDist < length) {
     if (_beamImpact.y < 1.5) waterImpact(world, _beamImpact.x, _beamImpact.z, 2, 'beam');
     const fx = vfx.spawn('beamImpact', { world, pos: _beamImpact.clone(), color: cfg.color });
     if (fx) world.effects.push(fx);
@@ -4006,9 +4092,14 @@ function updatePlayer(dt) {
     // meanwhile are deferred by glb.play until the clip's commit window
     // passes (moving) or it finishes (idle), then crossfade back.
     let loco, fade;
+    const mecha = state.monsterCfg.variant === 'mecha';
+    const backingUp = mecha && mz < 0 && Math.abs(mz) >= Math.abs(mx);
     if (moving) {
       const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
-      if (state._turnDir) {
+      if (mecha) {
+        loco = backingUp ? 'walkBackIP' : sprint ? 'run' : 'walk';
+        fade = .2;
+      } else if (state._turnDir) {
         // Turning while moving — fall back to walk turns if run turns unavailable
         const left = state._turnDir > 0;
         if (sprint && glb.actions.turnLeft) loco = left ? 'turnLeft' : 'turnRight';
@@ -4022,12 +4113,18 @@ function updatePlayer(dt) {
     } else {
       loco = 'idle'; fade = 0.4;
     }
-    if (loco !== glb.currentName && (state._locoHoldT <= 0 || glb.oneShotActive)) {
+    if (loco !== glb.currentName && (mecha || state._locoHoldT <= 0 || glb.oneShotActive)) {
       if (glb.play(loco, fade)) state._locoHoldT = 0.3;
     }
 
-    // Keep yaw rotation driven by player input
-    k.root.rotation.y = state.yaw;
+    // Mechra's turn clips contain baked translation and rotation. Use its
+    // in-place gait and point the actor along the movement the game applied.
+    if (mecha && moving && !glb.oneShotActive) {
+      const sign = backingUp ? -1 : 1;
+      k.root.rotation.y = Math.atan2(move.x * sign, move.z * sign);
+    } else {
+      k.root.rotation.y = state.yaw;
+    }
 
     // Vertical bob for stomp jump (parabolic arc)
     state._stompJumpT = Math.max(0, (state._stompJumpT || 0) - dt);
@@ -5190,9 +5287,8 @@ function tick(now) {
     // Minimap is a full canvas redraw; ~15Hz is plenty
     if (now - (state._lastMini || 0) > 66) { drawMinimap(); state._lastMini = now; }
   } else if (state.kaiju) {
-    // Keep GLB animation mixer running during pause/gameOver so
-    // death, dance, and idle animations continue playing
-    if (state.kaiju.mixer) {
+    // Keep victory and defeat animations playing after the simulation stops.
+    if (state.kaiju.mixer && (state.gameOver || !state.paused)) {
       state.kaiju.mixer.update(Math.min(0.05, dtRaw));
       if (state._topple) _updateTopple(Math.min(0.05, dtRaw));
     }

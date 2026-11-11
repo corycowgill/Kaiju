@@ -434,6 +434,7 @@ export class Mech {
     const root = new THREE.Group();
     root.position.set(x, 0, z);
 
+    // The authored mech faces +Z, the same axis as the actor and muzzle.
     const biped = _cloneBiped(_templates.mech);
     if (biped) {
       const box = new THREE.Box3().setFromObject(biped.root);
@@ -443,7 +444,6 @@ export class Mech {
       biped.root.scale.setScalar(s);
       box.setFromObject(biped.root);
       biped.root.position.y = -box.min.y;
-      biped.root.rotation.y = Math.PI; // align front with +Z
       root.add(biped.root);
       this.mixer = biped.mixer;
       this._actions = biped.actions;
@@ -472,10 +472,18 @@ export class Mech {
     this.root = root;
   }
 
-  _playAnim(name) {
-    if (!this._actions || this._currentAnim === name || !this._actions[name]) return;
-    if (this._actions[this._currentAnim]) this._actions[this._currentAnim].fadeOut(0.2);
-    this._actions[name].reset().fadeIn(0.2).play();
+  _playAnim(name, reverse = false) {
+    const action = this._actions?.[name];
+    if (!action) return;
+    const rate = reverse ? -1 : 1;
+    if (this._currentAnim === name) {
+      action.setEffectiveTimeScale(rate);
+      return;
+    }
+    this._actions[this._currentAnim]?.fadeOut(.2);
+    action.reset().setEffectiveTimeScale(rate);
+    if (reverse) action.time = action.getClip().duration;
+    action.fadeIn(.2).play();
     this._currentAnim = name;
   }
 
@@ -500,7 +508,7 @@ export class Mech {
         myPos.z += dz * this.speed * dt;
         // Animate walk vs run based on distance
         if (this._actions) {
-          this._playAnim(dist > 70 ? 'run' : 'walk');
+          this._playAnim(dist > 70 ? 'run' : 'walk', dist < 35);
         } else if (this.legL) {
           this.legPhase = (this.legPhase || 0) + dt * 6;
           this.legL.position.y = 2.0 + Math.sin(this.legPhase) * 0.4;
@@ -942,7 +950,6 @@ export class BossMech {
       });
       box.setFromObject(biped.root);
       biped.root.position.y = -box.min.y;
-      biped.root.rotation.y = Math.PI;
       root.add(biped.root);
       this.mixer = biped.mixer;
       this._actions = biped.actions;

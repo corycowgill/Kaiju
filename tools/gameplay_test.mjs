@@ -407,3 +407,58 @@ test('festival ground wear follows entrances and paths, stays deterministic and 
   const off=buildChicagoWear(null,[],128);assert.equal(off.sources,0);
   assert.ok(off.data.every((v,i)=>i%4===3?v===255:v===0));
 });
+
+test('melee camera feedback fades without moving the soldier or changing aim',()=>{
+  const previous=globalThis.document,nodes=new Map();
+  globalThis.document={body:{append(){}},createElement:()=>({remove(){},innerHTML:''}),getElementById:id=>{if(!nodes.has(id))nodes.set(id,{});return nodes.get(id);}};
+  try {
+    const root=new THREE.Group(),camera=new THREE.PerspectiveCamera(),state={kaiju:{root,head:root},yaw:0,pitch:0,score:0};
+    const world={scene:new THREE.Scene(),bounds:{minX:-500,maxX:500,minZ:-500,maxZ:500},buildings:[]},sounds=[];
+    const c=new LoneSoldier({world,state,camera,role:'infantry',sound(){},finish(){},impactSound:(...args)=>sounds.push(args)});
+    c.ai.update=()=>{};c.time=.1;const pos=c.pos.clone(),direction=new THREE.Vector3();
+    c.cameraUpdate();camera.getWorldDirection(direction);c.meleeImpact('stomp',1);c.cameraUpdate();
+    assert.ok(camera.position.distanceTo(pos)>.01);assert.deepEqual(c.pos,pos);
+    assert.ok(camera.getWorldDirection(new THREE.Vector3()).distanceTo(direction)<1e-6);assert.equal(sounds.length,1);
+    const idle={x:0,z:0,lookX:0,lookY:0,vertical:0};
+    for(let i=0;i<30;i++)c.update(1/60,idle);
+    assert.equal(c.impactShake,0);assert.ok(camera.position.distanceTo(c.pos)<1e-8);c.dispose();
+  } finally {globalThis.document=previous;}
+});
+
+test('atomic breath resolves once at the released bolt endpoint and resets pending hits', async () => {
+  const {fireAtomicBreath, updateAtomicBlasts, resetAtomicBlasts} = await import('../src/atomicBlast.js');
+  const scene = new THREE.Scene();
+  const origin = new THREE.Vector3(0, 8, 0);
+  const direction = new THREE.Vector3(0, 0, 1);
+  const hits = [];
+  let releases = 0;
+  const fire = () => fireAtomicBreath(scene, origin, direction, 190, 0x66ff66,
+    point => hits.push(point.clone()), {
+      world: {scene, isWater: () => true, effects: []},
+      onRelease() {
+        releases++;
+        return {origin: origin.clone().setX(7), dir: direction, distance: 55};
+      },
+    });
+
+  try {
+    fire();
+    updateAtomicBlasts(.3);
+    assert.equal(releases, 0);
+    assert.equal(hits.length, 0);
+    updateAtomicBlasts(.2);
+    assert.equal(releases, 1);
+    assert.equal(hits.length, 0);
+    updateAtomicBlasts(.21);
+    assert.deepEqual(hits.map(point => point.toArray()), [[7, 8, 55]]);
+    updateAtomicBlasts(.6);
+    assert.equal(hits.length, 1);
+    fire();
+    resetAtomicBlasts();
+    updateAtomicBlasts(1);
+    assert.equal(releases, 1);
+    assert.equal(hits.length, 1);
+  } finally {
+    resetAtomicBlasts();
+  }
+});

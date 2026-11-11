@@ -66,6 +66,8 @@ export function chicagoWeather(material,kind,wear=0,tile=2.4) {
           gl_Position=projectionMatrix*mvPosition;
         }`);
     shader.fragmentShader='uniform float chiKind;uniform float chiWear;uniform float chiTreeColors;uniform float chiStructure;uniform sampler2D chiFabric;uniform sampler2D chiWearField;uniform vec4 chiWearBounds;varying vec3 chiTreeTint;varying vec3 chiWorld;varying float chiSeed;\n'+noise+shader.fragmentShader
+      .replace('#include <alphatest_fragment>', `#include <alphatest_fragment>
+        if (chiTreeColors > .5 && diffuseColor.a < .42) discard;`)
       .replace('#include <color_fragment>',`#include <color_fragment>
         float macro=chiNoise(chiWorld.xz*.075),grain=chiNoise(chiWorld.xz*1.7);
         vec2 wearUv=(chiWorld.xz-chiWearBounds.xy)/chiWearBounds.zw;
@@ -105,7 +107,7 @@ export function chicagoWeather(material,kind,wear=0,tile=2.4) {
             diffuseColor.rgb=vec3(.035,.044,.052)+structureValue*vec3(.07,.075,.08);
           }
         }else if(chiTreeColors>.5){
-          diffuseColor.rgb*=chiTreeTint*(.94+macro*.10);
+          diffuseColor.rgb*=chiTreeTint*mix(.87,1.10,chiSeed)*(.94+macro*.10);
         }else{
           float leaf=smoothstep(.012,.07,diffuseColor.g-max(diffuseColor.r,diffuseColor.b));
           float yellowLeaf=smoothstep(.20,.35,(diffuseColor.r+diffuseColor.g)*.5)*smoothstep(.02,.15,diffuseColor.g-diffuseColor.b)*smoothstep(-.03,.10,diffuseColor.g-diffuseColor.r*.65);
@@ -121,7 +123,8 @@ export function chicagoWeather(material,kind,wear=0,tile=2.4) {
 
 export function chicagoTreeSurface(material) {
   material.userData.treeColors=true;
-  material.normalMap=texture('chi_canvas_normal.png');material.normalScale=new THREE.Vector2(.08,.08);
+  material.normalMap=texture('chi_canvas_normal.png');
+  material.normalScale=new THREE.Vector2(.08,.08);
   return chicagoWeather(material,5);
 }
 

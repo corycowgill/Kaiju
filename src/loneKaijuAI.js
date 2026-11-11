@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { KaijuPursuit } from './kaijuPursuit.js';
 import { StructureRayQuery } from './structureRayQuery.js';
 
 const MELEE_REACH=18, STOMP_RADIUS=5.5, PUNCH_RADIUS=3.8;
@@ -11,6 +12,7 @@ export class LoneKaijuAI {
     this.velocity=new THREE.Vector3();this.origin=new THREE.Vector3();
     this.direction=new THREE.Vector3();this.impact=new THREE.Vector3();
     this.ray=new THREE.Ray();this.hit=new THREE.Vector3();this.coverQuery=new StructureRayQuery();
+    this.pursuit=new KaijuPursuit();this.separationTarget=new THREE.Vector3();
     this.initialized=false;this.hitPlayer=false;this.kind='stomp';this.meleeAttacks=0;
   }
   update(s,dt) {
@@ -24,14 +26,25 @@ export class LoneKaijuAI {
     let distance=Math.hypot(pos.x-kp.x,pos.z-kp.z);
     const facing=this.phase==='windup'||this.phase==='attack'?this.target:pos;
     const yaw=Math.atan2(facing.x-kp.x,facing.z-kp.z);
-    k.root.rotation.y+=Math.atan2(Math.sin(yaw-k.root.rotation.y),Math.cos(yaw-k.root.rotation.y))*Math.min(1,dt*3);
-    const stopDistance=flying?65:12;
-    const moving=this.phase==='approach'&&distance>stopDistance;
-    if(moving){const step=Math.min(distance-stopDistance,dt*11);kp.x+=Math.sin(yaw)*step;kp.z+=Math.cos(yaw)*step;distance-=step;}
-    if(this.phase==='approach'||this.phase==='recover')k.glb?.play(moving?'walk':'idle');
+    const stopDistance=flying?65:16;
+    let moving=false,retreating=false;const beforeX=kp.x,beforeZ=kp.z;
+    if(this.phase==='approach')moving=this.pursuit.move(world,kp,pos,dt,stopDistance);
+    // Give the player room after a close pass. Never slide an attack's locked target.
+    if(!flying&&distance<10&&(this.phase==='approach'||this.phase==='recover')) {
+      retreating=true;this.separationTarget.copy(kp);
+      this.separationTarget.x-=Math.sin(yaw)*14;this.separationTarget.z-=Math.cos(yaw)*14;
+      moving=this.pursuit.move(world,kp,this.separationTarget,dt,0,6)||moving;
+    }
+    distance=Math.hypot(pos.x-kp.x,pos.z-kp.z);
+    const heading=moving&&!retreating?Math.atan2(kp.x-beforeX,kp.z-beforeZ):yaw;
+    k.root.rotation.y+=Math.atan2(Math.sin(heading-k.root.rotation.y),Math.cos(heading-k.root.rotation.y))*Math.min(1,dt*3);
+    if (this.phase === 'approach' || this.phase === 'recover') {
+      const gait = retreating && k.glb?.actions?.walkBackIP ? 'walkBackIP' : 'walk';
+      k.glb?.play(moving ? gait : 'idle');
+    }
     k.mixer?.update(dt);world.kaijuPos=kp;
     world.buildingGrid?.forEachNear(kp.x,kp.z,35,b=>{
-      if(!b.destroyed&&Math.abs(kp.x-b.x)<b.w/2+10&&Math.abs(kp.z-b.z)<b.d/2+10)b.damage(100*dt,kp,world);
+      if(!b.destroyed&&Math.abs(kp.x-b.x)<b.w/2+10&&Math.abs(kp.z-b.z)<b.d/2+10)b.damage(!b.isBridge&&(b.isFence||b.crushOnContact||b.h<3.4)?b.hp+1:100*dt,kp,world);
     });
     this.timer=Math.max(0,this.timer-dt);
     if(this.phase==='approach'&&this.timer===0&&(flying||distance<=MELEE_REACH)) {
@@ -39,11 +52,14 @@ export class LoneKaijuAI {
       this.phase='windup';this.timer=flying?1.3:this.kind==='stomp'?1.05:.75;
       this.target.copy(pos);if(flying)this.target.addScaledVector(this.velocity,.25);
       this.hitPlayer=false;this.strikeResolved=false;this.impactShown=false;this.pulse=0;this.attacks++;
-      k.glb?.playOnce(flying?'skill1':this.kind,.12,1,{duration:this.timer+(flying?1.05:.35)});
+      const motion=!flying&&k.glb?.melee?.[this.kind];
+      const duration=motion?this.timer*motion.duration/motion.contact:this.timer+(flying?1.05:.35);
+      this.followThrough=duration-this.timer;
+      k.glb?.playOnce(flying?'skill1':motion?.name||this.kind,.12,1,{duration});
       if(flying)world.spawnKaijuCharge?.(k.head,this.timer);
       world.spawnBossTelegraph?.(this.target.clone().setY(.2),flying?9:this.kind==='stomp'?STOMP_RADIUS:PUNCH_RADIUS,this.timer);
     } else if(this.phase==='windup'&&this.timer===0) {
-      this.phase='attack';this.timer=this.kind==='beam'?1.05:.35;
+      this.phase='attack';this.timer=this.followThrough??(this.kind==='beam'?1.05:.35);
       if(this.kind!=='beam')this.strike(s);
     } else if(this.phase==='attack') {
       this.pulse-=dt;
@@ -68,6 +84,8 @@ export class LoneKaijuAI {
     if(cover)cover.damage(stomp?180:140,this.impact,world);
     if(stomp)world.spawnShockwave?.(this.impact.clone(),0xe4b47c,radius);
     world.spawnDustBurst?.(this.impact.clone(),radius,stomp?12:8);
+    const proximity=Math.max(0,1-Math.hypot(pos.x-this.impact.x,pos.z-this.impact.z)/35);
+    if(proximity>0)s.meleeImpact?.(this.kind,proximity);
     const feet=pos.y-(s.unit?.eye??(s.role==='tank'?3.4:1.8));
     const inHeight=stomp?feet<=.65:Math.abs(pos.y-this.target.y)<3.2;
     if(!cover&&inHeight&&Math.hypot(pos.x-kp.x,pos.z-kp.z)<=MELEE_REACH+2&&Math.hypot(pos.x-this.target.x,pos.z-this.target.z)<radius) {

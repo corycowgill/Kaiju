@@ -616,6 +616,12 @@ class Audio {
     this.noise(0.3, 500, 0.4);
   }
 
+  meleeImpact(kind,strength=1) {
+    if(kind==='stomp'){this.stomp();return;}
+    this.tone(65,.15,'sine',.3*strength,-28);
+    this.noise(.12,380,.23*strength);
+  }
+
   stomp() {
     if (this._play('stomp')) return;
     this.tone(50, 0.3, 'sine', 0.6, -20);

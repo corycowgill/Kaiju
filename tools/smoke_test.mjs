@@ -228,6 +228,24 @@ await new Promise((r) => setTimeout(r, 300)); // flipbooks + ground textures (as
 // ---------------------------------------------------------------- assertions
 for (const e of globalThis.__loadErrors || []) fail(`__loadErrors: ${e.bug ? 'CODE BUG ' : ''}${e.where} ${e.url}: ${e.message}`);
 if (!res || !res.buildings || !res.buildings.length) fail('buildCity returned no buildings');
+
+// The mech rig's authored toe direction should agree with the actor's muzzle.
+for (const name of ['Mech', 'BossMech']) {
+  const actor = spawned[name];
+  if (!actor?.mixer) continue;
+  const forward = actor.root.getWorldDirection(new THREE.Vector3());
+  let toeDirection = 0;
+  for (const side of ['Left', 'Right']) {
+    const foot = actor.root.getObjectByName(side + 'Foot');
+    const toe = actor.root.getObjectByName(side + 'ToeBase');
+    if (foot && toe) {
+      toeDirection += toe.getWorldPosition(new THREE.Vector3())
+        .sub(foot.getWorldPosition(new THREE.Vector3())).dot(forward);
+    }
+  }
+  if (toeDirection <= 0) fail(name + ' faces away from its movement and muzzle axis');
+}
+
 let summary = '';
 if (res && res.level !== level) fail(`buildCity built level '${res && res.level}', expected '${level}'`);
 
