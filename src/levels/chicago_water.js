@@ -335,10 +335,31 @@ export function makeWaterMaterial(field, opts = {}) {
       .replace('#include <opaque_fragment>', `{
           vec3 V = normalize(cameraPosition - vec3(vWXZ.x, 0.2, vWXZ.y));
           float fres = 0.04 + 0.96 * pow(1.0 - max(dot(wN, V), 0.0), 5.0);
-          outgoingLight = mix(outgoingLight, uSky * 0.85, fres * 0.45 * (1.0 - wFoam));
           vec3 R = reflect(-V, wN);
-          float g = pow(max(dot(R, uSunDir), 0.0), 380.0);
-          outgoingLight += uSunCol * g * 1.0 * (1.0 - wFoam);
+          bool lookOn = false;
+          #ifdef USE_FOG
+            lookOn = uLook[0].w > 0.5;
+          #endif
+          if (lookOn) {
+            #ifdef USE_FOG
+            // Look layer on (look.js): the reflection is its sky model, so the
+            // lake mirrors the dusk gradient on every tier, and the low sun
+            // lays a glitter path toward the camera. three's own sun
+            // highlight and IBL reflection come out first: on a surface this
+            // smooth a low sun turns them into one clipped white sheet.
+            float calmK = 1.0 - wFoam;
+            outgoingLight = max(outgoingLight - (reflectedLight.directSpecular + reflectedLight.indirectSpecular) * 0.92, vec3(0.0));
+            vec3 Rs = normalize(vec3(R.x, abs(R.y) + 0.02, R.z));
+            outgoingLight = mix(outgoingLight, lookSkyCol(Rs), min(fres * 1.1 + 0.03, 1.0) * 0.9 * calmK);
+            float sd = max(dot(Rs, uLook[0].xyz), 0.0);
+            float sp = texture2D(uWave, vWXZ * 0.31 + vec2(uTime * 0.05, -uTime * 0.04)).a;
+            outgoingLight += uLook[18].rgb * ((pow(sd, 700.0) * 9.0 + pow(sd, 60.0) * 0.5 * smoothstep(0.45, 0.8, sp)) * calmK * min(uLook[18].w * 0.08 + 0.35, 1.0));
+            #endif
+          } else {
+            outgoingLight = mix(outgoingLight, uSky * 0.85, fres * 0.45 * (1.0 - wFoam));
+            float g = pow(max(dot(R, uSunDir), 0.0), 380.0);
+            outgoingLight += uSunCol * g * 1.0 * (1.0 - wFoam);
+          }
         }
         #include <opaque_fragment>`);
   };

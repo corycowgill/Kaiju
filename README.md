@@ -104,9 +104,9 @@ assets/
   kaiju_model/        # Godzilla GLB animations (18 clips)
   ghidorah_model/     # Ghidorah GLB animations (21 clips)
   mecha_model/        # Mecha GLB animations (20 clips)
-  godzilla.jpeg       # Character select portrait
-  ghidorah.jpeg       # Character select portrait
-  mecha.jpeg          # Character select portrait
+  godzilla.webp       # Character select portrait
+  ghidorah.webp       # Character select portrait
+  mecha.webp          # Character select portrait
   music.mp3           # Background music loop
 ```
 

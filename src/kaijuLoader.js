@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { cachedFetch, normalizeGLTFMaterials, withParseSlot, reportLoadError } from './assetCache.js';
 
 /** Fetch a GLB via the asset cache, then parse it with GLTFLoader. */
@@ -120,7 +121,7 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   if (!config) throw new Error(`No GLB model config for "${monsterKey}"`);
 
   const { file, anims } = config;
-  const loader = new GLTFLoader();
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); // GLBs are meshopt-compressed (tools/optimize_assets.mjs)
   const totalSteps = 1;
 
   if (onProgress) onProgress(0, totalSteps, 'Loading model');

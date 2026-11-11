@@ -1,0 +1,77 @@
+<!doctype html>
+<!-- Character-select portraits rendered from the game's own kaiju models: one camera rig,
+     one lighting rig, one size and format for all three (assets/<key>.webp).
+     Serve the repo root and open /tools/portraits.html: each portrait gets a download link
+     (window.portraits holds the data URLs for a script to save). Re-run after a model or
+     albedo change. -->
+<html><head><meta charset="utf-8"><title>Kaiju portraits</title>
+<style>body{margin:16px;background:#181818;color:#ccc;font:13px monospace}figure{display:inline-block;margin:0 12px 12px 0}img{display:block;width:640px}a{color:#fc6}</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const W = 640, H = 360, SS = 2;
+// key (= MONSTERS key and file name), model, accent (monsters.js colour), framing:
+// az/el camera angles and zoom; the camera aims between the Head bone and the body centre
+const KAIJU = [
+  { key: 'godzilla', file: 'kaiju_model/godzilla.glb', accent: '#3f8f52', az: -55, el: 3, zoom: 1.55 },
+  { key: 'ghidorah', file: 'ghidorah_model/ghidorah.glb', accent: '#d4a533', az: -55, el: 3, zoom: 1.55 },
+  { key: 'mecha', file: 'mecha_model/mecha.glb', accent: '#8fb4d8', az: -55, el: 3, zoom: 1.55 },
+];
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W * SS, H * SS, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+const env = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+window.portraits = {};
+
+for (const k of KAIJU) {
+  const gltf = await loader.loadAsync(`../assets/${k.file}`);
+  const root = gltf.scene;
+  root.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; for (const m of [].concat(o.material)) m.envMapIntensity = 0.35; } });
+  // idle pose
+  const clip = gltf.animations.find((c) => /alert/i.test(c.name)) || gltf.animations.find((c) => /idle/i.test(c.name)) || gltf.animations[0];
+  if (clip) { const mixer = new THREE.AnimationMixer(root); mixer.clipAction(clip).play(); mixer.setTime(Math.min(0.6, clip.duration / 2)); }
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  root.traverse((o) => { if (o.isSkinnedMesh) { o.computeBoundingBox(); box.union(o.boundingBox.clone().applyMatrix4(o.matrixWorld)); } else if (o.isMesh) box.expandByObject(o); });
+  const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+  const scene = new THREE.Scene(); scene.environment = env; scene.add(root);
+  const cam = new THREE.PerspectiveCamera(26, W / H, 0.01, 1000);
+  let head = null; root.traverse((o) => { if (!head && o.isBone && o.name === 'Head') head = o; });
+  const tg = head ? head.getWorldPosition(new THREE.Vector3()).lerp(c, 0.45) : c.clone();
+  const dist = 0.5 * s.y / k.zoom / Math.tan(THREE.MathUtils.degToRad(13));
+  const a = THREE.MathUtils.degToRad(k.az), e = THREE.MathUtils.degToRad(k.el);
+  const dir = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
+  cam.position.copy(tg).addScaledVector(dir, dist); cam.lookAt(tg);
+  // warm key from the camera's left, accent rim from behind, cool fill
+  const side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+  const key = new THREE.DirectionalLight(0xffe2c0, 3.2); key.position.copy(tg).addScaledVector(dir, 2).addScaledVector(side, 1.6).add(new THREE.Vector3(0, 2.2, 0)); key.target.position.copy(tg);
+  const rim = new THREE.DirectionalLight(new THREE.Color(k.accent).lerp(new THREE.Color(0xffffff), 0.45), 5.5); rim.position.copy(tg).addScaledVector(dir, -2).addScaledVector(side, -1.4).add(new THREE.Vector3(0, 1.4, 0)); rim.target.position.copy(tg);
+  scene.add(key, key.target, rim, rim.target, new THREE.HemisphereLight(0x9fb8ff, 0x2a2018, 0.55));
+  renderer.render(scene, cam);
+  // backdrop: accent glow behind the head on near-black, vignette
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#0b0a0f'; g.fillRect(0, 0, W, H);
+  const glow = g.createRadialGradient(W * 0.5, H * 0.45, 10, W * 0.5, H * 0.45, W * 0.62);
+  glow.addColorStop(0, k.accent + 'cc'); glow.addColorStop(0.45, k.accent + '33'); glow.addColorStop(1, '#00000000');
+  g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(renderer.domElement, 0, 0, W, H);
+  const vg = g.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, W * 0.72);
+  vg.addColorStop(0, '#00000000'); vg.addColorStop(1, '#000000b0');
+  g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  const url = cv.toDataURL('image/webp', 0.9);
+  window.portraits[k.key] = url;
+  const fig = document.createElement('figure');
+  fig.innerHTML = `<img src="${url}"><a download="${k.key}.webp" href="${url}">assets/${k.key}.webp</a>`;
+  document.body.appendChild(fig);
+  scene.remove(root);
+}
+window.ready = true;
+</script></body></html>

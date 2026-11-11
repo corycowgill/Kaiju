@@ -850,3 +850,6 @@ export function buildFest(scene, F, ctx) {
   }
   return { stages, crowds };
 }
+
+// The ringside crowd (chicago_arena.js) stands the same people around the ring
+export { _personGeom as festPersonGeom, _crowdMaterial as festCrowdMaterial, SHIRTS as FEST_SHIRTS };

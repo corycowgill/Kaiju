@@ -11,7 +11,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
-import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, loadLevelTemplates, loadLevelData, flushPendingGLBBuildings, enableKTX2, cullRubble } from './city.js';
+import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, loadLevelTemplates, loadLevelData, flushPendingGLBBuildings, enableKTX2, cullRubble, stageDestruction } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
@@ -29,7 +29,9 @@ import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, 
 import { batchCars, batchMovers } from './carBatch.js';
 import { fireAtomicBreath, updateAtomicBlasts, resetAtomicBlasts } from './atomicBlast.js';
 import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk } from './waterPlay.js';
-import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures } from './vfx.js';
+import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures, flipbooksReady } from './vfx.js';
+import { createWrestling } from './wrestling/index.js';
+import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, withLookEnvSky, setLookDip } from './look.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
 // ------------------------- High score (localStorage) -------------------------
@@ -49,8 +51,17 @@ function trySetHighScore(s) {
 // ?level= wins (testing), then the saved menu pick, then Tokyo.
 const LEVELS = {
   tokyo:   { name: 'TOKYO',   jp: '東京', tag: 'NEON DUSK · SHINJUKU', h2: 'TOKYO DESTRUCTION', h2jp: '東京破壊' },
-  chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'HIGH NOON · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊' },
+  chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'HIGH NOON · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊', mode: 'wrestling' },
 };
+// A level's game mode: 'waves' (the survival loop) unless its LEVELS entry
+// names another. ?mode=waves puts such a level back on the classic loop for
+// testing; a level without a mode of its own (Tokyo) is always waves.
+function _modeId(level) {
+  const own = (LEVELS[level] && LEVELS[level].mode) || 'waves';
+  if (own === 'waves') return own;
+  const m = location.search.match(/[?&]mode=(\w+)/);
+  return m && (m[1] === 'waves' || m[1] === own) ? m[1] : own;
+}
 const LEVEL_KEY = 'kaijuLevel';
 function _detectLevel() {
   const m = location.search.match(/[?&]level=(\w+)/);
@@ -206,6 +217,15 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 game.appendChild(renderer.domElement);
+// The shared look layer (look.js) patches three's shader chunks: before any
+// material compiles. Phone LOW runs it without the city map; tiers without a
+// shadow map get the kaiju's shadows analytically.
+initLook({
+  q: isMobile ? (Q_LOW ? 0 : 1) : (Q_HIGH ? 2 : 1),
+  blob: !RP.shadows,
+  mapSize: isMobile ? 512 : 1024,
+  mapBudget: isMobile ? 16000 : 60000, // map texels re-swept per frame while it updates
+});
 
 // Every parsed GLB's textures are queued for upload: drained while START
 // loads (behind the loading bar) and, in play, by tick() on a ~4 ms
@@ -614,6 +634,9 @@ const skyMat = new THREE.ShaderMaterial({
     }`
 });
 const sky = new THREE.Mesh(skyGeom, skyMat);
+// Chicago's dome: look.js's sky model (the fog and the reflections share it)
+// plus a sun disc and cloud decks; fewer cloud octaves on phones
+const _chiSkyMat = makeLookSky(isMobile ? (Q_LOW ? 2 : 3) : 4);
 // Sky dome last among opaques: it is behind everything (r=1500), so drawn
 // after the city the depth test skips it wherever buildings/ground cover it.
 sky.renderOrder = 2;
@@ -632,20 +655,27 @@ function _captureEnv() {
     // Render the sky into a small cube render target by temporarily replacing
     // scene.background with a copy of the sky and using fromScene.
     // Cheaper alternative: use a CubeCamera to capture the sky dome.
-    const cubeTarget = new THREE.WebGLCubeRenderTarget(256, { generateMipmaps: false });
+    // Chicago's sky is HDR around the sun: a float target keeps that range
+    const chi = sky.material === _chiSkyMat;
+    const cubeTarget = new THREE.WebGLCubeRenderTarget(256, chi ? { generateMipmaps: false, type: THREE.HalfFloatType } : { generateMipmaps: false });
     const cubeCam = new THREE.CubeCamera(1, 2000, cubeTarget);
     // Update the sky shader once before capture
     skyMat.uniforms.time.value = 0;
     cubeCam.position.set(0, 50, 0);
+    if (chi) { sky.position.copy(cubeCam.position); _chiSkyMat.uniforms.uEnv.value = 1; }
     // Sky (and lights) only: a recapture after a level switch must not bake
     // the city into the environment map
     const hidden = scene.children.filter((o) => o.visible && o !== sky && !o.isLight);
     for (const o of hidden) o.visible = false;
-    cubeCam.update(renderer, scene);
+    // (Chicago: under a fixed mid-slide sky; the look layer tints it as dusk comes on)
+    withLookEnvSky(() => cubeCam.update(renderer, scene));
     for (const o of hidden) o.visible = true;
+    _chiSkyMat.uniforms.uEnv.value = 0;
     const env = pmrem.fromCubemap(cubeTarget.texture).texture;
     scene.environment = env;
-    scene.environmentIntensity = 0.55;
+    // Strength: scene.environmentIntensity does not exist in three r160 (it
+    // was a silent no-op here); the look layer scales the IBL in the shader
+    // instead (look.js ENV: 1 in Tokyo, which was tuned at full strength)
     cubeTarget.dispose();
     pmrem.dispose();
   } catch (e) { console.warn('PMREM env failed:', e); }
@@ -796,14 +826,17 @@ function dpsCapFrac() {
   return state.boss && !state.boss.dead ? base * 0.8 : base;
 }
 function hurtKaiju(amount) {
-  let dmg = amount * incomingDamageMult();
+  let dmg = amount * incomingDamageMult() * _pctl.damageMult;
   const limit = dpsCapFrac() * state.maxHp * DPS_WINDOW;
   const room = Math.max(0, limit - (state._dmgWindow || 0));
   if (dmg > room) dmg = room + (dmg - room) * 0.05;
   state._dmgWindow = (state._dmgWindow || 0) + dmg;
   state.hp -= dmg;
   state._lastHurtT = world.time;
-  if (state.hp <= 0 && !state.gameOver) gameOver(false);
+  if (state.hp <= 0 && !state.gameOver) {
+    // A mode that scores knockouts itself (wrestling: a KO is a fall) ends the run when it decides to
+    if (_mode.ownsKO) state.hp = 0; else gameOver(false);
+  }
   return dmg;
 }
 // Boss ground-pound warning: a red disc that grows to the blast radius over
@@ -1031,11 +1064,11 @@ const _TOKYO_LOOK = {
     shadow: window.__cinePass.uniforms.shadowTint.value.toArray(), high: window.__cinePass.uniforms.highTint.value.toArray(),
   },
 };
-// Chicago: clear high noon. The player looks west at the skyline from
-// Grant Park, so the sun stands ~70 degrees up and a little south (+Z): never
-// in that view, short readable shadows. Neutral-warm white light, clear blue
-// sky with a pale horizon, light haze pushed back, a near-neutral grade;
-// no stars, nebula or neon.
+// Chicago: golden hour sliding into dusk, lit like a main event. The light,
+// sky, fog, exposure, bloom and grade are written every frame by the look
+// layer (look.js: its time-of-day keys are the place to tune them); the
+// values here only stand until its first write. What this table still
+// decides: no neon, no Tokyo night-sky dressing.
 const _CHICAGO_LOOK = {
   bg: 0x9ec3e6, fog: 0xcad8e6, fogDensity: 0.0016,
   hemiSky: 0xdcecff, hemiGround: 0x6b6355, hemiI: Q_HIGH ? 0.55 : (Q_MED ? 0.68 : 0.75),
@@ -1054,9 +1087,25 @@ const _CHICAGO_LOOK = {
 // low west rake; levels may override (see sunOffset in the looks above)
 const _TOKYO_SUN = [-100, 100, 45];
 const _sunOffset = new THREE.Vector3(..._TOKYO_SUN);
+bindLook({
+  renderer, scene, sun, sunOffset: _sunOffset, hemi, ambient, fill: rimLight, sky, hasEnv: Q_HIGH,
+  bloom: () => bloomPass, bloomK: bloomPass ? bloomPass.strength / 0.85 : 1, cine: () => window.__cinePass,
+});
 let _lookLevel = 'tokyo';
 function applyLevelLook(level) {
-  if (level === _lookLevel) return;
+  const changed = level !== _lookLevel;
+  if (changed) _applyLevelStatics(level);
+  // Every (re)built city: the slide toward dusk starts over, and the look
+  // layer gets its top-down map of the new buildings (shadows, contact
+  // darkening). The world fades into the horizon inside the ground plane
+  // (1600u square centred 200u west of the map)
+  resetLookClock();
+  setLookLevel(level);
+  buildLookMap(world, level === 'chicago' ? { x: world.center.x - 200, z: world.center.z, r0: 520, r1: 775 } : null);
+  if (level === 'chicago') sun.position.copy(_sunOffset); // until a kaiju exists to follow
+  if (changed && Q_HIGH) _captureEnv();
+}
+function _applyLevelStatics(level) {
   _lookLevel = level;
   const L = level === 'chicago' ? _CHICAGO_LOOK : _TOKYO_LOOK;
   scene.background.setHex(L.bg);
@@ -1089,14 +1138,19 @@ function applyLevelLook(level) {
   }
   // The Tokyo backdrop ring/mountains/barrier would stand in Lake Michigan
   for (const o of _horizon) o.visible = level === 'tokyo';
-  if (Q_HIGH) { _captureEnv(); scene.environmentIntensity = L.env; }
+  // Chicago's dome follows the camera (look.js); Tokyo's stays at the origin
+  sky.material = level === 'chicago' ? _chiSkyMat : skyMat;
+  sky.position.set(0, 0, 0);
+  rimLight.position.set(80, 70, -60); // Tokyo's; Chicago's fill sits opposite its sun
+  renderer.toneMappingExposure = 1.15; // Tokyo's; Chicago's is written per frame
 }
 
 function buildWorldCity() {
   world.crowdHit = null; // a level with festival crowds sets it (Chicago)
   world.festStages = null; // ...and its stages (chicago_fest.js: id, name, x, z, rot, h, group, destroyed)
   world.water = null; // ...and its water surface API (chicago_water.js waterFX)
-  const res = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT, level: selectedLevel });
+  world.arena = null; // ...and, built for the wrestling mode, its ring (chicago_arena.js)
+  const res = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT, level: selectedLevel, mode: _modeId(selectedLevel) });
   const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = res;
   world.buildings = buildings;
   world.buildingGrid = grid;
@@ -1223,22 +1277,53 @@ function _requestPointerLock() {
   } catch (e) { /* not lockable right now */ }
 }
 
-const keys = {};
-window.addEventListener('keydown', (e) => {
-  keys[e.code] = true;
-  if (e.code === 'Escape') togglePause();
-});
-window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+// Player control gate: what updatePlayer and the look handlers may do with
+// the kaiju. The defaults are the classic game; a mode that needs the body
+// (wrestling: grapples, knockdowns, lock-on, cinematics) writes it through
+// ctx.player.control, and _resetSeams() puts the defaults back.
+//   external   an outside system owns the root: no input motion, collision,
+//              yaw copy, y write, locomotion clips or attacks from here
+//   move       input speed multiplier (0 = rooted)
+//   melee / powers / ult   input may fire fireMelee / the powers / the ultimate
+//   look       mouse, touch and stick look may turn yaw and pitch
+//   loco       the per-frame idle / walk / run clip pick runs
+//   faceYaw    rad or null: state.yaw eases to it at faceRate (1/s) and look
+//              input no longer turns yaw (lock-on)
+//   moveYaw    rad or null: basis for the movement input instead of state.yaw
+//   damageMult scales wave-scaled damage taken (shells, artillery, air strikes)
+const _PCTL_DEFAULTS = { external: false, move: 1, melee: true, powers: true, ult: true, look: true, loco: true, faceYaw: null, faceRate: 10, moveYaw: null, damageMult: 1 };
+const _pctl = { ..._PCTL_DEFAULTS };
 
-window.addEventListener('mousedown', (e) => { if (e.button === 0) state.mouseDown = true; });
-window.addEventListener('mouseup', (e) => { if (e.button === 0) state.mouseDown = false; });
+const keys = {};
+// Press / release edges for the frame in progress (cleared at the end of
+// tick): keyboard codes, 'Mouse0'..'Mouse2' and codes bound to touch buttons.
+const _keyHit = {}, _keyUp = {}, _edgeCodes = [];
+function _setKey(code, down) {
+  if (down === !!keys[code]) return; // key repeat
+  keys[code] = down;
+  (down ? _keyHit : _keyUp)[code] = true;
+  _edgeCodes.push(code);
+}
+window.addEventListener('keydown', (e) => {
+  _setKey(e.code, true);
+  if (e.code === 'Escape') togglePause();
+  // Tab is a gameplay key in a run (free for a mode to bind), not focus traversal
+  if (e.code === 'Tab' && state.kaiju && !state.gameOver && !state.paused) e.preventDefault();
+});
+window.addEventListener('keyup', (e) => { _setKey(e.code, false); });
+
+window.addEventListener('mousedown', (e) => { if (e.button === 0) state.mouseDown = true; if (e.button < 3) _setKey('Mouse' + e.button, true); });
+window.addEventListener('mouseup', (e) => { if (e.button === 0) state.mouseDown = false; if (e.button < 3) _setKey('Mouse' + e.button, false); });
+// The right button is a gameplay button outside the classic mode: no browser menu mid-match
+window.addEventListener('contextmenu', (e) => { if (state.kaiju && !state.gameOver && _mode !== MODES.waves) e.preventDefault(); });
+window.addEventListener('wheel', (e) => { _in.wheel += e.deltaY; }, { passive: true });
 
 renderer.domElement.addEventListener('click', () => {
   if (!state.gameOver && state.kaiju) _requestPointerLock();
 });
 window.addEventListener('mousemove', (e) => {
-  if (document.pointerLockElement === renderer.domElement) {
-    state.yaw -= e.movementX * 0.0024;
+  if (document.pointerLockElement === renderer.domElement && _pctl.look) {
+    if (_pctl.faceYaw === null) state.yaw -= e.movementX * 0.0024;
     state.pitch -= e.movementY * 0.0018;
     state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
   }
@@ -1285,7 +1370,12 @@ const padInput = {
   // edge-trigger latches: button-X-pressed-this-frame
   pressed: { beam: false, roar: false, charge: false, stomp: false, ult: false, pause: false },
   prevDown: {},
+  // Raw state of every button for modes with their own bindings (ctx.input.pad):
+  // held, pressed-this-frame, and the analog triggers
+  connected: false, down: [], hit: [], axes: [0, 0, 0, 0], lt: 0, rt: 0,
 };
+// Buttons a mode has taken over from their classic job (6 = LT sprint, 8 = Back pause)
+const _padReserved = new Set();
 
 function readGamepad() {
   if (!navigator.getGamepads) return false;
@@ -1296,6 +1386,10 @@ function readGamepad() {
     padInput.moveX = padInput.moveZ = padInput.lookX = padInput.lookY = 0;
     padInput.attack = padInput.sprint = false;
     for (const k of Object.keys(padInput.pressed)) padInput.pressed[k] = false;
+    if (padInput.connected) {
+      padInput.connected = false; padInput.lt = padInput.rt = 0;
+      padInput.down.length = 0; padInput.hit.length = 0; padInput.axes.fill(0);
+    }
     return false;
   }
   // Standard mapping (Xbox / PS layout):
@@ -1311,17 +1405,26 @@ function readGamepad() {
   const press = (i) => isDown(i) && !padInput.prevDown[i];
   // Continuous
   padInput.attack = isDown(0); // A held = melee
-  padInput.sprint = isDown(4) || (pad.buttons[6]?.value || 0) > 0.4; // LB or LT
+  padInput.sprint = isDown(4) || (!_padReserved.has(6) && (pad.buttons[6]?.value || 0) > 0.4); // LB or LT
   // Edge-triggered: only fire once per press
   padInput.pressed.beam   = press(2); // X
   padInput.pressed.roar   = press(1); // B
   padInput.pressed.charge = press(3); // Y
   padInput.pressed.stomp  = press(5); // RB
   padInput.pressed.ult    = press(7) || ((pad.buttons[7]?.value || 0) > 0.6 && !padInput.prevDown[7]); // RT
-  padInput.pressed.pause  = press(9) || press(8); // Start / Back
+  padInput.pressed.pause  = press(9) || (!_padReserved.has(8) && press(8)); // Start / Back
 
+  padInput.connected = true;
+  padInput.lt = pad.buttons[6]?.value || 0;
+  padInput.rt = pad.buttons[7]?.value || 0;
+  for (let i = 0; i < 4; i++) padInput.axes[i] = dz(pad.axes[i] || 0);
   // Cache button-down state for edge-detection next frame
-  for (let i = 0; i < pad.buttons.length; i++) padInput.prevDown[i] = isDown(i);
+  for (let i = 0; i < pad.buttons.length; i++) {
+    const d = isDown(i);
+    padInput.hit[i] = d && !padInput.prevDown[i];
+    padInput.down[i] = d;
+    padInput.prevDown[i] = d;
+  }
   return true;
 }
 
@@ -1547,9 +1650,9 @@ if (joystickEl && joyZone) {
 
 if (attackBtn) {
   attackBtn.addEventListener('touchstart', (e) => {
-    e.preventDefault(); touchInput.attackHeld = true;
+    e.preventDefault(); touchInput.attackHeld = true; _setKey('TouchAttack', true);
   }, { passive: false });
-  const endAtk = (e) => { e.preventDefault(); touchInput.attackHeld = false; };
+  const endAtk = (e) => { e.preventDefault(); touchInput.attackHeld = false; _setKey('TouchAttack', false); };
   attackBtn.addEventListener('touchend', endAtk);
   attackBtn.addEventListener('touchcancel', endAtk);
 }
@@ -1580,8 +1683,10 @@ document.getElementById('quit-btn')?.addEventListener('click', () => {
 });
 
 // Camera drag: any touch outside the controls (and the joystick zone) looks
+const _touchControls = []; // extra control elements a mode registered (ctx.input.registerTouchControl)
 function isOnControl(target) {
   if (!target || !target.closest) return false;
+  for (let i = 0; i < _touchControls.length; i++) if (_touchControls[i].contains(target)) return true;
   return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #powers, #menu, #gameover, #pause-menu, #upgrade-modal');
 }
 window.addEventListener('touchstart', (e) => {
@@ -1603,7 +1708,8 @@ window.addEventListener('touchmove', (e) => {
     const dy = t.clientY - touchInput.lookLastY;
     touchInput.lookLastX = t.clientX;
     touchInput.lookLastY = t.clientY;
-    state.yaw -= dx * 0.005;
+    if (!_pctl.look) continue;
+    if (_pctl.faceYaw === null) state.yaw -= dx * 0.005;
     state.pitch -= dy * 0.004;
     state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
   }
@@ -1721,17 +1827,13 @@ function _setCardImage(key, url) {
 }
 function _tryStaticImage(key) {
   return new Promise((resolve) => {
-    const exts = ['png', 'jpg', 'jpeg', 'webp'];
-    let i = 0;
-    const tryNext = () => {
-      if (i >= exts.length) return resolve(false);
-      const url = `assets/${key}.${exts[i++]}`;
-      const img = new Image();
-      img.onload = () => { _setCardImage(key, url); _staticCovered.add(key); resolve(true); };
-      img.onerror = tryNext;
-      img.src = url;
-    };
-    tryNext();
+    // One file per monster, one format (rendered by tools/portraits.html): a
+    // single request, no probing of other extensions (each miss was a 404)
+    const url = `assets/${key}.webp`;
+    const img = new Image();
+    img.onload = () => { _setCardImage(key, url); _staticCovered.add(key); resolve(true); };
+    img.onerror = () => resolve(false);
+    img.src = url;
   });
 }
 const _renderPreviewsLazy = () => {
@@ -1782,13 +1884,13 @@ function _showMobileDataWarning() {
     if (cs.enabled && cs.hits > 0) { resolve(true); return; }
     // Show the download size for this device/tier
     const sizeEl = document.getElementById('data-warn-size');
-    // Measured first-load downloads per tier (GLBs + textures + flipbooks +
-    // one audio format; the trailer video only streams if played). Re-measure
-    // with the headless tier harness when assets change. Chicago swaps Tokyo's
-    // buildings for its own (~35 MB of mobile GLBs, loaded on every tier incl.
-    // LOW); smoke_test fetch totals: MED +8 MB, desktop -50 MB vs Tokyo.
+    // Measured first-run downloads per tier, cold cache in Chrome (everything
+    // the page fetches up to the first minute of play, served uncompressed; the
+    // trailer video only streams if played). Re-measure when assets change.
+    // 2026-11, after tools/optimize_assets.mjs: desktop Chicago 64.7 / Tokyo 73.9,
+    // phone MED 37.0 / 28.5, phone LOW 31.7 / 10.3 MB.
     const chi = selectedLevel === 'chicago';
-    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? (chi ? '~60 MB' : '~52 MB') : (chi ? '~45 MB' : '~9 MB')) : (chi ? '~100 MB' : '~150 MB');
+    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? (chi ? '~37 MB' : '~29 MB') : (chi ? '~32 MB' : '~10 MB')) : (chi ? '~65 MB' : '~74 MB');
     warn.classList.remove('hidden');
     warn.style.display = 'flex';
     const okBtn = document.getElementById('data-warn-ok');
@@ -1819,6 +1921,10 @@ const _bldgLevelsLoaded = new Set(); // levels whose building GLB templates are 
 // correct to dispose them here even though normalizeGLTFMaterials tags
 // the geometry userData.template.
 let _kaijuCache = null; // { key, glb }
+// The rival kaiju of a mode that fields one (wrestling), under the same
+// policy: its own parsed copy (never the player's instance), kept across
+// restarts while the same rival is drawn, disposed when another is.
+let _rivalCache = null; // { key, cfg, glb }
 function _disposeKaijuGLB(glb) {
   if (!glb) return;
   glb.mixer.stopAllAction();
@@ -1938,6 +2044,7 @@ function _stageVfx() {
   return groups;
 }
 let _vfxLinked = null, _vfxStaged = null;
+let _vfxWarmLevel = null; // level whose START prewarm linked and drew the whole effect set (_prewarmShaders)
 /** Every effect program in one compile() call, not waited on or polled (a
  *  readiness poll is a sync round trip to the busy GPU process): the links
  *  run on the GPU process's workers while the menu or the game goes on. The
@@ -2009,10 +2116,16 @@ function _linkVfxInSlices() {
   return _vfxLinked;
 }
 
-async function _prewarmShaders(kaijuRoot, onProgress) {
+async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
   const t0 = performance.now();
+  // Look layer: tag the level's facade / backdrop materials and the two
+  // kaiju for their shader variants before anything links (look.js)
+  tagLookScene(scene, world);
+  styleKaiju(kaijuRoot, 0, state.monsterKey);
+  styleKaiju(rivalRoot, 1, _rivalCache ? _rivalCache.key : null);
   const stage = new THREE.Group();
   if (kaijuRoot) stage.add(kaijuRoot);
+  if (rivalRoot) stage.add(rivalRoot); // a second kaiju staged like the first
   for (const C of [Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech]) {
     try { stage.add(new C(0, 0).root); } catch (e) {
       warnOnce('prewarm|' + C.name, `[prewarm] ${C.name} not prewarmed (template missing?):`, e.message);
@@ -2020,18 +2133,32 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
   }
   // Traffic and pedestrians spawn right after this, in the first frames
   // (drawn batched: the batches' instanced programs are what links)
-  try { batchCars(spawnCars(stage, 16, 10, 40), stage, camera, false); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
+  // ...and one of everything a collapse builds lazily: a flying chunk of each
+  // debris template (batched with the cars, in one call: each call rebuilds
+  // every batch) and the rubble pools (city.js stageDestruction). The first
+  // collapse of a run linked their instanced variants and made their buffers.
+  let destr = null;
+  try { destr = stageDestruction(stage); } catch (e) { warnOnce('prewarm|debris', '[prewarm] debris not prewarmed:', e); }
+  try { batchMovers([[spawnCars(stage, 16, 10, 40), (c) => c.root], [destr ? destr.debris : null, (d) => d]], stage, camera, false); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
   try { spawnCivilians(stage, 2, 10); } catch (e) { warnOnce('prewarm|civs', '[prewarm] civilian spawn failed:', e); }
   // Gameplay set first: kaiju + enemies, and the whole scene (the GLB
   // buildings were just flushed in; after a level switch nothing of the new
   // city is linked yet). Awaited in full, with linked/total on the bar.
   const run = _linkAsync(stage);
   if (kaijuRoot) stage.remove(kaijuRoot); // compile() already ran synchronously
+  if (rivalRoot) stage.remove(rivalRoot);
   const city = _linkAsync(scene);
-  // Phones: the effect set too. Queued at the first frame, it hadn't drained
-  // when the first powers fired (0.4-1 s blocks at +4 s).
+  // The effect set too, on every platform, once per level (the level's light
+  // count is in every program's key). On phones, queued at the first frame, it
+  // hadn't drained when the first powers fired (0.4-1 s blocks at +4 s); on
+  // desktop a START before the menu had linked it left the rest to link
+  // during the first seconds of play, and each effect's first draw then
+  // waited on those links (70 ms alone, 0.4-1.5 s with the GPU shared).
+  // Staged after the flipbook sheets are in: a builder staged without its
+  // sheet takes the procedural fallback, not the variant it plays with.
   let fxLink = null;
-  if (isMobile && !_vfxLinked) {
+  if (_vfxWarmLevel !== world.level) {
+    await Promise.race([flipbooksReady(), new Promise((r) => setTimeout(r, 4000))]);
     _vfxStaged = new THREE.Group();
     for (const g of _stageVfx()) _vfxStaged.add(g);
     _vfxLinked = fxLink = _linkAsync(_vfxStaged);
@@ -2040,7 +2167,7 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
   // with the scene's lights but a null scene, so no fog in their keys.
   const fog = scene.fog;
   scene.fog = null;
-  const depth = _linkAsync(_depthStandIns([scene, stage, kaijuRoot].filter(Boolean)));
+  const depth = _linkAsync(_depthStandIns([scene, stage, kaijuRoot, rivalRoot].filter(Boolean)));
   scene.fog = fog;
   let finished = false;
   const all = Promise.all([run, city, fxLink, depth]).then(() => { finished = true; });
@@ -2060,18 +2187,40 @@ async function _prewarmShaders(kaijuRoot, onProgress) {
   // The effect sheets aren't in the scene: their first upload (and mipmaps)
   // stalled the GPU 0.9-3.8 s when the first powers fired
   for (const t of effectTextures()) _texQueue.add(t);
-  await _preuploadTextures([scene, stage, kaijuRoot]);
+  await _preuploadTextures([scene, stage, kaijuRoot, rivalRoot]);
   // One warm frame behind the opaque loading screen, shadow pass back on and
   // the staged kaiju/enemies in the scene unculled: links the shadow-depth
   // variants (compile() can't build them) with nothing else queued.
   if (kaijuRoot) stage.add(kaijuRoot);
+  if (rivalRoot) stage.add(rivalRoot);
   stage.traverse((o) => { if (o.isMesh) o.frustumCulled = false; });
+  // The staged effects are drawn in it too (and the collapse pieces, already
+  // on the stage): linking is not the whole first-use cost. A program's first
+  // draw with its real vertex layout into this target is where the driver
+  // builds the pipeline it will use, and the effect's buffers are created.
+  // Their hidden parts are shown for this one frame, then put back.
+  const fxShown = [], fxCulled = [];
+  if (fxLink) {
+    _vfxStaged.traverse((o) => {
+      if (!o.visible) { o.visible = true; fxShown.push(o); }
+      if (o.isMesh && o.frustumCulled) { o.frustumCulled = false; fxCulled.push(o); }
+    });
+    stage.add(_vfxStaged);
+  }
   scene.add(stage);
   try { if (composer) composer.render(); else renderer.render(scene, camera); } catch (e) {
     warnOnce('prewarm|frame', '[prewarm] warm frame failed:', e && e.message);
   }
   scene.remove(stage);
+  if (fxLink) {
+    stage.remove(_vfxStaged);
+    for (const o of fxShown) o.visible = false;
+    for (const o of fxCulled) o.frustumCulled = true;
+    _vfxWarmLevel = world.level;
+  }
+  if (destr) destr.release();
   if (kaijuRoot) stage.remove(kaijuRoot);
+  if (rivalRoot) stage.remove(rivalRoot);
   stage.traverse((n) => { if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose(); });
   if (onProgress) onProgress(renderer.info.programs.length, renderer.info.programs.length);
   console.log(`[prewarm:start] gameplay set linked + uploaded in ${(performance.now() - t0).toFixed(0)} ms (${renderer.info.programs.length} programs)`);
@@ -2110,6 +2259,8 @@ async function _preuploadTextures(roots) {
 // the city itself), rebuilds a fresh city from the cached templates,
 // resets per-run state and returns to the monster-select menu.
 function restartInPlace() {
+  _mode.dispose(); // the mode's own objects, DOM and listeners (before the scene goes)
+  _resetSeams();
   _teardownScene();
   resetAtomicBlasts();
   if (state.kaiju && state.kaiju.mixer && !state.kaiju.glb) state.kaiju.mixer.stopAllAction();
@@ -2142,18 +2293,23 @@ function _teardownScene() {
   // is picked again, disposed by _startGameInner if a different one is.
   const keepRoot = state.kaiju && state.kaiju.glb ? state.kaiju.root : null;
   if (keepRoot) state.kaiju.glb.mixer.stopAllAction();
+  const keepRival = _rivalCache ? _rivalCache.glb.root : null; // likewise cached
   for (const o of [...scene.children]) {
     // Pooled point lights (effects.js / vfx.js) are added lazily and are
     // reused forever, so they stay.
     if (_sceneBaseline.has(o) || o.isLight) continue;
     scene.remove(o);
-    if (o === keepRoot) continue; // cached kaiju: detach only
+    if (o === keepRoot || o === keepRival) continue; // cached kaiju: detach only
     o.traverse((n) => {
       // Template-owned GLB geometry (userData.template, set in assetCache.js)
       // is shared by every clone and reused by the next city, and markShared
       // module geometry is reused by every later spawn; keep both.
       if (n.geometry && !n.geometry.userData.template && !n.geometry.userData.shared) n.geometry.dispose();
-      if (n.isInstancedMesh) n.dispose();
+      // (not the pooled spark mesh, which vfx.js puts back in the scene as it
+      // is: its kept geometry's vertex-array state still points at these
+      // buffers, and freeing them left every spark after a restart undrawn
+      // behind a WebGL INVALID_OPERATION)
+      if (n.isInstancedMesh && !n.userData.vfxPool) n.dispose();
       // Each skinned clone (civilians, soldiers, mechs) owns a GPU bone texture.
       if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose();
     });
@@ -2238,9 +2394,19 @@ async function _startGameInner(key) {
     loadingStatus.textContent = cacheWarm ? 'LOADING FROM CACHE' : 'DOWNLOADING ASSETS';
     if (needSwitch) await _switchLevel(loadingStatus);
 
+    // The mode this level plays and, for one that fields a rival kaiju
+    // (wrestling), which of the other two it is. A cached rival that isn't
+    // wanted is freed first (phones also drop it for a run without one).
+    _mode = MODES[_modeId(world.level)];
+    const rivalKey = _mode.needsRival ? _pickRivalKey(key) : null;
+    if (_rivalCache && _rivalCache.key !== rivalKey && (rivalKey || isMobile)) {
+      _disposeKaijuGLB(_rivalCache.glb);
+      _rivalCache = null;
+    }
+
     // Track combined progress
     const progress = { kaijuLoaded: 0, kaijuTotal: 1, bldgLoaded: 0, bldgTotal: 1,
-                       enemyLoaded: 0, enemyTotal: 1 };
+                       enemyLoaded: 0, enemyTotal: 1, rivalLoaded: 0, rivalTotal: 0 };
     const onBldgProgress = (loaded, total, label) => {
       progress.bldgLoaded = loaded;
       progress.bldgTotal = total;
@@ -2248,11 +2414,24 @@ async function _startGameInner(key) {
       updateLoadingUI();
     };
     function updateLoadingUI() {
-      const totalItems = progress.kaijuTotal + progress.bldgTotal + progress.enemyTotal;
-      const loadedItems = progress.kaijuLoaded + progress.bldgLoaded + progress.enemyLoaded;
+      const totalItems = progress.kaijuTotal + progress.bldgTotal + progress.enemyTotal + progress.rivalTotal;
+      const loadedItems = progress.kaijuLoaded + progress.bldgLoaded + progress.enemyLoaded + progress.rivalLoaded;
       const pct = Math.round((loadedItems / totalItems) * 100);
       loadingBar.style.width = pct + '%';
       loadingPct.textContent = pct + '%';
+    }
+    // The rival's model loads alongside the player's and the world templates
+    // (awaited once those are in; a failure surfaces there, not as an
+    // unhandled rejection meanwhile).
+    let rivalLoad = null;
+    if (rivalKey && !_rivalCache) {
+      progress.rivalTotal = 1;
+      rivalLoad = loadKaijuModel(rivalKey, (loaded, total) => {
+        progress.rivalLoaded = loaded;
+        progress.rivalTotal = total;
+        updateLoadingUI();
+      });
+      rivalLoad.catch(() => {});
     }
 
     // On mobile: only load the kaiju model to stay under iOS memory limits (~1.5GB).
@@ -2309,6 +2488,8 @@ async function _startGameInner(key) {
       _bldgLevelsLoaded.add(world.level);
     }
     _kaijuCache = { key, glb };
+    if (rivalLoad) _rivalCache = { key: rivalKey, cfg: MONSTERS[rivalKey], glb: await rivalLoad };
+    else if (rivalKey) _rivalCache.glb.resetAnim(); // same rival as last run: reused like the player's
 
     // Clone + place every queued building now that templates are loaded
     if (bldgGLB) {
@@ -2331,7 +2512,7 @@ async function _startGameInner(key) {
       loadingBar.style.width = pct + '%';
       loadingPct.textContent = pct + '%';
       loadingStatus.textContent = `WARMING UP SHADERS \u2022 ${ready}/${total}`;
-    });
+    }, rivalKey ? _rivalCache.glb.root : null);
     await _hudPrewarmEnd();
     loadingScreen.classList.remove('visible');
 
@@ -2404,10 +2585,12 @@ async function _startGameInner(key) {
   // falls back to a procedural ambient drone if no asset is present.
   audio.startMusic();
 
-  startWave(1);
+  _mode.start(); // waves: startWave(1); wrestling: the match
   // Effects not linked behind the menu: phones queue them all now, desktop
   // links them one at a time after the first frames
-  if (isMobile) _queueVfxLinks();
+  // (only a run that skipped the START prewarm: the procedural kaiju)
+  if (_vfxWarmLevel === world.level) { /* linked and drawn behind the loading screen */ }
+  else if (isMobile) _queueVfxLinks();
   else setTimeout(_linkVfxInSlices, 500);
   _preloadUpgradeArt();
   if (!touchUI) _requestPointerLock();
@@ -2509,6 +2692,7 @@ function buildPowersBar() {
     hudRefs.cd[it.id] = w.querySelector('.cd-num');
     const fire = (e) => {
       e.preventDefault();
+      if (_pctl.external || !_pctl.powers || (it.id === 'ult' && !_pctl.ult)) return; // the body is spoken for
       if (it.id === 'beam') fireBeam();
       else if (it.id === 'roar') fireRoar();
       else if (it.id === 'charge') fireCharge();
@@ -2853,14 +3037,22 @@ function updatePopups(dt) {
 }
 
 // ---- Slow-motion on big moments ----
-function slowMo(scale, durSec) {
+// prio: a request below the priority of the slow-mo still running is dropped;
+// equal or higher replaces it (the classic callers are all 0: last one wins).
+function slowMo(scale, durSec, prio = 0) {
+  const now = performance.now();
+  if (now < state.slowMoUntil && prio < _slowPrio) return;
+  _slowPrio = prio;
   state.slowMoScale = scale;
-  state.slowMoUntil = performance.now() + durSec * 1000;
+  state.slowMoUntil = now + durSec * 1000;
 }
 
 // ---- Combo + scoring helpers ----
+// (_dmgSrc is set while damage dealt by someone other than the player is
+// being applied, e.g. the rival kaiju: none of that scores for the player)
 function comboMult() { return Math.min(5, 1 + state.combo * 0.1); }
 function bumpCombo() {
+  if (_dmgSrc) return;
   state.combo += 1;
   state.comboTimer = state.comboMaxTimer;
   if (state.combo === 10) toastMini('COMBO x2!', 'good');
@@ -2880,6 +3072,7 @@ const MULTIKILL_TIERS = [
   { label: 'KAIJU CARNAGE', color: 'good', score: 4000, slow: 0.25, slowDur: 0.40 },
 ];
 function registerKill() {
+  if (_dmgSrc) return;
   const now = world.time;
   if (now - (state._lastKillT || 0) <= MULTIKILL_WINDOW) {
     state._multikill = (state._multikill || 1) + 1;
@@ -2899,9 +3092,11 @@ function registerKill() {
   }
 }
 function addScore(base) {
+  if (_dmgSrc) return;
   state.score += Math.floor(base * comboMult());
 }
 function addRage(amount) {
+  if (_dmgSrc) return;
   state.rage = Math.min(state.maxRage, state.rage + amount * (state.upgrades?.rageGainMult || 1));
   if (state.rage >= state.maxRage && !state._announcedUlt) {
     state._announcedUlt = true;
@@ -2920,32 +3115,32 @@ function maybeDropPickup(pos, source = 'building') {
 }
 
 world.onTankKilled = () => {
-  state.tanksKilled++;
+  if (!_dmgSrc) state.tanksKilled++;
   audio.vehicleDestroyed('tank');
   addScore(250); addRage(8); bumpCombo(); registerKill();
   progressObjective('tanks');
 };
 world.onHeliKilled = () => {
-  state.helisKilled++;
+  if (!_dmgSrc) state.helisKilled++;
   audio.vehicleDestroyed('heli');
   addScore(350); addRage(10); bumpCombo(); registerKill();
 };
 world.onMechKilled = () => {
-  state.mechsKilled++;
+  if (!_dmgSrc) state.mechsKilled++;
   addScore(700); addRage(18); bumpCombo(); registerKill();
 };
 world.onJetKilled = () => {
-  state.jetsKilled++;
+  if (!_dmgSrc) state.jetsKilled++;
   audio.vehicleDestroyed('jet');
   addScore(450); addRage(12); bumpCombo(); registerKill();
   toastMini('JET DOWN!', 'good');
 };
 world.onArtilleryKilled = () => {
-  state.artilleryKilled++;
+  if (!_dmgSrc) state.artilleryKilled++;
   addScore(400); addRage(10); bumpCombo(); registerKill();
 };
 world.onSoldierKilled = () => {
-  state.soldiersKilled++;
+  if (!_dmgSrc) state.soldiersKilled++;
   addScore(50); addRage(2); registerKill();
 };
 world.onBossKilled = () => {
@@ -2971,14 +3166,16 @@ world.onBossSlam = () => {
 };
 world.onBoatSunk = (x, z) => boatSunk(world, x, z);
 world.onCarDestroyed = () => {
-  state.carsCrushed++;
   audio.carCrush();
+  if (_dmgSrc) return; // not the player's doing
+  state.carsCrushed++;
   addScore(80); addRage(2);
   progressObjective('cars');
 };
 world.onCivilianStomped = () => {
-  state.civiliansStomped++;
   audio.scream();
+  if (_dmgSrc) return; // not the player's doing
+  state.civiliansStomped++;
   addScore(35); addRage(1);
   progressObjective('civilians');
   // Tiny popup so the player gets feedback on every flatten
@@ -3025,7 +3222,7 @@ function updateWaveObjectiveText(bonus) {
 }
 function progressObjective(kind) {
   const obj = state.waveObjective;
-  if (!obj || obj.complete || obj.kind !== kind) return;
+  if (!obj || obj.complete || obj.kind !== kind || _dmgSrc) return;
   obj.current++;
   let shown = 0;
   if (obj.current >= obj.goal) {
@@ -3048,6 +3245,9 @@ function progressObjective(kind) {
 
 world.onBuildingDestroyed = (b) => {
   _miniDirty = true; // its minimap dot goes
+  if (_mode.onBuildingDestroyed) _mode.onBuildingDestroyed(b, _dmgSrc || 'player');
+  // Brought down by someone else (the rival kaiju): no score, rage, combo, objective or pickup
+  if (_dmgSrc) { audio.collapse(); return; }
   state.buildingsDestroyed++;
   audio.collapse();
   progressObjective('buildings');
@@ -3093,10 +3293,14 @@ world.spawnArtilleryShell = (origin, target) => {
   });
 };
 
-function gameOver(victory) {
+// text (optional; else the mode's own, else the classic strings):
+// { title, subtitle, waveLabel, waveValue (the "Waves Survived" row),
+//   keepPose (the mode has posed the kaiju: no death / dance clip from here) }
+function gameOver(victory, text) {
   state.gameOver = true;
+  text = text || _mode.gameOverText(victory) || null;
   // Play death or dance animation on GLB model
-  if (state.kaiju && state.kaiju.glb) {
+  if (state.kaiju && state.kaiju.glb && !(text && text.keepPose)) {
     const glb = state.kaiju.glb;
     if (victory) {
       // As a one-shot so per-frame locomotion 'idle' can't override it.
@@ -3112,11 +3316,13 @@ function gameOver(victory) {
     }
   }
   _hideRunHUD();
+  _mode.onGameOver(victory);
   const goEl = document.getElementById('gameover');
-  document.getElementById('goTitle').textContent = victory ? `${LEVELS[world.level || 'tokyo'].name} FALLS` : 'DEFEATED';
-  document.getElementById('goSubtitle').textContent = victory
+  document.getElementById('goTitle').textContent = (text && text.title)
+    || (victory ? `${LEVELS[world.level || 'tokyo'].name} FALLS` : 'DEFEATED');
+  document.getElementById('goSubtitle').textContent = (text && text.subtitle) || (victory
     ? 'The kaiju reigns supreme.'
-    : 'The military has prevailed...';
+    : 'The military has prevailed...');
   if (victory) goEl.classList.add('victory');
   else goEl.classList.remove('victory');
   audio.gameOver();
@@ -3126,7 +3332,9 @@ function gameOver(victory) {
   if (newHighEl) newHighEl.style.display = isNewHigh ? 'block' : 'none';
   document.getElementById('goHighScore').textContent = getHighScore().toLocaleString();
   document.getElementById('finalScore').textContent = state.score.toLocaleString();
-  document.getElementById('finalWave').textContent = state.wave;
+  const fw = document.getElementById('finalWave');
+  fw.textContent = text && text.waveValue !== undefined ? text.waveValue : state.wave;
+  if (fw.previousElementSibling) fw.previousElementSibling.textContent = (text && text.waveLabel) || 'Waves Survived';
   document.getElementById('finalBuildings').textContent = state.buildingsDestroyed;
   const totalKills = state.tanksKilled + state.helisKilled + state.mechsKilled +
                      state.jetsKilled + state.artilleryKilled + state.soldiersKilled +
@@ -3143,8 +3351,16 @@ function gameOver(victory) {
 // isTrample = true means the damage source is a footstep stomp. Armoured
 // enemies (mech, boss) shrug most of it off - the player has to commit
 // to a real attack to kill them rather than just jogging through.
-function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample = false) {
-  amount = amount * (state.upgrades?.dmgMult || 1);
+// kind names the attack for whoever is hit ('melee' | 'roar' | 'charge' |
+// 'stomp' | 'ult' | 'atomic' | 'military' | 'aoe'). src: who dealt it - null
+// or 'player' = the player (upgrade bonus, score, rage, combo); anything else
+// ('rival', 'env') gets no bonus and credits nobody, and 'rival' cannot hit
+// the rival itself. The player is never damaged here.
+function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample = false, kind = 'aoe', src = null) {
+  const other = src && src !== 'player' ? src : null;
+  if (!other) amount = amount * (state.upgrades?.dmgMult || 1);
+  const srcWas = _dmgSrc;
+  _dmgSrc = other;
   const radiusSq = radius * radius;
   // Spatial-grid query so we only touch buildings in nearby cells
   const grid = world.buildingGrid;
@@ -3174,13 +3390,20 @@ function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample =
       e.damage(dealt, world);
       _tmpV1.set(ep.x, ep.y + 4, ep.z);
       world.spawnHitPulse(_tmpV1, 0xffffff);
-      if (e.dead && e.type !== 'soldier') {
+      if (e.dead && e.type !== 'soldier' && !other) {
         _tmpV2.set(ep.x, ep.y + 8, ep.z);
         spawnPopup(_tmpV2,
           e.type === 'boss' ? '+5000' : (e.type === 'mech' ? '+700' : (e.type === 'jet' ? '+450' : '+250')),
           '#ffee44');
       }
     }
+  }
+  // The rival kaiju (wrestling): a body-sized target, so its radius counts.
+  // Footstep trample is not an attack on it.
+  if (_rival && _rival.targetable && !isTrample && other !== 'rival') {
+    const rp = _rival.root.position;
+    const dx = rp.x - center.x, dz = rp.z - center.z, reach = radius + _rival.radius;
+    if (dx * dx + dz * dz < reach * reach) _rival.takeHit(amount, kind, center.x, center.z);
   }
   // Catch cars + civilians too -- any attack in their radius should
   // wreck them outright, not just stomping. Both are 1-shot squishy.
@@ -3210,6 +3433,7 @@ function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample =
     const n = world.crowdHit(center.x, center.z, radiusSq);
     for (let i = 0; i < Math.min(n, 3); i++) world.onCivilianStomped();
   }
+  _dmgSrc = srcWas;
 }
 
 // Aim assist: the live enemy closest to the ray (origin, dir) within
@@ -3223,8 +3447,11 @@ function _assistTarget(origin, dir, maxAngle, maxDist, groundOnly, maxAngleGroun
   const fl = Math.hypot(dir.x, dir.z) || 1;
   const fx = dir.x / fl, fz = dir.z / fl;
   const cosAir = Math.cos(maxAngle), cosGround = Math.cos(maxAngleGround);
-  for (const e of world.enemies) {
-    if (e.dead) continue;
+  // (the rival kaiju, when there is one, is a ground candidate like any other)
+  const list = world.enemies, n = list.length;
+  for (let i = 0; i <= n; i++) {
+    const e = i < n ? list[i] : (_rival ? _rivalView : null);
+    if (!e || e.dead) continue;
     const air = e.type === 'heli' || e.type === 'jet';
     if (groundOnly && air) continue;
     const cosMax = air ? cosAir : cosGround;
@@ -3336,8 +3563,8 @@ function _atomicDetonate(pos) {
   world.spawnSmokeColumn(_tmpV2.set(pos.x, 0, pos.z).clone(), isMobile ? 28 : 55);
   if (!isMobile) world.spawnExplosion(_tmpV2.set(pos.x, Math.max(pos.y, 6), pos.z).clone(), 3); // fireball + pooled light
   world.shake(1.5, 0.9);
-  damageInRadius(pos, ATOMIC_CORE_R, cfg.damage * 2.2, true);
-  damageInRadius(pos, ATOMIC_OUTER_R, cfg.damage * 0.5, true);
+  damageInRadius(pos, ATOMIC_CORE_R, cfg.damage * 2.2, true, false, 'atomic');
+  damageInRadius(pos, ATOMIC_OUTER_R, cfg.damage * 0.5, true, false, 'atomic');
   waterImpact(world, pos.x, pos.z, 3, 'ult');
   if (typeof audio.atomicBlast === 'function') audio.atomicBlast(isMobile ? 0.8 : 1);
   else audio.explosion(3);
@@ -3361,8 +3588,7 @@ function fireBeam() {
   state.kaiju.head.getWorldPosition(_beamOrigin);
   _beamOrigin.y += 1;
   // direction = camera forward, biased horizontally toward enemies
-  camera.getWorldDirection(_beamDir);
-  _beamDir.y *= 0.4; _beamDir.normalize();
+  _aimDir(_beamDir);
   _beamOrigin.addScaledVector(_beamDir, 5.5);
 
   const length = atomic ? ATOMIC_RANGE : 260;
@@ -3372,7 +3598,7 @@ function fireBeam() {
   // not via the tube test, so a snap can't visually connect yet miss.
   const tgt = _assistTarget(_beamOrigin, _beamDir, 0.25, length, false, 0.35);
   if (tgt) {
-    _tmpV1.copy(tgt.root.position); _tmpV1.y += 3;
+    _tmpV1.copy(tgt.root.position); _tmpV1.y += tgt.aimY || 3; // (a kaiju-sized target: its chest)
     _beamDir.subVectors(_tmpV1, _beamOrigin).normalize();
   }
   // The atomic breath travels as a bolt instead (fired below, once the
@@ -3487,7 +3713,7 @@ function fireBeam() {
     else world.spawnHitPulse(_beamImpact.clone(), cfg.color);
   }
   if (tgt && !tgt.dead) {
-    _tmpV1.copy(tgt.root.position); _tmpV1.y += 4;
+    _tmpV1.copy(tgt.root.position); _tmpV1.y += tgt.aimY || 4;
     tgt.damage(beamDmg * 0.7, world);
     world.spawnExplosion(_tmpV1, 0.7);
   }
@@ -3502,6 +3728,16 @@ function fireBeam() {
     const distSq = _tmpV3.distanceToSquared(_tmpV1);
     if (distSq < 36) { // 6 u hit tube (was 3 u)
       e.damage(beamDmg * 0.7, world);
+      world.spawnExplosion(_tmpV1, 0.7);
+    }
+  }
+  // The rival kaiju, when the aim didn't snap to it: the same tube around its chest, grown by its body
+  if (_rival && tgt !== _rivalView && !_rivalView.dead) {
+    _tmpV1.copy(_rival.root.position); _tmpV1.y += _rivalView.aimY;
+    const along = _tmpV2.copy(_tmpV1).sub(_beamOrigin).dot(_beamDir);
+    const tube = 6 + _rival.radius;
+    if (along > 0 && along < length && _tmpV3.copy(_beamOrigin).addScaledVector(_beamDir, along).distanceToSquared(_tmpV1) < tube * tube) {
+      _rivalView.damage(beamDmg * 0.7, world);
       world.spawnExplosion(_tmpV1, 0.7);
     }
   }
@@ -3523,7 +3759,7 @@ function fireRoar() {
   const center = state.kaiju.root.position.clone();
   world.spawnShockwave(center, cfg.color, cfg.radius);
   world.shake(0.8, 0.5);
-  damageInRadius(center, cfg.radius, cfg.damage, true);
+  damageInRadius(center, cfg.radius, cfg.damage, true, false, 'roar');
   audio.roar();
 
   // Universal "this is literally a roar" visuals: head-locked breath cone
@@ -3595,7 +3831,7 @@ function fireCharge() {
     if (state.kaiju.glb) {
       // GLB model: apply tail sweep damage directly (animation handles visuals)
       const sweepCenter = state.kaiju.root.position.clone().addScaledVector(forward, -11);
-      damageInRadius(sweepCenter, 25, cfg.damage, false);
+      damageInRadius(sweepCenter, 25, cfg.damage, false, false, 'charge');
       world.spawnShockwave(sweepCenter, cfg.color, 28);
       world.shake(0.8, 0.4);
       world.effects.push(makeTailSweep(world, state.kaiju.root.position, state.yaw, cfg.color));
@@ -3611,13 +3847,13 @@ function fireCharge() {
 
   // Other variants DASH forward.
   const cone = startPos.clone().addScaledVector(forward, 17);
-  damageInRadius(cone, 28, cfg.damage, false);
+  damageInRadius(cone, 28, cfg.damage, false, false, 'charge');
   state.kaiju.root.position.addScaledVector(forward, 32);
   resolveBuildingCollisions(state.kaiju.root.position, 0.5);
   const endPos = state.kaiju.root.position.clone();
   world.spawnShockwave(endPos, cfg.color, 32);
   world.shake(0.7, 0.4);
-  damageInRadius(endPos, 25, cfg.damage * 0.5, false);
+  damageInRadius(endPos, 25, cfg.damage * 0.5, false, false, 'charge');
   audio.charge();
 
   // Universal motion read: 10 wind streaks fanning forward from the dash
@@ -3680,14 +3916,13 @@ function fireUltimate() {
   const head = state.kaiju.head;
   const origin = new THREE.Vector3();
   head.getWorldPosition(origin);
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir); dir.y *= 0.4; dir.normalize();
+  const dir = _aimDir(new THREE.Vector3());
   origin.addScaledVector(dir, 7.0);
 
   world.shake(2.5, 1.4);
   const center = state.kaiju.root.position.clone();
   // Massive AOE damage in all variants -- the *visual* differs.
-  damageInRadius(center, 130, 250, true);
+  damageInRadius(center, 130, 250, true, false, 'ult');
   waterImpact(world, center.x, center.z, 3, 'ult');
 
   if (cfg.variant === 'gojira') {
@@ -3798,7 +4033,7 @@ function fireMelee() {
     if (_tmpV3.length() > 30) center.copy(state.kaiju.root.position).addScaledVector(_tmpV3.normalize(), 30);
   }
   const dmg = state.monsterCfg.stats.melee;
-  damageInRadius(center, 17, dmg, false);
+  damageInRadius(center, 17, dmg, false, false, 'melee');
   state.rage = Math.min(state.maxRage, state.rage + 4);
   // Animate arm swing (GLB uses punch combo, procedural uses armR swing)
   if (state.kaiju.glb) {
@@ -3816,11 +4051,18 @@ function fireMelee() {
 // building down. Walking into a building no longer phases through it; you
 // have to crush it down (or use beam/charge/melee) to pass.
 const KAIJU_BODY_RADIUS = 8.1;
-function resolveBuildingCollisions(pos, dt) {
-  if (!state.monsterCfg) return;
-  const radius = KAIJU_BODY_RADIUS * (state.monsterCfg.stats.scale || 1);
+// radius / wearDps default to the player's body and the classic 35 dps; a
+// mode passes its own for another body (the rival kaiju). Returns the last
+// building pushed against this call, or null.
+let _bumped = null;
+function resolveBuildingCollisions(pos, dt, radius = 0, wearDps = 35) {
+  if (!radius) {
+    if (!state.monsterCfg) return null;
+    radius = KAIJU_BODY_RADIUS * (state.monsterCfg.stats.scale || 1);
+  }
   const grid = world.buildingGrid;
-  if (!grid) return;
+  if (!grid) return null;
+  _bumped = null;
   // Only query the cells the kaiju overlaps -- typically 1-4 buildings.
   grid.forEachNear(pos.x, pos.z, radius + 30, (b) => {
     if (b.destroyed) return;
@@ -3864,9 +4106,11 @@ function resolveBuildingCollisions(pos, dt) {
     }
 
     // Continuous wear-down: ~35 dps to the building you push into
+    _bumped = b;
     _tmpV1.set(contactX, b.h * 0.6, contactZ);
-    b.damage(35 * dt, _tmpV1, world);
+    if (wearDps) b.damage(wearDps * dt, _tmpV1, world);
   });
+  return _bumped;
 }
 
 function updatePlayer(dt) {
@@ -3874,17 +4118,24 @@ function updatePlayer(dt) {
   if (!k) return;
   // Pull live gamepad state once per frame
   readGamepad();
+  // The control gate (_pctl): all defaults in the classic mode
+  const C = _pctl;
   // Right stick aims the camera
-  if (padInput.lookX !== 0 || padInput.lookY !== 0) {
-    state.yaw   -= padInput.lookX * 0.045;
+  if (C.look && (padInput.lookX !== 0 || padInput.lookY !== 0)) {
+    if (C.faceYaw === null) state.yaw -= padInput.lookX * 0.045;
     state.pitch -= padInput.lookY * 0.030;
     state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
+  }
+  // Lock-on: the facing (and with it the chase cam and the aim) is steered for the player
+  if (C.faceYaw !== null) {
+    const d = C.faceYaw - state.yaw;
+    state.yaw += Math.atan2(Math.sin(d), Math.cos(d)) * (1 - Math.exp(-C.faceRate * dt));
   }
   const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
   // Speed multipliers bumped: walk ~16 (was 11), sprint ~28 (was 18). Combined
   // with the per-monster `stats.speed` scalar this is roughly +50% across the
   // board so the kaiju actually feels like a kaiju.
-  const speed = state.monsterCfg.stats.speed * (sprint ? 32 : 18) * state.upgrades.speedMult * wadeSpeedMult();
+  const speed = state.monsterCfg.stats.speed * (sprint ? 32 : 18) * state.upgrades.speedMult * wadeSpeedMult() * C.move;
 
   let mx = 0, mz = 0;
   if (keys.KeyW) mz += 1;
@@ -3901,8 +4152,17 @@ function updatePlayer(dt) {
     mx += padInput.moveX;
     mz += padInput.moveZ;
   }
+  // This frame's raw input for modes with their own actions (ctx.input)
+  {
+    const l = Math.hypot(mx, mz), s = l > 1 ? 1 / l : 1;
+    _in.moveX = mx * s; _in.moveZ = mz * s;
+    _in.sprint = !!sprint;
+    _in.attack = !!(state.mouseDown || touchInput.attackHeld || padInput.attack);
+  }
 
-  const sy = Math.sin(state.yaw), cy = Math.cos(state.yaw);
+  // Movement basis: the facing, unless a mode's camera supplies its own
+  const basis = C.moveYaw !== null ? C.moveYaw : state.yaw;
+  const sy = Math.sin(basis), cy = Math.cos(basis);
   const forward = _fwd.set(sy, 0, cy);
   // Camera-right vector. forward x up in a right-handed system gives
   // (-cos(yaw), 0, sin(yaw)) -- the previous (cos, 0, -sin) was the
@@ -3916,10 +4176,17 @@ function updatePlayer(dt) {
   state.vel.x = move.x * speed;
   state.vel.z = move.z * speed;
 
+  // ext: an outside system (a grapple, a knockdown, a cinematic) owns the
+  // root for now, so nothing below moves, turns or poses it from input
+  const ext = C.external;
+  if (ext) {
+    state.vel.x = 0; state.vel.z = 0;
+  } else {
   k.root.position.x += state.vel.x * dt;
   k.root.position.z += state.vel.z * dt;
   resolveBuildingCollisions(k.root.position, dt);
   resolveBigEnemyCollisions(k.root.position);
+  resolveRivalCollision(k.root.position);
   crushUnderfoot();
   // Clamp to play area. The visible distant scenery (silhouette skyline +
   // mountains) starts beyond ~480u so the boundary always reads as
@@ -3928,9 +4195,10 @@ function updatePlayer(dt) {
   const bd = world.bounds;
   k.root.position.x = THREE.MathUtils.clamp(k.root.position.x, bd.minX, bd.maxX);
   k.root.position.z = THREE.MathUtils.clamp(k.root.position.z, bd.minZ, bd.maxZ);
+  }
 
   // ============== Animation ==============
-  const moving = move.lengthSq() > 0;
+  const moving = !ext && speed > 0 && move.lengthSq() > 0;
 
   // --- GLB model animation (Godzilla with loaded model) ---
   if (k.glb) {
@@ -3977,16 +4245,19 @@ function updatePlayer(dt) {
     } else {
       loco = 'idle'; fade = 0.4;
     }
-    if (loco !== glb.currentName && (state._locoHoldT <= 0 || glb.oneShotActive)) {
+    if (C.loco && !ext && loco !== glb.currentName && (state._locoHoldT <= 0 || glb.oneShotActive)) {
       if (glb.play(loco, fade)) state._locoHoldT = 0.3;
     }
 
     // Keep yaw rotation driven by player input
-    k.root.rotation.y = state.yaw;
+    if (!ext) k.root.rotation.y = state.yaw;
 
     // Vertical bob for stomp jump (parabolic arc)
     state._stompJumpT = Math.max(0, (state._stompJumpT || 0) - dt);
-    if (state._stompJumpT > 0) {
+    if (ext) {
+      // Taken over mid-jump: the jump is over, its landing blast with it
+      state._stompJumpT = 0; state._stompJumpD = 0;
+    } else if (state._stompJumpT > 0) {
       const dur = state._stompJumpD || 0.55;
       const t = 1 - state._stompJumpT / dur;
       const JUMP_PEAK_H = 28;
@@ -4001,7 +4272,7 @@ function updatePlayer(dt) {
         // In water the splash replaces the dust (dust read as dirt on the lake)
         if (!waterImpact(world, impactPos.x, impactPos.z, 2, 'stomp')) world.effects.push(makeDustBurst(world, impactPos, 22, 14));
         world.shake(1.2, 0.55);
-        damageInRadius(impactPos, 36, 220, true);
+        damageInRadius(impactPos, 36, 220, true, false, 'stomp');
         audio.stomp();
       }
       k.root.position.y = 0;
@@ -4263,19 +4534,23 @@ function updatePlayer(dt) {
   // feeds the wake. The GLB path leaves root y alone outside a stomp jump,
   // the procedural path rewrites it every frame (bob), so set vs. offset.
   const airborne = (state._stompJumpT || 0) > 0;
-  updateWading(world, k.root.position, state.vel.x * (moving ? 1 : 0), state.vel.z * (moving ? 1 : 0), dt, airborne);
-  if (!airborne) {
-    if (k.glb) k.root.position.y = -wadeSink();
-    else k.root.position.y -= wadeSink();
+  if (!ext) {
+    updateWading(world, k.root.position, state.vel.x * (moving ? 1 : 0), state.vel.z * (moving ? 1 : 0), dt, airborne);
+    if (!airborne) {
+      if (k.glb) k.root.position.y = -wadeSink();
+      else k.root.position.y -= wadeSink();
+    }
   }
 
-  // Trigger powers
-  if (keys.Digit1 || padInput.pressed.beam) fireBeam();
-  if (keys.Digit2 || padInput.pressed.roar) fireRoar();
-  if (keys.Digit3 || padInput.pressed.charge) fireCharge();
-  if (keys.KeyQ   || padInput.pressed.ult) fireUltimate();
-  if (keys.Space  || padInput.pressed.stomp) fireStomp();
-  if (state.mouseDown || touchInput.attackHeld || padInput.attack) fireMelee();
+  // Trigger powers (each group only while the control gate leaves it to the input)
+  if (!ext && C.powers) {
+    if (keys.Digit1 || padInput.pressed.beam) fireBeam();
+    if (keys.Digit2 || padInput.pressed.roar) fireRoar();
+    if (keys.Digit3 || padInput.pressed.charge) fireCharge();
+    if (C.ult && (keys.KeyQ || padInput.pressed.ult)) fireUltimate();
+    if (keys.Space  || padInput.pressed.stomp) fireStomp();
+  }
+  if (!ext && C.melee && (state.mouseDown || touchInput.attackHeld || padInput.attack)) fireMelee();
   if (padInput.pressed.pause) togglePause();
 }
 
@@ -4364,13 +4639,58 @@ const _camLook = new THREE.Vector3();
 const _camCandidates = []; // reused across frames -- we only mutate length
 const _camBox = new THREE.Box3();
 const _camHit = new THREE.Vector3();
-function updateCamera() {
+/** Camera boom length from origin along dir (unit) that stays out of the
+ *  buildings: desiredDist, pulled in to 1.5u short of the first wall (never
+ *  under minDist). Also the occlusion test for a mode's own camera. */
+function _camClearDist(origin, dir, desiredDist, minDist = 11) {
+  let dist = desiredDist;
+  _camRay.set(origin, dir);
+  _camRay.far = desiredDist + 2;
+  _camRay.near = 0.1;
+
+  // One raycast against the global building InstancedMesh -- Three.js does
+  // the per-instance bounds tests internally, no candidate filtering needed.
+  if (world.bodiesIM) {
+    const hit = _camRay.intersectObject(world.bodiesIM, false)[0];
+    if (hit && hit.distance < dist) dist = Math.max(minDist, hit.distance - 1.5);
+  }
+  // GLB towers and landmarks are separate customMesh roots, not instances
+  // in bodiesIM, so the raycast above misses them and the camera dives
+  // inside. Test the ray against each nearby building's footprint AABB
+  // (w/d/h are rewritten to the GLB's scaled bounds on placement). Boxes
+  // that already contain the head are skipped so smashing through a
+  // building doesn't yank the camera in.
+  if (world.buildingGrid) {
+    const midX = origin.x + dir.x * desiredDist * 0.5;
+    const midZ = origin.z + dir.z * desiredDist * 0.5;
+    world.buildingGrid.forEachNear(midX, midZ, desiredDist * 0.5 + 30, (b) => {
+      if (b.destroyed || !b.customMesh) return;
+      _camBox.min.set(b.x - b.w / 2, 0, b.z - b.d / 2);
+      _camBox.max.set(b.x + b.w / 2, b.h, b.z + b.d / 2);
+      if (_camBox.containsPoint(origin)) return;
+      if (_camRay.ray.intersectBox(_camBox, _camHit)) {
+        const d = _camHit.distanceTo(origin);
+        if (d < dist) dist = Math.max(minDist, d - 1.5);
+      }
+    });
+  }
+  return dist;
+}
+// dtReal: real seconds since the last frame (clamped), for a mode's camera
+function updateCamera(dtReal = 1 / 60) {
   const k = state.kaiju;
   if (!k) return;
   // Sun offset stays constant relative to the kaiju so shadows follow it
   // through the city without ever overflowing the 90u shadow camera.
   if (sun && (sun.castShadow || _lookLevel !== 'tokyo')) {
     sun.position.copy(k.root.position).add(_sunOffset);
+  }
+  // A mode's camera (wrestling: fight cam, entrances, finishers) takes the
+  // frame when it returns true; the chase cam below is the fallback.
+  if (_camOverride && _camOverride(camera, dtReal)) { _camOverridden = true; return; }
+  if (_camOverridden) {
+    _camOverridden = false;
+    if (camera.fov !== CAM_FOV) { camera.fov = CAM_FOV; camera.updateProjectionMatrix(); }
   }
   k.head.getWorldPosition(_camHead);
   const desiredDist = 51;
@@ -4380,37 +4700,7 @@ function updateCamera() {
     -Math.cos(state.yaw)
   ).normalize();
 
-  let dist = desiredDist;
-  _camRay.set(_camHead, _camOffset);
-  _camRay.far = desiredDist + 2;
-  _camRay.near = 0.1;
-
-  // One raycast against the global building InstancedMesh -- Three.js does
-  // the per-instance bounds tests internally, no candidate filtering needed.
-  if (world.bodiesIM) {
-    const hit = _camRay.intersectObject(world.bodiesIM, false)[0];
-    if (hit && hit.distance < dist) dist = Math.max(11, hit.distance - 1.5);
-  }
-  // GLB towers and landmarks are separate customMesh roots, not instances
-  // in bodiesIM, so the raycast above misses them and the camera dives
-  // inside. Test the ray against each nearby building's footprint AABB
-  // (w/d/h are rewritten to the GLB's scaled bounds on placement). Boxes
-  // that already contain the head are skipped so smashing through a
-  // building doesn't yank the camera in.
-  if (world.buildingGrid) {
-    const midX = _camHead.x + _camOffset.x * desiredDist * 0.5;
-    const midZ = _camHead.z + _camOffset.z * desiredDist * 0.5;
-    world.buildingGrid.forEachNear(midX, midZ, desiredDist * 0.5 + 30, (b) => {
-      if (b.destroyed || !b.customMesh) return;
-      _camBox.min.set(b.x - b.w / 2, 0, b.z - b.d / 2);
-      _camBox.max.set(b.x + b.w / 2, b.h, b.z + b.d / 2);
-      if (_camBox.containsPoint(_camHead)) return;
-      if (_camRay.ray.intersectBox(_camBox, _camHit)) {
-        const d = _camHit.distanceTo(_camHead);
-        if (d < dist) dist = Math.max(11, d - 1.5);
-      }
-    });
-  }
+  const dist = _camClearDist(_camHead, _camOffset, desiredDist);
 
   _camTarget.copy(_camHead).addScaledVector(_camOffset, dist);
   const target = _camTarget;
@@ -4462,7 +4752,7 @@ function _disposeDebris(d) {
   });
 }
 
-function updateWorld(dt) {
+function updateWorld(dt, dtReal = dt) {
   world._fxSpawned = 0;
   world._dbSpawned = 0;
   // Shared instanced sparks/shrapnel/embers (one draw for all of them).
@@ -4537,7 +4827,8 @@ function updateWorld(dt) {
   for (let i = world.enemies.length - 1; i >= 0; i--) {
     const e = world.enemies[i];
     if (e.dead) { world.enemies.splice(i, 1); continue; }
-    e.update(dt, world, kpos);
+    // (a run-in sent after the rival kaiju hunts it instead: spawnRunIn)
+    e.update(dt, world, e._tgtRival && _rival ? _rival.root.position : kpos);
   }
   audio.updateAmbience(world.enemies, kpos);
   audio.updateStages(world.festStages, kpos, camera);
@@ -4565,6 +4856,18 @@ function updateWorld(dt) {
         continue;
       }
     }
+    // The rival kaiju stops shells too (its body as an upright cylinder)
+    if (_rival && _rival.targetable) {
+      const rp = _rival.root.position, sp = s.mesh.position;
+      const dx = sp.x - rp.x, dz = sp.z - rp.z, hitR = _rival.radius * 0.6;
+      if (dx * dx + dz * dz < hitR * hitR && sp.y > rp.y && sp.y < rp.y + _rival.height) {
+        _rival.takeHit(s.damage, 'military', sp.x - s.vel.x, sp.z - s.vel.z);
+        world.spawnExplosion(sp.clone(), 0.5);
+        scene.remove(s.mesh);
+        world.shells.splice(i, 1);
+        continue;
+      }
+    }
     // Buildings block fire: a shell entering a footprint bursts on it.
     if (_shellHitsBuilding(s.mesh.position)) {
       world.spawnExplosion(s.mesh.position.clone(), 0.35);
@@ -4579,31 +4882,18 @@ function updateWorld(dt) {
     }
   }
 
-  // Wave check
-  if (state.inWave && world.enemies.length === 0) {
-    state.inWave = false;
-    setTimeout(() => {
-      if (state.gameOver) return;
-      state.score += 1000;
-      state.hp = Math.min(state.maxHp, state.hp + 30);
-      audio.waveClear();
-      offerUpgrades();
-    }, 1800);
-    showMessage('WAVE CLEARED · +1000', 2.0);
-    // Victory dance on wave clear
-    // (one-shot lock, commit 0: dances while standing, moving cuts it off)
-    kaijuOneShot(['dance'], 0.3, 1, { commit: 0 });
-  }
+  // The game mode's turn: the wave check (waves), or the match (wrestling)
+  _mode.update(dt, dtReal);
 
   // Slowly regenerate small rage when idle (rageGain upgrade)
-  state.rage = Math.min(state.maxRage, state.rage + dt * 1.5 * state.upgrades.rageGainMult);
+  if (_rules.passiveRage) state.rage = Math.min(state.maxRage, state.rage + dt * 1.5 * state.upgrades.rageGainMult);
   // Passive HP regen if upgraded
   if (state.upgrades.regenRate > 0) {
     state.hp = Math.min(state.maxHp, state.hp + state.upgrades.regenRate * dt);
   }
   if (state._dmgWindow) state._dmgWindow *= Math.exp(-dt / DPS_WINDOW);
   // Out-of-combat regen: after OOC_REGEN_DELAY s without taking damage.
-  if (!state.gameOver && state.hp > 0 && world.time - (state._lastHurtT || 0) > OOC_REGEN_DELAY) {
+  if (_rules.oocRegen && !state.gameOver && state.hp > 0 && world.time - (state._lastHurtT || 0) > OOC_REGEN_DELAY) {
     state.hp = Math.min(state.maxHp, state.hp + OOC_REGEN_RATE * dt);
   }
   // Decay damage flash
@@ -4698,7 +4988,7 @@ function updateWorld(dt) {
       world.spawnExplosion(impact, 1.5);
       world.shake(0.4, 0.4);
       // AOE damage to player and buildings
-      damageInRadius(impact, 18, s.damage * 0.6, false);
+      damageInRadius(impact, 18, s.damage * 0.6, false, false, 'military');
       const dx = state.kaiju.root.position.x - impact.x;
       const dz = state.kaiju.root.position.z - impact.z;
       if (dx * dx + dz * dz < 18 * 18) {
@@ -4729,7 +5019,7 @@ function updateWorld(dt) {
       const impact = new THREE.Vector3(a.x, 0, a.z);
       world.spawnExplosion(impact, 2.0);
       world.shake(1.0, 0.7);
-      damageInRadius(impact, 22, 40, false);
+      damageInRadius(impact, 22, 40, false, false, 'military');
       const dx = state.kaiju.root.position.x - a.x;
       const dz = state.kaiju.root.position.z - a.z;
       if (dx * dx + dz * dz < 22 * 22) {
@@ -4857,6 +5147,13 @@ function drawMinimap() {
     else if (e.type === 'jet' || e.type === 'heli') { ctx.fillStyle = '#88ccff'; ctx.fillRect(x - 2, y - 2, 4, 4); }
     else if (e.type === 'soldier') { ctx.fillStyle = '#ffaa66'; ctx.fillRect(x - 1, y - 1, 2, 2); }
     else { ctx.fillStyle = '#ff5544'; ctx.fillRect(x - 2, y - 2, 4, 4); }
+  }
+  // The rival kaiju: a large marker, pinned to the map's edge when it is off it
+  if (_rival) {
+    const [rx, ry] = w2m(_rival.root.position.x, _rival.root.position.z);
+    const x = Math.max(5, Math.min(cw - 5, rx)), y = Math.max(5, Math.min(ch - 5, ry));
+    ctx.fillStyle = '#ff44aa'; ctx.fillRect(x - 5, y - 5, 10, 10);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(x - 5, y - 5, 10, 10);
   }
 
   // Kaiju arrow at center.
@@ -5071,7 +5368,9 @@ async function _hudPrewarmEnd() {
   }
 }
 
-function offerUpgrades() {
+// onChosen: what happens once a card is picked (default: the next wave). A
+// mode passes its own continuation (wrestling: back to the bell).
+function offerUpgrades(onChosen) {
   state.upgradePending = true;
   state.paused = true;
   document.exitPointerLock?.();
@@ -5099,7 +5398,8 @@ function offerUpgrades() {
       _menuPad.focused = -1;
       if (!touchUI) _requestPointerLock();
       // Now actually advance the wave
-      if (!state.gameOver) startWave(state.wave + 1);
+      if (state.gameOver) return;
+      if (onChosen) onChosen(u); else startWave(state.wave + 1);
     };
     card.addEventListener('click', choose);
     card.addEventListener('touchstart', (e) => { e.preventDefault(); choose(); }, { passive: false });
@@ -5116,6 +5416,451 @@ if (muteBtn) {
     muteBtn.textContent = audio.muted ? 'SOUND · OFF' : 'SOUND · ON';
   });
   muteBtn.textContent = audio.muted ? 'SOUND · OFF' : 'SOUND · ON';
+}
+
+// ------------------------- Game modes + the wrestling seam -------------------------
+// A level plays one game mode (see _modeId): 'waves', the classic survival
+// loop, or 'wrestling', Chicago's title match, which lives in src/wrestling/
+// and never imports this file. Everything those modules may do here goes
+// through the ctx object below (the contract: notes/wrestling_api.md).
+
+// ---- time ----
+let _hitStopUntil = 0; // performance.now() ms: the simulation is frozen (dt = 0) until then
+let _slowPrio = 0;     // priority of the slow-mo in force (the classic callers use 0)
+let _lastDt = 0;       // last frame's simulation dt (QA)
+/** Freeze the simulation for sec real seconds (0.5 at most). Overlapping
+ *  calls keep the later end; see tick for how it sits over slow-mo. */
+function hitStop(sec) {
+  _hitStopUntil = Math.max(_hitStopUntil, performance.now() + Math.min(0.5, sec) * 1000);
+}
+
+// ---- damage attribution (see damageInRadius) ----
+let _dmgSrc = null;
+// ---- this frame's raw input (written by updatePlayer and the listeners) ----
+const _in = { moveX: 0, moveZ: 0, sprint: false, attack: false, wheel: 0 };
+// ---- mode rules read by updateWorld ----
+const _rules = { oocRegen: true, passiveRage: true };
+
+// ---- camera ----
+const CAM_FOV = 70; // the chase cam's; an override that changes it gets it put back
+let _camOverride = null, _camOverridden = false;
+function setCameraOverride(fn) { _camOverride = fn || null; }
+/** This frame's world.shake offset for a camera that replaces the chase cam
+ *  (which applies it itself); spends the shake timer the same way. */
+function shakeOffset(out) {
+  if (!(world._shakeTime > 0)) return out.set(0, 0, 0);
+  out.set((Math.random() - 0.5) * world._shakeMag * 2, (Math.random() - 0.5) * world._shakeMag * 2, (Math.random() - 0.5) * world._shakeMag * 2);
+  world._shakeTime -= 1 / 60;
+  if (world._shakeTime <= 0) world._shakeMag = 0;
+  return out;
+}
+/** Aim of the beam and the ultimate: the camera's forward, flattened. Under a
+ *  camera override (a fight cam is not behind the kaiju) the kaiju's facing. */
+function _aimDir(out) {
+  if (_camOverridden) return out.set(Math.sin(state.yaw), -0.12, Math.cos(state.yaw)).normalize();
+  camera.getWorldDirection(out);
+  out.y *= 0.4;
+  return out.normalize();
+}
+
+// ---- the rival kaiju as this file sees it ----
+// Registered by the mode (ctx.setRivalBody) for as long as it is in play:
+// { root, radius, height, aimY, targetable, solid, pushShare,
+//   takeHit(amount, kind, srcX, srcZ) }. Every player attack reaches it through
+// takeHit: damageInRadius, the beam (snap + tube), shells.
+let _rival = null;
+// What _assistTarget and the beam's snapped-target path expect of an enemy
+const _rivalView = {
+  type: 'rival', root: null, aimY: 16,
+  get dead() { return !_rival || !_rival.targetable; },
+  damage(amount) {
+    const p = state.kaiju.root.position;
+    if (_rival) _rival.takeHit(amount, 'beam', p.x, p.z);
+  },
+};
+function setRivalBody(body) {
+  _rival = body || null;
+  _rivalView.root = body ? body.root : null;
+  if (body) _rivalView.aimY = body.aimY || 16;
+}
+// Kaiju-vs-kaiju spacing: the models' real girth (torso, not wings or tail),
+// against which KAIJU_BODY_RADIUS (8.1, building collision) lets two of them
+// stand inside each other.
+const KAIJU_FIGHT_RADIUS = { godzilla: 12, ghidorah: 14, mecha: 12.5 };
+function fightRadius(key) { return KAIJU_FIGHT_RADIUS[key] || 12; }
+function collideRadius(key) { return KAIJU_BODY_RADIUS * ((MONSTERS[key] && MONSTERS[key].stats.scale) || 1); }
+/** Player and rival push each other apart (pos: the player's root position);
+ *  the rival gives way by its pushShare of the overlap. */
+function resolveRivalCollision(pos) {
+  const r = _rival;
+  if (!r || !r.solid) return;
+  const rp = r.root.position;
+  let dx = pos.x - rp.x, dz = pos.z - rp.z;
+  const minD = fightRadius(state.monsterKey) + r.radius;
+  const d2 = dx * dx + dz * dz;
+  if (d2 >= minD * minD) return;
+  let d = Math.sqrt(d2);
+  if (d < 1e-3) { dx = -Math.sin(state.yaw); dz = -Math.cos(state.yaw); d = 1; }
+  const push = minD - d, give = r.pushShare === undefined ? 0.5 : r.pushShare;
+  pos.x += dx / d * push * (1 - give); pos.z += dz / d * push * (1 - give);
+  rp.x -= dx / d * push * give; rp.z -= dz / d * push * give;
+}
+function _pickRivalKey(playerKey) {
+  const others = Object.keys(MONSTERS).filter((k) => k !== playerKey);
+  const m = location.search.match(/[?&]rival=(\w+)/); // QA: force the opponent
+  return m && others.includes(m[1]) ? m[1] : others[Math.floor(Math.random() * others.length)];
+}
+/** Swap the rival for another kaiju mid-run (a title defense). The caller has
+ *  let go of the old one's root; resolves to the new { key, cfg, glb }. */
+async function loadRival(key) {
+  if (_rivalCache && _rivalCache.key === key) return _rivalCache;
+  if (!MONSTERS[key] || key === state.monsterKey) throw new Error(`loadRival: '${key}' is not a possible rival`);
+  const glb = await loadKaijuModel(key);
+  if (_rivalCache) _disposeKaijuGLB(_rivalCache.glb);
+  _rivalCache = { key, cfg: MONSTERS[key], glb };
+  markShadowCaster(glb.root);
+  await _preuploadTextures([glb.root]);
+  return _rivalCache;
+}
+
+// ---- damage and buildings for a body that is not the player ----
+/** Hurt the player. o: { raw = true, x, z, flash = true }. raw skips the
+ *  wave-keyed scaling and burst cap (a kaiju's blow lands in full) and never
+ *  ends the run: HP stops at 0 and the mode decides. raw: false is the classic
+ *  path (hurtKaiju). x, z: where it came from, for the damage chevron. */
+function hurtPlayer(amount, o) {
+  if (!state.kaiju || state.gameOver || !(amount > 0)) return 0;
+  let dealt;
+  if (o && o.raw === false) dealt = hurtKaiju(amount);
+  else {
+    dealt = Math.min(amount, Math.max(0, state.hp));
+    state.hp -= dealt;
+    state._lastHurtT = world.time;
+  }
+  if (!o || o.flash !== false) state.damageFlash = Math.min(1, state.damageFlash + dealt / 60);
+  if (o && o.x !== undefined) addDamageIndicator(o.x, o.z);
+  return dealt;
+}
+const _otherSrc = (src) => (src && src !== 'player' ? src : null);
+/** resolveBuildingCollisions for any body; src other than 'player' keeps the wear from scoring. */
+function resolveBodyVsBuildings(pos, radius, dt, wearDps = 35, src = 'player') {
+  const was = _dmgSrc;
+  _dmgSrc = _otherSrc(src);
+  const hit = resolveBuildingCollisions(pos, dt, radius, wearDps);
+  _dmgSrc = was;
+  return hit;
+}
+function damageBuilding(b, amount, point, src = 'player') {
+  const was = _dmgSrc;
+  _dmgSrc = _otherSrc(src);
+  const r = b.damage(amount, point || null, world);
+  _dmgSrc = was;
+  return r;
+}
+function collapseBuilding(b, src = 'player') {
+  if (b.destroyed) return;
+  const was = _dmgSrc;
+  _dmgSrc = _otherSrc(src);
+  b.collapse(world);
+  _dmgSrc = was;
+}
+// Building queries (module-level visitors: no closure per call)
+const _bq = { x: 0, z: 0, r: 0, dx: 0, dz: 0, cb: null, hit: null };
+function _bqNear(b) {
+  if (b.destroyed) return;
+  const cx = THREE.MathUtils.clamp(_bq.x, b.x - b.w / 2, b.x + b.w / 2), cz = THREE.MathUtils.clamp(_bq.z, b.z - b.d / 2, b.z + b.d / 2);
+  const dx = _bq.x - cx, dz = _bq.z - cz;
+  if (dx * dx + dz * dz <= _bq.r * _bq.r) _bq.cb(b);
+}
+/** cb(b) for every standing building whose footprint is within r of (x, z). */
+function forEachBuildingNear(x, z, r, cb) {
+  const grid = world.buildingGrid;
+  if (!grid) return;
+  _bq.x = x; _bq.z = z; _bq.r = r; _bq.cb = cb;
+  grid.forEachNear(x, z, r + 30, _bqNear);
+}
+function _bqAt(b) {
+  if (!_bq.hit && !b.destroyed && Math.abs(_bq.x - b.x) < b.w / 2 && Math.abs(_bq.z - b.z) < b.d / 2) _bq.hit = b;
+}
+/** The standing building whose footprint contains (x, z), or null. */
+function buildingAt(x, z) {
+  const grid = world.buildingGrid;
+  if (!grid) return null;
+  _bq.x = x; _bq.z = z; _bq.hit = null;
+  grid.forEachNear(x, z, 34, _bqAt);
+  return _bq.hit;
+}
+function _bqSweep(b) {
+  if (b.destroyed) return;
+  // The segment against the footprint grown by the body's radius (slab test)
+  const hw = b.w / 2 + _bq.r, hd = b.d / 2 + _bq.r, ox = _bq.x - b.x, oz = _bq.z - b.z;
+  let t0 = 0, t1 = 1;
+  if (Math.abs(_bq.dx) < 1e-6) { if (Math.abs(ox) > hw) return; } else {
+    const a = (-hw - ox) / _bq.dx, c = (hw - ox) / _bq.dx;
+    t0 = Math.max(t0, Math.min(a, c)); t1 = Math.min(t1, Math.max(a, c));
+    if (t0 > t1) return;
+  }
+  if (Math.abs(_bq.dz) < 1e-6) { if (Math.abs(oz) > hd) return; } else {
+    const a = (-hd - oz) / _bq.dz, c = (hd - oz) / _bq.dz;
+    t0 = Math.max(t0, Math.min(a, c)); t1 = Math.min(t1, Math.max(a, c));
+    if (t0 > t1) return;
+  }
+  _bq.cb(b, t0);
+}
+/** cb(b, t) for every standing building a body of `radius` crosses moving
+ *  from (x0, z0) to (x1, z1); t = 0..1 where along the move it first touches.
+ *  Not sorted: order by t if the order matters. */
+function sweepBuildings(x0, z0, x1, z1, radius, cb) {
+  const grid = world.buildingGrid;
+  if (!grid) return;
+  _bq.x = x0; _bq.z = z0; _bq.dx = x1 - x0; _bq.dz = z1 - z0; _bq.r = radius; _bq.cb = cb;
+  grid.forEachNear((x0 + x1) / 2, (z0 + z1) / 2, Math.hypot(_bq.dx, _bq.dz) / 2 + radius + 30, _bqSweep);
+}
+/** A landmark's display name ('Willis Tower'), '' for an ordinary building. */
+function landmarkName(b) {
+  if (!b || !b.landmarkId) return '';
+  if (b._lmName === undefined) {
+    b._lmName = b.landmarkName ? b.landmarkName.replace(/\s*\(.*\)\s*$/, '')
+      : b.landmarkId.replace(/_(rear|twin)$/, '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return b._lmName;
+}
+
+// ---- military run-ins (wrestling interference) ----
+const _RUN_IN = { tank: Tank, heli: Helicopter, mech: Mech, jet: Jet, artillery: Artillery, soldier: Soldier };
+/** Spawn `count` units of kind ('tank' | 'heli' | 'mech' | 'jet' | 'artillery'
+ *  | 'soldier') on a ring around a point, outside any wave bookkeeping.
+ *  o: { x, z (centre; default the player), rMin = 150, rMax = 220,
+ *  target: 'player' (default) | 'rival' }. Returns how many spawned. */
+function spawnRunIn(kind, count = 1, o) {
+  const C = _RUN_IN[kind];
+  if (!C || !state.kaiju) return 0;
+  const air = kind === 'heli' || kind === 'jet';
+  const kp = state.kaiju.root.position;
+  const cx = o && o.x !== undefined ? o.x : kp.x, cz = o && o.z !== undefined ? o.z : kp.z;
+  const rMin = (o && o.rMin) || 150, rMax = (o && o.rMax) || 220;
+  const bd = world.bounds, m = 25;
+  for (let i = 0; i < count; i++) {
+    let x = 0, z = 0, ok = false;
+    for (let a = 0; a < 20 && !ok; a++) {
+      const ang = Math.random() * Math.PI * 2, r = rMin + Math.random() * (rMax - rMin);
+      x = cx + Math.cos(ang) * r; z = cz + Math.sin(ang) * r;
+      ok = x > bd.minX + m && x < bd.maxX - m && z > bd.minZ + m && z < bd.maxZ - m && (air || !world.isWater || !world.isWater(x, z));
+    }
+    if (!ok) { const p = world.landPoint ? world.landPoint() : [world.center.x, world.center.z]; x = p[0]; z = p[1]; }
+    const e = new C(x, z);
+    if (kind === 'mech') markShadowCaster(e.root);
+    e._tgtRival = !!(o && o.target === 'rival');
+    scene.add(e.root);
+    world.enemies.push(e);
+    restrictShadowCasters(e.root);
+  }
+  return count;
+}
+
+// ---- the player as a mode sees it ----
+const _playerView = {
+  get root() { return state.kaiju ? state.kaiju.root : null; },
+  get glb() { return state.kaiju ? state.kaiju.glb : null; },
+  get head() { return state.kaiju ? state.kaiju.head : null; },
+  get key() { return state.monsterKey; },
+  get cfg() { return state.monsterCfg; },
+  get hp() { return state.hp; }, set hp(v) { state.hp = v; },
+  get maxHp() { return state.maxHp; }, set maxHp(v) { state.maxHp = v; },
+  get rage() { return state.rage; }, set rage(v) { state.rage = Math.max(0, Math.min(state.maxRage, v)); },
+  get maxRage() { return state.maxRage; },
+  get yaw() { return state.yaw; }, set yaw(v) { state.yaw = v; },
+  get pitch() { return state.pitch; }, set pitch(v) { state.pitch = THREE.MathUtils.clamp(v, -0.6, 0.4); },
+  get vel() { return state.vel; },
+  get cooldowns() { return state.cooldowns; },
+  get upgrades() { return state.upgrades; },
+  get airborne() { return (state._stompJumpT || 0) > 0; },
+  get bodyRadius() { return fightRadius(state.monsterKey); },
+  get collideRadius() { return collideRadius(state.monsterKey); },
+  control: _pctl,
+  releaseControl() { Object.assign(_pctl, _PCTL_DEFAULTS); },
+  playOnce: kaijuOneShot,
+};
+
+// ---- ctx: the one object the wrestling modules get ----
+const ctx = {
+  scene, camera, renderer, world, audio, vfx, MONSTERS,
+  debug: /[?&]debug\b/.test(location.search),
+  quality: Object.freeze({ tier: QUALITY, high: Q_HIGH, med: Q_MED, low: Q_LOW, isMobile, touchUI, glbContent: GLB_CONTENT,
+    full: !isMobile && !Q_LOW, shadows: RP.shadows, post: RP.post, particleMul: QUALITY_PROFILE.particleMul }),
+  events: null, // the wrestling event bus (createWrestling sets it)
+  // time and feel
+  slowMo, hitStop,
+  get frozen() { return performance.now() < _hitStopUntil; },
+  shake(mag, dur) { world.shake(mag, dur); },
+  shakeOffset,
+  // camera
+  setCameraOverride, camClearDist: _camClearDist,
+  // the two kaiju
+  player: _playerView,
+  get rival() { return _rivalCache; },
+  loadRival, setRivalBody,
+  bodyRadius: fightRadius, collideRadius,
+  // damage
+  hurtPlayer,
+  /** o: { kind = 'aoe', src = 'player', aerial = true } (see damageInRadius). */
+  damageInRadius(center, radius, amount, o) {
+    damageInRadius(center, radius, amount, !o || o.aerial !== false, false, (o && o.kind) || 'aoe', (o && o.src) || 'player');
+  },
+  // buildings and the map
+  resolveBuildingCollisions: resolveBodyVsBuildings,
+  forEachBuildingNear, sweepBuildings, buildingAt, damageBuilding, collapseBuilding, landmarkName,
+  clampToBounds(pos) {
+    const bd = world.bounds;
+    pos.x = THREE.MathUtils.clamp(pos.x, bd.minX, bd.maxX);
+    pos.z = THREE.MathUtils.clamp(pos.z, bd.minZ, bd.maxZ);
+  },
+  isWater(x, z) { return !!world.isWater && world.isWater(x, z); },
+  // effects (the budgeted world.spawn* family is on ctx.world)
+  fx: {
+    dustBurst(pos, radius = 14, count = 8) { const e = makeDustBurst(world, pos, radius, count); if (e) world.effects.push(e); },
+    add(effect) { world.effects.push(effect); },
+    /** Splash + ripple + sound if (x, z) is water; returns whether it was. */
+    waterImpact(x, z, size = 2, kind = 'stomp') { return waterImpact(world, x, z, size, kind); },
+  },
+  /** Phones: only marked casters keep their shadow. Mark a root you add mid-run. */
+  markShadowCaster(root) { markShadowCaster(root); restrictShadowCasters(root); },
+  // screen feedback
+  ui: {
+    popup: spawnPopup, message: showMessage, banner: showWaveBanner, toast, toastMini,
+    warnIndicator: addWarnIndicator, damageIndicator: addDamageIndicator,
+  },
+  // raw input (edges last one frame; see _setKey / readGamepad)
+  input: {
+    keys,
+    held(code) { return !!keys[code]; },
+    pressed(code) { return !!_keyHit[code]; },
+    released(code) { return !!_keyUp[code]; },
+    get moveX() { return _in.moveX; },
+    get moveZ() { return _in.moveZ; },
+    get sprint() { return _in.sprint; },
+    get attack() { return _in.attack; },
+    get wheel() { return _in.wheel; },
+    get pointerLocked() { return document.pointerLockElement === renderer.domElement; },
+    pad: {
+      get connected() { return padInput.connected; },
+      down(i) { return !!padInput.down[i]; },
+      pressed(i) { return !!padInput.hit[i]; },
+      axis(i) { return padInput.axes[i] || 0; },
+      get lt() { return padInput.lt; },
+      get rt() { return padInput.rt; },
+      /** Take button i off its classic job (6 = LT sprint, 8 = Back pause) or give it back. */
+      reserve(i, on = true) { if (on) _padReserved.add(i); else _padReserved.delete(i); },
+    },
+    /** A new on-screen control: touches on it no longer start a camera drag. */
+    registerTouchControl(el) { if (el && !_touchControls.includes(el)) _touchControls.push(el); },
+    /** Make el a held button reporting as `code` through held / pressed / released (touch, and mouse for desktop testing). */
+    bindTouchButton(el, code) {
+      ctx.input.registerTouchControl(el);
+      const down = (e) => { e.preventDefault(); _setKey(code, true); };
+      const up = (e) => { e.preventDefault(); _setKey(code, false); };
+      el.addEventListener('touchstart', down, { passive: false });
+      el.addEventListener('touchend', up); el.addEventListener('touchcancel', up);
+      el.addEventListener('mousedown', down); el.addEventListener('mouseup', up); el.addEventListener('mouseleave', up);
+    },
+  },
+  // flow
+  rules: _rules,
+  addScore, addRage,
+  gameOver, offerUpgrades,
+  military: {
+    spawn: spawnRunIn,
+    get count() { return world.enemies.length; },
+    /** Remove every unit on the field (nobody scores). */
+    clear() {
+      const was = _dmgSrc;
+      _dmgSrc = 'env';
+      for (const e of world.enemies) if (!e.dead) e.damage(1e6, world);
+      _dmgSrc = was;
+    },
+  },
+};
+
+// ---- the modes ----
+// waves: the classic loop, exactly as it was (startWave, the wave-clear
+// check, upgrades between waves).
+function _wavesUpdate() {
+  // Wave check
+  if (state.inWave && world.enemies.length === 0) {
+    state.inWave = false;
+    setTimeout(() => {
+      if (state.gameOver) return;
+      state.score += 1000;
+      state.hp = Math.min(state.maxHp, state.hp + 30);
+      audio.waveClear();
+      offerUpgrades();
+    }, 1800);
+    showMessage('WAVE CLEARED · +1000', 2.0);
+    // Victory dance on wave clear
+    // (one-shot lock, commit 0: dances while standing, moving cuts it off)
+    kaijuOneShot(['dance'], 0.3, 1, { commit: 0 });
+  }
+}
+let _wr = null; // the wrestling composer, built on first use
+const MODES = {
+  // needsRival: a second kaiju is loaded for the run. ownsKO: the mode ends
+  // the run itself (the player's HP reaching 0 is a fall, not game over).
+  waves: {
+    id: 'waves', needsRival: false, ownsKO: false, onBuildingDestroyed: null,
+    start() { startWave(1); },
+    update() { _wavesUpdate(); },
+    updateIdle() {},
+    onGameOver() {},
+    gameOverText() { return null; },
+    dispose() {},
+  },
+  wrestling: {
+    id: 'wrestling', needsRival: true, ownsKO: true,
+    start() {
+      if (!_wr) _wr = createWrestling(ctx);
+      _wr.start({ rival: _rivalCache });
+    },
+    update(dt, dtReal) { if (_wr) _wr.update(dt, dtReal); },
+    updateIdle(dtReal) { if (_wr) _wr.updateIdle(dtReal); },
+    onGameOver(victory) { if (_wr) _wr.onGameOver(victory); },
+    onBuildingDestroyed(b, by) { if (_wr) _wr.onBuildingDestroyed(b, by); },
+    gameOverText(victory) { return _wr ? _wr.gameOverText(victory) : null; },
+    dispose() { if (_wr) _wr.dispose(); },
+  },
+};
+let _mode = MODES.waves;
+/** Everything a mode may have changed in this file, back to the classic defaults (restart-in-place). */
+function _resetSeams() {
+  Object.assign(_pctl, _PCTL_DEFAULTS);
+  _camOverride = null;
+  _hitStopUntil = 0; _slowPrio = 0; _dmgSrc = null;
+  _rules.oocRegen = true; _rules.passiveRage = true;
+  _padReserved.clear();
+  setRivalBody(null);
+  if (camera.fov !== CAM_FOV) { camera.fov = CAM_FOV; camera.updateProjectionMatrix(); }
+}
+// QA (?debug): the seams, drivable from scripts
+if (window.__qa) {
+  Object.assign(window.__qa, {
+    ctx,
+    mode: () => _mode.id,
+    rivalKey: () => (_rivalCache ? _rivalCache.key : null),
+    control: _pctl,
+    hitStop: (sec) => hitStop(sec),
+    slowMo: (scale, sec, prio) => slowMo(scale, sec, prio),
+    time: () => ({ now: world.time, dt: _lastDt, frozen: performance.now() < _hitStopUntil, slow: performance.now() < state.slowMoUntil ? state.slowMoScale : 1, slowPrio: _slowPrio }),
+    camOverride: (fn) => setCameraOverride(fn),
+    hurt: (amount, raw = true) => hurtPlayer(amount, { raw }),
+    runIn: (kind, n, o) => spawnRunIn(kind, n, o),
+    // fire('melee' | 'beam' | 'roar' | 'charge' | 'stomp' | 'ult'): rage and cooldown topped up first
+    fire: (what) => {
+      state.rage = state.maxRage;
+      state.cooldowns[what] = 0;
+      ({ melee: fireMelee, beam: fireBeam, roar: fireRoar, charge: fireCharge, stomp: fireStomp, ult: fireUltimate })[what]();
+    },
+  });
+  // __qa.wr: the wrestling composer's hooks (rival, player, match, events, force, ko...), null before the first match
+  Object.defineProperty(window.__qa, 'wr', { get: () => (_wr ? _wr.qa : null) });
 }
 
 // ------------------------- Main loop -------------------------
@@ -5158,17 +5903,24 @@ function tick(now) {
   const dtRaw = (now - last) / 1000;
   last = now;
   const slowActive = now < state.slowMoUntil;
-  const dt = Math.min(0.05, dtRaw) * (slowActive ? state.slowMoScale : 1);
+  // Hit-stop outranks slow-mo: the simulation holds still (dt = 0) while the
+  // camera, HUD and audio keep running on real time, and a slow-mo in force
+  // is put on hold for the freeze rather than burning down under it.
+  const frozen = now < _hitStopUntil;
+  if (frozen && slowActive) state.slowMoUntil += dtRaw * 1000;
+  const dtReal = Math.min(0.05, dtRaw);
+  const dt = frozen ? 0 : dtReal * (slowActive ? state.slowMoScale : 1);
+  _lastDt = dt;
   if (!state.paused && !state.gameOver) {
     state.elapsedTime += dtRaw;
     world.time += dt;
     skyMat.uniforms.time.value = world.time;
     if (state.kaiju) {
       updatePlayer(dt);
-      updateWorld(dt);
+      updateWorld(dt, dtReal);
       _dynResTick(dtRaw);
     }
-    updateCamera();
+    updateCamera(dtReal);
     updateHUD();
     // Minimap is a full canvas redraw; ~15Hz is plenty
     if (now - (state._lastMini || 0) > 66) { drawMinimap(); state._lastMini = now; }
@@ -5180,19 +5932,38 @@ function tick(now) {
       state.kaiju.mixer.update(Math.min(0.05, dtRaw));
       if (state._topple) _updateTopple(Math.min(0.05, dtRaw));
     }
-    updateCamera();
+    _mode.updateIdle(dtReal); // the mode's own actors (the rival kaiju's mixer, its camera and HUD)
+    updateCamera(dtReal);
     updatePopups(dt);
   }
+  // This frame's key / button edges have been seen by everything that ran
+  if (_edgeCodes.length) {
+    for (let i = 0; i < _edgeCodes.length; i++) { _keyHit[_edgeCodes[i]] = false; _keyUp[_edgeCodes[i]] = false; }
+    _edgeCodes.length = 0;
+  }
+  _in.wheel = 0;
   // Menu navigation (gamepad) -- runs whenever the menu or upgrade modal
   // is on screen, regardless of paused/gameOver state.
   pollMenuGamepad(dtRaw);
+  // Look layer (look.js): the slide toward dusk advances with play time; the
+  // kaiju positions feed the analytic shadows. The ultimate's additive domes
+  // fill the frame for ~2 s after it fires (its 20 s cooldown is the clock):
+  // exposure dips under them so they read as light instead of clipping.
+  {
+    const k = state.kaiju, playing = k && !state.paused && !state.gameOver;
+    const ultT = k && state.cooldowns.ult > 0 ? 20 - state.cooldowns.ult : 9;
+    setLookDip(ultT < 2.6 ? Math.min(1, ultT / 0.12) * Math.min(1, (2.6 - ultT) / 1.3) : 0);
+    updateLook(playing ? dt : 0, world.time, camera, k ? k.root : null, _rival ? _rival.root : null);
+  }
   if (window.__cinePass) {
     window.__cinePass.uniforms.time.value = world.time;
     // Project the sun's world position into screen space so god rays
     // streak from wherever the sun actually is in the camera's view.
     // When the sun is behind the camera the screen-pos is off-screen
     // and the god-ray contribution naturally fades to zero.
-    _tmpSun.copy(sun.position).project(camera);
+    // (Chicago: the sun disc's direction, a far point along it)
+    if (_lookLevel === 'chicago') _tmpSun.copy(lookSunDir()).multiplyScalar(1200).add(camera.position).project(camera);
+    else _tmpSun.copy(sun.position).project(camera);
     window.__cinePass.uniforms.sunPos.value.set(
       (_tmpSun.x + 1) * 0.5,
       (_tmpSun.y + 1) * 0.5,

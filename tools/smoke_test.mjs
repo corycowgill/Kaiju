@@ -31,6 +31,26 @@ const argv = process.argv.slice(2);
 if (argv[0] !== '--run') {
   // Parent: one child process per config (quality tier is fixed at module load).
   let failed = 0;
+  // Generated asset lists against the files on disk (a list entry without its file is a
+  // 404 and a fallback at runtime; the configs below never load the desktop KTX2 copies,
+  // no KTX2Loader in node, so those are checked here: present, and really KTX2)
+  {
+    const gen = async (f) => import(pathToFileURL(path.join(REPO, 'src', f)).href);
+    const [{ ASSET_HASHES }, { MOBILE_VARIANTS }, { KTX2_VARIANTS }] = await Promise.all([gen('assetManifest.js'), gen('mobileAssets.js'), gen('ktx2Assets.js')]);
+    const bad = [];
+    for (const p of Object.keys(ASSET_HASHES)) if (!fs.existsSync(path.join(REPO, p))) bad.push(`assetManifest.js lists ${p}: no such file`);
+    for (const p of MOBILE_VARIANTS) for (const q of [`assets/m/${p}`, `assets/${p}`]) if (!fs.existsSync(path.join(REPO, q)) && !(q === `assets/${p}` && fs.existsSync(path.join(REPO, 'assets/m', p)) && /soldier_field/.test(p))) bad.push(`mobileAssets.js lists ${p}: ${q} missing`);
+    for (const p of KTX2_VARIANTS) {
+      const f = path.join(REPO, 'assets/ktx2', p);
+      if (!fs.existsSync(f) || !fs.existsSync(path.join(REPO, 'assets', p))) { bad.push(`ktx2Assets.js lists ${p}: copy or original missing`); continue; }
+      const b = fs.readFileSync(f);
+      const j = JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString('utf8'));
+      if (!(j.extensionsRequired || []).includes('KHR_texture_basisu')) bad.push(`assets/ktx2/${p} has no KTX2 texture`);
+      if (!ASSET_HASHES[`assets/ktx2/${p}`]) bad.push(`assets/ktx2/${p} is not in assetManifest.js (re-run tools/make_asset_manifest.mjs)`);
+    }
+    if (bad.length) { failed++; console.log(`[asset lists] FAIL (${bad.length})`); for (const l of bad.slice(0, 12)) console.log('  - ' + l); }
+    else console.log(`[asset lists] ok: ${Object.keys(ASSET_HASHES).length} hashed GLBs, ${MOBILE_VARIANTS.size} mobile variants, ${KTX2_VARIANTS.size} KTX2 variants on disk`);
+  }
   for (const [device, tier, level] of CONFIGS) {
     const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--run', device, tier, level], { stdio: 'inherit' });
     if (r.status !== 0) failed++;
@@ -88,6 +108,9 @@ globalThis.devicePixelRatio = 1;
 globalThis.localStorage = globalThis.sessionStorage = { getItem: () => null, setItem: noop };
 globalThis.ProgressEvent = class { constructor(t, o) { Object.assign(this, o); } };
 globalThis.createImageBitmap = async () => ({ width: 4, height: 4, close: noop });
+// GLTFLoader's EXT_texture_webp support probe (new Image() with a 1x1 WebP data: URL):
+// every browser the game runs on decodes WebP, so the probe loads
+globalThis.Image = class { constructor() { this.height = 1; } set src(v) { setTimeout(() => this.onload?.({ target: this }), 0); } };
 URL.createObjectURL = () => 'blob:stub';
 URL.revokeObjectURL = noop;
 const fetched = new Set();
@@ -140,8 +163,11 @@ await step('vfx.init', () => { vfx.init(scene); vfx.registerAllBuilders(effects)
 await step('level data', () => city.loadLevelData(level));
 if (Q.GLB_CONTENT) await step('tree/ped/car templates', () => Promise.all([city.loadTreeTemplates(undefined, level), city.loadPedestrianTemplates(), city.loadCarTemplates(undefined, level)]));
 else if (level === 'chicago') await step('car templates', () => city.loadCarTemplates(undefined, level)); // as game.js: GLB cars on Chicago LOW
-const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q.isMobile, glb: Q.GLB_CONTENT, level }));
-for (const key of ['godzilla', 'ghidorah', 'mecha']) await step(`kaiju ${key}`, () => loadKaijuModel(key));
+// Game mode as game.js picks it (LEVELS[level].mode): Chicago is built for the wrestling match, ring included
+const mode = level === 'chicago' ? 'wrestling' : 'waves';
+const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q.isMobile, glb: Q.GLB_CONTENT, level, mode }));
+const kaijuGLB = {};
+for (const key of ['godzilla', 'ghidorah', 'mecha']) kaijuGLB[key] = await step(`kaiju ${key}`, () => loadKaijuModel(key));
 if (Q.GLB_CONTENT) {
   await step('building/debris/enemy templates', () => Promise.all([city.loadBuildingTemplates(undefined, level), city.loadDebrisTemplates(), enemies.loadEnemyTemplates()]));
   await step('flushPendingGLBBuildings', () => city.flushPendingGLBBuildings(scene));
@@ -161,12 +187,103 @@ for (const C of [enemies.Tank, enemies.Helicopter, enemies.Mech, enemies.Jet, en
   await step(`spawn ${C.name}`, () => { const e = new C(10, 10); scene.add(e.root); e.update(1 / 60, world, new THREE.Vector3()); spawned[C.name] = e; });
 }
 const trisOf = (root) => { let t = 0; root?.traverse((o) => { if (o.isMesh) { const g = o.geometry; t += (g.index ? g.index.count : g.attributes.position.count) / 3; } }); return t; };
+
+// Wrestling mode (src/wrestling/, composed by index.js; game.js itself is not importable
+// here): the modules load without a DOM, the event bus delivers, every anim name's stand-in
+// clips exist on some rig, and a match runs headless against a stub of game.js's ctx:
+// start, the rival takes a player hit, a KO ends it with the win screen, dispose, start again.
+let wrestlingSummary = '';
+if (mode === 'wrestling') await step('wrestling', async () => {
+  const { createWrestling } = await imp('wrestling/index.js');
+  const { EV, EVENTS, createBus } = await imp('wrestling/events.js');
+  const { ANIMS } = await imp('wrestling/anims.js');
+  const { STATES } = await imp('wrestling/fighter.js');
+  // bus: payload reuse, unsubscribe, unknown names rejected
+  {
+    const bus = createBus();
+    let got = 0;
+    const off = bus.on(EV.STRIKE_LANDED, (e) => { got += e.damage; });
+    bus.ev(EV.STRIKE_LANDED).damage = 7; bus.emit(EV.STRIKE_LANDED);
+    off();
+    bus.ev(EV.STRIKE_LANDED).damage = 5; bus.emit(EV.STRIKE_LANDED);
+    if (got !== 7) fail(`wrestling bus: listener saw ${got}, expected 7`);
+    if (bus.ev(EV.STRIKE_LANDED).damage !== 0) fail('wrestling bus: ev() did not reset the payload');
+    let threw = false;
+    try { bus.emit('no:such-event'); } catch (e) { threw = true; }
+    if (!threw) fail('wrestling bus: an unknown event name was accepted');
+  }
+  const clipKeys = new Set(Object.values(kaijuGLB).flatMap((g) => (g ? Object.keys(g.actions) : [])));
+  for (const [name, def] of Object.entries(ANIMS)) {
+    for (const c of def.clips) if (!clipKeys.has(c)) fail(`wrestling anim '${name}': stand-in clip '${c}' is not a kaijuLoader key on any rig`);
+  }
+  if (!world.arena || !world.arena.crowd) fail('wrestling: chicago built without its ring / ringside crowd (world.arena)');
+  const A = world.arena || { cx: 0, cz: 0, half: 0 };
+  const inRing = res.buildings.filter((b) => !b.destroyed && Math.abs(b.x - A.cx) < A.half - b.w / 2 && Math.abs(b.z - A.cz) < A.half - b.d / 2);
+  if (inRing.length) fail(`wrestling: ${inRing.length} buildings stand inside the ring, e.g. (${inRing[0].x.toFixed(1)}, ${inRing[0].z.toFixed(1)})`);
+  // A stub of game.js's ctx (the members the modules use; see notes/wrestling_api.md)
+  const P = { hp: 220, maxHp: 220, rage: 0, yaw: 0 };
+  const cfg = (name, hp) => ({ name, stats: { hp, speed: 1.4, melee: 60, scale: 1 } });
+  const control = { external: false, move: 1, melee: true, powers: true, ult: true, look: true, loco: true, faceYaw: null, faceRate: 10, moveYaw: null, damageMult: 1 };
+  const never = () => false;
+  let over = null, rivalBody = null;
+  const ctx = {
+    scene, camera: new THREE.PerspectiveCamera(), world, audio: new Proxy({}, { get: () => noop }), debug: true,
+    quality: { tier: tier, isMobile: Q.isMobile, particleMul: 1 }, events: null,
+    slowMo: noop, hitStop: noop, shake: noop, shakeOffset: (o) => o.set(0, 0, 0), setCameraOverride: noop, camClearDist: (o, d, dist) => dist,
+    player: {
+      root: kaijuGLB.godzilla.root, glb: kaijuGLB.godzilla, head: kaijuGLB.godzilla.head, key: 'godzilla', cfg: cfg('Gorrak', 220),
+      get hp() { return P.hp; }, set hp(v) { P.hp = v; }, get maxHp() { return P.maxHp; }, set maxHp(v) { P.maxHp = v; },
+      get rage() { return P.rage; }, set rage(v) { P.rage = v; }, get yaw() { return P.yaw; }, set yaw(v) { P.yaw = v; },
+      control,
+    },
+    setRivalBody: (b) => { rivalBody = b; }, bodyRadius: () => 12, collideRadius: () => 8.1,
+    hurtPlayer: (a) => { const d = Math.min(a, P.hp); P.hp -= d; return d; },
+    resolveBuildingCollisions: () => null, clampToBounds: noop, isWater: never, landmarkName: () => '',
+    fx: { dustBurst: noop, add: noop, waterImpact: never }, markShadowCaster: noop,
+    ui: { popup: noop, message: noop, banner: noop, toast: noop, toastMini: noop, warnIndicator: noop, damageIndicator: noop },
+    input: { held: never, pressed: never, released: never, moveX: 0, moveZ: 0, sprint: false, attack: false, pad: { down: never, pressed: never, axis: () => 0, lt: 0, rt: 0, reserve: noop } },
+    rules: { oocRegen: true, passiveRage: true }, addScore: noop, addRage: noop,
+    gameOver: (victory, text) => { over = { victory, text }; }, offerUpgrades: noop, military: { spawn: noop, clear: noop, count: 0 },
+  };
+  kaijuGLB.godzilla.root.position.set(res.spawn.x, 0, res.spawn.z);
+  scene.add(kaijuGLB.godzilla.root);
+  const wr = createWrestling(ctx);
+  for (let round = 0; round < 2; round++) {
+    over = null; P.hp = P.maxHp;
+    wr.start({ rival: { key: 'mecha', cfg: cfg('Mechra', 260), glb: kaijuGLB.mecha } });
+    const { W } = wr, qa = wr.qa;
+    qa.events.start();
+    if (!W.rival || W.rival.root.parent !== scene) fail('wrestling: the rival is not in the scene after start()');
+    if (rivalBody !== W.rival) fail('wrestling: the rival was not registered with ctx.setRivalBody');
+    if (!STATES.includes(W.rival.state)) fail(`wrestling: rival state '${W.rival.state}'`);
+    for (let f = 0; f < 30; f++) wr.update(1 / 60, 1 / 60);
+    const hp0 = W.rival.hp;
+    const p = W.player.pos;
+    if (!(W.rival.takeHit(100, 'melee', p.x, p.z) > 0) || !(W.rival.hp < hp0)) fail('wrestling: a player melee hit did not reduce the rival\'s HP');
+    if (!qa.events.counts[EV.STRIKE_LANDED]) fail('wrestling: no strike:landed event for the hit');
+    qa.force('rival', 'downed', 0.2);
+    for (let f = 0; f < 30; f++) wr.update(1 / 60, 1 / 60);
+    if (W.rival.state !== 'neutral') fail(`wrestling: a forced timed state did not expire (rival is '${W.rival.state}')`);
+    qa.ko('rival');
+    for (let f = 0; f < 150 && !over; f++) wr.update(1 / 60, 1 / 60);
+    if (!over || over.victory !== true || !over.text || !over.text.title) fail('wrestling: a rival KO did not end the match as a win with result text');
+    for (const n of [EV.MATCH_START, EV.BELL, EV.KO, EV.FALL_END, EV.MATCH_OVER, EV.MATCH_WON]) if (!qa.events.counts[n]) fail(`wrestling: '${n}' was never emitted`);
+    for (const e of qa.events.list) if (!EVENTS[e.type]) fail(`wrestling: emitted an unlisted event '${e.type}'`);
+    wr.onGameOver(true);
+    for (let f = 0; f < 5; f++) wr.updateIdle(1 / 60);
+    wr.dispose();
+    if (kaijuGLB.mecha.root.parent) fail('wrestling: dispose() left the rival in the scene');
+    if (rivalBody !== null || control.external) fail('wrestling: dispose() left the rival registered / the player under external control');
+  }
+  scene.remove(kaijuGLB.godzilla.root);
+  wrestlingSummary = `wrestling ok (${Object.keys(EVENTS).length} events, ${Object.keys(ANIMS).length} anims, ring at ${A.cx}, ${A.cz}, crowd ${A.crowd ? A.crowd.alive.length : 0}); `;
+});
 await new Promise((r) => setTimeout(r, 300)); // flipbooks + ground textures (async image loads) settle
 
 // ---------------------------------------------------------------- assertions
 for (const e of globalThis.__loadErrors || []) fail(`__loadErrors: ${e.bug ? 'CODE BUG ' : ''}${e.where} ${e.url}: ${e.message}`);
 if (!res || !res.buildings || !res.buildings.length) fail('buildCity returned no buildings');
-let summary = '';
+let summary = wrestlingSummary;
 if (res && res.level !== level) fail(`buildCity built level '${res && res.level}', expected '${level}'`);
 
 // Scene totals, no frustum culling (an upper bound on what the renderer can draw):

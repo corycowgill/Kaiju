@@ -78,6 +78,15 @@ export function init(_scene) {
   }
 }
 
+/** Resolves once every flipbook sheet has loaded (or failed). The shader
+ *  prewarm waits on it: a builder staged before its sheet is in takes the
+ *  procedural fallback, and the flipbook variant it really plays with would
+ *  then be first drawn (and its sheet first uploaded) in play. */
+export function flipbooksReady() {
+  if (LEGACY_VFX || !initialized) return Promise.resolve();
+  return Promise.all(FLIPBOOKS.map((name) => loadFlipbook(name).then((tex) => { _flipTex[name] = tex; }, () => null)));
+}
+
 /** Every effect texture loaded so far (flipbook sheets, the noise texture),
  *  for uploading behind the loading screen instead of on first use. */
 export function effectTextures() { return [...Object.values(_flipTex), NOISE_TEX]; }
@@ -150,6 +159,36 @@ class VFXEffect {
     const t = 1 - this.life / this.maxLife;
     this.update(dt, t, this);
   }
+}
+
+// ----- Effect material pool -----
+//
+// An effect's material used to be built per spawn and disposed at the end of
+// its life. three re-derives the program cache key of every new material on
+// its first draw (getParameters + getProgramCacheKey: ~7% of a destruction
+// frame, more in the frame an ult or a row of collapses spawns 100+ effects),
+// and a dispose that drops a program's last user deletes the program, so the
+// next spawn links it again. Pooled materials keep their program and their own
+// uniforms: _matGet(kind, make) hands back a free one of that kind (or builds
+// it), _matPut(m) returns it at the end of the effect. A builder sets every
+// uniform it reads on acquire; nothing else about the material changes.
+const _MAT_POOL_CAP = 96; // free materials kept per kind
+const _matFree = new Map();
+function _matGet(kind, make) {
+  let free = _matFree.get(kind);
+  if (!free) _matFree.set(kind, (free = []));
+  const m = free.pop() || make();
+  // (own properties, not userData: Material.copy() serialises userData)
+  m._vfxFree = free;
+  m._vfxPooled = false;
+  return m;
+}
+function _matPut(m) {
+  if (!m._vfxFree) { m.dispose(); return; }
+  if (m._vfxPooled) return; // already returned (a cleanup that ran twice)
+  m._vfxPooled = true;
+  if (m._vfxFree.length < _MAT_POOL_CAP) m._vfxFree.push(m);
+  else m.dispose();
 }
 
 // ----- Shared instanced particle pool (sparks, shrapnel, embers) -----
@@ -368,8 +407,10 @@ function _flipMaterial(name) {
     });
     _flipProtos.set(name, proto);
   }
-  const m = proto.clone();
-  m.uniforms.map.value = _flipTex[name];
+  const m = _matGet(proto, () => proto.clone());
+  const u = m.uniforms;
+  u.map.value = _flipTex[name];
+  u.frame.value = 0; u.opacity.value = 1; u.tint.value.setRGB(1, 1, 1);
   return m;
 }
 
@@ -430,8 +471,9 @@ function _flipAddMaterial(name) {
     });
     _flipProtos.set(key, proto);
   }
-  const mat = proto.clone();
+  const mat = _matGet(proto, () => proto.clone());
   mat.uniforms.map.value = _flipTex[name];
+  mat.uniforms.frame.value = 0; mat.uniforms.opacity.value = 1;
   return mat;
 }
 function _flipSpriteAdd(name, size, tint, glow = 1.2) {
@@ -455,7 +497,7 @@ export function flipbookWarmMeshes() {
 
 function _disposeFlip(m) {
   if (m.parent) m.parent.remove(m);
-  m.material.dispose();
+  _matPut(m.material);
 }
 
 // Persistent ground scorch decals left by explosions. Pooled ring buffer
@@ -503,6 +545,8 @@ function _tickScorch() {
 // Single cylinder mesh with a custom ShaderMaterial: scrolling noise core +
 // radial fresnel rim + tip taper. Replaces the legacy 3-cylinder stack
 // (white core + glow + outer halo). Looks energetic instead of static.
+const _UP = new THREE.Vector3(0, 1, 0);
+const _v0 = new THREE.Vector3();
 const _BEAM_VS = `
   varying vec2 vUv;
   varying vec3 vViewDir;
@@ -540,32 +584,36 @@ const _BEAM_FS = `
   }
 `;
 
+const _G_BEAM = new THREE.CylinderGeometry(2.0, 1.4, 1, 18, 1, true);
 function _spawnBeamShader(opts) {
   const { world, origin, dir, length, color = 0x66ff66, glowColor = 0xaaffaa } = opts;
   const len = length;
-  const geom = new THREE.CylinderGeometry(2.0, 1.4, len, 18, 1, true);
-  const uniforms = {
-    noiseTex:  { value: NOISE_TEX },
-    coreColor: { value: new THREE.Color(0xffffff) },
-    glowColor: { value: new THREE.Color(glowColor) },
-    time:      { value: 0 },
-    fade:      { value: 1 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
+  const mat = _matGet('beam', () => new THREE.ShaderMaterial({
+    uniforms: {
+      noiseTex:  { value: NOISE_TEX },
+      coreColor: { value: new THREE.Color(0xffffff) },
+      glowColor: { value: new THREE.Color() },
+      time:      { value: 0 },
+      fade:      { value: 1 },
+    },
     vertexShader: _BEAM_VS,
     fragmentShader: _BEAM_FS,
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
-  });
-  const beam = new THREE.Mesh(geom, mat);
+  }));
+  const uniforms = mat.uniforms;
+  uniforms.glowColor.value.set(glowColor);
+  uniforms.time.value = 0; uniforms.fade.value = 1;
+  // Unit-height cylinder stretched to the beam's length (same shape, UVs and,
+  // through the normal matrix, normals as a cylinder built at that length)
+  const beam = new THREE.Mesh(_G_BEAM, mat);
+  beam.scale.set(1, len, 1);
   // Position so origin is at the start, oriented along dir.
   const mid = origin.clone().addScaledVector(dir, len / 2);
   beam.position.copy(mid);
-  const up = new THREE.Vector3(0, 1, 0);
-  beam.quaternion.setFromUnitVectors(up, dir.clone().normalize());
+  beam.quaternion.setFromUnitVectors(_UP, _v0.copy(dir).normalize());
   world.scene.add(beam);
 
   // Origin point light - kept for parity with legacy beam (effects.js:348).
@@ -588,8 +636,7 @@ function _spawnBeamShader(opts) {
     if (t >= 1) {
       world.scene.remove(beam);
       if (light._seq === seq) { light.intensity = 0; light.color.setHex(0xffaa33); }
-      geom.dispose();
-      mat.dispose();
+      _matPut(mat);
     }
   });
 }
@@ -696,19 +743,20 @@ function _spawnExplosionShader(opts) {
   world.scene.add(group);
 
   // Shader fireball - one mesh replacing legacy flash + fire + core layers.
-  const ballUniforms = {
-    noiseTex: { value: NOISE_TEX },
-    time:     { value: 0 },
-    t01:      { value: 0 },
-  };
-  const ballMat = new THREE.ShaderMaterial({
-    uniforms: ballUniforms,
+  const ballMat = _matGet('fireball', () => new THREE.ShaderMaterial({
+    uniforms: {
+      noiseTex: { value: NOISE_TEX },
+      time:     { value: 0 },
+      t01:      { value: 0 },
+    },
     vertexShader: _FIREBALL_VS,
     fragmentShader: _FIREBALL_FS,
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-  });
+  }));
+  const ballUniforms = ballMat.uniforms;
+  ballUniforms.time.value = 0; ballUniforms.t01.value = 0;
   const ball = new THREE.Mesh(_G_FIREBALL, ballMat);
 
   // Flipbook path (when the sheets are loaded): one main fireball, two
@@ -746,19 +794,21 @@ function _spawnExplosionShader(opts) {
 
   // Ground shockwave ring - same as legacy, keeps the gameplay-readable
   // outward blast indicator on the floor.
-  const ringMat = new THREE.MeshBasicMaterial({
+  const ringMat = _matGet('explosionRing', () => new THREE.MeshBasicMaterial({
     color: 0xffd166, transparent: true, opacity: 1.0,
     side: THREE.DoubleSide, depthWrite: false,
-  });
+  }));
+  ringMat.opacity = 1.0;
   const ring = new THREE.Mesh(_G_RING_E, ringMat);
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = -pos.y + 0.15;
   if (!lite) group.add(ring);
 
   // Drifting smoke sphere - lifts off and lingers after the fireball fades.
-  const smokeMat = new THREE.MeshBasicMaterial({
+  const smokeMat = _matGet('explosionSmoke', () => new THREE.MeshBasicMaterial({
     color: 0x444444, transparent: true, opacity: 0.0, depthWrite: false,
-  });
+  }));
+  smokeMat.opacity = 0.0;
   const smoke = new THREE.Mesh(_G_FIRE_LO, smokeMat);
   // The flipbook path has its own smoke plume; an opacity-0 sphere still
   // costs a draw, so only the fallback path adds it.
@@ -814,10 +864,10 @@ function _spawnExplosionShader(opts) {
     if (tTotal >= 1) {
       if (light._seq === seq) light.intensity = 0;
       world.scene.remove(group);
-      for (const f of flips) f.m.material.dispose();
-      ballMat.dispose();
-      ringMat.dispose();
-      smokeMat.dispose();
+      for (const f of flips) _matPut(f.m.material);
+      _matPut(ballMat);
+      _matPut(ringMat);
+      _matPut(smokeMat);
     }
   });
 }
@@ -859,21 +909,7 @@ function _spawnAtomicDomeShader(opts) {
   const maxRadius = args[0] !== undefined ? args[0] : 130;
   const color = args[1] !== undefined ? args[1] : 0x66ff66;
 
-  const uniforms = {
-    noiseTex:  { value: NOISE_TEX },
-    baseColor: { value: new THREE.Color(color) },
-    time:      { value: 0 },
-    t01:       { value: 0 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
-    vertexShader: _DOME_VS,
-    fragmentShader: _DOME_FS,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide,
-  });
+  const { mat, uniforms } = _makeEnergyMaterial(color);
   const dome = new THREE.Mesh(_G_DOME, mat);
   dome.position.copy(pos);
   dome.position.y = 0.3;
@@ -886,7 +922,7 @@ function _spawnAtomicDomeShader(opts) {
     dome.scale.set(r, r, r);
     if (t >= 1) {
       world.scene.remove(dome);
-      mat.dispose();
+      _matPut(mat);
     }
   });
 }
@@ -927,26 +963,21 @@ const _SMOKE_FS = `
 // constructor overhead and lets the WebGL program cache reuse the compiled
 // shader, while each clone still gets its own uniforms so `time` and `fade`
 // can vary per puff. Disposing a clone leaves the prototype intact.
-const _smokeMatProtos = new Map();
 function _makeSmokeMaterial(colorHex) {
-  let proto = _smokeMatProtos.get(colorHex);
-  if (!proto) {
-    proto = new THREE.ShaderMaterial({
-      uniforms: {
-        noiseTex:   { value: NOISE_TEX },
-        smokeColor: { value: new THREE.Color(colorHex) },
-        time:       { value: 0 },
-        fade:       { value: 1.0 },
-      },
-      vertexShader: _FIREBALL_VS,
-      fragmentShader: _SMOKE_FS,
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    _smokeMatProtos.set(colorHex, proto);
-  }
-  const mat = proto.clone();
+  const mat = _matGet('smoke', () => new THREE.ShaderMaterial({
+    uniforms: {
+      noiseTex:   { value: NOISE_TEX },
+      smokeColor: { value: new THREE.Color() },
+      time:       { value: 0 },
+      fade:       { value: 1.0 },
+    },
+    vertexShader: _FIREBALL_VS,
+    fragmentShader: _SMOKE_FS,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  }));
+  mat.uniforms.smokeColor.value.set(colorHex);
   mat.uniforms.time.value = Math.random() * 100; // de-sync sibling puffs
   mat.uniforms.fade.value = 1.0;
   return { mat, uniforms: mat.uniforms };
@@ -990,7 +1021,7 @@ function _spawnSmokePuffShader(opts) {
     gear.uniforms.fade.value = 0.6 * (1 - t);
     if (t >= 1) {
       world.scene.remove(m);
-      gear.mat.dispose();
+      _matPut(gear.mat);
     }
   });
 }
@@ -1114,7 +1145,7 @@ function _spawnSmokeColumnShader(opts) {
         gear.uniforms.fade.value = 0.55 * intensity * (1 - t2);
         if (t2 >= 1) {
           world.scene.remove(m);
-          gear.mat.dispose();
+          _matPut(gear.mat);
         }
       }));
     }
@@ -1181,35 +1212,42 @@ const _RING_FS = `
 `;
 
 function _makeRingMaterial(colorHex) {
-  const uniforms = {
-    noiseTex:  { value: NOISE_TEX },
-    baseColor: { value: new THREE.Color(colorHex) },
-    time:      { value: 0 },
-    fade:      { value: 1.0 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
+  const mat = _matGet('ring', () => new THREE.ShaderMaterial({
+    uniforms: {
+      noiseTex:  { value: NOISE_TEX },
+      baseColor: { value: new THREE.Color() },
+      time:      { value: 0 },
+      fade:      { value: 1.0 },
+    },
     vertexShader: _FIREBALL_VS,
     fragmentShader: _RING_FS,
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending,
-  });
+  }));
+  const uniforms = mat.uniforms;
+  uniforms.baseColor.value.set(colorHex);
+  uniforms.time.value = 0; uniforms.fade.value = 1.0;
   return { mat, uniforms };
 }
+// The arcs' shapes never vary: one geometry each (was one per spawn)
+const _G_WING_SLASH = new THREE.RingGeometry(6, 16, 24, 1, -Math.PI * 0.6, Math.PI * 1.2);
+const _G_TAIL_SWEEP = new THREE.RingGeometry(4, 18, 24, 1, -Math.PI * 0.4, Math.PI * 0.8);
+const _G_WING_FLAP  = new THREE.RingGeometry(2, 10, 14, 1, -Math.PI / 4, Math.PI / 1.6);
+// Unit-height shapes scaled to a per-spawn length
+const _G_BREATH_CONE = new THREE.ConeGeometry(0.3, 1, 14, 1, true);
+const _G_AFTERBURN   = new THREE.CylinderGeometry(2.2, 0.4, 1, 12, 1, true);
+const _G_STREAK      = new THREE.CylinderGeometry(0.08, 0.04, 1, 5);
+const _G_AD_CHUNK    = new THREE.BoxGeometry(1, 1, 1);
 
 function _spawnWingSlashShader(opts) {
   const { world, pos, args = [] } = opts;
   const yawRad = args[0];
   const color = args[1] !== undefined ? args[1] : 0xff66ff;
 
-  const inner = 6, outer = 16;
   const gear = _makeRingMaterial(color);
-  const arc = new THREE.Mesh(
-    new THREE.RingGeometry(inner, outer, 24, 1, -Math.PI * 0.6, Math.PI * 1.2),
-    gear.mat,
-  );
+  const arc = new THREE.Mesh(_G_WING_SLASH, gear.mat);
   arc.rotation.x = -Math.PI / 2;
   arc.rotation.z = -yawRad;
   arc.position.copy(pos); arc.position.y = 1.2;
@@ -1222,8 +1260,7 @@ function _spawnWingSlashShader(opts) {
     arc.scale.set(s, s, 1);
     if (t >= 1) {
       world.scene.remove(arc);
-      arc.geometry.dispose();
-      gear.mat.dispose();
+      _matPut(gear.mat);
     }
   });
 }
@@ -1233,12 +1270,8 @@ function _spawnTailSweepShader(opts) {
   const yawRad = args[0];
   const color = args[1] !== undefined ? args[1] : 0xffee44;
 
-  const inner = 4, outer = 18;
   const gear = _makeRingMaterial(color);
-  const arc = new THREE.Mesh(
-    new THREE.RingGeometry(inner, outer, 24, 1, -Math.PI * 0.4, Math.PI * 0.8),
-    gear.mat,
-  );
+  const arc = new THREE.Mesh(_G_TAIL_SWEEP, gear.mat);
   arc.rotation.x = -Math.PI / 2;
   arc.rotation.z = -yawRad - Math.PI / 6;
   arc.position.copy(pos); arc.position.y = 0.6;
@@ -1250,8 +1283,7 @@ function _spawnTailSweepShader(opts) {
     arc.scale.set(1 + t * 0.4, 1 + t * 0.4, 1);
     if (t >= 1) {
       world.scene.remove(arc);
-      arc.geometry.dispose();
-      gear.mat.dispose();
+      _matPut(gear.mat);
     }
   });
 }
@@ -1262,10 +1294,7 @@ function _spawnWingFlapShader(opts) {
   const color = args[1] !== undefined ? args[1] : 0xff66ff;
 
   const gear = _makeRingMaterial(color);
-  const wing = new THREE.Mesh(
-    new THREE.RingGeometry(2, 10, 14, 1, -Math.PI / 4, Math.PI / 1.6),
-    gear.mat,
-  );
+  const wing = new THREE.Mesh(_G_WING_FLAP, gear.mat);
   wing.rotation.x = -Math.PI / 2;
   wing.rotation.z = side * Math.PI / 2.2;
   wing.position.copy(pos);
@@ -1279,8 +1308,7 @@ function _spawnWingFlapShader(opts) {
     wing.scale.set(s, s, 1);
     if (t >= 1) {
       world.scene.remove(wing);
-      wing.geometry.dispose();
-      gear.mat.dispose();
+      _matPut(gear.mat);
     }
   });
 }
@@ -1310,24 +1338,26 @@ const _CONE_FS = `
 
 function _spawnBreathConeShader(opts) {
   const { world, origin, dir, length = 28, color = 0xffaa66, life = 0.7 } = opts;
-  const uniforms = {
-    noiseTex:  { value: NOISE_TEX },
-    baseColor: { value: new THREE.Color(color) },
-    time:      { value: 0 },
-    fade:      { value: 1.0 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
+  const mat = _matGet('cone', () => new THREE.ShaderMaterial({
+    uniforms: {
+      noiseTex:  { value: NOISE_TEX },
+      baseColor: { value: new THREE.Color() },
+      time:      { value: 0 },
+      fade:      { value: 1.0 },
+    },
     vertexShader: _FIREBALL_VS,
     fragmentShader: _CONE_FS,
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending,
-  });
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.3, length, 14, 1, true), mat);
-  const up = new THREE.Vector3(0, 1, 0);
-  cone.quaternion.setFromUnitVectors(up, dir.clone().normalize());
+  }));
+  const uniforms = mat.uniforms;
+  uniforms.baseColor.value.set(color);
+  uniforms.time.value = 0; uniforms.fade.value = 1.0;
+  const cone = new THREE.Mesh(_G_BREATH_CONE, mat);
+  cone.scale.set(1, length, 1);
+  cone.quaternion.setFromUnitVectors(_UP, _v0.copy(dir).normalize());
   cone.position.copy(origin).addScaledVector(dir, length / 2);
   world.scene.add(cone);
 
@@ -1335,11 +1365,10 @@ function _spawnBreathConeShader(opts) {
     uniforms.time.value = (uniforms.time.value + dt) % 1000;
     uniforms.fade.value = Math.min(1, t * 4) * (1 - t) * 0.6;
     const widen = 1 + t * 8;
-    cone.scale.set(widen, 1, widen);
+    cone.scale.set(widen, length, widen);
     if (t >= 1) {
       world.scene.remove(cone);
-      cone.geometry.dispose();
-      mat.dispose();
+      _matPut(mat);
     }
   });
 }
@@ -1354,13 +1383,10 @@ function _spawnAfterburnerShader(opts) {
   if (len < 0.01) return null;
   const mid = new THREE.Vector3().addVectors(fromPos, toPos).multiplyScalar(0.5);
   const gear = _makeRingMaterial(color);
-  const cone = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.2, 0.4, len, 12, 1, true),
-    gear.mat,
-  );
+  const cone = new THREE.Mesh(_G_AFTERBURN, gear.mat);
+  cone.scale.set(1, len, 1);
   cone.position.copy(mid); cone.position.y += 4;
-  const up = new THREE.Vector3(0, 1, 0);
-  cone.quaternion.setFromUnitVectors(up, dir.clone().normalize());
+  cone.quaternion.setFromUnitVectors(_UP, _v0.copy(dir).normalize());
   world.scene.add(cone);
 
   return new VFXEffect(cone, 0.55, (dt, t) => {
@@ -1368,8 +1394,7 @@ function _spawnAfterburnerShader(opts) {
     gear.uniforms.fade.value = (1 - t) * 0.85;
     if (t >= 1) {
       world.scene.remove(cone);
-      cone.geometry.dispose();
-      gear.mat.dispose();
+      _matPut(gear.mat);
     }
   });
 }
@@ -1383,18 +1408,20 @@ function _spawnWindStreaksShader(opts) {
   const group = new THREE.Group();
   world.scene.add(group);
 
-  const uniforms = {
-    sparkColor: { value: new THREE.Color(color) },
-    fade:       { value: 1.0 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
+  const mat = _matGet('streak', () => new THREE.ShaderMaterial({
+    uniforms: {
+      sparkColor: { value: new THREE.Color() },
+      fade:       { value: 1.0 },
+    },
     vertexShader: _FIREBALL_VS,
     fragmentShader: _SPARK_FS,
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-  });
+  }));
+  const uniforms = mat.uniforms;
+  uniforms.sparkColor.value.set(color);
+  uniforms.fade.value = 1.0;
 
   const streaks = [];
   for (let i = 0; i < count; i++) {
@@ -1407,12 +1434,9 @@ function _spawnWindStreaksShader(opts) {
       Math.sin(pitch),
       Math.cos(yaw) * Math.cos(pitch),
     );
-    const streak = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08, 0.04, 4 + Math.random() * 3, 5),
-      mat,
-    );
-    const up = new THREE.Vector3(0, 1, 0);
-    streak.quaternion.setFromUnitVectors(up, dirOut);
+    const streak = new THREE.Mesh(_G_STREAK, mat);
+    streak.scale.set(1, 4 + Math.random() * 3, 1);
+    streak.quaternion.setFromUnitVectors(_UP, dirOut);
     streak.position.copy(origin).addScaledVector(dirOut, 6 + Math.random() * 8);
     streak.userData.vel = dirOut.clone().multiplyScalar(40 + Math.random() * 25);
     group.add(streak);
@@ -1424,8 +1448,7 @@ function _spawnWindStreaksShader(opts) {
     for (const s of streaks) s.position.addScaledVector(s.userData.vel, dt);
     if (t >= 1) {
       world.scene.remove(group);
-      mat.dispose();
-      for (const s of streaks) s.geometry.dispose();
+      _matPut(mat);
     }
   });
 }
@@ -1499,7 +1522,7 @@ function _spawnDustBurstShader(opts) {
     if (t >= 1) {
       for (let i = 0; i < puffs.length; i++) {
         world.scene.remove(puffs[i]);
-        gears[i].mat.dispose();
+        _matPut(gears[i].mat);
       }
     }
   });
@@ -1525,7 +1548,7 @@ function _spawnMuzzleFlashShader(opts) {
     m.scale.setScalar(baseScale * (1 + t * 2));
     if (t >= 1) {
       world.scene.remove(m);
-      gear.mat.dispose();
+      _matPut(gear.mat);
     }
   });
 }
@@ -1557,8 +1580,8 @@ function _spawnMissileLaunchFlashShader(opts) {
     if (t >= 1) {
       world.scene.remove(flash);
       world.scene.remove(smoke);
-      flashGear.mat.dispose();
-      smokeGear.mat.dispose();
+      _matPut(flashGear.mat);
+      _matPut(smokeGear.mat);
     }
   });
 }
@@ -1598,21 +1621,27 @@ function _spawnMissileSwarmShader(opts) {
     world.scene.add(trail);
     const vel = new THREE.Vector3(vx, vy, vz);
     let timeLeft = T + 0.05;
+    let landed = false;
     world.effects.push(new VFXEffect(m, T + 0.1, (dt, t) => {
+      if (landed) return;
       timeLeft -= dt;
       vel.y -= g * dt;
       m.position.addScaledVector(vel, dt);
-      const lookDir = vel.clone().normalize();
-      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lookDir);
+      m.quaternion.setFromUnitVectors(_UP, _v0.copy(vel).normalize());
       trailGear.uniforms.time.value = (trailGear.uniforms.time.value + dt) % 1000;
       trail.position.lerp(m.position, 0.7);
       trailGear.uniforms.fade.value = 0.9 * (1 - t * 0.6);
       trail.scale.setScalar(0.5 + t * 1.2);
-      if (timeLeft <= 0 || m.position.y <= 0.4) {
+      // (t >= 1: dropped before landing, e.g. by the effect cap. Clean up, no blast.)
+      if (timeLeft <= 0 || m.position.y <= 0.4 || t >= 1) {
+        // Once: this used to run again every frame until the effect's life
+        // ran out (~0.05 s), one more explosion each time (3 per missile at
+        // 60 fps, more at higher frame rates)
+        landed = true;
         world.scene.remove(m);
         world.scene.remove(trail);
-        trailGear.mat.dispose();
-        world.spawnExplosion?.(m.position.clone().setY(0.5), 0.7);
+        _matPut(trailGear.mat);
+        if (t < 1) world.spawnExplosion?.(m.position.clone().setY(0.5), 0.7);
       }
     }));
   }
@@ -1631,21 +1660,23 @@ function _spawnMissileSwarmShader(opts) {
 // All animation curves (rise heights, scale lerps, opacity gates, boil
 // rotations) are preserved verbatim from the legacy maker.
 function _makeEnergyMaterial(colorHex) {
-  const uniforms = {
-    noiseTex:  { value: NOISE_TEX },
-    baseColor: { value: new THREE.Color(colorHex) },
-    time:      { value: 0 },
-    t01:       { value: 0 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
+  const mat = _matGet('energy', () => new THREE.ShaderMaterial({
+    uniforms: {
+      noiseTex:  { value: NOISE_TEX },
+      baseColor: { value: new THREE.Color() },
+      time:      { value: 0 },
+      t01:       { value: 0 },
+    },
     vertexShader: _DOME_VS,
     fragmentShader: _DOME_FS,
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
-  });
+  }));
+  const uniforms = mat.uniforms;
+  uniforms.baseColor.value.set(colorHex);
+  uniforms.time.value = 0; uniforms.t01.value = 0;
   return { mat, uniforms };
 }
 
@@ -1699,13 +1730,15 @@ function _spawnAtomicDevastationShader(opts) {
   // 5. Radial debris - 16 ballistic chunks. Kept as opaque box meshes
   // because they're meant to read as solid earth being thrown skyward;
   // the dome shader would make them ghostly. Same physics as legacy.
+  // (one unit box scaled per chunk and one material for all 16: they always
+  // carried the same colour and opacity)
   const debris = [];
+  const chunkMat = _matGet('adChunk', () => new THREE.MeshBasicMaterial({ color: 0x3a4a2a, transparent: true, opacity: 0.85, depthWrite: false }));
+  chunkMat.opacity = 0.85;
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2 + Math.random() * 0.4;
-    const m = new THREE.Mesh(
-      new THREE.BoxGeometry(2 + Math.random() * 2.5, 2 + Math.random() * 2.5, 2 + Math.random() * 2.5),
-      new THREE.MeshBasicMaterial({ color: 0x3a4a2a, transparent: true, opacity: 0.85, depthWrite: false }),
-    );
+    const m = new THREE.Mesh(_G_AD_CHUNK, chunkMat);
+    m.scale.set(2 + Math.random() * 2.5, 2 + Math.random() * 2.5, 2 + Math.random() * 2.5);
     m.position.copy(pos);
     m.position.y = 6 + Math.random() * 4;
     const speed = 50 + Math.random() * 40;
@@ -1793,8 +1826,8 @@ function _spawnAtomicDevastationShader(opts) {
       d.rotation.y += d.userData.spin.y * dt;
       d.rotation.z += d.userData.spin.z * dt;
       if (d.position.y < 0.5) { d.position.y = 0.5; d.userData.vel.set(0, 0, 0); }
-      d.material.opacity = Math.max(0, 0.85 - t * 0.9);
     }
+    chunkMat.opacity = Math.max(0, 0.85 - t * 0.9);
 
     // Wisps: rise up the stem with their delay; fade in then out.
     for (const w of wisps) {
@@ -1809,15 +1842,16 @@ function _spawnAtomicDevastationShader(opts) {
       world.scene.remove(flash); world.scene.remove(fireball);
       world.scene.remove(stem);  world.scene.remove(stemCore);
       world.scene.remove(cap);   world.scene.remove(capCore);
-      for (const d of debris) { world.scene.remove(d); d.geometry.dispose(); }
+      for (const d of debris) world.scene.remove(d);
       for (const w of wisps)  world.scene.remove(w);
-      flashGear.mat.dispose();
-      fireGear.mat.dispose();
-      stemGear.mat.dispose();
-      stemCoreGear.mat.dispose();
-      capGear.mat.dispose();
-      capCoreGear.mat.dispose();
-      for (const w of wisps) w.userData.gear.mat.dispose();
+      _matPut(chunkMat);
+      _matPut(flashGear.mat);
+      _matPut(fireGear.mat);
+      _matPut(stemGear.mat);
+      _matPut(stemCoreGear.mat);
+      _matPut(capGear.mat);
+      _matPut(capCoreGear.mat);
+      for (const w of wisps) _matPut(w.userData.gear.mat);
     }
   });
 }
@@ -1857,21 +1891,23 @@ function _spawnShockwaveShader(opts) {
   const color = args[0] !== undefined ? args[0] : 0xffcc44;
   const maxRadius = args[1] !== undefined ? args[1] : 60;
 
-  const uniforms = {
-    noiseTex:  { value: NOISE_TEX },
-    baseColor: { value: new THREE.Color(color) },
-    time:      { value: 0 },
-    t01:       { value: 0 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
+  const mat = _matGet('shock', () => new THREE.ShaderMaterial({
+    uniforms: {
+      noiseTex:  { value: NOISE_TEX },
+      baseColor: { value: new THREE.Color() },
+      time:      { value: 0 },
+      t01:       { value: 0 },
+    },
     vertexShader: _SHOCK_VS,
     fragmentShader: _SHOCK_FS,
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending,
-  });
+  }));
+  const uniforms = mat.uniforms;
+  uniforms.baseColor.value.set(color);
+  uniforms.time.value = 0; uniforms.t01.value = 0;
   const ring = new THREE.Mesh(_G_SHOCK, mat);
   ring.rotation.x = -Math.PI / 2;
   ring.position.copy(pos);
@@ -1885,7 +1921,7 @@ function _spawnShockwaveShader(opts) {
     ring.scale.set(r, r, 1);
     if (t >= 1) {
       world.scene.remove(ring);
-      mat.dispose();
+      _matPut(mat);
     }
   });
 }
@@ -1912,6 +1948,23 @@ const _SOUND_FS = `
   }
 `;
 const _G_SOUND_SPHERE = new THREE.SphereGeometry(1, 18, 12);
+function _makeSoundMaterial(color) {
+  const mat = _matGet('sound', () => new THREE.ShaderMaterial({
+    uniforms: {
+      baseColor: { value: new THREE.Color() },
+      t01:       { value: 0 },
+    },
+    vertexShader: _FIREBALL_VS,
+    fragmentShader: _SOUND_FS,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  }));
+  mat.uniforms.baseColor.value.set(color);
+  mat.uniforms.t01.value = 0;
+  return mat;
+}
 
 function _spawnSoundRingsShader(opts) {
   const { world, pos, args = [] } = opts;
@@ -1927,19 +1980,8 @@ function _spawnSoundRingsShader(opts) {
   const mats = [];
   const meshes = [];
   for (let i = 0; i < count; i++) {
-    const uniforms = {
-      baseColor: { value: new THREE.Color(color) },
-      t01:       { value: 0 },
-    };
-    const mat = new THREE.ShaderMaterial({
-      uniforms,
-      vertexShader: _FIREBALL_VS,
-      fragmentShader: _SOUND_FS,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-    });
+    const mat = _makeSoundMaterial(color);
+    const uniforms = mat.uniforms;
     const m = new THREE.Mesh(_G_SOUND_SPHERE, mat);
     m.userData.delay = i * 0.18;
     m.userData.uniforms = uniforms;
@@ -1957,7 +1999,7 @@ function _spawnSoundRingsShader(opts) {
     }
     if (t >= 1) {
       world.scene.remove(group);
-      for (const mat of mats) mat.dispose();
+      for (const mat of mats) _matPut(mat);
     }
   });
 }
@@ -1971,19 +2013,8 @@ function _spawnHitPulseShader(opts) {
   const { world, pos, args = [] } = opts;
   const color = args[0] !== undefined ? args[0] : 0xffffff;
 
-  const uniforms = {
-    baseColor: { value: new THREE.Color(color) },
-    t01:       { value: 0 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
-    vertexShader: _FIREBALL_VS,
-    fragmentShader: _SOUND_FS,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide,
-  });
+  const mat = _makeSoundMaterial(color);
+  const uniforms = mat.uniforms;
   const m = new THREE.Mesh(_G_SOUND_SPHERE, mat);
   m.position.copy(pos);
   world.scene.add(m);
@@ -1993,7 +2024,7 @@ function _spawnHitPulseShader(opts) {
     uniforms.t01.value = t;
     if (t >= 1) {
       world.scene.remove(m);
-      mat.dispose();
+      _matPut(mat);
     }
   });
 }
@@ -2007,7 +2038,7 @@ function _spawnHitPulseShader(opts) {
 // sheet isn't loaded.
 const _G_IMPACT = new THREE.PlaneGeometry(1, 1);
 // Every module-level _G_* is shared across spawns: disposeInstance() must not free them.
-markShared(_G_PART, _G_FLIP, _G_SCORCH, _G_FIREBALL, _G_FIRE_LO, _G_RING_E, _G_SHRAPNEL, _G_DOME, _G_SMOKE_PUFF_S, _G_SPARK_S, _G_DUST_PUFF, _G_MISSILE, _G_AD_FLASH, _G_AD_FIREBALL, _G_AD_STEM, _G_AD_STEMCORE, _G_AD_CAP, _G_AD_CAPCORE, _G_SHOCK, _G_SOUND_SPHERE, _G_IMPACT);
+markShared(_G_BEAM, _G_WING_SLASH, _G_TAIL_SWEEP, _G_WING_FLAP, _G_BREATH_CONE, _G_AFTERBURN, _G_STREAK, _G_AD_CHUNK, _G_PART, _G_FLIP, _G_SCORCH, _G_FIREBALL, _G_FIRE_LO, _G_RING_E, _G_SHRAPNEL, _G_DOME, _G_SMOKE_PUFF_S, _G_SPARK_S, _G_DUST_PUFF, _G_MISSILE, _G_AD_FLASH, _G_AD_FIREBALL, _G_AD_STEM, _G_AD_STEMCORE, _G_AD_CAP, _G_AD_CAPCORE, _G_SHOCK, _G_SOUND_SPHERE, _G_IMPACT);
 _G_IMPACT.rotateX(-Math.PI / 2);
 function _smoothstepJS(a, b, x) {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -2031,11 +2062,12 @@ function _spawnBeamImpactShader(opts) {
   // monster colour, then out. Only when the hit is near street level.
   let decal = null, decalMat = null;
   if (pos.y < 4 && _flipTex.impact_glow_decal) {
-    decalMat = new THREE.MeshBasicMaterial({
-      map: _flipTex.impact_glow_decal, color, transparent: true, depthWrite: false,
+    decalMat = _matGet('impactDecal', () => new THREE.MeshBasicMaterial({
+      map: _flipTex.impact_glow_decal, transparent: true, depthWrite: false,
       blending: THREE.AdditiveBlending,
       polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6,
-    });
+    }));
+    decalMat.color.set(color);
     decal = new THREE.Mesh(_G_IMPACT, decalMat);
     decal.position.y = 0.14 - pos.y;
     decal.rotation.y = Math.random() * Math.PI * 2;
@@ -2077,8 +2109,8 @@ function _spawnBeamImpactShader(opts) {
       // Explosion lights in this pool default to warm orange; restore it.
       if (light._seq === seq) { light.intensity = 0; light.color.setHex(0xffaa33); }
       world.scene.remove(group);
-      for (const b of bursts) b.m.material.dispose();
-      if (decalMat) decalMat.dispose();
+      for (const b of bursts) _matPut(b.m.material);
+      if (decalMat) _matPut(decalMat);
     }
   });
 }
@@ -2148,20 +2180,22 @@ function _spawnChainLightningShader(opts) {
   // in one draw via radial UV sampling. Radius set between the legacy core
   // (0.30) and halo (0.95) so the visual silhouette is similar.
   const geom = new THREE.TubeGeometry(curve, segs * 2, 0.95, 8, false);
-  const uniforms = {
-    noiseTex:  { value: NOISE_TEX },
-    boltColor: { value: new THREE.Color(color) },
-    time:      { value: 0 },
-    fade:      { value: 1 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
+  const mat = _matGet('lightning', () => new THREE.ShaderMaterial({
+    uniforms: {
+      noiseTex:  { value: NOISE_TEX },
+      boltColor: { value: new THREE.Color() },
+      time:      { value: 0 },
+      fade:      { value: 1 },
+    },
     vertexShader: _LIGHTNING_VS,
     fragmentShader: _LIGHTNING_FS,
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-  });
+  }));
+  const uniforms = mat.uniforms;
+  uniforms.boltColor.value.set(color);
+  uniforms.time.value = 0; uniforms.fade.value = 1;
   const bolt = new THREE.Mesh(geom, mat);
   world.scene.add(bolt);
 
@@ -2171,7 +2205,7 @@ function _spawnChainLightningShader(opts) {
     if (t >= 1) {
       world.scene.remove(bolt);
       geom.dispose();
-      mat.dispose();
+      _matPut(mat);
     }
   });
 }
@@ -2250,18 +2284,24 @@ function _spawnArcRibbon(world, curve, len, color, life, segs, restrike) {
   // Widths scale with arc length so long beam-length bolts stay readable
   // from the chase cam (core / halo).
   for (const [w, dim] of [[Math.min(9, 4.0 + len * 0.04), 1.0], [Math.min(16, 8 + len * 0.06), 0.5]]) {
-    const uniforms = {
-      map: { value: _flipTex.arc_strip_1x8 },
-      boltColor: { value: new THREE.Color(color) },
-      row: { value: Math.floor(Math.random() * 8) },
-      fade: { value: dim },
-      width: { value: w },
-    };
-    const mat = new THREE.ShaderMaterial({
-      uniforms, vertexShader: _ARC_VS, fragmentShader: _ARC_FS,
+    const mat = _matGet('arc', () => new THREE.ShaderMaterial({
+      uniforms: {
+        map: { value: null },
+        boltColor: { value: new THREE.Color() },
+        row: { value: 0 },
+        fade: { value: 1 },
+        width: { value: 1 },
+      },
+      vertexShader: _ARC_VS, fragmentShader: _ARC_FS,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
-    });
+    }));
+    const uniforms = mat.uniforms;
+    uniforms.map.value = _flipTex.arc_strip_1x8;
+    uniforms.boltColor.value.set(color);
+    uniforms.row.value = Math.floor(Math.random() * 8);
+    uniforms.fade.value = dim;
+    uniforms.width.value = w;
     const mesh = new THREE.Mesh(geom, mat);
     group.add(mesh);
     layers.push({ mat, uniforms, dim, next: 0, mesh });
@@ -2290,7 +2330,7 @@ function _spawnArcRibbon(world, curve, len, color, life, segs, restrike) {
     if (t >= 1) {
       world.scene.remove(group);
       geom.dispose();
-      for (const L of layers) L.mat.dispose();
+      for (const L of layers) _matPut(L.mat);
     }
   });
 }

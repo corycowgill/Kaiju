@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { cachedFetch, normalizeGLTFMaterials, disposeInstance, withParseSlot, reportLoadError, isCodeBug } from './assetCache.js';
 
 // Module-level scratch vectors reused by every AI tick to avoid GC churn.
@@ -14,7 +15,7 @@ const _aiVD = new THREE.Vector3();
 const MIXER_CULL_DIST_SQ = 200 * 200;
 
 // --------------- GLB enemy templates ---------------
-const _glbLoader = new GLTFLoader();
+const _glbLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); // GLBs are meshopt-compressed (tools/optimize_assets.mjs)
 const _templates = {
   tank: null, tankAnims: [], helicopter: null, artillery: null,
   soldier: null, soldierAnims: {},

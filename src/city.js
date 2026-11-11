@@ -3,12 +3,14 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
-import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL, withParseSlot, reportLoadError, isCodeBug, setKTX2Enabled } from './assetCache.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL, withParseSlot, reportLoadError, isCodeBug, setKTX2Enabled, markShared } from './assetCache.js';
+import { isMobile } from './quality.js';
 import { buildChicago, loadChicagoLayout, chicagoBuildingGLBs, chicagoPropGLBs, chicagoVehicleGLBs, chicagoLod1GLBs } from './levels/chicago.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
 // and loadPedestrianTemplates() run at module-load time via top-level await in game.js.
-const _glbLoader = new GLTFLoader();
+const _glbLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); // GLBs are meshopt-compressed (tools/optimize_assets.mjs)
 
 // Procedural Tokyo: districts of buildings on a city grid, with streets, lamps, and props.
 // Each building exposes hp, max_hp, height and methods damage()/destroy().
@@ -1856,8 +1858,10 @@ function buildGlobalBodies(scene, buildings) {
   im.receiveShadow = true;
   const dummy = new THREE.Object3D();
   const _skipMatrix = new THREE.Matrix4().makeScale(0.0001, 0.0001, 0.0001);
+  let shown = 0;
   for (let i = 0; i < buildings.length; i++) {
     const b = buildings[i];
+    if (!b._skipBodyIM) shown++;
     if (b._skipBodyIM) {
       // Landmark with its own custom mesh -- park its IM slot at zero scale
       // but still register the index so collapse() can address it.
@@ -1875,6 +1879,10 @@ function buildGlobalBodies(scene, buildings) {
   }
   im.instanceMatrix.needsUpdate = true;
   if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  // Every body parked (Chicago: all GLB): nothing to draw. It was still one
+  // draw of 12 x count triangles each frame, and an instance-colour upload on
+  // every frame a building took damage. Raycasts don't need it visible.
+  im.visible = shown > 0;
   scene.add(im);
   return im;
 }
@@ -2373,66 +2381,10 @@ export class Building {
         if (!seen.has(e.im)) { e.im.instanceMatrix.needsUpdate = true; seen.add(e.im); }
       }
     }
-    const pos = this.group.position.clone();
-    pos.y += this.h / 2;
-
-    // Big initial fireball + a couple of staggered smaller explosions
-    if (world) {
-      world.spawnExplosion(pos.clone(), 1.6 + Math.min(2.0, this.h / 30));
-      const w2 = world;
-      setTimeout(() => { if (w2.scene) w2.spawnExplosion(pos.clone().setY(this.h * 0.5).add(new THREE.Vector3(rand(-3,3), 0, rand(-3,3))), 1.0); }, 90);
-      setTimeout(() => { if (w2.scene) w2.spawnExplosion(this.group.position.clone().setY(this.h * 0.2), 1.2); }, 200);
-    }
-
-    // Lots of debris chunks for satisfying spray
+    // Ground rubble (stays permanently): placed at once, so the lot is never bare
     const useGLBDebris = _debrisTemplates.length > 0;
-    // More, smaller pieces with the v2 kit (facade panels, rebar, beams, glass)
-    let chunks = 10 + Math.floor(Math.random() * 4) + Math.min(6, Math.floor(this.h / 15)) + (useGLBDebris ? 6 : 0);
-    // A frame's flying debris is capped (world.debrisRoom: the world keeps
-    // only that many anyway); a lone collapse still gets every chunk
-    const room = world && typeof world.debrisRoom === 'function' ? world.debrisRoom(chunks) : chunks;
-    if (Number.isFinite(room)) chunks = room;
-    for (let i = 0; i < chunks; i++) {
-      // Capped in world units so wide GLB footprints don't throw kaiju-sized chunks
-      const targetSize = useGLBDebris
-        ? THREE.MathUtils.clamp(Math.max(this.w, this.d) * rand(0.06, 0.16), 1.2, 5.5)
-        : Math.max(this.w, this.d) * rand(0.25, 0.65);
-      let m;
-      if (useGLBDebris) {
-        m = _cloneDebris(targetSize);
-      }
-      if (!m) {
-        // Fallback to procedural box if GLBs not loaded. The geom + material
-        // are unique to this mesh (not shared with a template), so flag them
-        // for disposal when the debris expires (see updateWorld in game.js).
-        const cw = this.w * rand(0.18, 0.55);
-        const ch = this.h * rand(0.08, 0.32);
-        const cd = this.d * rand(0.18, 0.55);
-        m = new THREE.Mesh(
-          new THREE.BoxGeometry(cw, ch, cd),
-          new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 0.95 })
-        );
-        m.userData._ownedMat = true;
-      }
-      m.position.copy(this.group.position);
-      m.position.y = this.h * rand(0.2, 0.7);
-      m.position.x += rand(-this.w / 3, this.w / 3);
-      m.position.z += rand(-this.d / 3, this.d / 3);
-      m.rotation.set(rand(0, Math.PI), rand(0, Math.PI), rand(0, Math.PI));
-      m.userData.vel = new THREE.Vector3(rand(-12, 12), rand(10, 22), rand(-12, 12));
-      m.userData.angVel = new THREE.Vector3(rand(-5, 5), rand(-5, 5), rand(-5, 5));
-      m.userData.life = 6.5;
-      // Flying chunks are small and fast: skip the shadow pass (it doubled
-      // their draw calls in multi-collapse storms). Ground rubble below
-      // still casts.
-      m.traverse((o) => { if (o.isMesh) o.castShadow = false; });
-      world.scene.add(m);
-      world.debris.push(m);
-    }
-
-    // Ground rubble (stays permanently)
     const rubbleCount = 3 + Math.floor(Math.random() * 2);
-    for (let i = 0; i < rubbleCount; i++) {
+    for (let i = 0; i < rubbleCount && world; i++) {
       const rubSize = THREE.MathUtils.clamp(Math.max(this.w, this.d) * rand(0.15, 0.3), 2.5, 8);
       if (useGLBDebris && _placeRubbleInstanced(world.scene, rubSize,
           this.group.position.x + rand(-this.w / 4, this.w / 4),
@@ -2441,44 +2393,149 @@ export class Building {
           rand(-0.2, 0.2), rand(0, Math.PI), rand(-0.2, 0.2))) {
         continue;
       }
-      // Fallback (no debris GLBs, e.g. mobile LOW): procedural box.
-      const rw = this.w * rand(0.3, 0.7);
-      const rd = this.d * rand(0.3, 0.7);
-      const rh = rand(1.2, 2.6);
-      const rub = new THREE.Mesh(
-        new THREE.BoxGeometry(rw, rh, rd),
-        new THREE.MeshStandardMaterial({ color: this.body.material.color, roughness: 1.0 })
-      );
-      rub.position.set(
+      // Fallback (no debris GLBs, e.g. mobile LOW): procedural box, instanced
+      _placeBoxRubble(world.scene, this.body.material.color,
+        this.w * rand(0.3, 0.7), rand(1.2, 2.6), this.d * rand(0.3, 0.7),
         this.group.position.x + rand(-this.w / 4, this.w / 4),
         rubSize * 0.15,
         this.group.position.z + rand(-this.d / 4, this.d / 4),
-      );
-      rub.rotation.set(rand(-0.2, 0.2), rand(0, Math.PI), rand(-0.2, 0.2));
-      // Permanent + low: receive shadows only (no shadow-pass draw).
-      rub.castShadow = false; rub.receiveShadow = true;
-      world.scene.add(rub);
+        rand(-0.2, 0.2), rand(0, Math.PI), rand(-0.2, 0.2));
     }
 
-    // Dust plume: many smoke puffs spreading from base
     if (world) {
-      const base = this.group.position.clone().setY(0);
-      for (let i = 0; i < 8; i++) {
-        const dust = base.clone().add(new THREE.Vector3(rand(-this.w * 0.6, this.w * 0.6), rand(0, 4), rand(-this.d * 0.6, this.d * 0.6)));
-        world.spawnSmoke(dust, 1.4 + Math.random() * 1.2);
-      }
-      // Ground dust ring
-      world.spawnShockwave(base, 0xaa8866, Math.max(this.w, this.d) * 1.4);
       world.shake(0.9 + Math.min(0.7, this.h / 40), 0.7);
-      // Lingering smoke column visible from afar
-      world.spawnSmokeColumn?.(base, this.h);
+      // Fireballs, flying debris, the dust plume and ring, the burning column:
+      // queued, and built a few buildings per frame (_drainCollapseFx)
+      _queueCollapseFx(world, this);
+      world.onBuildingDestroyed?.(this);
     }
-
-    if (world) world.onBuildingDestroyed?.(this);
 
     // remove building from scene
     this.group.parent && this.group.parent.remove(this.group);
   }
+}
+
+// ---- Collapse effects queue ----
+// A collapse used to build its whole show inside collapse(): 3 explosions (two
+// on setTimeout), 16-25 flying chunks, 8 dust puffs, a shock ring and a smoke
+// column. One building is fine; an ultimate, a finisher or a body thrown
+// through a block brings down 5-300 in the same frame, and that frame (and the
+// two timer bursts after it) was the game's worst spike: 39 ms on a desktop,
+// 130-440 ms at 4x CPU slowdown. Now collapse() does the structural part at
+// once (instances hidden, grid, rubble, score) and queues the show:
+//  - the first _FX_INLINE collapses of a frame still get theirs in the same
+//    call, so one or two buildings behave exactly as before;
+//  - the rest are built by the city animator, oldest first, for at most
+//    _FX_BUDGET_MS per frame (always at least one);
+//  - when a burst leaves a backlog, the buildings at its head get a cheaper
+//    show: the effect and debris caps kept only ~15 buildings' worth on screen
+//    anyway, and dropped the rest after they had been paid for.
+// The follow-up explosions run on game time (world.time), so they hold during
+// hit-stop and pause and stretch with slow motion, and a restart drops them.
+const _FX_INLINE = 2;                          // collapses per frame that get their effects inside collapse()
+const _FX_BUDGET_MS = isMobile ? 2.5 : 1.5;    // per frame, for the queued ones
+const _FX_FULL_BACKLOG = isMobile ? 3 : 8;     // jobs waiting behind this one: up to here the full show,
+const _FX_MID_BACKLOG = isMobile ? 8 : 24;     // up to here a reduced one, beyond it a fireball and (below) a ring
+const _FX_RING_BACKLOG = isMobile ? 30 : 80;
+const _FX_STALE = 0.6;                         // s of game time in the queue after which a job is only worth the cheap show
+const _fxJobs = [];       // waiting for their main burst: { x, z, w, d, h, color, t }
+const _fxLater = [];      // follow-up explosions: { x, y, z, scale, at }
+let _fxHead = 0;
+let _fxInlineT = -1, _fxInlineN = 0;
+const _fxV = new THREE.Vector3();
+
+function _queueCollapseFx(world, b) {
+  const t = typeof world.time === 'number' ? world.time : 0;
+  _fxJobs.push({ x: b.group.position.x, z: b.group.position.z, w: b.w, d: b.d, h: b.h, color: b.body.material.color, t });
+  if (_fxInlineT !== t) { _fxInlineT = t; _fxInlineN = 0; }
+  if (_fxJobs.length - _fxHead === 1 && _fxInlineN < _FX_INLINE) {
+    _fxInlineN++;
+    _collapseFx(world, _fxJobs[_fxHead++], 2);
+    _fxJobs.length = 0; _fxHead = 0;
+  }
+}
+
+/** The queued collapses' effects, within the frame's budget, and the
+ *  follow-up explosions that have come due. Called once per frame. */
+function _drainCollapseFx(world) {
+  const now = typeof world.time === 'number' ? world.time : 0;
+  for (let i = _fxLater.length - 1; i >= 0; i--) {
+    const e = _fxLater[i];
+    if (e.at > now) continue;
+    _fxLater[i] = _fxLater[_fxLater.length - 1]; _fxLater.pop();
+    world.spawnExplosion(new THREE.Vector3(e.x, e.y, e.z), e.scale);
+  }
+  if (_fxHead >= _fxJobs.length) return;
+  const t0 = performance.now();
+  do {
+    const backlog = _fxJobs.length - _fxHead - 1;
+    const j = _fxJobs[_fxHead++];
+    const stale = now - j.t > _FX_STALE;
+    _collapseFx(world, j, backlog > _FX_MID_BACKLOG || stale ? (backlog > _FX_RING_BACKLOG ? -1 : 0) : (backlog > _FX_FULL_BACKLOG ? 1 : 2));
+  } while (_fxHead < _fxJobs.length && performance.now() - t0 < _FX_BUDGET_MS);
+  if (_fxHead >= _fxJobs.length) { _fxJobs.length = 0; _fxHead = 0; }
+}
+
+/** A new city (restart, level switch): nothing of the old one is owed. */
+function _resetCollapseFx() {
+  _fxJobs.length = 0; _fxLater.length = 0; _fxHead = 0; _fxInlineT = -1; _fxInlineN = 0;
+}
+
+/** One collapsed building's show. level 2: all of it (what collapse() always
+ *  built). 1: one follow-up explosion, half the chunks and dust puffs.
+ *  0: the fireball and the dust ring. -1: the fireball. */
+function _collapseFx(world, j, level) {
+  const now = typeof world.time === 'number' ? world.time : 0;
+  // Big initial fireball + a couple of staggered smaller explosions
+  world.spawnExplosion(new THREE.Vector3(j.x, j.h / 2, j.z), 1.6 + Math.min(2.0, j.h / 30));
+  if (level >= 1) _fxLater.push({ x: j.x + rand(-3, 3), y: j.h * 0.5, z: j.z + rand(-3, 3), scale: 1.0, at: now + 0.09 });
+  if (level >= 2) _fxLater.push({ x: j.x, y: j.h * 0.2, z: j.z, scale: 1.2, at: now + 0.2 });
+  if (level >= 0) {
+    // Ground dust ring
+    world.spawnShockwave(new THREE.Vector3(j.x, 0, j.z), 0xaa8866, Math.max(j.w, j.d) * 1.4);
+  }
+  if (level < 1) return;
+
+  // Lots of debris chunks for satisfying spray
+  const useGLBDebris = _debrisTemplates.length > 0;
+  // More, smaller pieces with the v2 kit (facade panels, rebar, beams, glass)
+  let chunks = 10 + Math.floor(Math.random() * 4) + Math.min(6, Math.floor(j.h / 15)) + (useGLBDebris ? 6 : 0);
+  if (level < 2) chunks = Math.ceil(chunks / 2);
+  // A frame's flying debris is capped (world.debrisRoom: the world keeps
+  // only that many anyway); a lone collapse still gets every chunk
+  const room = typeof world.debrisRoom === 'function' ? world.debrisRoom(chunks) : chunks;
+  if (Number.isFinite(room)) chunks = room;
+  for (let i = 0; i < chunks; i++) {
+    // Capped in world units so wide GLB footprints don't throw kaiju-sized chunks
+    const targetSize = useGLBDebris
+      ? THREE.MathUtils.clamp(Math.max(j.w, j.d) * rand(0.06, 0.16), 1.2, 5.5)
+      : Math.max(j.w, j.d) * rand(0.25, 0.65);
+    let m;
+    if (useGLBDebris) {
+      m = _cloneDebris(targetSize);
+    }
+    if (!m) {
+      // Fallback to a procedural box if GLBs not loaded (pooled, see _boxDebris)
+      m = _boxDebris(j.color, j.w * rand(0.18, 0.55), j.h * rand(0.08, 0.32), j.d * rand(0.18, 0.55));
+    }
+    m.position.set(j.x + rand(-j.w / 3, j.w / 3), j.h * rand(0.2, 0.7), j.z + rand(-j.d / 3, j.d / 3));
+    m.rotation.set(rand(0, Math.PI), rand(0, Math.PI), rand(0, Math.PI));
+    const u = m.userData;
+    (u.vel || (u.vel = new THREE.Vector3())).set(rand(-12, 12), rand(10, 22), rand(-12, 12));
+    (u.angVel || (u.angVel = new THREE.Vector3())).set(rand(-5, 5), rand(-5, 5), rand(-5, 5));
+    u.life = 6.5;
+    u.landed = false; u.sunk = false; // a reused chunk's last flight
+    world.scene.add(m);
+    world.debris.push(m);
+  }
+
+  // Dust plume: many smoke puffs spreading from base
+  const puffs = level >= 2 ? 8 : 4;
+  for (let i = 0; i < puffs; i++) {
+    world.spawnSmoke(new THREE.Vector3(j.x + rand(-j.w * 0.6, j.w * 0.6), rand(0, 4), j.z + rand(-j.d * 0.6, j.d * 0.6)), 1.4 + Math.random() * 1.2);
+  }
+  // Lingering smoke column visible from afar
+  world.spawnSmokeColumn?.(_fxV.set(j.x, 0, j.z).clone(), j.h);
 }
 
 // --------------- GLB building system ---------------
@@ -2623,10 +2680,24 @@ function _pickDebrisTemplate() {
   return _debrisTemplates[Math.floor(Math.random() * _debrisTemplates.length)];
 }
 
-function _cloneDebris(targetSize) {
-  const tpl = _pickDebrisTemplate();
+// Flying chunks are reused: a chunk the game has dropped (expired, trimmed or
+// swept by a restart: no parent any more) flies again instead of a fresh
+// tpl.scene.clone(true) per chunk, 16-25 per collapse. Its template geometry
+// and materials were always shared; what is saved is the Object3D tree.
+const _debrisPool = new Map(); // tpl -> clones made so far
+function _cloneDebris(targetSize, tpl = _pickDebrisTemplate()) {
   if (!tpl) return null;
-  const root = tpl.scene.clone(true);
+  let list = _debrisPool.get(tpl);
+  if (!list) _debrisPool.set(tpl, (list = []));
+  let root = null;
+  for (let i = 0; i < list.length; i++) if (!list[i].parent) { root = list[i]; break; }
+  if (!root) {
+    root = tpl.scene.clone(true);
+    // Flying chunks are small and fast: skip the shadow pass (it doubled
+    // their draw calls in multi-collapse storms). Ground rubble still receives.
+    root.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+    list.push(root);
+  }
   const rawSize = Math.max(
     tpl.box.max.x - tpl.box.min.x,
     tpl.box.max.y - tpl.box.min.y,
@@ -2635,6 +2706,64 @@ function _cloneDebris(targetSize) {
   const s = rawSize > 0 ? targetSize / rawSize : 1;
   root.scale.setScalar(s);
   return root;
+}
+
+// The procedural stand-ins (no debris GLBs: phone LOW). Each chunk and each
+// rubble piece used to be a Mesh with its own BoxGeometry and its own
+// MeshStandardMaterial: a draw each (rubble for the rest of the run: 3-4 more
+// draws per collapsed building, forever) and a program lookup per new
+// material. Chunks now share one unit box and one material per body colour,
+// so carBatch draws them instanced; rubble is one InstancedMesh.
+const _G_BOX = new THREE.BoxGeometry(1, 1, 1);
+markShared(_G_BOX);
+const _boxMats = new Map(); // body colour (5 bits a channel) -> material
+function _boxMat(color) {
+  const key = ((color.r * 31) | 0) << 10 | ((color.g * 31) | 0) << 5 | ((color.b * 31) | 0);
+  let m = _boxMats.get(key);
+  if (!m) {
+    if (_boxMats.size >= 24) return _boxMats.values().next().value; // a damaged building's darkened shade: close enough
+    m = new THREE.MeshStandardMaterial({ color: color.clone(), roughness: 0.95 });
+    _boxMats.set(key, m);
+  }
+  return m;
+}
+const _boxDebrisPool = [];
+function _boxDebris(color, w, h, d) {
+  let m = null;
+  for (let i = 0; i < _boxDebrisPool.length; i++) if (!_boxDebrisPool[i].parent) { m = _boxDebrisPool[i]; break; }
+  if (!m) {
+    m = new THREE.Mesh(_G_BOX, _boxMat(color));
+    m.castShadow = false;
+    _boxDebrisPool.push(m);
+  }
+  m.material = _boxMat(color);
+  m.scale.set(w, h, d);
+  return m;
+}
+const BOX_RUBBLE_CAP = 360; // pieces kept (oldest overwritten): ~100 collapsed buildings
+let _boxRubble = null;
+function _placeBoxRubble(scene, color, w, h, d, x, y, z, rx, ry, rz) {
+  let R = _boxRubble;
+  if (!R) {
+    const im = new THREE.InstancedMesh(_G_BOX, new THREE.MeshStandardMaterial({ roughness: 1.0 }), BOX_RUBBLE_CAP);
+    im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(BOX_RUBBLE_CAP * 3), 3);
+    im.count = 0;
+    // Permanent + low: receive shadows only (no shadow-pass draw).
+    im.castShadow = false; im.receiveShadow = true;
+    im.frustumCulled = false; // instances span the whole city
+    im.userData.rubblePool = true;
+    R = _boxRubble = { im, next: 0 };
+  }
+  if (R.im.parent !== scene) { R.next = 0; R.im.count = 0; scene.add(R.im); } // new city / after a restart swept it
+  const i = R.next;
+  R.next = (R.next + 1) % BOX_RUBBLE_CAP;
+  R.im.count = Math.min(BOX_RUBBLE_CAP, Math.max(R.im.count, i + 1));
+  _rubQ.setFromEuler(_rubE.set(rx, ry, rz));
+  _rubM.compose(_rubP.set(x, y, z), _rubQ, _rubS.set(w, h, d));
+  R.im.setMatrixAt(i, _rubM);
+  R.im.setColorAt(i, color);
+  R.im.instanceMatrix.needsUpdate = true;
+  R.im.instanceColor.needsUpdate = true;
 }
 
 // Permanent ground rubble, instanced per debris template: one
@@ -2743,6 +2872,41 @@ export function cullRubble(camera, all = false) {
       pt.im.instanceMatrix.needsUpdate = true;
     }
   }
+}
+
+/** Shader prewarm (game.js _prewarmShaders): one of everything a collapse
+ *  builds lazily, parented to `stage`, so that START links their programs and
+ *  the warm frame draws them once: a flying chunk of every debris template
+ *  (drawn through carBatch: the caller batches the returned `debris`), every
+ *  rubble pool with one (zero-sized) instance, and on the procedural tier the
+ *  box chunk and box rubble. The first collapse of a run used to create these
+ *  buffers and link the instanced variants on its own frame. Call release()
+ *  after the warm frame. */
+export function stageDestruction(stage) {
+  const debris = [], ims = [];
+  for (const tpl of _debrisTemplates) {
+    const d = _cloneDebris(1, tpl);
+    stage.add(d);
+    debris.push(d);
+    for (const pt of _rubblePool(tpl, stage).parts) { pt.im.count = 1; ims.push(pt.im); }
+  }
+  if (!_debrisTemplates.length) {
+    const c = new THREE.Color(BUILDING_PALETTE[0]);
+    const d = _boxDebris(c, 1, 1, 1);
+    stage.add(d);
+    debris.push(d);
+    _placeBoxRubble(stage, c, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ims.push(_boxRubble.im);
+  }
+  return {
+    debris,
+    release() {
+      for (const d of debris) if (d.parent) d.parent.remove(d);
+      // Off the stage with nothing in them: the first real piece re-adds each to the scene
+      for (const im of ims) { im.count = 0; if (im.parent) im.parent.remove(im); }
+      if (_boxRubble) _boxRubble.next = 0;
+    },
+  };
 }
 
 // ---- Clone-free GLB placement ----
@@ -3049,6 +3213,7 @@ function _revealProceduralBody(b) {
     new THREE.Vector3(b.x, b.h / 2, b.z), new THREE.Quaternion(), new THREE.Vector3(b.w, b.h, b.d));
   b._bodyIM.setMatrixAt(b._bodyIndex, m);
   b._bodyIM._matrixDirty = true;
+  b._bodyIM.visible = true;
 }
 
 /** Called after templates load to clone + place every queued building. */
@@ -3105,8 +3270,11 @@ export function buildCity(scene, world, opts = {}) {
   _bldgTile = BLDG_TILE;
   _treeTint = opts.level === 'chicago' ? new THREE.Color(0.62, 0.78, 0.55) : null;
   _treeExclude = new Set(opts.level === 'chicago' ? ['./assets/trees/tree_sakura.glb', './assets/trees/tree_black_pine.glb', './assets/trees/tree_ginkgo.glb'] : []);
-  if (opts.level === 'chicago') return buildChicago(scene, world, opts, CITY_KIT);
-  return { ...buildTokyo(scene, world, opts), level: 'tokyo' };
+  _resetCollapseFx();
+  const res = opts.level === 'chicago' ? buildChicago(scene, world, opts, CITY_KIT) : { ...buildTokyo(scene, world, opts), level: 'tokyo' };
+  // Queued collapse effects, a few buildings per frame (see _drainCollapseFx)
+  (res.cityAnimators || (res.cityAnimators = [])).push({ update: () => _drainCollapseFx(world) });
+  return res;
 }
 
 function buildTokyo(scene, world, opts = {}) {

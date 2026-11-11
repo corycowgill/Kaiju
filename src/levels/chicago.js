@@ -10,6 +10,7 @@ import { isMobile, Q_HIGH } from '../quality.js';
 import { buildHarbor, splashPool } from './chicago_harbor.js';
 import { bakeShoreField, makeWaterMaterial, waterUniforms, swellGrid, waterFX } from './chicago_water.js';
 import { loadFest, festBuildingGLBs, festClearFence, festCutRoads, festInside, festNoTree, buildFest } from './chicago_fest.js';
+import { buildArena, arenaDisplaces, arenaNoTree } from './chicago_arena.js';
 
 const LAYOUT_URL = './assets/levels/chicago_layout.json';
 const SF_SITE_URL = './assets/levels/chicago_soldier_field_site.json';
@@ -1898,6 +1899,7 @@ export function buildChicago(scene, world, opts, K) {
   // ...and off the festival's stages, tents and crowd lawns
   const festPolys = L.fest ? festNoTree(L.fest) : [];
   noTree.push(...festPolys);
+  if (opts.mode === 'wrestling') noTree.push(arenaNoTree()); // nothing planted in the ring or at ringside
   // Maggie Daley Park: no trees on the skating ribbon or the play garden
   const MD = REAL && L.mill?.maggieDaley;
   if (MD) noTree.push(MD.skatingRibbon.surfacePolygon, ...MD.playGarden.map((g) => g.polygon));
@@ -2277,6 +2279,7 @@ export function buildChicago(scene, world, opts, K) {
     b._skipBodyIM = true;
     b.maxHp = hp; b.hp = hp;
     b.landmarkId = lm.id;
+    b.landmarkName = lm.name; // "THROUGH THE WILLIS TOWER!" (wrestling callouts)
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
     const def = bldgGLB ? _landmarkGLB(lm.id) : null;
@@ -2519,7 +2522,13 @@ export function buildChicago(scene, world, opts, K) {
   }
 
   // ---- Kaijupalooza! (Grant Park festival): buildings too, so before the bodies ----
-  if (L.fest) buildFest(scene, L.fest, { K, buildings, grid, animators, world, lite, glb, addBatch, polygonGeom, M, S: L.scale || 0.2 });
+  // Wrestling mode (opts.mode, from game.js): the ring takes Hutchinson Field,
+  // so the stalls and stages standing there are left out, and the ring and
+  // its ringside crowd go in after the festival (they share its crowdHit).
+  const ring = opts.mode === 'wrestling';
+  const festF = L.fest && ring ? { ...L.fest, items: L.fest.items.filter((it) => !arenaDisplaces(it)) } : L.fest;
+  if (festF) buildFest(scene, festF, { K, buildings, grid, animators, world, lite, glb, addBatch, polygonGeom, M, S: L.scale || 0.2 });
+  if (ring) buildArena(scene, world, { lite, glb, animators, grid, inside: L.fest ? (x, z) => festInside(L.fest, x, z) : null });
 
   const bodiesIM = K.buildGlobalBodies(scene, buildings);
   const windowPulse = K.buildGlobalWindows(scene, CHI_WINDOWS);

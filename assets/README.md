@@ -57,9 +57,9 @@ debris_chunk_1.glb     # Massive irregular concrete chunk
 Portrait images used on the title screen monster selection cards:
 
 ```
-godzilla.jpeg
-ghidorah.jpeg
-mecha.jpeg
+godzilla.webp
+ghidorah.webp
+mecha.webp
 ```
 
 If a file is missing, the game falls back to the monster's emoji glyph.
