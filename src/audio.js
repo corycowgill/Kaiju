@@ -553,11 +553,11 @@ class Audio {
       // PA faces the crowd (stage front = local +Z): about -4 dB behind the stage
       const front = d > 1 ? ((kpos.x - st.x) * Math.sin(st.rot || 0) + (kpos.z - st.z) * Math.cos(st.rot || 0)) / d : 1;
       const g = k * k * (0.8 + 0.2 * front);
-      _aim(voice.g.gain, g * STAGE_GAIN, t, 0.25, 0.002);
-      _aim(voice.lp.frequency, 1200 + 17000 * g, t, 0.25, 20);
+      _aim(voice.g.gain, g * STAGE_GAIN, t, 0.25, 0.005);
+      _aim(voice.lp.frequency, 1200 + 17000 * g, t, 0.25, 150);
       if (voice.pan) {
         const dx = (st.x - kpos.x) / (d || 1), dz = (st.z - kpos.z) / (d || 1);
-        _aim(voice.pan.pan, (dx * rx + dz * rz) * 0.8 * Math.min(1, d / 20), t, 0.15, 0.005);
+        _aim(voice.pan.pan, (dx * rx + dz * rz) * 0.8 * Math.min(1, d / 20), t, 0.15, 0.02);
       }
       loudest = Math.max(loudest, g);
     }
@@ -889,9 +889,9 @@ class Audio {
   // Nothing here exists until matchBegin(); matchEnd() puts the graph back exactly as
   // init() built it, so the classic game is untouched outside a match.
   //
-  //   classic one-shots (sfxOut) -+
-  //   music (musicDuck) -> music -+-> shelf (sub side-chain) -> lp (slow-mo) -> bedDuck -+
-  //   crowd beds / reactions -----+                                                      +-> master
+  //   classic one-shots (sfxOut), combat compressor (combatBus) -> classic -+
+  //   music (musicDuck), festival stages (stageBus) -> music --------------+-> shelf (sub side-chain) -> lp (slow-mo) -> bedDuck -+
+  //   crowd beds / reactions --------------------------------------------+                                                      +-> master
   //   wrestling impacts, kaiju voices (fx) ----------------------------------------------+     |
   //   bell, stings, themes (ui) ---------------------------------------------------------+     |
   //   master -> limiter (compressor -> make-up trim -> soft clip) -> destination <-------------+
@@ -940,14 +940,21 @@ class Audio {
       this.sfxOut = mm.classic;
       try { this.musicDuck.disconnect(); } catch (e) {}
       this.musicDuck.connect(mm.music);
+      // main's combat compressor stays in series, but feeds the classic bus so collapses and
+      // explosions take the match ducks too; festival stage PAs sit with the music
+      try { this.combatBus.disconnect(); } catch (e) {}
+      this.combatBus.connect(mm.classic);
+      try { this.stageBus.disconnect(); } catch (e) {}
+      this.stageBus.connect(mm.music);
       try { this.master.disconnect(); } catch (e) {}
       this.master.connect(mm.comp);
     }
     _aim(mm.music.gain, 1, t, 0.05, 0); _aim(mm.bedDuck.gain, 1, t, 0.05, 0);
     _aim(mm.lp.frequency, 20000, t, 0.05, 0); _aim(mm.crowdLp.frequency, 16000, t, 0.05, 0);
     mm.shelf.gain.cancelScheduledValues(t); mm.shelf.gain.setTargetAtTime(0, t, 0.05);
-    this._loadWr();
+    // themes first: the first entrance starts right away
     if (!low && o) { this._loadTheme(KAIJU_SFX[o.player]); this._loadTheme(KAIJU_SFX[o.rival]); }
+    this._loadWr();
   }
 
   // The match is over / torn down: stop everything the match owns, restore the classic graph.
@@ -962,6 +969,10 @@ class Audio {
     this.sfxOut = this.master;
     try { this.musicDuck.disconnect(); } catch (e) {}
     this.musicDuck.connect(this.master);
+    try { this.combatBus.disconnect(); } catch (e) {}
+    this.combatBus.connect(this.master);
+    try { this.stageBus.disconnect(); } catch (e) {}
+    this.stageBus.connect(this.master);
     try { this.master.disconnect(); } catch (e) {}
     this.master.connect(this.ctx.destination);
     _aim(mm.music.gain, 1, t, 0.05, 0); _aim(mm.bedDuck.gain, 1, t, 0.05, 0); _aim(mm.lp.frequency, 20000, t, 0.05, 0);
@@ -1167,8 +1178,9 @@ class Audio {
     }
     mm.bedT = t;
     const B = mm.beds;
-    _aim(B.lo.g.gain, lo, t, 0.3, 0.004);
-    _aim(B.hi.g.gain, hi, t, 0.3, 0.004);
+    // (heat drifts every frame; under a 0.3 s glide a 0.012 step is inaudible and costs a fifth of the writes)
+    _aim(B.lo.g.gain, lo, t, 0.3, 0.012);
+    _aim(B.hi.g.gain, hi, t, 0.3, 0.012);
     for (let i = 0; i < B.lo.src.length; i++) { _aim(B.lo.src[i].playbackRate, rate, t, 0.12, 0.01); _aim(B.hi.src[i].playbackRate, rate, t, 0.12, 0.01); }
     _aim(mm.crowdLp.frequency, lpHz, t, 0.3, 150);
   }

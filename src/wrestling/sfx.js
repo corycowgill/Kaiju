@@ -37,6 +37,7 @@ export function createSfx(ctx, W) {
     chantT: 0,          // chant loop time left
     themeOn: false,     // an entrance / victory theme owns the music slot
     themeT: -1, themeWho: '', themeGain: 0.6,
+    themeWait: 0,       // a theme still decoding: keep retrying this long (first match, cold cache)
     fanfareT: -1, roarT: -1, roarWho: '',
     teleT: -1, teleKind: 0,
     struggleT: 0,
@@ -97,7 +98,7 @@ export function createSfx(ctx, W) {
   }
   function reset() {
     S.phase = 'idle'; S.heat = 0.3; S.dirLevel = 0; S.dirT = 0; S.hush = 0; S.duckT = 0; S.duckAmt = 1; S.stopT = 0;
-    S.slowT = 0; S.slowScale = 1; S.slowOut = false; S.chantT = 0; S.themeOn = false; S.themeT = -1; S.fanfareT = -1; S.roarT = -1;
+    S.slowT = 0; S.slowScale = 1; S.slowOut = false; S.chantT = 0; S.themeOn = false; S.themeT = -1; S.themeWait = 0; S.fanfareT = -1; S.roarT = -1;
     S.teleT = -1; S.struggleT = 0; S.painT.player = 0; S.painT.rival = 0; S.dizzyT.player = -1; S.dizzyT.rival = -1; S.calloutT = 0;
   }
 
@@ -108,11 +109,13 @@ export function createSfx(ctx, W) {
       S.phase = e.phase;
       if (e.phase !== 'pin' && e.phase !== 'finisher') S.hush = 0;
       if (e.phase === 'between') { _pan = 0; crowd('chant'); }
-      if (e.phase === 'fight' && S.themeOn) { audio.themeStop(1.5); S.themeOn = false; }
+      if (e.phase === 'fight') { S.themeT = -1; if (S.themeOn) { audio.themeStop(1.5); S.themeOn = false; } }
     },
     [EV.ENTRANCE_START](e) {
-      // each kaiju walks out to 12 s of its own battle score; the challenger is the heel
-      S.themeOn = !!audio.theme(e.key || keyOf(e.who), 0.6) || S.themeOn;
+      // each kaiju walks out to 12 s of its own battle score; the challenger is the heel.
+      // On a cold cache the opener's score is still decoding: tick() retries for a few seconds
+      S.themeWho = e.key || keyOf(e.who); S.themeGain = 0.6;
+      if (audio.theme(S.themeWho, 0.6)) { S.themeOn = true; S.themeT = -1; } else { S.themeT = 0.15; S.themeWait = 4; }
       placeWho(e.who);
       if (e.who === 'player') crowd('pop', 0.8, 0.2); else crowd('boo', 0.7, 0.3);
     },
@@ -126,8 +129,8 @@ export function createSfx(ctx, W) {
       else if (b === 'namecard') audio.wr('wr_ui_big', 0.8, 1, 0, 0, 0, 2);
       else if (b === 'arrive') slam(0.45);
     },
-    [EV.ENTRANCE_END]() { audio.themeStop(1.6); S.themeOn = false; },
-    [EV.ENTRANCE_SKIP]() { audio.themeStop(0.3); S.themeOn = false; },
+    [EV.ENTRANCE_END]() { audio.themeStop(1.6); S.themeOn = false; S.themeT = -1; },
+    [EV.ENTRANCE_SKIP]() { audio.themeStop(0.3); S.themeOn = false; S.themeT = -1; },
     [EV.BELL](e) {
       const n = Math.max(1, Math.min(5, e.rings | 0));
       for (let i = 0; i < n; i++) if (!audio.wr('wr_bell', i ? 0.85 : 1, 1, i * 0.28, 0, 0, 2)) audio.bellFallback(i * 0.28);
@@ -140,14 +143,14 @@ export function createSfx(ctx, W) {
       audio.matchResult(true);
       _pan = 0; crowd('roar', 1, 0.15);
       S.fanfareT = 0.95;                       // after the three bells
-      S.themeT = 3.3; S.themeWho = keyOf('player'); S.themeGain = 0.6;
+      S.themeT = 3.3; S.themeWait = 6; S.themeWho = keyOf('player'); S.themeGain = 0.6;
       S.chantT = 0;
     },
     [EV.MATCH_LOST]() {
       audio.matchResult(false);
       _pan = 0; crowd('boo', 1, 0.3); crowd('ooh', 0.8);
       S.roarT = 0.9; S.roarWho = keyOf('rival');
-      S.themeT = 3.4; S.themeWho = keyOf('rival'); S.themeGain = 0.4;
+      S.themeT = 3.4; S.themeWait = 6; S.themeWho = keyOf('rival'); S.themeGain = 0.4;
       S.chantT = 0;
     },
 
@@ -452,7 +455,11 @@ export function createSfx(ctx, W) {
     }
     if (S.fanfareT >= 0 && (S.fanfareT -= dt) < 0) audio.waveClear();
     if (S.roarT >= 0 && (S.roarT -= dt) < 0) audio.roar(S.roarWho);
-    if (S.themeT >= 0 && (S.themeT -= dt) < 0) S.themeOn = !!audio.theme(S.themeWho, S.themeGain) || S.themeOn;
+    if (S.themeWait > 0) S.themeWait -= dt;
+    if (S.themeT >= 0 && (S.themeT -= dt) < 0) {
+      if (audio.theme(S.themeWho, S.themeGain)) S.themeOn = true;
+      else if (S.themeWait > 0) S.themeT = 0.15;
+    }
     if (S.teleT >= 0 && (S.teleT -= dt) < 0) { if (S.teleKind) audio.bossSlamWarn(); else audio.bossWindup(); }
     for (let i = 0; i < 2; i++) {
       const who = i ? 'rival' : 'player';
