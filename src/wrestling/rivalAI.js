@@ -507,8 +507,11 @@ export function createRivalAI(ctx, W) {
       // The foe will not stand and fight: run it down
       // (a foe in full flight outruns everything but a point-blank clothesline and the beam)
       const flee = S.flee > 10;
-      opt('rush', gap > 9 && gap < (flee ? 14 : 24) && !me.tired ? 3 : 0);
-      opt('charge', flee ? 0 : powerW(me, 'charge', gap) * 2);
+      const fast = me.speedMult > 1.2; // the crowd is on its side: it can run this one down
+      opt('rush', gap > 9 && gap < (flee && !fast ? 14 : 24) && !me.tired ? 3 : 0);
+      opt('charge', flee && !fast ? 0 : powerW(me, 'charge', gap) * 2);
+      // A full meter and a foe that will not come near: the big one reaches a long way
+      opt('ult', me.can('ult') && gap < 75 ? 5 : 0);
       opt('beam', crossing(me, foe) < 14 ? powerW(me, 'beam', gap) * (flee ? 6 : 3) : 0); // (a foe running across the line walks out of the beam)
       opt('stomp', S.stuckT > 1 ? powerW(me, 'stomp', gap) * 3 : !flee && gap < 34 ? powerW(me, 'stomp', gap) * 0.6 : 0); // (over a building in the way; a foe on the move walks out from under it)
       // Out of reach and out of momentum: play to the crowd, which fills the meter (and dares the foe to come back)
@@ -517,10 +520,11 @@ export function createRivalAI(ctx, W) {
       opt('close', 2);
     } else if (S.nextRush && gap > 12 && !me.tired) { S.nextRush = false; opt('rush', 3); opt('stomp', powerW(me, 'stomp', gap) * 2); opt('string', 0.6); }
     else if (soft && gap < 18) { opt('grab', P.w.grab * 2 * env * fit); opt('heavy', P.w.heavy * 1.6); opt('string', 0.3); }
-    else {
-      opt('string', P.w.string * (turtle > 0.6 ? 0.5 : 1));
-      opt('heavy', P.w.heavy * (foe.tired ? 1.6 : 1) * (turtle > 0.6 ? 0.6 : 1));
-      opt('grab', P.w.grab * (1 + 2.6 * turtle) * env * (foe.tired ? 1.8 : 1) * fit);
+else {
+      const last = hpF(foe) < 0.04 ? 1 : 0; // only a big move takes the last of its health
+      opt('string', P.w.string * (turtle > 0.6 ? 0.5 : 1) * (last ? 0.15 : 1));
+      opt('heavy', P.w.heavy * (foe.tired ? 1.6 : 1) * (turtle > 0.6 ? 0.6 : 1) * (1 + last));
+      opt('grab', P.w.grab * (1 + 2.6 * turtle) * env * (foe.tired ? 1.8 : 1) * fit * (1 + 1.5 * last));
       opt('rush', gap > 13 && gap < 42 && !me.tired ? P.w.rush * fit * (1 + 0.6 * S.desperate) : 0);
       opt('feint', gap < 34 ? P.w.feint * (1 + turtle) : 0);
       opt('roar', powerW(me, 'roar', gap) * (1 + turtle));
@@ -599,7 +603,7 @@ export function createRivalAI(ctx, W) {
       case 'charge': return 34;
       case 'stomp': return 64;
       case 'beam': return 160;
-      case 'ult': return 55;
+      case 'ult': return 78;
       default: return 1e9; // taunt: where it stands
     }
   }
@@ -737,6 +741,7 @@ export function createRivalAI(ctx, W) {
         opt('stomp', me.can('pstomp') && S.powerCd <= 0 && gap < 70 && S.stuckT > 1 ? 2 : 0);
         // Nothing in the tank: play to the crowd, which fills it (and dares the foe to come back)
         opt('taunt', gap > 85 && S.tauntCd <= 0 && me.momentum < 100 ? 1.2 + P.taunt : 0);
+        opt('ult', me.can('ult') && gap < 75 ? 4 : 0);
       }
       const c = choose();
       if (c !== 'run' && c !== '') { fire(me, foe, it, c); if (c === 'taunt') S.tauntCd = 6 + rnd() * 4; return; }
@@ -762,7 +767,8 @@ export function createRivalAI(ctx, W) {
       const second = S.gActs > 0;
       const G = P.ground;
       _n = 0;
-      if (foe.finished > 0 || est < 0.2) opt('pin', 12);
+      // (on its last legs jabs and stomps cannot finish it: cover it)
+      if (foe.finished > 0 || est < 0.2 || hpF(foe) < 0.04) opt('pin', 12);
       else {
         opt('pin', est < 0.36 ? G.pin * 2.5 : est < 0.45 ? G.pin * (0.35 + 1.2 * S.desperate) : G.pin * 0.25 * S.desperate); // (a cover on a fresh foe is cheap: only a desperate one tries it)
         if (!mercy) {
