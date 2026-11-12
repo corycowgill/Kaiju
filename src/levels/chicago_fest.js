@@ -567,8 +567,14 @@ varying float vCrowdGlow;
 ` + sh.vertexShader
       .replace('#include <color_vertex>', `#include <color_vertex>
 #ifdef USE_INSTANCING_COLOR
-        // white vertices take the shirt colour; red above 1.5 marks the sign board
-        vColor = color.r > 1.5 ? vec3(0.92, 0.9, 0.82) * (0.55 + 0.45 * instanceColor.rgb) : (color.r + color.g + color.b > 2.99 ? instanceColor.rgb : color);
+        // white vertices (and arms, g = 2) take the shirt colour; red above 1.5 marks the sign board, blue
+        // above 1.5 the hair; skin and trousers vary per person
+        float hc = fract(float(gl_InstanceID) * 0.754877 + 0.13), hd = fract(float(gl_InstanceID) * 0.569840 + 0.71);
+        if (color.r > 1.5) vColor = vec3(0.92, 0.9, 0.82) * (0.55 + 0.45 * instanceColor.rgb);
+        else if (color.b > 1.5) vColor = hd < 0.3 ? instanceColor.rgb * 0.7 : mix(vec3(0.05, 0.04, 0.04), vec3(0.5, 0.36, 0.18), hc * hc);
+        else if (color.r + color.g + color.b > 2.99) vColor = instanceColor.rgb;
+        else if (color.r > 0.5) vColor = mix(vec3(0.95, 0.77, 0.62), vec3(0.36, 0.24, 0.17), hc);
+        else vColor = hd < 0.45 ? color : hd < 0.7 ? vec3(0.07, 0.07, 0.08) : hd < 0.85 ? vec3(0.42, 0.37, 0.28) : vec3(0.28, 0.28, 0.31);
 #endif`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vCrowdGlow = 0.0;
@@ -597,6 +603,15 @@ varying float vCrowdGlow;
         float crest = (1.0 - smoothstep(0.0, 0.55, wd)) * uWave.w;
         float tall = 1.0 + 0.32 * crest;
         hop += 0.35 * crest;
+        // Arms (vertex colour g above 1.5) swing up about the shoulder: on a pop, with the wave, pumping
+        // with the beat, and holding a sign up
+        if (color.g > 1.5) {
+          float cheer = step(h2, uSigns) + uBounce.w * (0.4 + h1) + crest * 1.3
+            + jumper * max(0.0, sin(uTime * uBounce.z + ph * 6.2831)) * (1.0 - uBounce.x);
+          float sd0 = sign(position.x), aa = sd0 * clamp(cheer, 0.0, 1.0) * up * 2.75;
+          vec2 q = transformed.xy - vec2(sd0 * 0.25, 0.93);
+          transformed.xy = vec2(sd0 * 0.25, 0.93) + vec2(q.x * cos(aa) - q.y * sin(aa), q.x * sin(aa) + q.y * cos(aa));
+        }
         // The flinch: a ring spreading from an impact, people duck as it passes
         vec2 sv = ip.xz - uShock.xy;
         float sd = length(sv);

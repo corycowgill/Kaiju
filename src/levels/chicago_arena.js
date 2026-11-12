@@ -23,7 +23,7 @@
 // shadow per kaiju per tower). No real lights, no new lit shader programs:
 // everything lit is a plain MeshStandardMaterial with a map.
 import * as THREE from 'three';
-import { festPersonGeom, festCrowdMaterial, festCrowdUniforms, FEST_SHIRTS, FEST_RING_GAPS } from './chicago_fest.js';
+import { festCrowdMaterial, festCrowdUniforms, FEST_RING_GAPS } from './chicago_fest.js';
 import { EV } from '../wrestling/events.js';
 import * as LOOK from '../look.js';
 
@@ -394,12 +394,15 @@ function _ropeMaterial() {
   const v4s = (n) => Array.from({ length: n }, () => new THREE.Vector4());
   const mat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-      uTime: { value: 0 }, uRadius: { value: 0.27 }, uBright: { value: 1 },
+      uTime: { value: 0 }, uRadius: { value: 0.21 }, uBright: { value: 1 },
+      uOccA: { value: v4s(2) },  // per fighter: capsule end a xyz, radius (0 = none)
+      uOccB: { value: v4s(2) },  // per fighter: capsule end b xyz
       uPush: { value: v4s(4) },  // per side: body centre u (0..1), half width, displacement (+ out), vibration
       uSnap: { value: v4s(4) },  // per side: snap time (< 0 = whole), break u, sag, glow
       uPost: { value: v4s(4) },  // per tower: lean dir x, z, sin, cos
       uEnds: { value: v4s(4) },  // per side: end towers ax, az, bx, bz
-      uCol: { value: [new THREE.Vector3(0.16, 0.5, 1.5), new THREE.Vector3(1.2, 1.17, 1.1), new THREE.Vector3(1.6, 0.2, 0.17)] },
+      // under the bloom threshold at rest: only a hit / snap flash blooms
+      uCol: { value: [new THREE.Vector3(0.12, 0.42, 1.2), new THREE.Vector3(0.86, 0.84, 0.8), new THREE.Vector3(1.25, 0.17, 0.14)] },
     }]),
     vertexShader: `
       #include <common>
@@ -407,10 +410,11 @@ function _ropeMaterial() {
       attribute vec4 aFrame;  // outward normal x, z; t along the side; t of the segment's middle
       attribute vec3 aRing;   // cross-section cos, sin; side * 4 + rope
       uniform float uTime, uRadius;
-      uniform vec4 uPush[4], uSnap[4], uPost[4], uEnds[4];
+      uniform vec4 uPush[4], uSnap[4], uPost[4], uEnds[4], uOccA[2], uOccB[2];
       uniform vec3 uCol[3];
       varying vec3 vCol;
       varying vec3 vTF;       // t, camera fade, glow
+      varying float vA;       // opacity
       vec3 postOff(vec4 p, float y) { return vec3(p.x * y * p.z, y * (p.w - 1.0), p.y * y * p.z); }
       void main() {
         int id = int(aRing.z + 0.5);
@@ -455,12 +459,35 @@ function _ropeMaterial() {
           p.y = max(p.y, 0.45 + fr * 0.14);
           bright = 0.3 + 0.7 * exp(-tau * 1.5) + 0.35 * step(0.92, fract(sin(floor(uTime * 22.0) * 12.9898 + fr * 7.1) * 43758.5453)) * exp(-tau * 0.5);
         }
-        // close to the lens a cable thins to a thread and fades out; far across the ring it dims
+        // close to the lens a cable thins to a thread and is gone inside ~16 u; far across the ring it dims
         float cd = length(cameraPosition - p);
-        float nearK = smoothstep(16.0, 52.0, cd);
-        p += (vec3(o2.x, 0.0, o2.y) * aRing.x + vec3(0.0, aRing.y, 0.0)) * (uRadius * mix(0.3, 1.0, nearK));
-        vCol = uCol[rope] * bright * (1.0 - 0.4 * smoothstep(55.0, 120.0, cd));
+        float nearK = smoothstep(16.0, 50.0, cd);
+        float farK = smoothstep(50.0, 115.0, cd);
+        // a cable passing in front of a kaiju on screen gives way to it (the far side is hidden by depth anyway)
+        float occ = 0.0;
+        vec4 vp = viewMatrix * vec4(p, 1.0);
+        if (vp.z < -0.5) {
+          vec2 sp = vp.xy / -vp.z;
+          for (int k = 0; k < 2; k++) {
+            vec4 Oa = uOccA[k];
+            if (Oa.w <= 0.0) continue;
+            vec4 a = viewMatrix * vec4(Oa.xyz, 1.0), b = viewMatrix * vec4(uOccB[k].xyz, 1.0);
+            float za = -a.z, zb = -b.z;
+            if (max(za, zb) < 1.0) continue;
+            vec2 sa = a.xy / max(za, 1.0), sb = b.xy / max(zb, 1.0), ab = sb - sa;
+            float h = clamp(dot(sp - sa, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+            float zk = max(mix(za, zb, h), 1.0);
+            if (-vp.z > zk - Oa.w * 0.25) continue;     // level with or behind the body
+            float R = Oa.w / zk, d = length(sp - sa - ab * h);
+            occ = max(occ, 1.0 - smoothstep(R * 0.75, R * 1.5, d));
+          }
+        }
+        // never thicker on screen than ~0.35% of the frame height (a long lens would make the far side bars)
+        float rw = min(uRadius * mix(0.3, 1.0, nearK) * (1.0 - 0.3 * farK), 0.0035 * max(-vp.z, 1.0) / projectionMatrix[1][1]);
+        p += (vec3(o2.x, 0.0, o2.y) * aRing.x + vec3(0.0, aRing.y, 0.0)) * (rw * (1.0 - 0.35 * occ));
+        vCol = uCol[rope] * bright * (1.0 - 0.45 * farK);
         vTF = vec3(t, nearK, S.w);
+        vA = nearK * nearK * (1.0 - 0.45 * farK) * (1.0 - 0.82 * occ);
         vec4 mvPosition = viewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
@@ -471,18 +498,20 @@ function _ropeMaterial() {
       uniform float uTime, uBright;
       varying vec3 vCol;
       varying vec3 vTF;
+      varying float vA;
       void main() {
         // chase lights running along the cable; a hit floods it white for a moment
         float band = 0.8 + 0.2 * sin(vTF.x * 160.0 - uTime * 5.0);
         vec3 c = vCol * band * uBright;
-        c = mix(c, vec3(3.0), clamp(vTF.z, 0.0, 1.0) * 0.8) * (0.55 + 0.45 * vTF.y);
-        gl_FragColor = vec4(c, mix(0.0, 1.0, vTF.y * vTF.y));
+        float gl = clamp(vTF.z, 0.0, 1.0);
+        c = mix(c, vec3(3.0), gl * 0.8) * (0.55 + 0.45 * vTF.y);
+        gl_FragColor = vec4(c, clamp(vA + gl * 0.5 * vTF.y, 0.0, 1.0));
         if (gl_FragColor.a < 0.02) discard;
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>
       }`,
-    fog: true, transparent: true, depthWrite: true,
+    fog: true, transparent: true, depthWrite: false,
   });
   mat.name = 'arena_ropes';
   return mat;
@@ -700,6 +729,39 @@ function _towerGeom(T, padCell) {
   B.box(0, H + 10.2, 0, 0.5, 2.4, 0.5, C.STEEL);
   B.box(0, H + 11.6, 0, 1.0, 1.0, 1.0, C.AVRED);
   return B.build();
+}
+
+// Spectators' shirts: the two corners' colours and a darker neutral mix (kept under the bloom threshold)
+const FANS_BLUE = [0x2b62c0, 0x58b7e6, 0x1d3f8a, 0x2b62c0, 0xd8d8d0];
+const FANS_RED = [0xc4162c, 0x8f1a20, 0xd8a81e, 0xc4162c, 0x1e2128];
+const FANS_MIX = [0x1e2128, 0x2c3340, 0x6b7078, 0xd8d8d0, 0x3d4b6b, 0x8a5a2b, 0x4a6b3a, 0xb8492a];
+
+/** One ringside spectator (~1.25 u, feet at the origin, facing +Z) as an indexed mesh. Vertex colours
+ *  tell the crowd shader (chicago_fest.js) what each part is: white = shirt, (1, 2, 1) = an arm (shirt;
+ *  swings up about the shoulder at x +-0.25, y 0.93), (0, 0, 2) = hair, (2, 0, 0) = the sign board and its
+ *  pole (shown by a few); skin and trousers are varied per person. */
+function _fanGeom() {
+  const LEGS = [0.18, 0.2, 0.3], SHIRT = [1, 1, 1], ARM = [1, 2, 1], SKIN = [0.86, 0.68, 0.55], HAIR = [0, 0, 2], SIGN = [2, 0, 0];
+  const parts = [ // w, h, d, x, y, z, colour
+    [0.15, 0.5, 0.17, -0.085, 0.25, 0, LEGS], [0.15, 0.5, 0.17, 0.085, 0.25, 0, LEGS],
+    [0.4, 0.46, 0.22, 0, 0.73, 0, SHIRT],
+    [0.1, 0.44, 0.12, -0.25, 0.72, 0, ARM], [0.1, 0.44, 0.12, 0.25, 0.72, 0, ARM],
+    [0.22, 0.22, 0.21, 0, 1.08, 0, SKIN], [0.25, 0.08, 0.24, 0, 1.2, -0.01, HAIR],
+    [0.62, 0.42, 0.04, 0, 1.62, 0.08, SIGN], [0.04, 0.4, 0.04, 0, 1.3, 0.08, SIGN],
+  ];
+  const P = [], N = [], Cc = [], I = [];
+  for (const [w, h, d, x, y, z, c] of parts) {
+    const b = new THREE.BoxGeometry(w, h, d), p = b.attributes.position, n = b.attributes.normal, o = P.length / 3;
+    for (let i = 0; i < p.count; i++) { P.push(p.getX(i) + x, p.getY(i) + y, p.getZ(i) + z); N.push(n.getX(i), n.getY(i), n.getZ(i)); Cc.push(c[0], c[1], c[2]); }
+    for (const k of b.index.array) I.push(k + o);
+    b.dispose();
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(Cc, 3));
+  g.setIndex(I);
+  return g;
 }
 
 /** Stand height (top of the tread) d units behind its front edge. */
@@ -1060,27 +1122,7 @@ export function buildArena(scene, world, o) {
     }
     const count = seats.length / 4;
     if (count) {
-      // the festival's person plus a sign board some of them hold up
-      const base = festPersonGeom();
-      const sg = new THREE.BoxGeometry(0.62, 0.42, 0.04).toNonIndexed();
-      sg.translate(0, 1.62, 0.08);
-      const pole = new THREE.BoxGeometry(0.04, 0.4, 0.04).toNonIndexed();
-      pole.translate(0, 1.3, 0.08);
-      const P = [], Cc = [], N = [];
-      const push = (g, mark) => {
-        const p = g.attributes.position, c = g.attributes.color, n = g.attributes.normal;
-        for (let i = 0; i < p.count; i++) {
-          P.push(p.getX(i), p.getY(i), p.getZ(i)); N.push(n.getX(i), n.getY(i), n.getZ(i));
-          if (mark) Cc.push(2, 0, 0); else Cc.push(c.getX(i), c.getY(i), c.getZ(i));
-        }
-      };
-      push(base, false); push(sg, true); push(pole, true);
-      base.dispose(); sg.dispose(); pole.dispose();
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
-      geom.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-      geom.setAttribute('color', new THREE.Float32BufferAttribute(Cc, 3));
-      const im = new THREE.InstancedMesh(geom, AS.mCrowd, count);
+      const im = new THREE.InstancedMesh(_fanGeom(), AS.mCrowd, count);
       im.name = 'arena_crowd';
       const pts = new Float32Array(count * 2), by = new Float32Array(count), yaw = new Float32Array(count), sc = new Float32Array(count);
       const col = new THREE.Color();
@@ -1090,7 +1132,10 @@ export function buildArena(scene, world, o) {
         // seated rows look straight across; the corners turn to the centre
         if (by[i] > 0) yaw[i] = (pts[i * 2 + 1] < cz ? 0 : Math.PI) + (Math.random() - 0.5) * 0.5 + Math.max(-0.5, Math.min(0.5, (cx - pts[i * 2]) / 90)) * (pts[i * 2 + 1] < cz ? 1 : -1);
         sc[i] = seats[i * 4 + 3] * (0.9 + Math.random() * 0.25);
-        im.setColorAt(i, col.setHex(FEST_SHIRTS[Math.floor(Math.random() * FEST_SHIRTS.length)]));
+        // half wear their corner's colours (blue toward the player's north-east post, red toward the rival's south-west)
+        const blue = (pts[i * 2] - cx) - (pts[i * 2 + 1] - cz) + (Math.random() - 0.5) * 70 > 0;
+        const pal = Math.random() < 0.5 ? (blue ? FANS_BLUE : FANS_RED) : FANS_MIX;
+        im.setColorAt(i, col.setHex(pal[Math.floor(Math.random() * pal.length)]));
       }
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       im.castShadow = false; im.receiveShadow = false;
@@ -1299,6 +1344,7 @@ export function createArena(ctx, W) {
   const post = [0, 1, 2, 3].map(() => ({ dx: 0, dz: 0, ang: 0, vel: 0, rest: 0, fallen: false, landed: false, flick: 0 }));
   const cr = { defense: 0, hype: 0.25, heat: 0.2, dir: -1, pop: 0, flash: 0, waveAmp: 0, waveAng: 0, waveCd: 6, celebrate: 0, shockS: 0, land: { x: 0, z: 0, s: 0 } };
   const col = new THREE.Color(), dirV = new THREE.Vector3(), posV = new THREE.Vector3(), down = new THREE.Vector3(0, -1, 0), qB = new THREE.Quaternion(), sclV = new THREE.Vector3(), mB = new THREE.Matrix4();
+  const occA = new THREE.Vector3(), occB = new THREE.Vector3(), occD = new THREE.Vector3(), camF = new THREE.Vector3();
   let showT = 0, lastCrushed = 0;
 
   const fighters = () => [W.player, W.rival];
@@ -1398,7 +1444,11 @@ export function createArena(ctx, W) {
       cr.defense = e.defense | 0;
       show('idle', '', '', 0);
     });
-    on(EV.ENTRANCE_START, (e) => { show('name', e.name || '', (e.who === 'rival') === (cr.defense === 0) ? 'THE CHAMPION' : 'THE CHALLENGER', 6); pop(0.7, 1); cr.waveCd = 0.5; });
+    on(EV.ENTRANCE_START, (e) => {
+      // billing as the HUD's name cards have it: the first match is for the rival's belt, a defense for the player's
+      const ms = W.match && W.match.state, defense = ms ? ms.defense > 0 : cr.defense > 0;
+      show('name', e.name || '', (e.who === 'player') === defense ? 'THE CHAMPION' : 'THE CHALLENGER', 6); pop(0.7, 1); cr.waveCd = 0.5;
+    });
     on(EV.ENTRANCE_BEAT, (e) => { cr.flash = Math.max(cr.flash, 0.8); if (e.beat === 'roar' || e.beat === 'pose' || e.beat === 'crash') pop(0.6, 1); });
     on(EV.BELL, (e) => { pop(e.kind === 'start' ? 0.8 : 0.6, 0.6); });
     on(EV.FALL_START, (e) => { show('callout', 'FALL ' + e.fall, 'RING THE BELL', 2.5); });
@@ -1429,7 +1479,8 @@ export function createArena(ctx, W) {
     on(EV.KO, (e) => { shock(e.x, e.z, 1); pop(1, 1); });
     on(EV.MATCH_OVER, (e) => {
       const f = e.winner && W[e.winner];
-      show('winner', f ? f.name : 'WINNER', e.winner === 'player' ? 'AND NEW... CHAMPION' : 'WINNER', 0);
+      const dfn = (e.defense | 0) > 0;
+      show('winner', f ? f.name : 'WINNER', e.winner === 'player' ? (dfn ? 'AND STILL... CHAMPION' : 'AND NEW... CHAMPION') : dfn ? 'AND NEW CHAMPION' : 'WINNER', 0);
       cr.celebrate = 30; pop(1, 1);
     });
     on(EV.INTERFERENCE_ARRIVE, () => { shock(info().cx, info().cz, 0.5); });
@@ -1565,6 +1616,11 @@ export function createArena(ctx, W) {
   const simBeams = (A, dtReal, tod) => {
     const rt = A._rt, im = rt.beams, t = showT;
     if (!im) return;
+    // a lens looking up into the shafts (lift / win shots) would see them stack into a veil: they give way
+    const cam = ctx.camera;
+    let lookUp = 0;
+    if (cam) { cam.getWorldDirection(camF); lookUp = Math.min(1, Math.max(0, (camF.y - 0.08) / 0.4)); lookUp *= lookUp * (3 - 2 * lookUp); }
+    const veil = 1 - 0.85 * lookUp;
     for (let i = 0; i < 4; i++) {
       const l = rt.lamps[i], p = post[i];
       const y = l.y, s = Math.sin(p.ang), c = Math.cos(p.ang);
@@ -1576,11 +1632,21 @@ export function createArena(ctx, W) {
       const rad = 21;
       sclV.set(rad / 0.55, len, rad / 0.55);
       im.setMatrixAt(i, mB.compose(posV, qB, sclV));
-      const k = l.on * (0.04 + 0.17 * tod) * (0.9 + 0.1 * Math.sin(t * 1.3 + i));
+      // standing inside the cone: it fades rather than filling the frame
+      let inside = 0;
+      if (cam) {
+        occD.subVectors(cam.position, posV);
+        const along = occD.dot(dirV);
+        if (along > 0 && along < len) {
+          const radial = Math.sqrt(Math.max(0, occD.lengthSq() - along * along)), q = radial / (rad * along / len + 1e-3);
+          inside = q < 0.6 ? 1 : q > 1.3 ? 0 : 1 - (q - 0.6) / 0.7;
+        }
+      }
+      const k = l.on * (0.04 + 0.15 * tod) * (0.9 + 0.1 * Math.sin(t * 1.3 + i)) * veil * (1 - 0.7 * inside);
       im.setColorAt(i, col.setRGB(1.0 * k, 0.95 * k, 0.82 * k));
     }
     // movers: parked dim over the crowd, sweeping hard on a pop
-    const live = Math.min(1, 0.25 + cr.pop * 1.4 + (cr.celebrate > 0 ? 0.6 : 0)) * (0.35 + 0.65 * tod);
+    const live = Math.min(1, 0.14 + cr.pop * 1.4 + (cr.celebrate > 0 ? 0.6 : 0)) * (0.35 + 0.65 * tod) * veil;
     for (let j = 0; j < rt.movers.length; j++) {
       const mv = rt.movers[j];
       posV.set(mv.x, mv.y, mv.z);
@@ -1637,7 +1703,22 @@ export function createArena(ctx, W) {
     simFlashes(A, dtReal);
     const RU = rt.AS.mRope.uniforms;
     RU.uTime.value = now();
-    RU.uBright.value = 0.75 + 0.45 * tod;
+    RU.uBright.value = 0.7 + 0.3 * tod;
+    // each kaiju as a capsule (legs to head along its spine) the cables give way to on screen
+    {
+      const F = fighters();
+      for (let f = 0; f < 2; f++) {
+        const b = F[f], ua = RU.uOccA.value[f], ub = RU.uOccB.value[f];
+        if (!b || !b.root || !b.root.parent || !b.root.visible) { ua.w = 0; continue; }
+        const hips = b.bones && b.bones.hips, head = b.bones && b.bones.head, r = (b.radius || 12) * 0.95;
+        if (hips && head) {
+          hips.getWorldPosition(occA); head.getWorldPosition(occB);
+          occD.subVectors(occB, occA);
+          occA.addScaledVector(occD, -0.7); occB.addScaledVector(occD, 0.2);
+        } else { occA.set(b.pos.x, b.pos.y + r * 0.5, b.pos.z); occB.set(b.pos.x, b.pos.y + (b.height || 30) * 1.2, b.pos.z); }
+        ua.set(occA.x, occA.y, occA.z, r); ub.set(occB.x, occB.y, occB.z, 0);
+      }
+    }
     // the pool: shadows of whoever is standing in it
     const PU = rt.AS.mPool.uniforms, F = fighters();
     PU.uGain.value = (rt.tier ? 1.9 : 0.7) * (0.4 + 0.6 * tod);
