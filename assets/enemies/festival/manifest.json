@@ -1,0 +1,274 @@
+{
+  "reference": "pedestrian1withFullAnimationAndRig.glb",
+  "animationFile": "animations.glb",
+  "clips": [
+    {
+      "name": "Running",
+      "duration": 0.6333333253860474
+    },
+    {
+      "name": "Walking",
+      "duration": 1.0333333015441895
+    },
+    {
+      "name": "Agree_Gesture",
+      "duration": 13.0
+    },
+    {
+      "name": "All_Night_Dance",
+      "duration": 8.166666984558105
+    },
+    {
+      "name": "BeHit_FlyUp",
+      "duration": 1.5
+    },
+    {
+      "name": "Casual_Walk",
+      "duration": 4.166666507720947
+    },
+    {
+      "name": "Dead",
+      "duration": 2.9666666984558105
+    },
+    {
+      "name": "RunFast",
+      "duration": 0.46666669845581055
+    },
+    {
+      "name": "You_Groove",
+      "duration": 13.5
+    }
+  ],
+  "boneCount": 66,
+  "models": [
+    {
+      "id": "person_01",
+      "source": "pedestrian1.glb",
+      "sourceBytes": 10848696,
+      "lods": [
+        {
+          "lod": "near",
+          "file": "person_01_near.glb",
+          "triangles": 3600,
+          "vertices": 3197
+        },
+        {
+          "lod": "far",
+          "file": "person_01_far.glb",
+          "triangles": 900,
+          "vertices": 944
+        },
+        {
+          "lod": "distant",
+          "file": "person_01_distant.glb",
+          "triangles": 300,
+          "vertices": 365
+        }
+      ]
+    },
+    {
+      "id": "person_02",
+      "source": "pedestrian2.glb",
+      "sourceBytes": 11718972,
+      "lods": [
+        {
+          "lod": "near",
+          "file": "person_02_near.glb",
+          "triangles": 3600,
+          "vertices": 3532
+        },
+        {
+          "lod": "far",
+          "file": "person_02_far.glb",
+          "triangles": 900,
+          "vertices": 1135
+        },
+        {
+          "lod": "distant",
+          "file": "person_02_distant.glb",
+          "triangles": 300,
+          "vertices": 433
+        }
+      ]
+    },
+    {
+      "id": "person_03",
+      "source": "pedestrian3.glb",
+      "sourceBytes": 11056244,
+      "lods": [
+        {
+          "lod": "near",
+          "file": "person_03_near.glb",
+          "triangles": 3600,
+          "vertices": 3453
+        },
+        {
+          "lod": "far",
+          "file": "person_03_far.glb",
+          "triangles": 900,
+          "vertices": 1004
+        },
+        {
+          "lod": "distant",
+          "file": "person_03_distant.glb",
+          "triangles": 300,
+          "vertices": 427
+        }
+      ]
+    },
+    {
+      "id": "person_04",
+      "source": "pedestrain4.glb",
+      "sourceBytes": 11173632,
+      "lods": [
+        {
+          "lod": "near",
+          "file": "person_04_near.glb",
+          "triangles": 3600,
+          "vertices": 3582
+        },
+        {
+          "lod": "far",
+          "file": "person_04_far.glb",
+          "triangles": 900,
+          "vertices": 953
+        },
+        {
+          "lod": "distant",
+          "file": "person_04_distant.glb",
+          "triangles": 300,
+          "vertices": 378
+        }
+      ]
+    },
+    {
+      "id": "person_05",
+      "source": "pedestrain5.glb",
+      "sourceBytes": 10432028,
+      "lods": [
+        {
+          "lod": "near",
+          "file": "person_05_near.glb",
+          "triangles": 3600,
+          "vertices": 3342
+        },
+        {
+          "lod": "far",
+          "file": "person_05_far.glb",
+          "triangles": 900,
+          "vertices": 958
+        },
+        {
+          "lod": "distant",
+          "file": "person_05_distant.glb",
+          "triangles": 300,
+          "vertices": 405
+        }
+      ]
+    },
+    {
+      "id": "person_06",
+      "source": "pedestrian6.glb",
+      "sourceBytes": 12094552,
+      "lods": [
+        {
+          "lod": "near",
+          "file": "person_06_near.glb",
+          "triangles": 3600,
+          "vertices": 3163
+        },
+        {
+          "lod": "far",
+          "file": "person_06_far.glb",
+          "triangles": 900,
+          "vertices": 891
+        },
+        {
+          "lod": "distant",
+          "file": "person_06_distant.glb",
+          "triangles": 300,
+          "vertices": 377
+        }
+      ]
+    },
+    {
+      "id": "person_07",
+      "source": "pedestrain7.glb",
+      "sourceBytes": 9731316,
+      "lods": [
+        {
+          "lod": "near",
+          "file": "person_07_near.glb",
+          "triangles": 3600,
+          "vertices": 3362
+        },
+        {
+          "lod": "far",
+          "file": "person_07_far.glb",
+          "triangles": 900,
+          "vertices": 908
+        },
+        {
+          "lod": "distant",
+          "file": "person_07_distant.glb",
+          "triangles": 300,
+          "vertices": 366
+        }
+      ]
+    },
+    {
+      "id": "person_08",
+      "source": "sample_2026-11-09T202125.720.glb",
+      "sourceBytes": 10696284,
+      "lods": [
+        {
+          "lod": "near",
+          "file": "person_08_near.glb",
+          "triangles": 3600,
+          "vertices": 3279
+        },
+        {
+          "lod": "far",
+          "file": "person_08_far.glb",
+          "triangles": 900,
+          "vertices": 946
+        },
+        {
+          "lod": "distant",
+          "file": "person_08_distant.glb",
+          "triangles": 300,
+          "vertices": 413
+        }
+      ]
+    },
+    {
+      "id": "person_09",
+      "source": "sample_2026-11-09T202401.941.glb",
+      "sourceBytes": 10470080,
+      "lods": [
+        {
+          "lod": "near",
+          "file": "person_09_near.glb",
+          "triangles": 3600,
+          "vertices": 3530
+        },
+        {
+          "lod": "far",
+          "file": "person_09_far.glb",
+          "triangles": 900,
+          "vertices": 1020
+        },
+        {
+          "lod": "distant",
+          "file": "person_09_distant.glb",
+          "triangles": 300,
+          "vertices": 426
+        }
+      ]
+    }
+  ],
+  "shippedBytes": 7239771,
+  "sourceBytes": 98221804,
+  "textureSize": 1024,
+  "textureSharing": "One baked atlas per person, shared by three LODs"
+}

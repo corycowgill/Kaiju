@@ -1,0 +1,286 @@
+{
+  "sampling": "six clips, nine poses per clip, unique edges longer than 12mm; spike = stretch >2.5x and posed edge >160mm",
+  "beforeNear": [
+    {
+      "id": "person_01",
+      "samples": 353160,
+      "spikes": 47,
+      "maxStretch": 8.520169958531843,
+      "p99": 1.508434675345571
+    },
+    {
+      "id": "person_02",
+      "samples": 368712,
+      "spikes": 18,
+      "maxStretch": 6.514890385352991,
+      "p99": 1.4266555121233757
+    },
+    {
+      "id": "person_03",
+      "samples": 367146,
+      "spikes": 257,
+      "maxStretch": 9.819207546259266,
+      "p99": 1.8046776433311797
+    },
+    {
+      "id": "person_04",
+      "samples": 367200,
+      "spikes": 391,
+      "maxStretch": 20.48496003932499,
+      "p99": 1.7165060334296542
+    },
+    {
+      "id": "person_05",
+      "samples": 356670,
+      "spikes": 393,
+      "maxStretch": 20.43836905718744,
+      "p99": 1.812913412289984
+    },
+    {
+      "id": "person_06",
+      "samples": 350892,
+      "spikes": 4,
+      "maxStretch": 7.084033018514989,
+      "p99": 1.4515691580231551
+    },
+    {
+      "id": "person_07",
+      "samples": 358506,
+      "spikes": 120,
+      "maxStretch": 11.798843852778075,
+      "p99": 1.6222313803967028
+    },
+    {
+      "id": "person_08",
+      "samples": 355374,
+      "spikes": 8,
+      "maxStretch": 4.795705978219365,
+      "p99": 1.5051449247861504
+    },
+    {
+      "id": "person_09",
+      "samples": 370116,
+      "spikes": 167,
+      "maxStretch": 11.037031864242369,
+      "p99": 1.5916904556780311
+    }
+  ],
+  "afterAllLods": [
+    {
+      "id": "person_01",
+      "lod": "near",
+      "samples": 353160,
+      "spikes": 0,
+      "maxStretch": 3.4478176528471383,
+      "p99": 1.6081158111094598
+    },
+    {
+      "id": "person_01",
+      "lod": "far",
+      "samples": 95040,
+      "spikes": 9,
+      "maxStretch": 2.7196269394118073,
+      "p99": 1.5130950739148932
+    },
+    {
+      "id": "person_01",
+      "lod": "distant",
+      "samples": 33588,
+      "spikes": 0,
+      "maxStretch": 2.1150411887662566,
+      "p99": 1.447705182258397
+    },
+    {
+      "id": "person_02",
+      "lod": "near",
+      "samples": 368712,
+      "spikes": 0,
+      "maxStretch": 2.72290784769339,
+      "p99": 1.4759584297934307
+    },
+    {
+      "id": "person_02",
+      "lod": "far",
+      "samples": 101952,
+      "spikes": 0,
+      "maxStretch": 2.245037948520498,
+      "p99": 1.4100289341613277
+    },
+    {
+      "id": "person_02",
+      "lod": "distant",
+      "samples": 35694,
+      "spikes": 0,
+      "maxStretch": 2.0792782046260045,
+      "p99": 1.3244298787338238
+    },
+    {
+      "id": "person_03",
+      "lod": "near",
+      "samples": 367146,
+      "spikes": 4,
+      "maxStretch": 3.476938323761145,
+      "p99": 1.5588920367462062
+    },
+    {
+      "id": "person_03",
+      "lod": "far",
+      "samples": 97470,
+      "spikes": 0,
+      "maxStretch": 2.484555343779698,
+      "p99": 1.480328016254983
+    },
+    {
+      "id": "person_03",
+      "lod": "distant",
+      "samples": 35478,
+      "spikes": 2,
+      "maxStretch": 2.5597044346384004,
+      "p99": 1.393578154678662
+    },
+    {
+      "id": "person_04",
+      "lod": "near",
+      "samples": 367200,
+      "spikes": 2,
+      "maxStretch": 6.3244275208625975,
+      "p99": 1.5810684014416343
+    },
+    {
+      "id": "person_04",
+      "lod": "far",
+      "samples": 95202,
+      "spikes": 7,
+      "maxStretch": 3.482272750612395,
+      "p99": 1.528587130019662
+    },
+    {
+      "id": "person_04",
+      "lod": "distant",
+      "samples": 34074,
+      "spikes": 21,
+      "maxStretch": 4.15154339380847,
+      "p99": 1.4881958712085137
+    },
+    {
+      "id": "person_05",
+      "lod": "near",
+      "samples": 356670,
+      "spikes": 4,
+      "maxStretch": 3.0818401495828156,
+      "p99": 1.600255227833135
+    },
+    {
+      "id": "person_05",
+      "lod": "far",
+      "samples": 95580,
+      "spikes": 10,
+      "maxStretch": 2.944908007019758,
+      "p99": 1.55844329209135
+    },
+    {
+      "id": "person_05",
+      "lod": "distant",
+      "samples": 34776,
+      "spikes": 0,
+      "maxStretch": 2.342904746310076,
+      "p99": 1.4658906385436536
+    },
+    {
+      "id": "person_06",
+      "lod": "near",
+      "samples": 350892,
+      "spikes": 0,
+      "maxStretch": 2.8114104178328763,
+      "p99": 1.5263593224768137
+    },
+    {
+      "id": "person_06",
+      "lod": "far",
+      "samples": 93582,
+      "spikes": 0,
+      "maxStretch": 2.3346214164768977,
+      "p99": 1.456359345620285
+    },
+    {
+      "id": "person_06",
+      "lod": "distant",
+      "samples": 34074,
+      "spikes": 0,
+      "maxStretch": 2.2305148380874193,
+      "p99": 1.3889670603147528
+    },
+    {
+      "id": "person_07",
+      "lod": "near",
+      "samples": 358506,
+      "spikes": 3,
+      "maxStretch": 3.0406545231149025,
+      "p99": 1.5887568911697276
+    },
+    {
+      "id": "person_07",
+      "lod": "far",
+      "samples": 94230,
+      "spikes": 2,
+      "maxStretch": 2.5859507294635384,
+      "p99": 1.5300755656473457
+    },
+    {
+      "id": "person_07",
+      "lod": "distant",
+      "samples": 33696,
+      "spikes": 0,
+      "maxStretch": 2.4996619404984926,
+      "p99": 1.4428417072251563
+    },
+    {
+      "id": "person_08",
+      "lod": "near",
+      "samples": 355374,
+      "spikes": 0,
+      "maxStretch": 3.0918673787510764,
+      "p99": 1.5604387030168054
+    },
+    {
+      "id": "person_08",
+      "lod": "far",
+      "samples": 95364,
+      "spikes": 0,
+      "maxStretch": 2.281898572542767,
+      "p99": 1.475028455000798
+    },
+    {
+      "id": "person_08",
+      "lod": "distant",
+      "samples": 35208,
+      "spikes": 0,
+      "maxStretch": 2.22087218755207,
+      "p99": 1.4271828016844736
+    },
+    {
+      "id": "person_09",
+      "lod": "near",
+      "samples": 370116,
+      "spikes": 3,
+      "maxStretch": 3.6363351680257625,
+      "p99": 1.6006484018207527
+    },
+    {
+      "id": "person_09",
+      "lod": "far",
+      "samples": 98280,
+      "spikes": 2,
+      "maxStretch": 2.5518970619114336,
+      "p99": 1.5471360227195756
+    },
+    {
+      "id": "person_09",
+      "lod": "distant",
+      "samples": 35478,
+      "spikes": 3,
+      "maxStretch": 2.927746923828561,
+      "p99": 1.4286993715830283
+    }
+  ]
+}

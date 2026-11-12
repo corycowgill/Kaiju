@@ -6,6 +6,8 @@
 // bascule bridges, landmark massing, props) lives here.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { chicagoGround, chicagoFacade, configureChicagoWear, tickChicagoMaterials } from './chicagoMaterials.js';
+import { createChicagoTrees, planParkGroves } from './chicagoLandscape.js';
 import { isMobile, Q_HIGH } from '../quality.js';
 import { buildHarbor, splashPool } from './chicago_harbor.js';
 import { bakeShoreField, makeWaterMaterial, waterUniforms, swellGrid, waterFX } from './chicago_water.js';
@@ -922,33 +924,6 @@ class Massing {
   }
 }
 
-// Mottled summer-lawn texture (canvas, built once): deep greens with mowing
-// stripes and darker clumps, tiled every 14u
-let _grass = null;
-function _grassTex() {
-  if (_grass) return _grass;
-  const S = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(S, S);
-  for (let y = 0; y < S; y++) {
-    for (let x = 0; x < S; x++) {
-      const stripe = ((x >> 4) & 1) ? 0.06 : -0.02;
-      const clump = 0.5 + 0.5 * Math.sin(x * 0.21 + Math.sin(y * 0.17) * 2.3) * Math.cos(y * 0.19 + x * 0.05);
-      const n = Math.random() * 0.18 + stripe - (clump < 0.25 ? 0.12 : 0);
-      const i = (y * S + x) * 4;
-      img.data[i] = (52 + n * 120) | 0; img.data[i + 1] = (96 + n * 150) | 0; img.data[i + 2] = (40 + n * 80) | 0; img.data[i + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  _grass = new THREE.CanvasTexture(c);
-  _grass.wrapS = _grass.wrapT = THREE.RepeatWrapping;
-  _grass.colorSpace = THREE.SRGBColorSpace;
-  _grass.anisotropy = 4;
-  return _grass;
-}
-
 // --------------- materials (shared by every rebuilt Chicago city) ---------------
 let _M = null;
 function mats() {
@@ -966,21 +941,23 @@ function mats() {
     water: new THREE.MeshStandardMaterial({ color: 0x1a5276, roughness: 0.08, metalness: 0.7, emissive: 0x0a2e42, emissiveIntensity: 0.25 }),
     lake: new THREE.MeshStandardMaterial({ color: 0x24607e, roughness: 0.1, metalness: 0.65, emissive: 0x0c3448, emissiveIntensity: 0.25 }),
     wall: std(0x6a6862, 0.9), path: std(0xb8ad92, 0.95),
-    grass: std(0x7f9a6a, 0.95, 0, { map: _grassTex() }), lawn: std(0x8aa676, 0.95, 0, { map: _grassTex() }),
-    yellow: new THREE.MeshStandardMaterial({ color: 0xf2c230, emissive: 0xd9a820, emissiveIntensity: 0.3, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1 }),
-    whiteLine: new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -1 }),
+    grass: std(0xffffff, 1, 0), lawn: std(0xffffff, 1, 0),
+    yellow: new THREE.MeshStandardMaterial({ color: 0xd7ae48, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1 }),
+    whiteLine: new THREE.MeshStandardMaterial({ color: 0xcac7bd, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1 }),
     curb: std(0x3a3a3c, 1.0), lot: std(0x6c6a66, 0.95),
     ballast: std(0x8a8072, 1.0), gravel: std(0x9a8f7c, 1.0), trackBed: std(0x4a4038, 1.0),
     trainBody: std(0xb9bec4, 0.35, 0.8), trainWin: std(0x223344, 0.3, 0.2, { emissive: 0xffe2aa, emissiveIntensity: 0.9 }),
     trainStripe: std(0x2a4a9a, 0.5, 0.3), railSteel: std(0x3d3226, 0.8, 0.5), deck: std(0x4a4038, 0.85, 0.4),
     bridgeRed: std(0x7a2a24, 0.7, 0.3), bridgeGrey: std(0x5c6066, 0.6, 0.5),
     hull: std(0xf0f0ee, 0.5), hullDark: std(0x24384e, 0.6), canvas: std(0x2b4f7a, 0.8),
-    fountain: std(0xd8b7a6, 0.7), fountainWater: std(0x9fd4ea, 0.1, 0.3, { emissive: 0x6fb8d8, emissiveIntensity: 0.5, transparent: true, opacity: 0.8 }),
+    fountain: std(0xd8b7a6, 0.7), fountainWater: std(0x9fd4ea, 0.38, 0, { emissive: 0x6fb8d8, emissiveIntensity: 0.12, transparent: true, opacity: 0.65 }),
     glassShelter: std(0x9fc2cc, 0.1, 0.4, { transparent: true, opacity: 0.45 }),
     cartYellow: std(0xf0b81e, 0.6), umbrella: std(0xd23a2a, 0.8),
     seawall: std(0x9a958a, 0.9), sand: std(0xd8c79a, 1.0),
     roofCap: std(0x2e2c2a, 0.95), cornice: std(0xb8ae9c, 0.85),
   };
+  chicagoGround(_M.grass,'grass');chicagoGround(_M.lawn,'grass',.18);chicagoGround(_M.path,'pavement');
+  chicagoGround(_M.curb,'pavement',1);chicagoGround(_M.seawall,'pavement',1);
   for (const m of Object.values(_M)) m.userData.shared = true;
   return _M;
 }
@@ -1475,6 +1452,15 @@ export function buildChicago(scene, world, opts, K) {
   K.setBuildingTile(!glb ? 600 : lite ? 440 : 400); // phone LOW: one tile per quadrant; desktop 400 since the street-wall split
   const B = L.bounds;
   const animators = [];
+  const makeParkTree=createChicagoTrees(K,lite,glb);
+  K.onTemplatesReady((sc,get)=>{
+    for(const def of CHICAGO_GENERIC_GLBS)if(_genericOK(def))get(CHI_BASE+def.file)?.traverse(o=>{
+      if(o.isMesh)for(const material of [].concat(o.material))chicagoFacade(material,def.file);
+    });
+  });
+  const surfaceWear=configureChicagoWear(L.fest,L.paths,lite);
+  if(world)world.chicagoSurfaceWear=surfaceWear;
+  animators.push({update(dt,time){tickChicagoMaterials(time);}});
   const STREET_TILE = K.TILE.STREET, SW_TILE = K.TILE.SIDEWALK;
   const ASPHALT_TILE = L.real ? 2 : STREET_TILE;
   // Real-scale map: narrower sidewalks, smaller markings and street furniture
@@ -1643,7 +1629,7 @@ export function buildChicago(scene, world, opts, K) {
     normalScale: new THREE.Vector2(1.4, 1.4), roughnessMap: K.loadDataTex('sidewalk_roughness.jpg', rep, rep),
     aoMap: K.loadDataTex('sidewalk_ao.jpg', rep, rep), aoMapIntensity: 0.8, roughness: 0.9, color: 0xc4bfb6,
   });
-  const swMat = sidewalkMat(1);
+  const swMat = M.path;
   const riverwalkGLB = glb ? _kit('riverwalk') : null;
   if (L.riverwalk.length && riverwalkGLB) {
     // Tiled promenade: river side (+Z) toward the water; vertically squashed
@@ -1717,13 +1703,8 @@ export function buildChicago(scene, world, opts, K) {
   if (L.fest) festClearFence(L.fest, roads);
   const carNet = L.fest ? K.buildRoadNet(festCutRoads(netRoads, L.fest), REAL ? 0.3 : 1.5) : net;
   {
-    const asphalt = roadMat = new THREE.MeshStandardMaterial({
-      map: K.loadTileTex('asphalt_color.jpg', 1, 1), normalMap: K.loadDataTex('asphalt_normal.jpg', 1, 1),
-      normalScale: new THREE.Vector2(0.7, 0.7), roughnessMap: K.loadDataTex('asphalt_roughness.jpg', 1, 1),
-      // The texture averages a cool (125, 134, 156): this tint takes it to a
-      // dark neutral warm grey (~(78, 76, 72) sRGB) under the noon sun
-      aoMap: K.loadDataTex('asphalt_ao.jpg', 1, 1), aoMapIntensity: 0.7, roughness: 0.9, metalness: 0.02, color: 0xa3957a,
-    });
+    const asphalt = roadMat = new THREE.MeshStandardMaterial({roughness:1,metalness:0});
+    chicagoGround(asphalt,'asphalt');
     // Real-scale map: one texture repeat per ASPHALT_TILE (10 m), not Tokyo's
     // 12u (60 m here), whose coarse grain read as gravel at street level
     const uvs = 1 / ASPHALT_TILE;
@@ -2029,7 +2010,7 @@ export function buildChicago(scene, world, opts, K) {
               for (const sd of [-1, 1]) {
                 const tx = pts[0][0] + dx * t - dz * 2.4 * sd, tz = pts[0][1] + dz * t + dx * 2.4 * sd;
                 if (!pointInPoly(tx, tz, p.polygon) || isWater(tx, tz) || onRoad(tx, tz, 1) || onLandmark(tx, tz)) continue;
-                scene.add(K.makeTree(tx, tz, (0.95 + Math.random() * 0.15) * PS));
+                scene.add(makeParkTree(tx, tz, (0.95 + Math.random() * 0.15) * PS));
                 alleeTrees++;
               }
             }
@@ -2053,9 +2034,15 @@ export function buildChicago(scene, world, opts, K) {
       if (!pointInPoly(tx, tz, p.polygon) || isWater(tx, tz)) continue;
       if (p.paths.some((q) => distToPolyline(tx, tz, q.points) < q.width / 2 + 2)) continue;
       if (onRoad(tx, tz, 1.5) || onLandmark(tx, tz)) continue;
-      scene.add(K.makeTree(tx, tz, (0.9 + Math.random() * 0.5) * PS));
+      scene.add(makeParkTree(tx, tz, (0.9 + Math.random() * 0.5) * PS));
     }
   }
+
+  const groves=glb?planParkGroves(L.parks,(x,z,p)=>pointInPoly(x,z,p.polygon)
+    && !isWater(x,z) && !onRoad(x,z,1.5) && !onLandmark(x,z)
+    && !L.paths.some(q=>distToPolyline(x,z,q.points)<q.width/2+1.6),lite):[];
+  for(const tree of groves)scene.add(makeParkTree(tree.x,tree.z,tree.scale*PS));
+  if(world)world.chicagoLandscape={groveTrees:groves.length,treeLods:2};
 
   // ---- Maggie Daley Park (cartographer's geometry): the green roof over
   // the Lakeside Garage. Mounded lawns, the hill inside the skating ribbon,
@@ -2245,6 +2232,37 @@ export function buildChicago(scene, world, opts, K) {
   const addFountainPool = (b, lm) => {
     const R = Math.max(lm.w, lm.d) / 2;
     const g = new THREE.Group();
+    g.name='Buckingham Fountain plaza and gardens';
+    const plazaMat=chicagoGround(new THREE.MeshStandardMaterial(),'pavement');
+    plazaMat.color.setHex(0xd6b9a8);plazaMat.name='Buckingham rose granite plaza';
+    const plaza=new THREE.Mesh(new THREE.CircleGeometry(R*1.68,64).rotateX(-Math.PI/2),plazaMat);
+    plaza.position.y=.061;plaza.receiveShadow=true;g.add(plaza);
+    const edging=new THREE.Mesh(new THREE.RingGeometry(R*1.63,R*1.69,64).rotateX(-Math.PI/2),M.fountain);
+    edging.position.y=.069;g.add(edging);
+    // Formal planting rooms at the diagonal corners leave four generous
+    // access axes open. Merge repeated beds/hedges rather than adding draws.
+    const beds=[],hedges=[],flowers=[],benchSlats=[],benchFrames=[];
+    for(let i=0;i<4;i++) {
+      const a=Math.PI/4+i*Math.PI/2,cx=Math.cos(a)*R*1.37,cz=Math.sin(a)*R*1.37;
+      const bed=new THREE.BoxGeometry(3.5,.12,1.3).rotateY(-a).translate(cx,.13,cz);beds.push(bed);
+      for(const side of [-1,1])hedges.push(new THREE.BoxGeometry(3.6,.43,.26).rotateY(-a).translate(cx-Math.sin(a)*side*.62,.3,cz+Math.cos(a)*side*.62));
+      for(let f=0;f<7;f++) {
+        const t=(f-3)*.44;
+        flowers.push(new THREE.SphereGeometry(.20,6,4).scale(1,.65,1).translate(cx+Math.cos(a)*t,.28,cz+Math.sin(a)*t));
+      }
+      // Benches face the fountain, offset from the principal walking axes.
+      const bx=Math.cos(a+.35)*R*1.52,bz=Math.sin(a+.35)*R*1.52,ry=-a-.35;
+      for(let slat=0;slat<4;slat++) {
+        benchSlats.push(new THREE.BoxGeometry(1.65,.055,.10).translate(0,.53,(slat-1.5)*.12).rotateY(ry).translate(bx,0,bz));
+        benchSlats.push(new THREE.BoxGeometry(1.65,.09,.045).translate(0,.69+slat*.10,-.25).rotateY(ry).translate(bx,0,bz));
+      }
+      for(const side of [-1,1])benchFrames.push(new THREE.BoxGeometry(.065,.52,.53).translate(side*.65,.26,0).rotateY(ry).translate(bx,0,bz));
+    }
+    for(const [parts,color,name] of [[beds,0x50402d,'Fountain planting beds'],[hedges,0x335b35,'Fountain clipped hedges'],[flowers,0xdbb594,'Fountain summer flower borders'],[benchSlats,0x6c766a,'Fountain park bench slats'],[benchFrames,0x303b36,'Fountain park bench frames']]) {
+      if(!glb){for(const part of parts)part.dispose();continue;}
+      const geometry=mergeGeometries(parts);for(const part of parts)part.dispose();
+      const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color,roughness:1}));mesh.name=name;mesh.receiveShadow=true;g.add(mesh);
+    }
     const pool = new THREE.Mesh(new THREE.CircleGeometry(R, 40).rotateX(-Math.PI / 2), M.water);
     pool.position.y = 0.12;
     pool.receiveShadow = true;
@@ -2254,16 +2272,16 @@ export function buildChicago(scene, world, opts, K) {
     g.add(rim);
     // Central jet plus a ring of arcing side jets, breathing up and down
     const jets = [];
-    const jetGeom = new THREE.ConeGeometry(0.35, 1, 8, 1, true).translate(0, 0.5, 0);
+    const jetGeom = new THREE.CylinderGeometry(0.06, 0.16, 1, 8, 1, true).translate(0, 0.5, 0);
     const main = new THREE.Mesh(jetGeom, M.fountainWater);
     main.position.y = lm.h * 0.6;
-    g.add(main); jets.push({ m: main, base: lm.h * 4, ph: 0 });
+    g.add(main); jets.push({ m: main, base: lm.h * 5.4, ph: 0 });
     for (let k = 0; k < 8; k++) {
       const a = k / 8 * Math.PI * 2;
-      const j = new THREE.Mesh(jetGeom, M.fountainWater);
-      j.position.set(Math.cos(a) * R * 0.55, 0.15, Math.sin(a) * R * 0.55);
-      j.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); // lean in toward the centre
-      g.add(j); jets.push({ m: j, base: lm.h * 1.2, ph: k * 0.7 });
+      const point=(r,y)=>new THREE.Vector3(Math.cos(a)*R*r,y,Math.sin(a)*R*r);
+      const arc=new THREE.QuadraticBezierCurve3(point(.55,.15),point(.38,lm.h*2.5),point(.18,.3));
+      const j = new THREE.Mesh(new THREE.TubeGeometry(arc,12,.045,5,false), M.fountainWater);
+      g.add(j); jets.push({ m: j, base: 1, ph: k * 0.7 });
     }
     b.group.add(g);
     animators.push({
@@ -2529,7 +2547,7 @@ export function buildChicago(scene, world, opts, K) {
   // its ringside crowd go in after the festival (they share its crowdHit).
   const ring = opts.mode === 'wrestling';
   const festF = L.fest && ring ? { ...L.fest, items: L.fest.items.filter((it) => !arenaDisplaces(it)) } : L.fest;
-  if (festF) buildFest(scene, festF, { K, buildings, grid, animators, world, lite, glb, addBatch, polygonGeom, M, S: L.scale || 0.2, ring });
+  if (festF) buildFest(scene, festF, { K, buildings, grid, animators, world, lite, glb, addBatch, polygonGeom, M, isWater, bounds: B, S: L.scale || 0.2, ring });
   if (ring) buildArena(scene, world, { lite, glb, animators, grid, inside: L.fest ? (x, z) => festInside(L.fest, x, z) : null });
 
   const bodiesIM = K.buildGlobalBodies(scene, buildings);
@@ -2732,7 +2750,7 @@ export function buildChicago(scene, world, opts, K) {
         // Sidewalk trees on the other side, sparser
         if (!lite && Math.random() < 0.45) {
           const tx = net.nodes[e.a].x + e.dx * (t + lampEvery / 2) + e.dz * off, tz = net.nodes[e.a].z + e.dz * (t + lampEvery / 2) - e.dx * off;
-          if (t + lampEvery / 2 < e.len - 6 && !isWater(tx, tz) && !onFest(tx, tz)) scene.add(K.makeTree(tx, tz, (0.75 + Math.random() * 0.3) * PS));
+          if (t + lampEvery / 2 < e.len - 6 && !isWater(tx, tz) && !onFest(tx, tz)) scene.add(makeParkTree(tx, tz, (0.75 + Math.random() * 0.3) * PS));
         }
       }
     }

@@ -53,6 +53,7 @@ export class Effect {
         }
       }
       // Free the per-spawn geometry (module-level G_* stay; see markShared).
+      this.mesh?.removeFromParent();
       disposeInstance(this.mesh);
       this.dead = true;
       return;
@@ -60,6 +61,14 @@ export class Effect {
     const t = 1 - this.life / this.maxLife;
     this.update(dt, t, this);
   }
+}
+
+// Retiring an effect must run its final callback: several power effects own
+// sibling meshes that cannot be reached through their proxy/primary mesh.
+export function finishEffect(effect) {
+  if (!effect || effect.dead) return;
+  effect.life = 0;
+  effect.tick(0);
 }
 
 // Pre-built shared geometry for the explosion ground-shockwave ring (a flat
@@ -538,7 +547,14 @@ export function _makeMissileSwarmLegacy(world, origin, radius = 60, count = 8) {
     world.scene.add(trail);
     const vel = new THREE.Vector3(vx, vy, vz);
     let timeLeft = T + 0.05;
-    world.effects.push(new Effect(m, T + 0.1, (dt, t) => {
+    world.effects.push(new Effect(m, T + 0.1, (dt, t, effect) => {
+      // Budget retirement / expiry must remove the sibling trail even if
+      // the flight timer has not reached impact yet.
+      if (t >= 1) {
+        m.removeFromParent(); trail.removeFromParent();
+        trail.material.dispose();
+        return;
+      }
       timeLeft -= dt;
       vel.y -= g * dt;
       m.position.addScaledVector(vel, dt);
@@ -551,6 +567,7 @@ export function _makeMissileSwarmLegacy(world, origin, radius = 60, count = 8) {
       trail.material.opacity = 0.9 * (1 - t * 0.6);
       trail.scale.setScalar(0.5 + t * 1.2);
       if (timeLeft <= 0 || m.position.y <= 0.4) {
+        effect.life = 0;
         world.scene.remove(m); world.scene.remove(trail);
         // Explode where we landed
         world.spawnExplosion?.(m.position.clone().setY(0.5), 0.7);

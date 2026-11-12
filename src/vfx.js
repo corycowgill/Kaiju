@@ -12,6 +12,7 @@
 // degrades gracefully on failure.
 
 import * as THREE from 'three';
+import { powerBuilders } from './powerVfx.js';
 import { QUALITY_PROFILE, LEGACY_VFX, Q_HIGH, isMobile } from './quality.js';
 import { disposeInstance, markShared, warnOnce, reportLoadError } from './assetCache.js';
 
@@ -151,6 +152,7 @@ class VFXEffect {
           warnOnce('vfx-cleanup|' + where + (e && e.message), '[vfx] final cleanup threw (meshes may leak):', e);
         }
         // Free the per-spawn geometry (module-level _G_* stay; see markShared).
+        this.mesh?.removeFromParent();
         disposeInstance(this.mesh);
       }
       this.dead = true;
@@ -2259,7 +2261,7 @@ const _ARC_FS = `
     // Sheet loaded with flipY=false: v=0 is the top row.
     float I = texture2D(map, vec2(vUv.x, (row + vUv.y) / 8.0)).r;
     if (I < 0.004) discard;
-    vec3 col = boltColor * I * 3.0 + vec3(smoothstep(0.55, 1.0, I)) * 2.4;
+    vec3 col = boltColor * I * 1.6 + vec3(smoothstep(0.65, 1.0, I)) * .65;
     gl_FragColor = vec4(col * fade, 1.0);
   }
 `;
@@ -2301,7 +2303,7 @@ function _spawnArcRibbon(world, curve, len, color, life, segs, restrike) {
   const layers = [];
   // Widths scale with arc length so long beam-length bolts stay readable
   // from the chase cam (core / halo).
-  for (const [w, dim] of [[Math.min(9, 4.0 + len * 0.04), 1.0], [Math.min(16, 8 + len * 0.06), 0.5]]) {
+  for (const [w, dim] of [[Math.min(1.4, .35 + len * .008), 1.0], [Math.min(3, .8 + len * .012), .22]]) {
     const mat = _matGet('arc', () => new THREE.ShaderMaterial({
       uniforms: {
         map: { value: null },
@@ -2377,6 +2379,12 @@ export function registerLegacyEffects(legacy) {
   // No legacy beam-impact effect existed; a coloured hit pulse stands in.
   registerBuilder('beamImpact', (opts) => (legacy._makeHitPulseLegacy || legacy.makeHitPulse)(
     opts.world, opts.pos, opts.color));
+  registerBuilder('weaponTracer', o=>(legacy._makeBeamLegacy || legacy.makeBeam)(o.world,o.origin,o.dir,o.length,0xffbc67,0xffdfaa));
+  registerBuilder('ballisticImpact', o=>(legacy._makeSparksLegacy || legacy.makeSparks)(o.world,o.pos,8));
+  registerBuilder('kaijuCharge', o=>{
+    const pos=new THREE.Vector3();o.source.getWorldPosition(pos);
+    return (legacy._makeHitPulseLegacy || legacy.makeHitPulse)(o.world,pos,0x77d9ff);
+  });
   registerBuilder('atomicDome',         wrapPosArgs(legacy._makeAtomicDomeLegacy || legacy.makeAtomicDome));
   registerBuilder('atomicDevastation',  wrapPosArgs(legacy._makeAtomicDevastationLegacy || legacy.makeAtomicDevastation));
   registerBuilder('soundRings',         wrapPosArgs(legacy._makeSoundWaveRingsLegacy || legacy.makeSoundWaveRings));
@@ -2462,6 +2470,14 @@ function _registerUpgradedBuilders() {
 export function registerAllBuilders(legacy) {
   registerLegacyEffects(legacy);
   _registerUpgradedBuilders();
+  if (!LEGACY_VFX) {
+    for (const [name, builder] of Object.entries(powerBuilders(name => _flipTex[name], _placeScorch, (world,pos,scale)=>{
+      const light=_acquireLight(world.scene),seq=(light._seq=(light._seq||0)+1);
+      light.position.copy(pos);light.color.setHex(0xffb468);light.distance=22*scale;
+      return {update(age){if(light._seq===seq)light.intensity=5*scale*Math.exp(-age*12);},
+        dispose(){if(light._seq===seq)light.intensity=0;}};
+    }))) registerBuilder(name, builder);
+  }
 }
 
 const vfx = {

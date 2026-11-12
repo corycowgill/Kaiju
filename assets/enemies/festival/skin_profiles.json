@@ -1,0 +1,203 @@
+{
+  "method": "anatomy-constrained smooth weights; rigid low-poly hands",
+  "profiles": [
+    {
+      "id": "person_01",
+      "torsoHalfWidth": 0.17,
+      "pelvisFit": "standard",
+      "lods": [
+        {
+          "lod": "near",
+          "vertices": 3197,
+          "influences": 5453
+        },
+        {
+          "lod": "far",
+          "vertices": 944,
+          "influences": 1603
+        },
+        {
+          "lod": "distant",
+          "vertices": 365,
+          "influences": 617
+        }
+      ]
+    },
+    {
+      "id": "person_02",
+      "torsoHalfWidth": 0.17,
+      "pelvisFit": "standard",
+      "lods": [
+        {
+          "lod": "near",
+          "vertices": 3532,
+          "influences": 5936
+        },
+        {
+          "lod": "far",
+          "vertices": 1135,
+          "influences": 1913
+        },
+        {
+          "lod": "distant",
+          "vertices": 433,
+          "influences": 739
+        }
+      ]
+    },
+    {
+      "id": "person_03",
+      "torsoHalfWidth": 0.17616,
+      "pelvisFit": "standard",
+      "lods": [
+        {
+          "lod": "near",
+          "vertices": 3453,
+          "influences": 5809
+        },
+        {
+          "lod": "far",
+          "vertices": 1004,
+          "influences": 1661
+        },
+        {
+          "lod": "distant",
+          "vertices": 427,
+          "influences": 752
+        }
+      ]
+    },
+    {
+      "id": "person_04",
+      "torsoHalfWidth": 0.17165,
+      "pelvisFit": "standard",
+      "lods": [
+        {
+          "lod": "near",
+          "vertices": 3582,
+          "influences": 6133
+        },
+        {
+          "lod": "far",
+          "vertices": 953,
+          "influences": 1636
+        },
+        {
+          "lod": "distant",
+          "vertices": 378,
+          "influences": 643
+        }
+      ]
+    },
+    {
+      "id": "person_05",
+      "torsoHalfWidth": 0.19371,
+      "pelvisFit": "broad shirt hem",
+      "lods": [
+        {
+          "lod": "near",
+          "vertices": 3342,
+          "influences": 5896
+        },
+        {
+          "lod": "far",
+          "vertices": 958,
+          "influences": 1671
+        },
+        {
+          "lod": "distant",
+          "vertices": 405,
+          "influences": 712
+        }
+      ]
+    },
+    {
+      "id": "person_06",
+      "torsoHalfWidth": 0.17,
+      "pelvisFit": "standard",
+      "lods": [
+        {
+          "lod": "near",
+          "vertices": 3163,
+          "influences": 5325
+        },
+        {
+          "lod": "far",
+          "vertices": 891,
+          "influences": 1459
+        },
+        {
+          "lod": "distant",
+          "vertices": 377,
+          "influences": 640
+        }
+      ]
+    },
+    {
+      "id": "person_07",
+      "torsoHalfWidth": 0.17246,
+      "pelvisFit": "standard",
+      "lods": [
+        {
+          "lod": "near",
+          "vertices": 3362,
+          "influences": 5614
+        },
+        {
+          "lod": "far",
+          "vertices": 908,
+          "influences": 1513
+        },
+        {
+          "lod": "distant",
+          "vertices": 366,
+          "influences": 600
+        }
+      ]
+    },
+    {
+      "id": "person_08",
+      "torsoHalfWidth": 0.17,
+      "pelvisFit": "standard",
+      "lods": [
+        {
+          "lod": "near",
+          "vertices": 3279,
+          "influences": 5587
+        },
+        {
+          "lod": "far",
+          "vertices": 946,
+          "influences": 1567
+        },
+        {
+          "lod": "distant",
+          "vertices": 413,
+          "influences": 695
+        }
+      ]
+    },
+    {
+      "id": "person_09",
+      "torsoHalfWidth": 0.17378,
+      "pelvisFit": "standard",
+      "lods": [
+        {
+          "lod": "near",
+          "vertices": 3530,
+          "influences": 6105
+        },
+        {
+          "lod": "far",
+          "vertices": 1020,
+          "influences": 1770
+        },
+        {
+          "lod": "distant",
+          "vertices": 426,
+          "influences": 711
+        }
+      ]
+    }
+  ]
+}

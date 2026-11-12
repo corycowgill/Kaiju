@@ -196,6 +196,16 @@
   @keyframes chipPop { 0% { transform: scale(0.92); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
 
   /* Boss bar (centre column, above the chip) */
+  #grapple-prompt { font:clamp(14px,2vw,20px) var(--f-display); letter-spacing:.08em; color:#ffe5a2; text-align:center; margin-top:6px; text-shadow:0 2px 4px #000; }
+  #vs-controls-hint { color:#d4e2ef; font:12px var(--f-display); text-align:center; margin-top:5px; }
+  #vs-moves { position:fixed; display:flex; gap:6px; z-index:13; pointer-events:auto;
+    left:calc(var(--safe-l) + var(--sp-3) + 55px);
+    bottom:calc(var(--safe-b) + var(--sp-3) + var(--joy) + var(--sp-3)); }
+  #vs-moves[hidden] { display:none; }
+  #vs-moves button { touch-action:none; min-width:52px; height:48px; border:1px solid #e9bd73; border-radius:12px;
+    background:#40151fe8; color:#fff1d1; font:14px var(--f-display); }
+  #vs-warning { color:#ffca8a; font:clamp(12px,2vw,17px) var(--f-display); letter-spacing:.08em; margin-top:5px; }
+  #vs-menu-help { font-size:13px; color:#e5c7ae; margin:6px 8px; }
   #boss-bar { display: none; width: clamp(200px, 40vw, 520px); }
   #boss-name { text-align: center; font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 5px; color: #ff5566; margin-bottom: 3px; }
   .boss-track { height: clamp(8px, 1.6vmin, 14px); background: rgba(30, 0, 0, 0.6); border: var(--stroke-hot); border-radius: var(--r-pill); overflow: hidden; box-shadow: var(--glow); }
@@ -626,6 +636,7 @@
     display: flex; justify-content: space-between;
     border-bottom: 1px solid rgba(255,255,255,0.06);
   }
+  #gameover .stats-row[hidden] { display:none; }
   #gameover .stats-row b { color: #ffcc66; font-size: 19px; }
   #gameover .stats-divider {
     width: 60%; height: 1px; margin: 12px auto;
@@ -860,7 +871,8 @@
     #gameover .stats-grid { gap: 0 36px; margin: 4px auto; max-width: 480px; }
     #gameover .stats-row { gap: 12px; }
     #gameover .stats-row { font-size: 13px; padding: 2px 0; }
-    #gameover .stats-row b { font-size: 14px; }
+    #gameover .stats-row[hidden] { display:none; }
+  #gameover .stats-row b { font-size: 14px; }
     #gameover .stats-divider { margin: 4px auto; }
     /* body-prefixed: these base rules come later in the sheet */
     body #upgrade-modal { gap: 10px; }
@@ -964,17 +976,6 @@
     from { opacity: 1; }
     to   { opacity: 0; transform: translateX(-12px); }
   }
-
-  /* Score popup */
-  .popup {
-    position: absolute; left: 0; top: 0;
-    transform: translate(-50%, -50%);
-    font-weight: bold; font-size: 24px;
-    color: #ffee66; text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
-    white-space: nowrap;
-    will-change: transform, opacity;
-  }
-  body.mobile .popup { font-size: 18px; }
 
   /* Low HP pulsing red vignette */
   #lowhp-warning.active {
@@ -1091,7 +1092,7 @@
   /* START prewarm (_prewarmHUD): the in-play HUD drawn once, near-invisible,
      above the opaque loading screen so its raster pipelines compile there */
   body.hud-prewarm #hud, body.hud-prewarm #powers, body.hud-prewarm #mobile-ui > *, body.hud-prewarm #message,
-  body.hud-prewarm #wave-banner, body.hud-prewarm #popups, body.hud-prewarm #upgrade-modal, body.hud-prewarm #pause-menu,
+  body.hud-prewarm #wave-banner, body.hud-prewarm #upgrade-modal, body.hud-prewarm #pause-menu,
   body.hud-prewarm #damage-flash, body.hud-prewarm #lowhp-warning, body.hud-prewarm #dmg-indicators {
     opacity: 0.01 !important; z-index: 300 !important; pointer-events: none !important;
   }
@@ -1639,6 +1640,133 @@
     .wr-side.crit .wr-hp .fill, .wr-side.full .wr-mom span, #wr-mash.on .t, .wr-tb.cue::after, .wr-ts.cue::after, #wr-belt, #wr-belt .shine { animation: none !important; }
     .wr-hp .ghost, .wr-hp .fill, .wr-sta i, .wr-mom .track i, #wr-top, .wr-lb, #wr-ticker { transition: none; }
   }
+  .deployment-options { display:flex; gap:var(--sp-4); justify-content:center; margin:var(--sp-4) auto; flex-wrap:wrap; max-width:720px; width:90%; }
+  .deployment-field { display:flex; flex:1; min-width:230px; flex-direction:column; gap:8px; text-align:left; }
+  .deployment-field[hidden] { display:none; }
+  .deployment-field span { font:14px var(--f-display); color:var(--c-gold); letter-spacing:3px; }
+  .deployment-field select { width:100%; min-height:48px; padding:12px 38px 12px 16px; appearance:none; color:var(--c-cream); border:1px solid #81404b; border-radius:4px; background:linear-gradient(135deg,#22070e,#100409); font:20px var(--f-display); letter-spacing:1.5px; cursor:pointer; color-scheme:dark; }
+  .deployment-field select:hover { border-color:var(--c-red-hi); box-shadow:var(--glow); }
+  .deployment-field select:focus-visible { outline:2px solid var(--c-gold); outline-offset:3px; }
+  .deployment-field { position:relative; }
+  .deployment-field::after { content:'⌄'; color:var(--c-gold); position:absolute; right:15px; bottom:11px; pointer-events:none; }
+  .deployment-field option { background:#1a070d; color:var(--c-cream); }
+  #lone-menu-help { color:var(--c-muted); font-size:var(--fs-body); max-width:650px; margin:0 auto 16px; padding:0 18px; }
+  #lone-hud { position:fixed; inset:0; pointer-events:none; z-index:8; color:var(--c-cream); font-family:var(--f-display); text-shadow:var(--txt-outline); }
+  .lone-panel { background:var(--glass-strong); border:var(--stroke); border-top:2px solid var(--c-red-hi); border-radius:var(--r); padding:12px 16px; }
+  #lone-status { position:absolute; top:var(--safe-t); left:var(--safe-l); font-size:var(--fs-value); letter-spacing:1.5px; max-width:30%; }
+  #lone-target { position:absolute; top:var(--safe-t); left:35%; width:40%; font-size:var(--fs-value); letter-spacing:2px; }
+  .lone-health-track { height:7px; background:#2c1420; margin-top:7px; border-radius:3px; overflow:hidden; }
+  .lone-health-fill { height:100%; background:linear-gradient(90deg,var(--c-red),#ff8866); transition:width .1s; }
+  .lone-warning { color:var(--c-gold); font-size:var(--fs-cap); letter-spacing:2px; min-height:16px; margin-top:4px; }
+  .lone-crosshair { position:absolute; left:50%; top:50%; width:18px; height:18px; transform:translate(-50%,-50%); }
+  .lone-crosshair::before,.lone-crosshair::after { content:''; position:absolute; background:var(--c-cream); box-shadow:0 0 3px #000; }
+  .lone-crosshair::before { left:8px; top:0; width:2px; height:18px; }
+  .lone-crosshair::after { left:0; top:8px; width:18px; height:2px; }
+  .lone-controls { position:absolute; bottom:var(--safe-b); left:var(--safe-l); color:var(--c-muted); font:var(--fs-cap) var(--f-jp); line-height:1.8; letter-spacing:.4px; }
+  .lone-infantry-actions { display:none; position:absolute; right:140px; bottom:130px; gap:10px; pointer-events:auto; }
+  .lone-infantry-actions button { color:var(--c-gold); background:var(--glass-strong); border:var(--stroke); border-radius:var(--r); padding:14px; touch-action:none; }
+  body.touch .lone-infantry-actions { display:flex; }
+  @media(max-width:700px) { #lone-status { max-width:42%; font-size:14px; } #lone-target { left:auto; right:var(--safe-r); width:48%; font-size:16px; } .lone-controls { max-width:90%; font-size:10px; } }
+  /* Deployment stays reachable while the choices above it scroll. */
+  #menu { justify-content:flex-start; padding-top:max(18px,env(safe-area-inset-top)); padding-bottom:120px; }
+  #menu > * { flex-shrink:0; }
+  #menu h1 { font-size:clamp(40px,7.5vh,72px); margin-top:0; }
+  #menu h2 { margin:12px 0; }
+  #menu .deployment-options { margin:12px auto; }
+  #menu .monster-card { width:220px; padding:14px; }
+  #menu .monster-card .preview { height:100px; margin-bottom:8px; }
+  #menu .monster-card h3 { font-size:23px; }
+  #menu.soldier-deployment .monster-card .stat { display:none; }
+  #menu > .deployment-bar { position:fixed; left:0; right:0; bottom:0; z-index:103; display:flex; justify-content:center; align-items:center; gap:24px; padding:12px max(18px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)); background:linear-gradient(#18050bea,#090205); border-top:1px solid #70404a; }
+  #deployment-selection { max-width:260px; color:var(--c-muted); font:14px var(--f-display); letter-spacing:1.2px; }
+  #menu .deployment-bar .start-btn { margin:0; min-height:48px; padding:12px 28px; font-size:24px; letter-spacing:4px; }
+  @media(max-height:650px) {
+    #menu { padding-top:8px; padding-bottom:82px; gap:4px; }
+    #menu h1 { font-size:30px; line-height:1; }
+    #menu h2 { font-size:10px; margin:2px 0 4px; padding:2px 8px; }
+    #menu .levels { margin:0; }
+    #menu .level-card { padding:3px 18px; }
+    #menu .level-card b { font-size:14px; }
+    #menu .level-card > span,#highscore-display,#menu .studio,#menu .menu-hint,#lone-menu-help,#vs-menu-help,#menu .starring,#menu #trailerBtn { display:none; }
+    #menu .deployment-options { margin:4px auto; gap:10px; flex-wrap:nowrap; }
+    #menu .deployment-field { min-width:0; gap:3px; }
+    #menu .deployment-field span { font-size:10px; letter-spacing:1px; }
+    #menu .deployment-field select { min-height:34px; padding:6px 26px 6px 10px; font-size:15px; }
+    #menu .deployment-field::after { bottom:6px; }
+    #menu .monsters { flex-wrap:nowrap; gap:10px; }
+    #menu .monster-card { flex:1; width:180px; max-width:30vw; padding:6px 8px; }
+    #menu .monster-card .preview { height:48px; margin-bottom:3px; }
+    #menu .monster-card h3 { font-size:15px; margin-bottom:0; }
+    #menu .monster-card p,#menu .monster-card .stat { display:none; }
+    #menu > .deployment-bar { gap:16px; padding-top:8px; }
+    #menu .deployment-bar .start-btn { min-height:44px; font-size:17px; padding:8px 20px; }
+    #deployment-selection { font-size:12px; max-width:170px; }
+  }
+  @media(max-width:520px) { #deployment-selection { display:none; } #menu .deployment-bar .start-btn { width:90%; } }
+
+  /* Soldier information stays distinct from the kaiju power HUD. */
+  #lone-status { display:flex; align-items:center; gap:16px; max-width:none; padding:9px 12px; letter-spacing:1px; }
+  .lone-unit { color:var(--c-muted); font-size:14px; }
+  .lone-vital { display:flex; align-items:baseline; gap:7px; white-space:nowrap; }
+  .lone-vital small { font-size:11px; color:var(--c-muted); }
+  .lone-vital b { font-size:26px; font-variant-numeric:tabular-nums; }
+  #lone-pause { pointer-events:auto; background:transparent; border:1px solid #967451; border-radius:50%; color:var(--c-gold); width:36px; height:36px; font-size:18px; touch-action:manipulation; cursor:pointer; }
+  #lone-target { left:50%; transform:translateX(-50%); width:min(320px,34vw); padding:9px 12px; letter-spacing:1px; font-size:17px; }
+  .lone-target-head { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  #lone-distance { font-size:13px; color:var(--c-muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .lone-health-track { height:5px; margin-top:5px; }
+  .lone-health-fill { height:100%; width:100%; transform-origin:left; transition:transform .12s; }
+  .lone-warning { min-height:0; margin-top:0; font-size:12px; }
+  .lone-warning:not(:empty) { margin-top:5px; }
+  #lone-ammo { position:absolute; right:var(--safe-r); bottom:var(--safe-b); text-align:right; min-width:100px; padding:10px 14px; }
+  #lone-ammo > small { font-size:11px; color:var(--c-muted); letter-spacing:2px; }
+  #lone-ammo-count { font-size:36px; line-height:1.1; font-variant-numeric:tabular-nums; }
+  #lone-mag-size { color:var(--c-muted); font-size:16px; }
+  #lone-weapon-state { display:block; min-height:16px; color:var(--c-gold); font-size:12px; letter-spacing:1px; }
+  #lone-bearing { position:absolute; top:90px; left:50%; transform:translateX(-50%); padding:6px 12px; border-radius:16px; color:var(--c-gold); background:#160d0ce6; font-size:13px; letter-spacing:1px; }
+  #lone-hud.critical #lone-status { border-color:var(--c-red-hi); color:#ffb49e; }
+  .lone-vehicle-actions { display:none; }
+  body.touch .lone-controls { display:none; }
+  body.touch #lone-status { padding:6px 8px; gap:10px; }
+  body.touch .lone-unit { font-size:11px; }
+  body.touch .lone-vital b { font-size:22px; }
+  body.touch #lone-target { width:28vw; font-size:14px; padding:6px 10px; }
+  body.touch #lone-ammo { bottom:calc(var(--safe-b) + 102px); padding:7px 10px; min-width:80px; }
+  body.touch #lone-ammo-count { font-size:28px; }
+  body.touch .lone-infantry-actions,body.touch .lone-vehicle-actions { display:flex; position:absolute; right:calc(var(--safe-r) + 104px); bottom:calc(var(--safe-b) + 12px); gap:8px; pointer-events:auto; }
+  body.touch .lone-infantry-actions button,body.touch .lone-vehicle-actions button { width:54px; min-height:48px; padding:6px; touch-action:none; color:var(--c-gold); background:#231917ed; border:1px solid #947249; border-radius:8px; font:13px var(--f-display); }
+  body.lone-mode #attack-btn { font-size:21px; }
+  body.lone-helicopter #sprint-btn { display:none; }
+
+  .menu-extras { display:flex; flex-wrap:wrap; justify-content:center; gap:10px; }
+  #model-gallery { box-sizing:border-box; width:min(920px, calc(100vw - 24px)); max-height:calc(100dvh - 24px);
+    margin:auto; padding:18px; background:#10141b; color:#f2e5d5; border:1px solid #785045; border-radius:12px; }
+  #model-gallery::backdrop { background:rgba(7,9,13,.82); }
+  .menu-extras .pad-focus { outline:2px solid #ffd166; outline-offset:3px; }
+  .gallery-header, .gallery-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .gallery-header { justify-content:space-between; margin-bottom:10px; }
+  .gallery-header h2, .gallery-details h3 { margin:0; letter-spacing:.04em; }
+  #model-gallery button, #model-gallery select { min-height:40px; border:1px solid #785045; border-radius:5px;
+    background:#25232a; color:#fff2e1; padding:6px 12px; font:inherit; }
+  #model-gallery button { cursor:pointer; }
+  #model-gallery :focus-visible { outline:2px solid #ffb472; outline-offset:2px; }
+  .gallery-tools select { min-width:0; flex:1 1 200px; }
+  .gallery-viewport { position:relative; height:clamp(180px, 52dvh, 500px); margin-top:10px;
+    overflow:hidden; border-radius:8px; background:#141b24; }
+  .gallery-viewport canvas { width:100%; height:100%; display:block; touch-action:none; }
+  #gallery-status { position:absolute; inset:0; display:grid; place-items:center; text-align:center; padding:12px; pointer-events:none; }
+  #gallery-status:empty { display:none; }
+  .gallery-details { margin:12px 0 0; }
+  .gallery-details p { margin:6px 0; line-height:1.4; }
+  .gallery-hint { color:#c0b2a6; font-size:.85rem; }
+  @media (max-height:520px) and (orientation:landscape) {
+    #model-gallery { padding:10px; }
+    .gallery-content { display:grid; grid-template-columns:minmax(0,1.85fr) minmax(0,1fr);
+      align-items:center; gap:14px; margin-top:10px; }
+    .gallery-viewport { height:clamp(140px, calc(100dvh - 138px), 260px); margin:0; }
+    .gallery-details { margin:0; }
+    #model-gallery button, #model-gallery select { min-height:34px; }
+  }
 </style>
 </head>
 <body>
@@ -1678,14 +1806,12 @@
 <div id="dmg-indicators" style="position:fixed; inset:0; pointer-events:none; z-index:10; overflow:hidden;"></div>
 <div id="lowhp-warning" style="position:fixed; inset:0; pointer-events:none; z-index:9; will-change:opacity; box-shadow:inset 0 0 120px 60px #ff0033; opacity:0;"></div>
 
-<!-- Floating score popup container -->
-<div id="popups" style="position:fixed; inset:0; pointer-events:none; z-index:8; overflow:hidden;"></div>
-
 <!-- Mobile touch controls (body.touch) -->
 <div id="mobile-ui">
   <div id="joy-zone" class="hidden"></div>
   <div id="joystick" class="hidden"><div class="knob"></div></div>
   <div id="attack-btn" class="hidden" role="button" aria-label="Smash">SMASH<small>撃</small></div>
+  <div id="vs-moves" hidden><button type="button" id="vs-grab">GRAB</button><button type="button" id="vs-kick">KICK</button></div>
   <div id="sprint-btn" class="hidden" role="button" aria-label="Run toggle">RUN</div>
 </div>
 <!-- Title match touch controls (body.touch + wrestling mode; shown by src/wrestling/hud.js, bound by input.js) -->
@@ -1709,10 +1835,20 @@
   <h2 id="levelTitle"><span class="jp-line">東京破壊</span>TOKYO DESTRUCTION</h2>
   <div class="levels" id="levelCards"></div>
   <div id="highscore-display"></div>
+  <div class="deployment-options">
+    <label class="deployment-field"><span>MODE · 作戦</span><select id="game-mode"><option value="havoc">Kaiju Havoc</option><option value="vs">VS · Kaiju Duel</option><option value="lone">Lone Soldier · First Person</option></select></label>
+    <label class="deployment-field" id="vs-rival-label" hidden><span>AI RIVAL</span><select id="vs-rival"><option value="">Choose automatically</option></select></label>
+    <label class="deployment-field" id="lone-role-label" hidden><span>DEPLOY AS · 部隊</span><select id="lone-role"><option value="infantry">Infantry · Rifle</option><option value="tank">Tank · Cannon</option><option value="helicopter">Helicopter · Autocannon</option></select></label>
+  </div>
+  <p id="vs-menu-help" hidden>Two Kaiju Enter, One Kaiju Leaves. Punch, grapple, and throw your rival through the city.</p>
+  <p id="lone-menu-help" hidden>Defend the city against an AI Kaiju. Choose your Kaiju opponent below.</p>
   <div class="starring">STARRING · 出演</div>
   <div class="monsters" id="monsterCards"></div>
-  <button class="start-btn" id="startBtn" disabled>UNLEASH HAVOC</button>
-  <button class="trailer-btn" id="trailerBtn" type="button">▶ WATCH TRAILER</button>
+  <div class="deployment-bar"><span id="deployment-selection">CHOOSE YOUR KAIJU</span><button class="start-btn" id="startBtn" disabled>UNLEASH HAVOC</button></div>
+  <div class="menu-extras">
+    <button class="trailer-btn" id="trailerBtn" type="button">▶ WATCH TRAILER</button>
+    <button class="trailer-btn" id="galleryBtn" type="button">MODEL GALLERY</button>
+  </div>
   <p class="menu-hint" style="margin-top:14px; color:#888; font-size:12px;">WASD MOVE · MOUSE LOOK · LMB ATTACK · 1-3 POWERS · SPACE STOMP<br>← → / D-PAD to navigate · ENTER / A to confirm · START to launch</p>
   <div id="quality-picker" style="margin-top:8px; font-size:11px; color:#aa9988; letter-spacing:3px; display:flex; gap:8px; justify-content:center; align-items:center;">
     <span style="opacity:0.7;">QUALITY · 画質</span>
@@ -1722,6 +1858,27 @@
   </div>
   <div class="studio">PRESENTED BY · <b>HALLUCINATED GAMES</b> · ハルシネイテッド ゲームズ</div>
 </div>
+
+<dialog id="model-gallery" aria-labelledby="gallery-heading">
+  <div class="gallery-header">
+    <h2 id="gallery-heading">Model Gallery</h2>
+    <form method="dialog"><button type="submit" aria-label="Close gallery">Close</button></form>
+  </div>
+  <div class="gallery-tools">
+    <button type="button" data-gallery-step="-1" aria-label="Previous model">←</button>
+    <select id="gallery-model" aria-label="Choose a model"></select>
+    <button type="button" data-gallery-step="1" aria-label="Next model">→</button>
+    <label><input type="checkbox" id="gallery-spin" checked> Auto-rotate</label>
+  </div>
+  <div class="gallery-content">
+    <div class="gallery-viewport"><div id="gallery-status" role="status">Loading gallery…</div></div>
+    <div class="gallery-details">
+      <h3 id="gallery-name"></h3>
+      <p id="gallery-description"></p>
+      <p class="gallery-hint">Drag to rotate. Scroll or pinch to zoom.</p>
+    </div>
+  </div>
+</dialog>
 
 <!-- HUD: vitals | boss bar + objective chip + toasts | stats + menu + minimap -->
 <div id="hud" class="hidden">
@@ -1742,6 +1899,9 @@
     <div id="boss-bar">
       <div id="boss-name">&#9888;&#xFE0E; MEGA-MECH ZX &#9888;&#xFE0E;</div>
       <div class="boss-track"><div id="boss-hp"></div></div>
+      <div id="vs-warning" role="status" hidden></div>
+      <div id="grapple-prompt" role="status" hidden></div>
+      <div id="vs-controls-hint" hidden>E / D-pad ↑ Grab, Slam, Break · F / D-pad ↓ Dropkick</div>
     </div>
     <div id="wave-objective">
       <span class="obj-tag">目標</span>
@@ -1755,7 +1915,7 @@
     <div id="stats">
       <div class="label">SCORE <span class="jp-sub">得点</span></div>
       <div id="score">0</div>
-      <div class="stat-line"><span class="label">WAVE <span class="jp-sub">波</span></span><b id="waveText">1</b><span class="label">· <b id="bldText">0</b> RAZED</span></div>
+      <div class="stat-line"><span id="wave-label" class="label">WAVE <span class="jp-sub">波</span></span><b id="waveText">1</b><span id="vs-hud-tag" class="label" hidden>VS</span><span class="label">· <b id="bldText">0</b> RAZED</span></div>
       <div id="combo"><div class="combo-track"><div id="combo-bar"></div></div><span id="combo-mult">x1.0</span></div>
     </div>
     <button id="pause-btn" class="hud-btn" type="button" title="Pause (Esc)" aria-label="Pause menu"><i></i><i></i></button>
@@ -1901,7 +2061,7 @@
   <div class="stats-divider"></div>
   <div class="stats-grid">
     <div class="stats-row"><span>High Score</span> <b id="goHighScore">0</b></div>
-    <div class="stats-row"><span>Waves Survived</span> <b id="finalWave">0</b></div>
+    <div class="stats-row"><span id="finalWaveLabel">Waves Survived</span> <b id="finalWave">0</b></div>
     <div class="stats-row"><span>Buildings Razed</span> <b id="finalBuildings">0</b></div>
     <div class="stats-row"><span>Military Destroyed</span> <b id="finalTanks">0</b></div>
     <div class="stats-row"><span>Civilians Trampled</span> <b id="finalCivs">0</b></div>
@@ -2001,28 +2161,66 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.11.112",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.11.112",
-    "./src/audio.js": "./src/audio.js?v=1.11.112",
-    "./src/city.js": "./src/city.js?v=1.11.112",
-    "./src/effects.js": "./src/effects.js?v=1.11.112",
-    "./src/carBatch.js": "./src/carBatch.js?v=1.11.112",
-    "./src/enemies.js": "./src/enemies.js?v=1.11.112",
-    "./src/game.js": "./src/game.js?v=1.11.112",
-    "./src/intro.js": "./src/intro.js?v=1.11.112",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.11.112",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.11.112",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.11.112",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.11.112",
-    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.11.112",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.11.112",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.11.112",
-    "./src/monsters.js": "./src/monsters.js?v=1.11.112",
-    "./src/pickups.js": "./src/pickups.js?v=1.11.112",
-    "./src/quality.js": "./src/quality.js?v=1.11.112",
-    "./src/vfx.js": "./src/vfx.js?v=1.11.112",
-    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.11.112",
-    "./src/waterPlay.js": "./src/waterPlay.js?v=1.11.112"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.12.0",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.12.0",
+    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.12.0",
+    "./src/audio.js": "./src/audio.js?v=1.12.0",
+    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.12.0",
+    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.12.0",
+    "./src/carBatch.js": "./src/carBatch.js?v=1.12.0",
+    "./src/city.js": "./src/city.js?v=1.12.0",
+    "./src/effects.js": "./src/effects.js?v=1.12.0",
+    "./src/enemies.js": "./src/enemies.js?v=1.12.0",
+    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.12.0",
+    "./src/game.js": "./src/game.js?v=1.12.0",
+    "./src/intro.js": "./src/intro.js?v=1.12.0",
+    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.12.0",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.12.0",
+    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.12.0",
+    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.12.0",
+    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.12.0",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.12.0",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.12.0",
+    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.12.0",
+    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.12.0",
+    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.12.0",
+    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.12.0",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.12.0",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.12.0",
+    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.12.0",
+    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.12.0",
+    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.12.0",
+    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.12.0",
+    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.12.0",
+    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.12.0",
+    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.12.0",
+    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.12.0",
+    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.12.0",
+    "./src/look.js": "./src/look.js?v=1.12.0",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.12.0",
+    "./src/modelGallery.js": "./src/modelGallery.js?v=1.12.0",
+    "./src/monsters.js": "./src/monsters.js?v=1.12.0",
+    "./src/pickups.js": "./src/pickups.js?v=1.12.0",
+    "./src/powerVfx.js": "./src/powerVfx.js?v=1.12.0",
+    "./src/quality.js": "./src/quality.js?v=1.12.0",
+    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.12.0",
+    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.12.0",
+    "./src/vfx.js": "./src/vfx.js?v=1.12.0",
+    "./src/waterPlay.js": "./src/waterPlay.js?v=1.12.0",
+    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.12.0",
+    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.12.0",
+    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.12.0",
+    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.12.0",
+    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.12.0",
+    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.12.0",
+    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.12.0",
+    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.12.0",
+    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.12.0",
+    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.12.0",
+    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.12.0",
+    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.12.0",
+    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.12.0",
+    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.12.0"
   }
 }
 </script>
@@ -2036,7 +2234,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.11.112"></script>
-<script type="module" async src="./src/intro.js?v=1.11.112"></script>
+<script type="module" src="./src/game.js?v=1.12.0"></script>
+<script type="module" async src="./src/intro.js?v=1.12.0"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // Sound effects via the Web Audio API.
-// Sampled SFX (assets/sfx/, generated with Stable Audio 3 small-sfx) are
+// Sampled SFX (assets/sfx/) are
 // preloaded on init() and played with random variation picks, slight pitch
 // jitter and per-sound voice/cooldown limits. Until a sample has decoded (or if
 // it fails to load) every sound falls back to the original procedural synth.
@@ -11,10 +11,10 @@ const SFX_DIR = 'assets/sfx/';
 // name: [variations, gain, maxVoices, cooldown (s), rate jitter (+/-)]
 // variations > 1 load as name_1..name_N, otherwise just name.
 const SFX = {
-  explosion_small: [3, 0.85, 5, 0.04, 0.10],
-  explosion_big:   [3, 1.0,  3, 0.08, 0.08],
-  hit:             [3, 0.9,  3, 0.05, 0.08],
-  shell_hit:       [3, 0.7,  4, 0.05, 0.10],
+  explosion_small: [2, 0.83, 4, 0.06, 0.06],
+  explosion_big:   [2, 1.0,  3, 0.10, 0.05],
+  hit:             [2, 0.60, 3, 0.05, 0.05],
+  shell_hit:       [2, 0.77, 3, 0.06, 0.06],
   beam_gorrak:     [2, 1.0,  1, 0.30, 0.03],
   beam_tridon:     [2, 1.0,  1, 0.30, 0.03],
   beam_mechra:     [2, 1.0,  1, 0.30, 0.03],
@@ -24,15 +24,19 @@ const SFX = {
   charge_gorrak:   [2, 0.9,  2, 0.10, 0.06],
   charge_tridon:   [2, 0.9,  2, 0.10, 0.06],
   charge_mechra:   [2, 0.9,  2, 0.10, 0.06],
-  stomp:           [3, 1.0,  2, 0.10, 0.06],
+  stomp:           [2, 0.96, 2, 0.12, 0.05],
+  melee_punch:     [2, 0.88, 2, 0.08, 0.06],
+  melee_dropkick:  [2, 1.0,  2, 0.12, 0.05],
+  melee_slam:      [2, 1.1,  2, 0.16, 0.04],
+  energy_impact:   [2, 0.95, 2, 0.12, 0.05],
   footstep:        [4, 0.75, 2, 0.08, 0.10],
   ult:             [2, 1.0,  1, 0.50, 0.03],
-  shoot_tank:      [3, 0.6,  3, 0.06, 0.08],
-  shoot_rifle:     [4, 0.45, 4, 0.03, 0.12],
-  shoot_heli:      [2, 0.55, 3, 0.06, 0.08],
-  shoot_jet:       [2, 0.6,  2, 0.10, 0.08],
-  shoot_mech:      [2, 0.6,  3, 0.06, 0.08],
-  shoot_boss:      [2, 0.8,  2, 0.10, 0.06],
+  shoot_tank:      [3, 0.9,  3, 0.08, 0.05],
+  shoot_rifle:     [3, 0.66, 4, 0.05, 0.06],
+  shoot_heli:      [3, 0.72, 3, 0.07, 0.05],
+  shoot_jet:       [3, 0.76, 3, 0.08, 0.05],
+  shoot_mech:      [3, 0.83, 3, 0.08, 0.05],
+  shoot_boss:      [3, 1.0,  2, 0.10, 0.04],
   pickup_hp:       [1, 0.8,  2, 0.05, 0.02],
   pickup_rage:     [1, 0.8,  2, 0.05, 0.02],
   pickup_score:    [1, 0.8,  2, 0.05, 0.02],
@@ -41,9 +45,9 @@ const SFX = {
   wave_clear:      [1, 0.8,  1, 0.50, 0.0],
   game_over:       [1, 0.9,  1, 1.00, 0.0],
   boss_spawn:      [1, 1.0,  1, 1.00, 0.0],
-  collapse:        [3, 0.85, 3, 0.15, 0.08],
+  collapse:        [2, 0.96, 3, 0.18, 0.05],
   glass:           [2, 0.6,  3, 0.10, 0.10],
-  car_crush:       [3, 0.7,  3, 0.08, 0.10],
+  car_crush:       [2, 0.78, 3, 0.10, 0.06],
   scream:          [3, 0.5,  2, 0.90, 0.08],
   jet_flyby:       [2, 0.7,  1, 4.00, 0.06],
   kill_tank:       [2, 0.8,  2, 0.08, 0.06],
@@ -60,10 +64,17 @@ const SFX = {
   water_splash_sm: [2, 0.6,  4, 0.05, 0.12],
   boat_sink:       [2, 0.7,  2, 0.30, 0.05],
   loop_lapping:    [1, 1.0,  1, 0,    0],
-  // Gorrak atomic breath detonation (OGG + M4A)
-  atomic_blast:    [2, 1.0,  1, 1.00, 0.03],
-  atomic_charge:   [1, 0.8,  1, 0.30, 0.02],
+  atomic_blast:    [2, 1.07, 1, 1.00, 0.03],
+  atomic_charge:   [2, 0.80, 1, 0.30, 0],
 };
+
+// New paths also bypass stale IndexedDB copies of the old samples.
+const COMBAT_SFX = new Set([
+  'shoot_rifle', 'shoot_heli', 'shoot_jet', 'shoot_tank', 'shoot_mech', 'shoot_boss',
+  'hit', 'shell_hit', 'melee_punch', 'melee_dropkick', 'melee_slam', 'stomp',
+  'beam_gorrak', 'beam_tridon', 'beam_mechra', 'energy_impact', 'atomic_charge',
+  'explosion_small', 'explosion_big', 'atomic_blast', 'collapse', 'car_crush',
+]);
 
 // Exact loop lengths (samples at 44.1 kHz). Decoders that ignore the MP3
 // encoder-delay header (older Safari) hand back 1105 samples of LAME priming
@@ -73,7 +84,7 @@ const LOOP_SAMPLES = { loop_heli: 185220, loop_tank: 194040, loop_city: 348390, 
 const MP3_PRIMING = 1105;
 const AAC_PRIMING = 1024;
 // Newer SFX ship as OGG + AAC (.m4a) instead of OGG + MP3
-const M4A_SFX = new Set(['water_step', 'water_splash', 'water_splash_sm', 'boat_sink', 'loop_lapping', 'atomic_blast', 'atomic_charge']);
+const M4A_SFX = new Set(['water_step', 'water_splash', 'water_splash_sm', 'boat_sink', 'loop_lapping']);
 // Water samples (assets/sfx/water_*, boat_sink_*, loop_lapping). With this off
 // the water API plays its procedural fallbacks and nothing is fetched.
 const WATER_SAMPLES = true;
@@ -219,6 +230,14 @@ class Audio {
     this.master.gain.value = 0.45;
     this.master.connect(this.ctx.destination);
     this.sfxOut = this.master;
+    // Keep coincident cannon reports, debris and slam tails from overloading the mix.
+    this.combatBus = this.ctx.createDynamicsCompressor();
+    this.combatBus.threshold.value = -10;
+    this.combatBus.knee.value = 8;
+    this.combatBus.ratio.value = 6;
+    this.combatBus.attack.value = 0.002;
+    this.combatBus.release.value = 0.13;
+    this.combatBus.connect(this.master);
     // Background music goes through its own duck stage so festival stages can pull it down
     this.musicDuck = this.ctx.createGain();
     this.musicDuck.connect(this.master);
@@ -259,8 +278,8 @@ class Audio {
     const exts = ogg ? ['ogg', 'mp3'] : ['mp3', 'ogg'];
     const extsM4a = ogg ? ['ogg', 'm4a'] : ['m4a', 'ogg'];
     const jobs = [];
-    for (const name of Object.keys(SFX)) {
-      if (M4A_SFX.has(name) && !WATER_SAMPLES && !name.startsWith('atomic')) continue;
+    for (const name of [...COMBAT_SFX, ...Object.keys(SFX).filter(key => !COMBAT_SFX.has(key))]) {
+      if (M4A_SFX.has(name) && !WATER_SAMPLES) continue;
       const n = SFX[name][0];
       for (let i = 0; i < n; i++) jobs.push([name, i, n > 1 ? `${name}_${i + 1}` : name]);
     }
@@ -269,7 +288,8 @@ class Audio {
         const [name, i, base] = jobs.shift();
         for (const ext of M4A_SFX.has(name) ? extsM4a : exts) {
           try {
-            const arr = await cachedFetch(SFX_DIR + base + '.' + ext);
+            const dir = COMBAT_SFX.has(name) ? SFX_DIR + 'combat-v1/' : SFX_DIR;
+            const arr = await cachedFetch(dir + base + '.' + ext);
             const buf = await new Promise((resolve, reject) => {
               this.ctx.decodeAudioData(arr, resolve, reject);
             });
@@ -286,18 +306,20 @@ class Audio {
   // Play a sample from the bank. Returns false only when the sample isn't
   // loaded, so callers can fall back to the procedural version; rate-limited
   // or muted calls still return true (handled, intentionally silent).
-  _play(name, gain = 1, rate = 1, when = 0) {
+  _play(name, gain = 1, rate = 1, when = 0, remote = false) {
     const bank = this.sfx[name];
     if (!this.ctx || !bank) return false;
     const bufs = bank.filter(Boolean);
     if (!bufs.length) return false;
     if (this.muted) return true;
     const [, baseGain, maxVoices, cooldown, jitter] = SFX[name];
+    // Enemy gunfire cannot take a slot or reset the cooldown of the player's own weapon.
+    const key = remote ? name + ':remote' : name;
     const t = this._now();
     const at = t + when;  // cooldown is measured between scheduled start times
-    if (Math.abs(at - (this._lastPlay[name] ?? -1e9)) < cooldown) return true;
-    const voices = (this._voices[name] || []).filter(v => v.end > t);
-    this._voices[name] = voices;
+    if (Math.abs(at - (this._lastPlay[key] ?? -1e9)) < cooldown) return true;
+    const voices = (this._voices[key] || []).filter(v => v.end > t);
+    this._voices[key] = voices;
     if (voices.length >= maxVoices) return true;
 
     // Random variation, avoiding an immediate repeat when there's a choice
@@ -311,12 +333,23 @@ class Audio {
     src.playbackRate.value = r;
     const g = this.ctx.createGain();
     g.gain.value = baseGain * gain;
-    src.connect(g); g.connect(this.sfxOut);
+    // (combat samples go through the compressor; the rest to wherever one-shots go: master, or the match mix)
+    src.connect(g); g.connect(COMBAT_SFX.has(name) ? this.combatBus : this.sfxOut);
     src.onended = () => { try { src.disconnect(); g.disconnect(); } catch (e) {} };
     src.start(at);
-    this._lastPlay[name] = at;
+    this._lastPlay[key] = at;
     voices.push({ src, end: at + src.buffer.duration / r });
     return true;
+  }
+
+  // A short noise-only report if a combat sample hasn't decoded yet.
+  _combatFallback(name, dur, cutoff, gain, remote = false) {
+    if (!this.ctx || this.muted) return;
+    const key = remote ? name + ':remote' : name;
+    const now = this._now();
+    if (now - (this._lastPlay[key] ?? -Infinity) < SFX[name][3]) return;
+    this._lastPlay[key] = now;
+    this.noise(dur, cutoff, gain, this.combatBus);
   }
 
   // Kaiju-specific sample name, e.g. beam -> beam_tridon. who (optional): a monster key
@@ -639,7 +672,7 @@ class Audio {
   }
 
   // White noise burst with low-pass colour
-  noise(dur, filterFreq = 600, vol = 0.6) {
+  noise(dur, filterFreq = 600, vol = 0.6, bus = null) {
     if (!this.ctx || this.muted) return;
     const t = this._now();
     const len = Math.floor(this.ctx.sampleRate * dur);
@@ -654,7 +687,7 @@ class Audio {
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(filter); filter.connect(g); g.connect(this.sfxOut);
+    src.connect(filter); filter.connect(g); g.connect(bus || this.sfxOut);
     src.start(t);
     src.stop(t + dur + 0.05);
   }
@@ -664,28 +697,31 @@ class Audio {
     const big = scale >= 1.3;
     const gain = Math.min(1.2, 0.55 + scale * 0.35);
     const rate = Math.max(0.8, Math.min(1.15, 1.15 - (scale - 0.5) * 0.12));
-    if (this._play(big ? 'explosion_big' : 'explosion_small', gain, rate)) return;
-    this.noise(0.55 * scale, 900 * scale, 0.7);
-    this.tone(70 * scale, 0.5 * scale, 'sawtooth', 0.5, -40);
+    const name = big ? 'explosion_big' : 'explosion_small';
+    if (this._play(name, gain, rate)) return;
+    this._combatFallback(name, big ? .55 : .30, big ? 430 : 850, gain * .65);
   }
 
   hit() {
     if (this._play('hit')) return;
-    this.tone(180, 0.08, 'square', 0.35, -90);
+    this._combatFallback('hit', .09, 1600, .37);
   }
 
   shellHit() {
     if (this._play('shell_hit')) return;
-    this.tone(140, 0.12, 'square', 0.4, -80); this.noise(0.08, 400, 0.4);
+    this._combatFallback('shell_hit', .16, 1800, .55);
   }
 
   // beam / roar / charge / ult take the kaiju explicitly (who: monster key or variant) so
   // two kaiju can each have their own voice; without it they are the player's, as before.
   beam(who) {
     if (this._play(this._k('beam', who))) return;
-    this.tone(220, 0.55, 'sawtooth', 0.4);
-    this.tone(110, 0.55, 'square', 0.3);
-    this.tone(440, 0.55, 'sine', 0.2, 220);
+    this._combatFallback(this._k('beam', who), .45, 950, .66);
+  }
+
+  energyImpact() {
+    if (this._play('energy_impact')) return;
+    this._combatFallback('energy_impact', .35, 620, .64);
   }
 
   roar(who) {
@@ -701,10 +737,18 @@ class Audio {
     this.noise(0.3, 500, 0.4);
   }
 
-  stomp() {
-    if (this._play('stomp')) return;
-    this.tone(50, 0.3, 'sine', 0.6, -20);
-    this.noise(0.18, 250, 0.35);
+  meleeImpact(kind, strength = 1) {
+    if (kind === 'stomp') { this.stomp(strength); return; }
+    const name = kind === 'slam' ? 'melee_slam' : kind === 'kick' ? 'melee_dropkick' : 'melee_punch';
+    const gain = Math.min(1.2, Math.max(.12, strength));
+    if (this._play(name, gain)) return;
+    this._combatFallback(name, kind === 'slam' ? .40 : .18, 550, .62 * gain);
+  }
+
+  stomp(strength = 1) {
+    const gain = Math.min(1.2, Math.max(.12, strength));
+    if (this._play('stomp', gain)) return;
+    this._combatFallback('stomp', .30, 440, .62 * gain);
   }
 
   // inWater (optional, 0..1 or true): the step lands in water -> wading splash
@@ -725,26 +769,26 @@ class Audio {
     this.noise(1.2, 900, 0.55);
   }
 
-  shoot(type = 'tank') {
-    if (type === 'rifle') {
-      if (this._play('shoot_rifle')) return;
-      this.tone(1100, 0.04, 'square', 0.18); return;
+  shoot(type = 'tank', distance) {
+    const remote = distance !== undefined;
+    const offset = remote ? Math.max(0, distance - 12) / 48 : 0;
+    const gain = remote ? .83 / (1 + offset * offset) : 1;
+    if (gain < .035) return;
+    const cue = 'shoot_' + type;
+    const name = COMBAT_SFX.has(cue) ? cue : 'shoot_tank';
+    if (this._play(name, gain, 1, 0, remote)) {
+      if (type === 'jet' && gain > .15) this._play('jet_flyby', gain);
+      return;
     }
-    if (type === 'jet' || type === 'mech') {
-      if (this._play(type === 'jet' ? 'shoot_jet' : 'shoot_mech')) {
-        if (type === 'jet') this._play('jet_flyby'); // long cooldown: an occasional pass-by roar
-        return;
-      }
-      this.tone(300, 0.08, 'square', 0.3, -120); this.noise(0.06, 1200, 0.2); return;
-    }
-    if (type === 'boss') {
-      if (this._play('shoot_boss')) return;
-      this.tone(120, 0.18, 'sawtooth', 0.4, -60); this.noise(0.12, 700, 0.3); return;
-    }
-    // tank / heli default
-    if (this._play(type === 'heli' ? 'shoot_heli' : 'shoot_tank')) return;
-    this.tone(160, 0.09, 'square', 0.3, -60);
-    this.noise(0.08, 700, 0.3);
+    const light = type === 'rifle' || type === 'heli';
+    this._combatFallback(name, light ? .095 : .23, light ? 2900 : 760, gain * .65, remote);
+  }
+
+  reloadPhase(phase) {
+    // Short mechanism sounds are driven by animation time, not timeout jobs.
+    if(phase==='release'){this.noise(.045,1600,.045);this.tone(260,.025,'triangle',.035);}
+    if(phase==='seat'){this.noise(.06,1100,.07);this.tone(180,.04,'triangle',.045);}
+    if(phase==='bolt'){this.noise(.085,2400,.065);this.tone(390,.035,'triangle',.035,-130);}
   }
 
   pickup(type) {
@@ -793,18 +837,16 @@ class Audio {
     this.noise(1.5, 300, 0.25);
   }
 
-  // Gorrak atomic breath. atomicCharge() at fire time: 0.4 s rising whine over
-  // the bolt's travel. atomicBlast(size) on detonation: crack + sub boom + ~3.5 s
-  // rolling tail (size 1 desktop, 0.8 phones scales level and weight).
+  // Gorrak atomic breath: quiet buildup, then the separate release and impact cues.
   atomicCharge() {
     if (this._play('atomic_charge')) return;
-    this.tone(300, 0.4, 'sawtooth', 0.25, 900);
+    this._combatFallback('atomic_charge', .38, 280, .22);
   }
 
   atomicBlast(size = 1) {
     const s = Math.max(0.3, Math.min(1.5, size));
     if (this._play('atomic_blast', 0.7 + 0.3 * s, 1.06 - 0.06 * s)) return;
-    this.explosion(3);
+    this._combatFallback('atomic_blast', .70, 550, .76);
   }
 
   // Building destroyed: concrete collapse, sometimes with a glass shatter on top
@@ -813,13 +855,12 @@ class Audio {
       if (Math.random() < 0.6) this._play('glass', 1, 1, 0.05 + Math.random() * 0.2);
       return;
     }
-    this.noise(0.9, 500, 0.5);
-    this.tone(45, 0.8, 'sawtooth', 0.35, -15);
+    this._combatFallback('collapse', .82, 490, .61);
   }
 
   carCrush() {
     if (this._play('car_crush')) return;
-    this.tone(220, 0.1, 'square', 0.25, -120); this.noise(0.12, 1500, 0.3);
+    this._combatFallback('car_crush', .19, 1700, .51);
   }
 
   // Civilians stomped / fleeing. Long cooldown so a rampage doesn't turn into a wall of screams.

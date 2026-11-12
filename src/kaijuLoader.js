@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { prepareMeleeAnimations } from './kaijuMelee.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { cachedFetch, normalizeGLTFMaterials, withParseSlot, reportLoadError } from './assetCache.js';
@@ -88,7 +89,7 @@ const MECHA_ANIMS = {
 // One-shot animations (play once then return to previous)
 const ONE_SHOT_KEYS = new Set([
   'skill1', 'skill2', 'skill3', 'stomp', 'stomp2', 'jump',
-  'death', 'dead', 'punch', 'tantrum', 'flex', 'agree', 'cheer',
+  'meleeStomp', 'meleePunch', 'death', 'dead', 'punch', 'tantrum', 'flex', 'agree', 'cheer',
   'cast1', 'cast2', 'cast3', 'shrug', 'turnSharp', 'backRight',
 ]);
 
@@ -168,6 +169,9 @@ export async function loadKaijuModel(monsterKey, onProgress) {
     const clip = clipsByName.get('Animation_Running_withSkin');
     if (clip) { animations.run = clip; actions.run = mixer.clipAction(clip); }
   }
+
+  const melee=prepareMeleeAnimations(animations,monsterKey);
+  for(const motion of Object.values(melee)){animations[motion.name]=motion.clip;actions[motion.name]=mixer.clipAction(motion.clip);}
 
   // Configure one-shot vs looping
   const ONE_SHOT = new Set(ONE_SHOT_KEYS);   // per instance: addClip() registers more
@@ -356,7 +360,7 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   }
 
   return {
-    root, mixer, animations, actions, head, tail,
+    root, mixer, animations, actions, head, tail, melee,
     play, playOnce, resetAnim,
     key: monsterKey, rest, loop, addClip,
     lockLoco(on) { locoLocked = !!on; },

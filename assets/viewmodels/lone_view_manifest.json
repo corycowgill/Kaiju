@@ -1,0 +1,68 @@
+[
+  {
+    "role": "infantry",
+    "bytes": 1842880,
+    "triangles": 26587,
+    "primitives": 13,
+    "textures": [
+      "viewtex_3b218342e1ef.png",
+      "viewtex_b38e1e5005c8.png",
+      "viewtex_6bcd75d49f3a.png",
+      "viewtex_a24aa9a8e1db.png",
+      "viewtex_08a0cd8c1703.png",
+      "viewtex_a2ebc52d421a.png",
+      "viewtex_e035f123f104.png",
+      "viewtex_87ee38671dc6.png",
+      "viewtex_6da1247ef039.png",
+      "viewtex_d10ca133093f.png",
+      "viewtex_3a9a14b6e8d7.png",
+      "viewtex_18b31c92e234.png"
+    ]
+  },
+  {
+    "role": "tank",
+    "bytes": 1717296,
+    "triangles": 32686,
+    "primitives": 17,
+    "textures": [
+      "viewtex_a24aa9a8e1db.png",
+      "viewtex_e035f123f104.png",
+      "viewtex_08a0cd8c1703.png",
+      "viewtex_2ddf72af9bf1.png",
+      "viewtex_e5c09a9d7649.png",
+      "viewtex_3b218342e1ef.png",
+      "viewtex_b38e1e5005c8.png",
+      "viewtex_ed5be7000f17.png",
+      "viewtex_6da1247ef039.png",
+      "viewtex_d10ca133093f.png",
+      "viewtex_3a9a14b6e8d7.png",
+      "viewtex_1dde9fef8645.png",
+      "viewtex_7301801f5507.png",
+      "viewtex_0ce0899160a5.png",
+      "viewtex_7310ab66a7a6.png"
+    ]
+  },
+  {
+    "role": "helicopter",
+    "bytes": 1773912,
+    "triangles": 32682,
+    "primitives": 18,
+    "textures": [
+      "viewtex_a24aa9a8e1db.png",
+      "viewtex_e035f123f104.png",
+      "viewtex_08a0cd8c1703.png",
+      "viewtex_2ddf72af9bf1.png",
+      "viewtex_e5c09a9d7649.png",
+      "viewtex_3b218342e1ef.png",
+      "viewtex_b38e1e5005c8.png",
+      "viewtex_ed5be7000f17.png",
+      "viewtex_6da1247ef039.png",
+      "viewtex_d10ca133093f.png",
+      "viewtex_3a9a14b6e8d7.png",
+      "viewtex_1dde9fef8645.png",
+      "viewtex_7301801f5507.png",
+      "viewtex_0ce0899160a5.png",
+      "viewtex_7310ab66a7a6.png"
+    ]
+  }
+]

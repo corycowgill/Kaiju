@@ -25,7 +25,10 @@ import { register } from 'node:module';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // (iphone low chicago: the procedural-only tier, where Chicago still loads its building GLBs)
-const CONFIGS = [['desktop', 'high', 'tokyo'], ['iphone', 'med', 'tokyo'], ['desktop', 'high', 'chicago'], ['iphone', 'med', 'chicago'], ['iphone', 'low', 'chicago']];
+// Chicago is built as game.js builds it by default (the title match: ring, ringside crowd); the two 'waves'
+// configs build the classic city (VS, Lone Soldier, ?mode=waves) with the festival and its rigged crowd.
+const CONFIGS = [['desktop', 'high', 'tokyo'], ['iphone', 'med', 'tokyo'], ['desktop', 'high', 'chicago'], ['iphone', 'med', 'chicago'], ['iphone', 'low', 'chicago'],
+  ['desktop', 'high', 'chicago', 'waves'], ['iphone', 'med', 'chicago', 'waves']];
 
 const argv = process.argv.slice(2);
 if (argv[0] !== '--run') {
@@ -51,15 +54,15 @@ if (argv[0] !== '--run') {
     if (bad.length) { failed++; console.log(`[asset lists] FAIL (${bad.length})`); for (const l of bad.slice(0, 12)) console.log('  - ' + l); }
     else console.log(`[asset lists] ok: ${Object.keys(ASSET_HASHES).length} hashed GLBs, ${MOBILE_VARIANTS.size} mobile variants, ${KTX2_VARIANTS.size} KTX2 variants on disk`);
   }
-  for (const [device, tier, level] of CONFIGS) {
-    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--run', device, tier, level], { stdio: 'inherit' });
+  for (const [device, tier, level, modeArg] of CONFIGS) {
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--run', device, tier, level, ...(modeArg ? [modeArg] : [])], { stdio: 'inherit' });
     if (r.status !== 0) failed++;
   }
   console.log(failed ? `SMOKE TEST FAILED (${failed}/${CONFIGS.length} configs)` : 'SMOKE TEST PASSED');
   process.exit(failed ? 1 : 0);
 }
 
-const [, device, tier, level = 'tokyo'] = argv;
+const [, device, tier, level = 'tokyo', modeArg = ''] = argv;
 const failures = [];
 const fail = (msg) => failures.push(msg);
 
@@ -153,6 +156,7 @@ const enemies = await imp('enemies.js');
 const { loadKaijuModel } = await imp('kaijuLoader.js');
 const vfx = await imp('vfx.js');
 const assetCache = await imp('assetCache.js');
+const { loadLoneView } = await imp('loneSoldier.js');
 const carBatch = await imp('carBatch.js');
 const effects = await imp('effects.js');
 
@@ -160,12 +164,74 @@ const scene = new THREE.Scene();
 const world = new Proxy({ scene, enemies: [], effects: [], shells: [], debris: [], time: 0 },
   { get: (t, k) => (k in t ? t[k] : noop) });
 await step('vfx.init', () => { vfx.init(scene); vfx.registerAllBuilders(effects); });
+for (const role of ['infantry','tank','helicopter']) await step(`first-person ${role} asset`, async () => {
+  const view = await loadLoneView(role);
+  let draws = 0, tris = 0, pbr = 0, occluded = 0;
+  const materials = new Set();
+  view.traverse(o => { if (o.isMesh) {
+    draws++; tris += (o.geometry.index?.count || o.geometry.attributes.position.count) / 3;
+    materials.add(o.material.name);
+    if(o.material.normalMap && o.material.roughnessMap)pbr++;
+    if(o.geometry.attributes.color)occluded++;
+    const normals=o.geometry.attributes.normal;
+    for(let i=0;i<normals.count;i++) {
+      const length=Math.hypot(normals.getX(i),normals.getY(i),normals.getZ(i));
+      if(!Number.isFinite(length)||length<.9||length>1.1){fail(`${role} view contains invalid normals`);break;}
+    }
+  } });
+  if (draws > 24 || tris > 40000) fail(`${role} view budget: ${draws} draws, ${tris} tris`);
+  if (![...materials].some(n => /sleeve/i.test(n)) || ![...materials].some(n => /glove/i.test(n))) fail(`${role} view missing arms/glove materials`);
+  if(!view.getObjectByName('MUZZLE'))fail(`${role} view missing muzzle anchor`);
+  if(role!=='infantry'&&!view.getObjectByName('CREW_CONTROLS'))fail(`${role} view missing crew controls`);
+  if(pbr<4||!occluded)fail(`${role} view missing PBR surfaces / baked occlusion`);
+    if(role==='infantry') {
+      const clip=view.animations.find(c=>c.name==='reload');
+      if(!clip||clip.duration<2)fail('infantry: authored reload missing');
+      const second=await loadLoneView(role),a=view.getObjectByName('L_hand'),b=second.getObjectByName('L_hand');
+      if(!a||!b||a===b)fail('infantry: skeletons must be independently cloned');
+      else {
+        view.updateMatrixWorld(true);const before=new THREE.Vector3();a.getWorldPosition(before);
+        const mixer=new THREE.AnimationMixer(view);mixer.clipAction(clip).play();mixer.update(.8);view.updateMatrixWorld(true);
+        const after=new THREE.Vector3();a.getWorldPosition(after);
+        if(before.distanceTo(after)<.08)fail('infantry: reload does not move support hand');
+        const magazine=view.getObjectByName('MAGAZINE');
+        if(!magazine)fail('infantry: animated magazine missing');
+        else if(magazine.position.length()<.15)fail('infantry: magazine track is not synchronized with the hand');
+        mixer.stopAllAction();mixer.uncacheRoot(view);
+        const empty=view.animations.find(c=>c.name==='reload_empty');
+        if(!empty||Math.abs(empty.duration-2.7)>.01||Math.abs(clip.duration-2.2)>.01)fail('infantry: empty and partial reload timing invalid');
+      }
+    }
+  if(role!=='infantry') {
+    view.updateMatrixWorld(true);
+    for(const direction of [new THREE.Vector3(0,1,-.15),new THREE.Vector3(0,-1,-.1),
+      new THREE.Vector3(1,0,-.15),new THREE.Vector3(-1,0,-.15),new THREE.Vector3(0,0,-1)]) {
+      const ray=new THREE.Raycaster(new THREE.Vector3(),direction.normalize(),.01,3);
+      if(!ray.intersectObject(view,true).length)fail(`${role} cabin has an unsealed roof/floor/side/window`);
+    }
+  }
+});
 await step('level data', () => city.loadLevelData(level));
 if (Q.GLB_CONTENT) await step('tree/ped/car templates', () => Promise.all([city.loadTreeTemplates(undefined, level), city.loadPedestrianTemplates(), city.loadCarTemplates(undefined, level)]));
 else if (level === 'chicago') await step('car templates', () => city.loadCarTemplates(undefined, level)); // as game.js: GLB cars on Chicago LOW
 // Game mode as game.js picks it (LEVELS[level].mode): Chicago is built for the wrestling match, ring included
-const mode = level === 'chicago' ? 'wrestling' : 'waves';
+const mode = modeArg || (level === 'chicago' ? 'wrestling' : 'waves');
 const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q.isMobile, glb: Q.GLB_CONTENT, level, mode }));
+// (the classic Chicago build: in the title match the lawns are empty, everyone is at ringside)
+if (level === 'chicago' && mode === 'waves') await step('rigged festival crowd', async () => {
+  const { festivalPeopleStats } = await import('../src/levels/festivalPeople.js');
+  const stats = festivalPeopleStats();
+  if (stats.variants !== 9 || stats.clips.length !== 9) fail(`festival: ${stats.variants} variants / ${stats.clips.length} clips`);
+  const crowd = scene.children.find(o => o.userData.festivalPeople);
+  if (!crowd) { fail('festival: rigged crowd missing'); return; }
+  world.crowdViewPosition = new THREE.Vector3(-35, 2, -80);
+  for (const animator of res.cityAnimators) animator.update(.04, .04);
+  const visible = crowd.children.reduce((sum, mesh) => sum + mesh.count, 0);
+  if (!visible) fail('festival: all crowd instance batches are empty');
+  if (crowd.children.filter(o=>o.name==='festival_GLB').length !== 27) fail('festival: expected 9 model / 3 LOD batches');
+  const contacts=crowd.getObjectByName('festival_contacts');
+  if(!contacts||contacts.count>256)fail('festival: contact shadow batch missing or unbounded');
+});
 const kaijuGLB = {};
 for (const key of ['godzilla', 'ghidorah', 'mecha']) kaijuGLB[key] = await step(`kaiju ${key}`, () => loadKaijuModel(key));
 if (Q.GLB_CONTENT) {
@@ -531,6 +597,34 @@ await new Promise((r) => setTimeout(r, 300)); // flipbooks + ground textures (as
 // ---------------------------------------------------------------- assertions
 for (const e of globalThis.__loadErrors || []) fail(`__loadErrors: ${e.bug ? 'CODE BUG ' : ''}${e.where} ${e.url}: ${e.message}`);
 if (!res || !res.buildings || !res.buildings.length) fail('buildCity returned no buildings');
+
+if (res?.buildings?.length) {
+  const {findDuelSpawns} = await import('../src/kaijuDuel.js');
+  const {player, rival} = findDuelSpawns({
+    level, bounds: res.bounds, isWater: res.isWater, buildings: res.buildings, buildingGrid: res.grid,
+  });
+  if (player.distanceTo(rival) < (level === 'chicago' ? 295 : 245)) fail('VS spawns are too close');
+  log(`VS SPAWNS ${player.toArray()} / ${rival.toArray()}`);
+}
+
+
+// The mech rig's authored toe direction should agree with the actor's muzzle.
+for (const name of ['Mech', 'BossMech']) {
+  const actor = spawned[name];
+  if (!actor?.mixer) continue;
+  const forward = actor.root.getWorldDirection(new THREE.Vector3());
+  let toeDirection = 0;
+  for (const side of ['Left', 'Right']) {
+    const foot = actor.root.getObjectByName(side + 'Foot');
+    const toe = actor.root.getObjectByName(side + 'ToeBase');
+    if (foot && toe) {
+      toeDirection += toe.getWorldPosition(new THREE.Vector3())
+        .sub(foot.getWorldPosition(new THREE.Vector3())).dot(forward);
+    }
+  }
+  if (toeDirection <= 0) fail(name + ' faces away from its movement and muzzle axis');
+}
+
 let summary = wrestlingSummary;
 if (res && res.level !== level) fail(`buildCity built level '${res && res.level}', expected '${level}'`);
 
@@ -559,6 +653,19 @@ const sceneTotals = () => {
   scene.traverse((o) => { if (o.onBeforeRender !== base) o.onBeforeRender(null, scene, cam); });
 }
 const totals = sceneTotals();
+if(level==='chicago') {
+  if(!world.chicagoSurfaceWear || world.chicagoSurfaceWear.sources<1 || world.chicagoSurfaceWear.bytes>256*256*4)fail('Chicago localized wear field missing or over budget');
+  const surfaces=new Set();
+  scene.traverse(o=>{for(const material of [].concat(o.material||[])) {
+    const data=material.userData?.chicagoSurface;if(!data)continue;
+    if(data.kind<2.5) {
+      surfaces.add(data.kind);
+      if(!material.map||!material.normalMap||!material.roughnessMap)fail('Chicago terrain is missing a PBR map');
+      if(!(data.tile>0&&data.tile<=3))fail('Chicago terrain texture scale is invalid');
+    }
+  }});
+  if(surfaces.size!==3)fail('Chicago is missing grass, paving or asphalt surface materials');
+}
 // Lit shader programs (a proxy for three's program keys): one per distinct
 // standard-material variant in the scene, after the shared texture slots are
 // filled as game.js does before START links them (assetCache.canonMaterialMaps).
@@ -571,14 +678,21 @@ const litPrograms = (() => {
     for (const m of [].concat(o.material || [])) {
       if (!m || !m.isMeshStandardMaterial) continue;
       canonMaterialMaps(m);
-      keys.add([m.type, ...['map', 'normalMap', 'emissiveMap', 'metalnessMap', 'roughnessMap', 'aoMap', 'alphaMap', 'lightMap', 'bumpMap', 'displacementMap'].map((k) => (m[k] ? 1 : 0)),
+      const signature=[m.type, ...['map', 'normalMap', 'emissiveMap', 'metalnessMap', 'roughnessMap', 'aoMap', 'alphaMap', 'lightMap', 'bumpMap', 'displacementMap'].map((k) => (m[k] ? 1 : 0)),
         m.alphaTest > 0, m.transparent, m.side, m.vertexColors, m.flatShading, m.fog, !!o.isInstancedMesh, !!(o.isInstancedMesh && o.instanceColor),
-        !!o.isSkinnedMesh, !!(o.morphTargetInfluences && o.morphTargetInfluences.length), m.customProgramCacheKey()].join('|'));
+        !!o.isSkinnedMesh, !!(o.morphTargetInfluences && o.morphTargetInfluences.length), m.customProgramCacheKey()].join('|');
+      if(process.env.SMOKE_PROGRAMS && !keys.has(signature))log('PROGRAM '+m.name+' '+signature);
+      keys.add(signature);
     }
   });
+  if (process.env.SMOKE_BREAKDOWN === 'lit') for (const k of [...keys].sort()) log('LIT ' + k);
   return keys.size;
 })();
-const LIT_PROGRAM_BUDGET = 16; // Tokyo 10, Chicago 13 (Chicago in the browser: 26 lit programs before canonMaterialMaps)
+// Chicago's shared terrain/prop weather family replaces the old lawn shader:
+// two new variants, one removed, net +1. Geometry/draw budgets stay unchanged.
+// (Chicago 18 since the merge of main's surface materials with the title-match branch's: each side fitted its
+// own budget, 17 and 16; the union is 18. SMOKE_BREAKDOWN=lit lists them.)
+const LIT_PROGRAM_BUDGET = level==='chicago'?18:16;
 if (litPrograms > LIT_PROGRAM_BUDGET) fail(`${litPrograms} lit shader programs in the scene, budget ${LIT_PROGRAM_BUDGET} (a new material variant? see assetCache.canonMaterialMaps)`);
 if (process.env.SMOKE_BREAKDOWN) {
   // Top triangle contributors (debug aid): by geometry name / material
@@ -757,7 +871,7 @@ await step('rampage', () => {
   summary += `rampage ${live.length} collapses, ${world.debris.length} debris; `;
 });
 
-const label = `[${device} ${tier} ${level}]`;
+const label = `[${device} ${tier} ${level}${modeArg ? ' ' + modeArg : ''}]`;
 finished = true;
 if (failures.length) {
   log(`${label} FAIL (${failures.length}), ${fetched.size} files fetched; ${summary}`);

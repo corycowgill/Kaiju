@@ -9,6 +9,11 @@
 // in a shipped build); ?fest=1 turns it on, ?fest=0 off. Flip FEST_DEFAULT
 // to true in the commit that adds the last fest_* GLB.
 import * as THREE from 'three';
+import { dressFestival, dressStageProduction } from './festivalDressing.js';
+import { chicagoGround, chicagoFestivalSurface } from './chicagoMaterials.js';
+import { animateCrowd } from './festivalCrowd.js';
+import { loadFestivalPeople, createFestivalPeople } from './festivalPeople.js';
+import { festivalCrowdWeight } from './chicagoLandscape.js';
 import { assetURL } from '../assetCache.js';
 
 const FEST_URL = './assets/levels/chicago_fest.json';
@@ -84,7 +89,7 @@ const KINDS = {
   vendor: { models: () => ['vendor_tent'], mode: 'tile', color: 0x30b0a0 },
   merch: { models: () => ['vendor_tent'], mode: 'tile', color: 0xe0c030 },
   bar: { models: () => ['vendor_tent'], mode: 'tile', color: 0xd04070 },
-  family: { models: () => ['side_stage'], mode: 'fit', color: 0x50c050, maxHM: 9 },
+  family: { models: () => ['side_stage'], mode: 'fit', color: 0x50c050, maxHM: 15 },
   first_aid: { models: () => ['vendor_tent'], mode: 'tile', color: 0xf4f4f4 },
   water: { models: () => ['vendor_tent'], mode: 'tile', color: 0x3080e0 },
   toilets: { models: () => ['porta_potty_bank'], mode: 'tile', color: 0x3070c0 },
@@ -95,6 +100,28 @@ const _model = (it) => {
   return c.find(_ready) || c[0] || null;
 };
 
+// The city layout compresses metres to .2u, but the close-up crowd is ~1.8u
+// tall. Enlarge the human-scale fixtures without expanding the whole park.
+const PROP_SCALE = { vendor_tent: 3.5, porta_potty_bank: 4.5, trailer: 2.7,
+  entry_gate: 1.8, vip_deck: 2 };
+function scaleFestivalItem(it) {
+  const id = _model(it), mdl = FEST_MODELS[id];
+  if (!mdl) return it;
+  if (KINDS[it.kind].mode === 'tile') {
+    const s = .2 * (PROP_SCALE[id] || 1);
+    return { ...it, w: Math.max(it.w, mdl.sizeM[0] * s),
+      d: Math.max(it.d, mdl.sizeM[1] * s), h: mdl.sizeM[2] * s };
+  }
+  const factor = it.kind === 'stage' ? 1.3 : it.kind === 'delay_tower' ? 1.5 :
+    it.kind === 'foh_tower' ? 1.8 : it.kind === 'family' ? 2.7 : 1.4;
+  const h = it.h * factor;
+  const planFactor = it.kind === 'family' ? 1.3 : factor;
+  // Give narrow screens/towers enough depth to reach their requested height:
+  // otherwise the GLB's plan-fit cap silently shrinks the enlarged model again.
+  return { ...it, h, w: Math.max(it.w * planFactor, mdl.sizeM[0] / mdl.sizeM[2] * h),
+    d: Math.max(it.d * planFactor, mdl.sizeM[1] / mdl.sizeM[2] * h) };
+}
+
 /** GLB urls the festival needs (ready models only; [] when it's off). */
 export function festBuildingGLBs() {
   if (!festEnabled()) return [];
@@ -104,19 +131,31 @@ export function festBuildingGLBs() {
 /** Fetch and normalise the festival layout; null when off or missing. */
 export async function loadFest() {
   if (!festEnabled()) return null;
+  await loadFestivalPeople();
   try {
     const r = await fetch(FEST_URL, { cache: 'no-cache' });
     if (!r.ok) return null;
     const J = await r.json();
     const pt = (p) => [+p[0], +p[1]];
+    const items = (J.items || []).map(it => scaleFestivalItem({
+      ...it, x: +it.x, z: +it.z, rot: +(it.rot || 0), w: +it.w, d: +it.d, h: +it.h,
+      crowdArea: it.crowdArea ? it.crowdArea.map(pt) : null,
+    }));
+    // Move flanking screens outward with the wider stages rather than burying
+    // them in the stage roof/trusses.
+    for (const screen of items.filter(it => it.kind === 'screen')) {
+      const stage = items.find(it => it.kind === 'stage' && screen.id.startsWith(it.id + '_screen_'));
+      if (!stage) continue;
+      const c = Math.cos(stage.rot), s = Math.sin(stage.rot);
+      const offset = (screen.x - stage.x) * c - (screen.z - stage.z) * s;
+      const shift = Math.sign(offset) * Math.max(0, (stage.w + screen.w) / 2 + .3 - Math.abs(offset));
+      screen.x += c * shift; screen.z -= s * shift;
+    }
     return {
       fence: (J.fence?.points || []).map(pt),
-      fenceH: +(J.fence?.height || 0.48),
+      fenceH: Math.max(1.05, +(J.fence?.height || 0.48)),
       closed: (J.closedRoads || []).map((r) => r.points.map(pt)),
-      items: (J.items || []).map((it) => ({
-        ...it, x: +it.x, z: +it.z, rot: +(it.rot || 0), w: +it.w, d: +it.d, h: +it.h,
-        crowdArea: it.crowdArea ? it.crowdArea.map(pt) : null,
-      })),
+      items,
     };
   } catch (e) { return null; }
 }
@@ -471,6 +510,8 @@ function _ledScreen(lite) {
 }
 
 // --------------- crowd ---------------
+// (The festival's own lawns now stand rigged pedestrians - festivalPeople.js. The instanced box person
+// below is kept for the ringside audience of the title match, chicago_arena.js, which drives it per frame.)
 /** Low-poly festival-goer (~1.2u), origin at the feet; white vertices take the shirt colour. */
 function _personGeom() {
   const parts = [
@@ -593,33 +634,33 @@ varying float vCrowdGlow;
 }
 
 /** Festival-goers on the stage lawns, packed denser toward each stage:
- *  one InstancedMesh for every lawn (a single draw). lawns: [{ it, n }]. */
-function _makeCrowd(scene, lawns, geom, mat) {
+ *  stable logical IDs, compacted into shared GLB model/LOD batches. */
+function _makeCrowd(scene, lawns, uTime, obstacles) {
   const pts = [], yaw = [];
   for (const { it, n } of lawns) {
     const poly = it.crowdArea;
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const [x, z] of poly) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
     const far = Math.hypot(x1 - x0, z1 - z0);
-    for (let tries = 0, got = 0; got < n && tries < n * 12; tries++) {
+    for (let tries = 0, got = 0; got < n && tries < n * 24; tries++) {
       const x = x0 + Math.random() * (x1 - x0), z = z0 + Math.random() * (z1 - z0);
       if (!_inPoly(x, z, poly)) continue;
-      const near = 1 - Math.min(1, Math.hypot(x - it.x, z - it.z) / far);
-      if (Math.random() > 0.3 + 0.7 * near * near) continue;
+      if (obstacles.some(b => Math.abs(x - b.x) < b.w / 2 + .25 && Math.abs(z - b.z) < b.d / 2 + .25)) continue;
+      if (Math.random() > festivalCrowdWeight(x,z,it,far)) continue;
       pts.push(x, z); yaw.push(Math.atan2(it.x - x, it.z - z)); got++;
     }
   }
   const count = pts.length / 2;
   if (!count) return null;
-  const im = new THREE.InstancedMesh(geom, mat, count);
-  const o = new THREE.Object3D(), c = new THREE.Color();
+  const im = createFestivalPeople(count, uTime);
+  if (!im) throw new Error('Festival crowd models were not loaded');
+  const o = new THREE.Object3D();
   for (let i = 0; i < count; i++) {
     o.position.set(pts[i * 2], 0.04, pts[i * 2 + 1]);
     o.rotation.set(0, yaw[i] + (Math.random() - 0.5) * 0.6, 0);
     o.scale.setScalar(0.9 + Math.random() * 0.25);
     o.updateMatrix();
     im.setMatrixAt(i, o.matrix);
-    im.setColorAt(i, c.setHex(SHIRTS[Math.floor(Math.random() * SHIRTS.length)]));
   }
   im.computeBoundingSphere();
   im.castShadow = false; im.receiveShadow = false;
@@ -639,6 +680,7 @@ export function buildFest(scene, F, ctx) {
 
   // Trampled lawns in front of the stages (over the park grass, under the paths)
   const trampled = new THREE.MeshStandardMaterial({ color: 0x7c8456, roughness: 1.0, map: M.grass.map });
+  chicagoGround(trampled,'grass',.9);
   for (const it of F.items) if (it.crowdArea) addBatch(polygonGeom(it.crowdArea, 0.035, 1 / 14), trampled);
   // Picnic-table strip: paving
   for (const it of F.items) if (it.kind === 'food_seating') addBatch(polygonGeom(_rectPoly(it), 0.036, 1 / 6), M.path);
@@ -646,6 +688,8 @@ export function buildFest(scene, F, ctx) {
   const newBuilding = (x, z, aw, ad, h, color, modelId) => {
     const b = new K.Building(x, z, aw, ad, h, { skipWindows: true, color });
     b.fest = true;
+    b.destructionMaterial = /tent|trailer|potty|fence/.test(modelId) ? 'lightweight' : 'metal';
+    b.crushOnContact = h < 2.4;
     b.glbBucket = 'fest'; // Grant Park straddles tile lines: one batch per part for the whole festival
     const ok = _ready(modelId);
     if (ok) b._skipBodyIM = true;
@@ -701,8 +745,8 @@ export function buildFest(scene, F, ctx) {
       continue;
     }
     // Tiled: true-size copies along the item's width, rows along its depth
-    const [mw, md, mh] = mdl.sizeM.map((v) => v * S);
-    const nx = Math.max(1, Math.min(12, Math.round(it.w / mw)));
+    const [mw, md, mh] = mdl.sizeM.map((v) => v * S * (PROP_SCALE[id] || 1));
+    const nx = Math.max(1, Math.min(12, Math.floor(it.w / mw)));
     const nz = Math.max(1, Math.min(4, Math.floor(it.d / (md * 1.6))));
     const cw = it.w / nx, cd = it.d / nz;
     const h = Math.min(mh, it.kind === 'gate' ? mh : Math.max(it.h, mh));
@@ -718,7 +762,7 @@ export function buildFest(scene, F, ctx) {
   // ---- fence: instanced panels in runs of up to 14, gaps at the gates ----
   {
     const pm = FEST_MODELS.fence_panel;
-    const pl = pm.sizeM[0] * S, h = F.fenceH;
+    const h = F.fenceH, pl = pm.sizeM[0] / pm.sizeM[2] * h;
     const gates = F.items.filter((it) => it.kind === 'gate');
     const ring = F.fence;
     // Panels every ~3.5 m along the whole ring (arc length, across its
@@ -806,24 +850,30 @@ export function buildFest(scene, F, ctx) {
     });
   }
 
+  dressFestival(scene, F, buildings, trampled, animators, lite);
+  if(glb)dressStageProduction(scene,stages,animators);
+
   // ---- crowds: instanced festival-goers on the lawns (phones fewer, LOW minimal) ----
   const crowds = [];
   {
     const uTime = { value: 0 };
-    const geom = _personGeom(), mat = _crowdMaterial(uTime);
     const perU2 = !glb ? 0.08 : lite ? 0.22 : 0.62; // people per square unit
-    const cap = !glb ? 450 : lite ? 1600 : 5200;
+    const cap = !glb ? 450 : lite ? 1600 : 4400;
     // (ctx.ring: the title match has drawn everyone to the ring; chicago_arena.js seats them there)
     const lawns = ctx.ring ? [] : stages.filter(({ it }) => it.crowdArea && (glb || it.tier === 'main'));
     const area = (p) => { let s = 0; for (let i = 0; i < p.length; i++) { const [x0, z0] = p[i], [x1, z1] = p[(i + 1) % p.length]; s += x0 * z1 - x1 * z0; } return Math.abs(s) / 2; };
     const tot = lawns.reduce((s, { it }) => s + area(it.crowdArea), 0);
     const k = Math.min(perU2, cap / Math.max(1, tot));
-    const c = _makeCrowd(scene, lawns.map(({ it }) => ({ it, n: Math.round(area(it.crowdArea) * k) })), geom, mat);
-    if (c) crowds.push(c);
+    const c = _makeCrowd(scene, lawns.map(({ it }) => ({ it, n: Math.round(area(it.crowdArea) * k) })), uTime,
+      buildings.filter(b => b.fest));
+    if (c) {
+      crowds.push(c);
+      animators.push(animateCrowd(c, { world: ctx.world, buildings,
+        gates: F.items.filter(it => it.kind === 'gate'), isWater: ctx.isWater, bounds: ctx.bounds }));
+    }
     animators.push({ update(dt, time) { uTime.value = time; } });
-    // Stomped / blasted festival-goers: flattened where they stood
+    // Stomped / blasted festival-goers play the reference death animation.
     // (game.js damageInRadius calls this like it does for civilians)
-    const flat = new THREE.Matrix4(), squash = new THREE.Vector3(1.6, 0.04, 1.6);
     if (ctx.world) {
       ctx.world.crowdHit = (x, z, r2) => {
         let n = 0;
@@ -832,11 +882,11 @@ export function buildFest(scene, F, ctx) {
           for (let i = 0; i < c.alive.length; i++) {
             if (!c.alive[i]) continue;
             const dx = c.pts[i * 2] - x, dz = c.pts[i * 2 + 1] - z;
-            if (dx * dx + dz * dz > r2) continue;
+            const dist2 = dx * dx + dz * dz;
+            if (dist2 < r2 + 900 && c.panic) c.panic[i] = 10;
+            if (dist2 > r2) continue;
             c.alive[i] = 0; n++; dirty = true;
-            c.im.getMatrixAt(i, flat);
-            flat.scale(squash);
-            c.im.setMatrixAt(i, flat);
+            c.im.kill(i);
           }
           if (dirty) c.im.instanceMatrix.needsUpdate = true;
         }
@@ -854,6 +904,7 @@ export function buildFest(scene, F, ctx) {
       get(FEST_BASE + m.file)?.traverse((o) => {
         if (!o.isMesh) return;
         const mat = o.material, name = mat.name || '';
+        chicagoFestivalSurface(mat,m.file);
         if (/led_screen/i.test(name)) {
           mat.map = led.tex; mat.emissiveMap = led.tex; mat.emissive?.setRGB(1, 1, 1); mat.emissiveIntensity = 0.9;
           mat.color.setRGB(1, 1, 1); mat.metalness = 0; mat.roughness = 0.5;
@@ -872,24 +923,47 @@ export function buildFest(scene, F, ctx) {
     }
   });
 
-  // ---- stage lights: sweeping additive beams + strobe bursts (desktop / phone MED) ----
+  // ---- stage lights: soft, restrained haze cones with slow modulation (desktop / phone MED) ----
   if (glb) {
     const beams = [];
     for (const { it, b } of stages) {
-      const n = lite ? (it.tier === 'main' ? 4 : 2) : (it.tier === 'main' ? 8 : it.id === 'roar_grove' ? 3 : 5);
+      const n = lite ? (it.tier === 'main' ? 2 : 1) : (it.tier === 'main' ? 4 : 2);
       for (let i = 0; i < n; i++) beams.push({ it, b, u: (i + 0.5) / n - 0.5, phase: Math.random() * 6.28, hue: i / n });
     }
     if (beams.length) {
       const g = new THREE.CylinderGeometry(0.03, 0.55, 1, 10, 1, true);
       g.translate(0, -0.5, 0); // apex at the origin, opening down -Y
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true });
+      const mat = new THREE.ShaderMaterial({
+        uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog]),
+        vertexShader:`
+          varying vec2 vUv; varying vec3 vTint; varying vec3 vNormal; varying vec3 vEye;
+          #include <fog_pars_vertex>
+          void main(){
+            vUv=uv;vTint=instanceColor;
+            vec4 p=instanceMatrix*vec4(position,1.0);
+            vec4 mvPosition=modelViewMatrix*p;
+            vNormal=normalize(normalMatrix*mat3(instanceMatrix)*normal);vEye=-mvPosition.xyz;
+            gl_Position=projectionMatrix*mvPosition;
+            #include <fog_vertex>
+          }`,
+        fragmentShader:`
+          varying vec2 vUv; varying vec3 vTint; varying vec3 vNormal; varying vec3 vEye;
+          #include <fog_pars_fragment>
+          void main(){
+            float edge=pow(abs(dot(normalize(vNormal),normalize(vEye))),1.4);
+            float ends=smoothstep(0.0,.3,vUv.y)*(1.0-smoothstep(.90,1.0,vUv.y));
+            float falloff=.25+.75*vUv.y*vUv.y;
+            gl_FragColor=vec4(vTint,edge*ends*falloff*.065);
+            #include <fog_fragment>
+          }`,
+        transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.FrontSide,fog:true,
+      });
       const im = new THREE.InstancedMesh(g, mat, beams.length);
       im.frustumCulled = false; im.castShadow = false;
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       const q = new THREE.Quaternion(), down = new THREE.Vector3(0, -1, 0), dir = new THREE.Vector3(), pos = new THREE.Vector3(), scl = new THREE.Vector3(), m = new THREE.Matrix4(), col = new THREE.Color();
       im.setColorAt(0, col.setRGB(1, 1, 1));
       scene.add(im);
-      const strobe = new Map(); // stage id -> burst end time
       animators.push({
         update(dt, time) {
           beams.forEach((bm, i) => {
@@ -904,13 +978,11 @@ export function buildFest(scene, F, ctx) {
             const cy = Math.cos(yaw), sy = Math.sin(yaw);
             dir.set((fx * cy + fz * sy) * Math.cos(pitch), Math.sin(pitch), (fz * cy - fx * sy) * Math.cos(pitch)).normalize();
             q.setFromUnitVectors(down, dir);
-            const len = it.tier === 'main' ? 30 : 18;
-            scl.set(len * 0.08, len, len * 0.08);
+            const len = it.tier === 'main' ? 22 : 14;
+            scl.set(len * 0.045, len, len * 0.045);
             im.setMatrixAt(i, m.compose(pos, q, scl));
-            let burst = strobe.get(it.id) || 0;
-            if (time > burst + 3 && Math.random() < dt * 0.25) strobe.set(it.id, burst = time + 1.2);
-            const flash = time < burst && Math.floor(time * 14) % 2 ? 2.2 : 1;
-            col.setHSL((bm.hue + time * 0.06) % 1, 1, 0.5).multiplyScalar(flash);
+            const pulse=.92+.08*Math.sin(time*.9+bm.phase);
+            col.setHSL((bm.hue + time * 0.025) % 1, .6, .45).multiplyScalar(pulse);
             im.setColorAt(i, col);
           });
           im.instanceMatrix.needsUpdate = true;

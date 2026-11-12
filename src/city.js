@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { BuildingGrid } from './buildingGrid.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { chicagoWeather } from './levels/chicagoMaterials.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL, withParseSlot, reportLoadError, isCodeBug, setKTX2Enabled, markShared } from './assetCache.js';
@@ -409,7 +411,7 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST, sm
       const e = m.matrixWorld.elements;
       const key = `${m.geometry.uuid}|${m.material.uuid}|${t}:${Math.floor(e[12] / t)},${Math.floor(e[14] / t)}`;
       let b = buckets.get(key);
-      if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, recv: m.receiveShadow, matrices: [] });
+      if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, recv: m.receiveShadow, lodDistance:c.userData.instanceLodDistance, matrices: [] });
       b.matrices.push(m.matrixWorld.clone());
     });
   }
@@ -435,7 +437,7 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST, sm
     if (ims.length === 2) ims[1].visible = false;
     if (ims.length === 2 || cull2) {
       const bs = ims[0].boundingSphere;
-      lodPairs.push({ near: ims[0], far: ims[1] || null, center: bs.center, cull2: cull2 && (Math.sqrt(cull2) + bs.radius) ** 2 });
+      lodPairs.push({ near: ims[0], far: ims[1] || null, center: bs.center, dist2:b.lodDistance?b.lodDistance*b.lodDistance:0, cull2: cull2 && (Math.sqrt(cull2) + bs.radius) ** 2 });
     }
   }
   if (lodPairs.length) _makeLodController(scene, lodPairs, lodDist);
@@ -486,7 +488,7 @@ function _makeLodController(scene, pairs, dist = LOD1_DIST) {
         if (p.far) p.far.visible = false;
         continue;
       }
-      const far = !!p.far && c2 > d2;
+      const far = !!p.far && c2 > (p.dist2||d2);
       p.near.visible = !far;
       if (p.far) p.far.visible = far;
     }
@@ -550,7 +552,9 @@ function _tintTree(group) {
     let t = _treeTintMats.get(key);
     if (!t) {
       t = m.material.clone();
-      t.color.multiply(_treeTint);
+      // Only foliage is muted by the summer shader; bark retains its brown.
+      t.color.multiplyScalar(.94);t.metalness=0;t.roughness=.94;
+      chicagoWeather(t,5);
       _treeTintMats.set(key, t);
     }
     m.material = t;
@@ -1976,46 +1980,7 @@ export function setBuildingLite(v) { LITE_MODE = !!v; }
 // Spatial grid keyed by 60u cells. Lets per-frame queries (collisions, AOE
 // damage, camera collision raycast) skip the 90% of buildings that aren't
 // nearby instead of iterating the whole list.
-export class BuildingGrid {
-  constructor(cellSize = 60) {
-    this.cellSize = cellSize;
-    this.cells = new Map();
-  }
-  _key(cx, cz) { return cx + ':' + cz; }
-  add(b) {
-    const cs = this.cellSize;
-    const k = this._key(Math.floor(b.x / cs), Math.floor(b.z / cs));
-    let arr = this.cells.get(k);
-    if (!arr) { arr = []; this.cells.set(k, arr); }
-    arr.push(b);
-    b._gridKey = k;
-    b._grid = this;
-  }
-  remove(b) {
-    if (!b._gridKey) return;
-    const arr = this.cells.get(b._gridKey);
-    if (arr) {
-      const i = arr.indexOf(b);
-      if (i >= 0) arr.splice(i, 1);
-    }
-    b._gridKey = null;
-  }
-  // Run cb against every building whose cell footprint overlaps the query AABB.
-  forEachNear(x, z, radius, cb) {
-    const cs = this.cellSize;
-    const minX = Math.floor((x - radius) / cs);
-    const maxX = Math.floor((x + radius) / cs);
-    const minZ = Math.floor((z - radius) / cs);
-    const maxZ = Math.floor((z + radius) / cs);
-    for (let cx = minX; cx <= maxX; cx++) {
-      for (let cz = minZ; cz <= maxZ; cz++) {
-        const arr = this.cells.get(this._key(cx, cz));
-        if (!arr) continue;
-        for (let i = 0; i < arr.length; i++) cb(arr[i]);
-      }
-    }
-  }
-}
+export { BuildingGrid };
 
 // Global window pipeline. Buildings push their window matrices here;
 // after all buildings exist, buildCity merges them into 2 InstancedMesh
@@ -2381,9 +2346,12 @@ export class Building {
         if (!seen.has(e.im)) { e.im.instanceMatrix.needsUpdate = true; seen.add(e.im); }
       }
     }
+    // Festival fabric and truss collapse into dust and sparks, not a row
+    // of petrol fireballs. Masonry keeps the larger explosive silhouette.
+    const festival = !!this.fest;
     // Ground rubble (stays permanently): placed at once, so the lot is never bare
-    const useGLBDebris = _debrisTemplates.length > 0;
-    const rubbleCount = 3 + Math.floor(Math.random() * 2);
+    const useGLBDebris = !festival && _debrisTemplates.length > 0;
+    const rubbleCount = festival ? 2 : 3 + Math.floor(Math.random() * 2);
     for (let i = 0; i < rubbleCount && world; i++) {
       const rubSize = THREE.MathUtils.clamp(Math.max(this.w, this.d) * rand(0.15, 0.3), 2.5, 8);
       if (useGLBDebris && _placeRubbleInstanced(world.scene, rubSize,
@@ -2393,17 +2361,19 @@ export class Building {
           rand(-0.2, 0.2), rand(0, Math.PI), rand(-0.2, 0.2))) {
         continue;
       }
-      // Fallback (no debris GLBs, e.g. mobile LOW): procedural box, instanced
-      _placeBoxRubble(world.scene, this.body.material.color,
-        this.w * rand(0.3, 0.7), rand(1.2, 2.6), this.d * rand(0.3, 0.7),
+      // Fallback (no debris GLBs, e.g. mobile LOW; festival pieces): procedural box, instanced
+      const rw = festival ? rand(.3, 1.1) : this.w * rand(0.3, 0.7);
+      const rd = festival ? rand(.2, .7) : this.d * rand(0.3, 0.7);
+      const rh = festival ? rand(.06, .18) : rand(1.2, 2.6);
+      _placeBoxRubble(world.scene, this.body.material.color, rw, rh, rd,
         this.group.position.x + rand(-this.w / 4, this.w / 4),
-        rubSize * 0.15,
+        festival ? rh / 2 : rubSize * 0.15,
         this.group.position.z + rand(-this.d / 4, this.d / 4),
         rand(-0.2, 0.2), rand(0, Math.PI), rand(-0.2, 0.2));
     }
 
     if (world) {
-      world.shake(0.9 + Math.min(0.7, this.h / 40), 0.7);
+      world.shake(festival ? .16 : .9 + Math.min(.7, this.h / 40), festival ? .18 : .7);
       // Fireballs, flying debris, the dust plume and ring, the burning column:
       // queued, and built a few buildings per frame (_drainCollapseFx)
       _queueCollapseFx(world, this);
@@ -2446,7 +2416,9 @@ const _fxV = new THREE.Vector3();
 
 function _queueCollapseFx(world, b) {
   const t = typeof world.time === 'number' ? world.time : 0;
-  _fxJobs.push({ x: b.group.position.x, z: b.group.position.z, w: b.w, d: b.d, h: b.h, color: b.body.material.color, t });
+  const kp = world.kaijuPos; // chunks fly away from the kaiju
+  _fxJobs.push({ x: b.group.position.x, z: b.group.position.z, w: b.w, d: b.d, h: b.h, color: b.body.material.color, t,
+    fest: !!b.fest, fence: !!b.isFence, metal: b.destructionMaterial === 'metal', kx: kp ? kp.x : NaN, kz: kp ? kp.z : NaN });
   if (_fxInlineT !== t) { _fxInlineT = t; _fxInlineN = 0; }
   if (_fxJobs.length - _fxHead === 1 && _fxInlineN < _FX_INLINE) {
     _fxInlineN++;
@@ -2486,21 +2458,28 @@ function _resetCollapseFx() {
  *  0: the fireball and the dust ring. -1: the fireball. */
 function _collapseFx(world, j, level) {
   const now = typeof world.time === 'number' ? world.time : 0;
-  // Big initial fireball + a couple of staggered smaller explosions
-  world.spawnExplosion(new THREE.Vector3(j.x, j.h / 2, j.z), 1.6 + Math.min(2.0, j.h / 30));
-  if (level >= 1) _fxLater.push({ x: j.x + rand(-3, 3), y: j.h * 0.5, z: j.z + rand(-3, 3), scale: 1.0, at: now + 0.09 });
-  if (level >= 2) _fxLater.push({ x: j.x, y: j.h * 0.2, z: j.z, scale: 1.2, at: now + 0.2 });
+  // Festival fabric and truss collapse into dust and sparks, not a row of
+  // petrol fireballs. Masonry keeps the larger explosive silhouette (one
+  // fireball; the staggered follow-ups are gone).
+  const festival = j.fest;
+  if (!festival) world.spawnExplosion(new THREE.Vector3(j.x, j.h / 2, j.z), 1.6 + Math.min(2.0, j.h / 30));
+  else if (j.metal) world.spawnSparks(new THREE.Vector3(j.x, j.h / 2, j.z), 12);
+  const spread = Math.max(1.5, Math.min(24, Math.hypot(j.w, j.d) * .65));
   if (level >= 0) {
     // Ground dust ring
-    world.spawnShockwave(new THREE.Vector3(j.x, 0, j.z), 0xaa8866, Math.max(j.w, j.d) * 1.4);
+    world.spawnShockwave(new THREE.Vector3(j.x, 0, j.z), festival ? 0xc4b18a : 0xaa8866, spread * 1.6);
   }
   if (level < 1) return;
 
   // Lots of debris chunks for satisfying spray
-  const useGLBDebris = _debrisTemplates.length > 0;
+  const useGLBDebris = !festival && _debrisTemplates.length > 0;
   // More, smaller pieces with the v2 kit (facade panels, rebar, beams, glass)
   let chunks = 10 + Math.floor(Math.random() * 4) + Math.min(6, Math.floor(j.h / 15)) + (useGLBDebris ? 6 : 0);
+  if (festival) chunks = j.fence ? 3 : 6;
   if (level < 2) chunks = Math.ceil(chunks / 2);
+  let awayX = j.x - j.kx, awayZ = j.z - j.kz;
+  if (!(awayX === awayX)) { awayX = 0; awayZ = 0; } // no kaiju position (NaN)
+  const awayL = Math.hypot(awayX, awayZ) || 1;
   // A frame's flying debris is capped (world.debrisRoom: the world keeps
   // only that many anyway); a lone collapse still gets every chunk
   const room = typeof world.debrisRoom === 'function' ? world.debrisRoom(chunks) : chunks;
@@ -2516,12 +2495,13 @@ function _collapseFx(world, j, level) {
     }
     if (!m) {
       // Fallback to a procedural box if GLBs not loaded (pooled, see _boxDebris)
-      m = _boxDebris(j.color, j.w * rand(0.18, 0.55), j.h * rand(0.08, 0.32), j.d * rand(0.18, 0.55));
+      m = festival ? _boxDebris(j.color, rand(.25, 1.1), rand(.04, .16), rand(.2, .8))
+        : _boxDebris(j.color, j.w * rand(0.18, 0.55), j.h * rand(0.08, 0.32), j.d * rand(0.18, 0.55));
     }
     m.position.set(j.x + rand(-j.w / 3, j.w / 3), j.h * rand(0.2, 0.7), j.z + rand(-j.d / 3, j.d / 3));
     m.rotation.set(rand(0, Math.PI), rand(0, Math.PI), rand(0, Math.PI));
     const u = m.userData;
-    (u.vel || (u.vel = new THREE.Vector3())).set(rand(-12, 12), rand(10, 22), rand(-12, 12));
+    (u.vel || (u.vel = new THREE.Vector3())).set(rand(-6, 6) + awayX / awayL * 7, festival ? rand(3, 8) : rand(10, 22), rand(-6, 6) + awayZ / awayL * 7);
     (u.angVel || (u.angVel = new THREE.Vector3())).set(rand(-5, 5), rand(-5, 5), rand(-5, 5));
     u.life = 6.5;
     u.landed = false; u.sunk = false; // a reused chunk's last flight
@@ -2529,13 +2509,10 @@ function _collapseFx(world, j, level) {
     world.debris.push(m);
   }
 
-  // Dust plume: many smoke puffs spreading from base
-  const puffs = level >= 2 ? 8 : 4;
-  for (let i = 0; i < puffs; i++) {
-    world.spawnSmoke(new THREE.Vector3(j.x + rand(-j.w * 0.6, j.w * 0.6), rand(0, 4), j.z + rand(-j.d * 0.6, j.d * 0.6)), 1.4 + Math.random() * 1.2);
-  }
+  // Dust plume spreading from the base
+  world.spawnDustBurst?.(new THREE.Vector3(j.x, 0, j.z), spread, festival ? 5 : (level >= 2 ? 9 : 5));
   // Lingering smoke column visible from afar
-  world.spawnSmokeColumn?.(_fxV.set(j.x, 0, j.z).clone(), j.h);
+  if (!festival) world.spawnSmokeColumn?.(_fxV.set(j.x, 0, j.z).clone(), j.h);
 }
 
 // --------------- GLB building system ---------------
@@ -3026,6 +3003,7 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
   const boxScaled = P.box();
   building.w = boxScaled.max.x - boxScaled.min.x;
   building.d = boxScaled.max.z - boxScaled.min.z;
+  building._grid?.expandBounds(building);
   building.h = boxScaled.max.y - boxScaled.min.y;
 
   const yOffset = Math.abs(boxScaled.min.y) > 0.5 ? -boxScaled.min.y : 0;
@@ -3123,6 +3101,7 @@ function _placeFillGLB(entry, scene) {
     cells.push(P);
   }
   b.w = W; b.d = D; b.h = h;
+  b._grid?.expandBounds(b);
   _bucketGLBNodes(cells.flatMap((P) => P.nodes(rootW)), u0, b);
 }
 
@@ -5491,6 +5470,7 @@ const CITY_KIT = {
   Building, BuildingGrid, setBuildingLite, buildGlobalBodies, buildGlobalWindows,
   instanceStaticClones: _instanceStaticClones, mergeStaticMeshes: _mergeStaticMeshes,
   makeTree, makePigeonFlock, onCamera: _onCamera, lod1Of: (geom) => _lod1ByGeom.get(geom) || null, cloneProp: _cloneProp, hasProp: (n) => _propTemplates.has(n),
+  registerLod1: (geometry, lod) => _lod1ByGeom.set(geometry, lod),
   propSize: (n) => _propTemplates.get(n)?.size || null,
   propScene: (n) => _propTemplates.get(n)?.scene || null,
   loadTileTex: _loadTileTex, loadDataTex: _loadDataTex,

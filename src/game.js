@@ -1,7 +1,11 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', 'f7892c5+', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.12.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
+import { LoneSoldier, loadLoneView } from './loneSoldier.js';
+import { firstPersonEnvironment, lightFirstPerson, followSoldierShadow, applyEnvironmentStrength, soldierSunExposure } from './firstPersonLighting.js';
+import { resolveStructureContact } from './buildingCollision.js';
+import { StructureRayQuery, cameraFollowAlpha } from './structureRayQuery.js';
 window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -11,11 +15,13 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { MONSTERS, buildKaiju, renderMonsterPreviews } from './monsters.js';
 import { loadKaijuModel } from './kaijuLoader.js';
+import { KaijuDuelRival, duelHealth, findDuelSpawns } from './kaijuDuel.js';
+import { KaijuWrestling } from './kaijuWrestling.js';
 import { Building, buildCity, spawnCars, spawnCivilians, flushBodiesIM, loadBuildingTemplates, loadDebrisTemplates, loadTreeTemplates, loadPedestrianTemplates, loadCarTemplates, loadLevelTemplates, loadLevelData, flushPendingGLBBuildings, enableKTX2, cullRubble, stageDestruction } from './city.js';
 import { Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech, loadEnemyTemplates } from './enemies.js';
 import * as legacyEffects from './effects.js';
 import {
-  Effect, makeExplosion, makeSparks, makeShockwave,
+  Effect, finishEffect, makeExplosion, makeSparks, makeShockwave,
   makeMuzzleFlash, makeSmokePuff, makeBeam, makeHitPulse, makeSmokeColumn,
   makeChainLightning, makeMissileSwarm, makeAtomicDome, makeAtomicDevastation,
   makeWingSlash, makeTailSweep, makeAfterburnerTrail, makeDustBurst,
@@ -34,6 +40,23 @@ import { createWrestling } from './wrestling/index.js';
 import { prebakeAnims } from './wrestling/anims.js';
 import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, lookSunUp, withLookEnvSky, setLookDip } from './look.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
+
+const galleryDialog = document.getElementById('model-gallery');
+let openModelGallery;
+document.getElementById('galleryBtn').addEventListener('click', async () => {
+  galleryDialog.showModal();
+  try {
+    if (!openModelGallery) {
+      const { createModelGallery } = await import('./modelGallery.js');
+      openModelGallery ??= createModelGallery(galleryDialog);
+    }
+    if (galleryDialog.open) openModelGallery();
+  } catch (error) {
+    galleryDialog.querySelector('#gallery-status').textContent = 'The 3D gallery could not open.';
+    console.warn('Gallery unavailable', error);
+  }
+});
+
 
 // ------------------------- High score (localStorage) -------------------------
 const HIGH_SCORE_KEY = 'kaiju_highscore';
@@ -63,6 +86,14 @@ function _modeId(level) {
   const m = location.search.match(/[?&]mode=(\w+)/);
   return m && (m[1] === 'waves' || m[1] === own) ? m[1] : own;
 }
+// The mode a run on `level` plays, given the menu's MODE picker: its own mode
+// (Chicago: the title match) under "Kaiju Havoc"; VS and Lone Soldier are
+// main-menu modes of their own on the classic city, so the level's mode
+// stands down for them.
+function _runModeId(level) {
+  const pick = document.getElementById('game-mode');
+  return pick && pick.value !== 'havoc' ? 'waves' : _modeId(level);
+}
 const LEVEL_KEY = 'kaijuLevel';
 function _detectLevel() {
   const m = location.search.match(/[?&]level=(\w+)/);
@@ -78,6 +109,7 @@ function _setLevel(level) {
   if (!LEVELS[level]) return;
   selectedLevel = level;
   try { localStorage.setItem(LEVEL_KEY, level); } catch (e) { /* not persisted */ }
+  _syncDeployment();
 }
 
 // Mobile + quality flags now live in src/quality.js so the VFX manager and
@@ -174,7 +206,7 @@ const RP = isMobile ? {
   cine:      !Q_LOW,
   cineCA: true, cineGrain: true, godRays: true,
   shadows:   Q_HIGH,
-  shadowMap: 1024,
+  shadowMap: Q_HIGH ? 2048 : 1024,
   shadowHalf: 112,
   shadowType: THREE.PCFSoftShadowMap,
   shadowEvery: 2,
@@ -355,9 +387,13 @@ class GodRayPass extends Pass {
           float decay = 1.0;
           for (int i = 0; i < ${samples}; i++) {
             float t = float(i) / float(${samples});
-            vec3 s = texture2D(tDiffuse, vUv + toSun * (t * 0.45)).rgb;
+            vec2 sampleUv = vUv + toSun * (t * 0.45);
+            vec3 s = texture2D(tDiffuse, sampleUv).rgb;
             float lum = dot(s, vec3(0.299, 0.587, 0.114));
-            ray += s * smoothstep(0.55, 1.4, lum) * decay;
+            // Shafts belong to the sun, not every explosion or beam pixel.
+            // Bound HDR energy so a near-camera flash cannot wash out the city.
+            float sunMask = 1.0 - smoothstep(.08, .32, distance(sampleUv, sunPos));
+            ray += min(s, vec3(2.0)) * smoothstep(1.1, 2.0, lum) * decay * sunMask;
             decay *= 0.92;
           }
           ray /= float(${samples});
@@ -384,10 +420,15 @@ if (RP.post) {
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth * RP.bloomScale, window.innerHeight * RP.bloomScale),
-    Q_HIGH ? 0.85 : (Q_MED ? 0.65 : 0.45), // strength
-    Q_HIGH ? 0.55 : (Q_MED ? 0.50 : 0.40), // radius
-    0.85                                    // threshold (0.7 bloomed lit props/flipbook smoke)
+    Q_HIGH ? 0.45 : (Q_MED ? 0.35 : 0.25), // restrained energy highlights
+    Q_HIGH ? 0.25 : 0.22,                    // narrow halo preserves texture detail
+    1.10                                     // ordinary smoke/white surfaces stay out of bloom
   );
+  // Composer supplies drawing-buffer dimensions. Keep bloom at its existing
+  // CSS-sized budget here, rather than allocating a full-sized target first
+  // and immediately resizing it again in fitRenderer().
+  const resizeBloom=bloomPass.setSize.bind(bloomPass);
+  bloomPass.setSize=(w,h)=>resizeBloom(w/_curPR*RP.bloomScale,h/_curPR*RP.bloomScale);
   composer.addPass(bloomPass);
   if (RP.bloomMips && RP.bloomMips < bloomPass.nMips) {
     // Phones: fewer blur levels (-2 levels x 2 draws). The composite still
@@ -543,9 +584,11 @@ if (RP.shadows) {
   sun.shadow.camera.left = -H; sun.shadow.camera.right = H;
   sun.shadow.camera.top = H;   sun.shadow.camera.bottom = -H;
   sun.shadow.camera.near = 1;   sun.shadow.camera.far = 290;
-  sun.shadow.bias = -0.0005;
+  sun.shadow.bias = -0.00015;
+  sun.shadow.normalBias = .045;
 }
 scene.add(sun);
+const soldierShadowAnchor=new THREE.Object3D();scene.add(soldierShadowAnchor);
 /** Phones: mark root as a shadow caster (RP.shadowCasterLayer on every mesh
  *  under it). The layer is only a marker: three r160's shadow pass tests
  *  object layers against the MAIN camera, not the shadow camera, so the
@@ -648,6 +691,7 @@ scene.add(sky);
 // PMREM, and feed it as scene.environment. All MeshStandardMaterials get
 // reflections/ambient automatically. Skipped on mobile to keep the GPU
 // budget for bloom + emissive windows.
+scene.userData.envStrength=.55;
 function _captureEnv() {
   try {
     if (scene.environment) scene.environment.dispose();
@@ -809,6 +853,7 @@ for (const p of Object.values(SHELL_PROFILES)) p.mat.color.multiplyScalar(2.6);
 // and stamps the time for out-of-combat regen. Shells are also stopped
 // by buildings (see _shellHitsBuilding), so cover matters.
 function incomingDamageMult() {
+  if (duel) return 1;
   return Math.min(1, 0.20 + 0.16 * Math.max(0, (state.wave || 1) - 1));
 }
 const OOC_REGEN_DELAY = 5.0; // seconds without taking damage
@@ -820,6 +865,7 @@ const OOC_REGEN_RATE  = 2.5; // HP per second once out of combat
 // HP in 5 s) from deleting the player before they can react.
 const DPS_WINDOW = 3.0;
 function dpsCapFrac() {
+  if (duel) return .10;
   const w = state.wave || 1;
   const base = w <= 3 ? 0.025 + 0.005 * (w - 1) : Math.min(0.10, 0.035 + 0.008 * (w - 3));
   // Boss waves (every 4th) get 20% headroom off: the boss fight should be
@@ -868,11 +914,14 @@ function _spawnBossTelegraph(pos, radius, delay) {
       const pulse = 0.5 + 0.5 * Math.sin(t * (8 + 14 * k));
       discMat.opacity = 0.12 + 0.22 * k * pulse;
       ringMat.opacity = 0.55 + 0.45 * pulse;
-      if (t >= delay) {
-        this.dead = true;
-        scene.remove(g);
-        discMat.dispose(); ringMat.dispose();
-      }
+      if (t >= delay) this.cancel();
+    },
+    cancel() {
+      if (this.dead) return;
+      this.dead = true;
+      scene.remove(g);
+      discMat.dispose();
+      ringMat.dispose();
     },
   };
 }
@@ -955,6 +1004,7 @@ function _rayGLBBuildingsAll(ray, maxDist) {
 }
 
 const world = {
+  crowdViewPosition: camera.position,
   scene,
   time: 0,
   effects: [],
@@ -989,12 +1039,38 @@ const world = {
   spawnMuzzleFlash: function (pos, s) { if (this._fxRoom()) this.effects.push(makeMuzzleFlash(this, pos, s)); },
   spawnSmoke: function (pos, s) { if (this._fxRoom()) this.effects.push(makeSmokePuff(this, pos, s)); },
   spawnHitPulse: function (pos, color) { if (this._fxRoom()) this.effects.push(makeHitPulse(this, pos, color)); },
+  spawnDustBurst: function (pos, r, n = 8) { if (this._fxRoom()) this.effects.push(makeDustBurst(this, pos, r, n)); },
   spawnSmokeColumn: function (pos, height) { if (this._fxRoom()) this.effects.push(makeSmokeColumn(this, pos, height)); },
   spawnBeam: function (origin, dir, len, color, glow) {
     this.effects.push(makeBeam(this, origin, dir, len, color, glow));
   },
+  spawnWeaponTracer: function (origin, dir, length, role) {
+    if(!this._fxRoom())return;
+    const e=vfx.spawn('weaponTracer',{world:this,origin,dir,length,role});if(e)this.effects.push(e);
+  },
+  prepareFirstPerson: function (model) {
+    lightFirstPerson(model,firstPersonEnvironment(renderer));
+  },
+  soldierExposure: function (pos) { return soldierSunExposure(this,pos,_sunOffset); },
+  spawnBallisticImpact: function (pos, normal, role, kind) {
+    if(!this._fxRoom())return;
+    const e=vfx.spawn('ballisticImpact',{world:this,pos,normal,role,kind});if(e)this.effects.push(e);
+  },
+  spawnKaijuCharge: function (source, life) {
+    audio.charge();
+    if(!this._fxRoom())return;
+    const e=vfx.spawn('kaijuCharge',{world:this,source,life});if(e)this.effects.push(e);
+    return e;
+  },
+  spawnEnergyImpact: function (pos, normal) {
+    audio.energyImpact();
+    if(!this._fxRoom())return;
+    const e=vfx.spawn('beamImpact',{world:this,pos,normal});if(e)this.effects.push(e);
+  },
   spawnBossTelegraph: function (pos, radius, delay) {
-    this.effects.push(_spawnBossTelegraph(pos, radius, delay));
+    const effect = _spawnBossTelegraph(pos, radius, delay);
+    this.effects.push(effect);
+    return effect;
   },
   spawnShell: function (origin, dir, type) {
     const profile = SHELL_PROFILES[type] || SHELL_PROFILES.tank;
@@ -1003,7 +1079,7 @@ const world = {
     m.scale.setScalar(profile.size / 0.35); // base geom is r=0.35
     scene.add(m);
     this.shells.push({ mesh: m, vel: dir.clone().multiplyScalar(profile.speed), life: 4.0, damage: profile.damage, type });
-    audio.shoot(type);
+    audio.shoot(type, origin.distanceTo(camera.position));
   },
   showMessage,
 };
@@ -1058,7 +1134,7 @@ const _TOKYO_LOOK = {
   sun: sun.color.getHex(), sunI: sun.intensity, rim: rimLight.color.getHex(), rimI: rimLight.intensity,
   amb: ambient.color.getHex(), ambI: ambient.intensity, neonI: _neonLights.map((l) => l.intensity),
   sky: Object.fromEntries(['horizon', 'midCol', 'zenith', 'sunRim'].map((k) => [k, skyMat.uniforms[k].value.toArray()])),
-  nebula: skyMat.uniforms.nebula.value, env: scene.environmentIntensity,
+  nebula: skyMat.uniforms.nebula.value, env: scene.userData.envStrength,
   bloom: bloomPass && { threshold: bloomPass.threshold, strength: bloomPass.strength },
   grade: window.__cinePass && {
     mix: window.__cinePass.uniforms.gradeMix.value,
@@ -1071,11 +1147,11 @@ const _TOKYO_LOOK = {
 // values here only stand until its first write. What this table still
 // decides: no neon, no Tokyo night-sky dressing.
 const _CHICAGO_LOOK = {
-  bg: 0x9ec3e6, fog: 0xcad8e6, fogDensity: 0.0016,
+  bg: 0x91bce0, fog: 0xb4cce0, fogDensity: 0.00095,
   hemiSky: 0xdcecff, hemiGround: 0x6b6355, hemiI: Q_HIGH ? 0.55 : (Q_MED ? 0.68 : 0.75),
   sun: 0xfff3e2, sunI: 2.35, rim: 0xb4cdf5, rimI: Q_LOW ? 0.30 : 0.40,
   amb: 0x8a9bb0, ambI: Q_HIGH ? 0.18 : (Q_MED ? 0.30 : 0.42), neonI: _neonLights.map(() => 0),
-  sky: { horizon: [0.80, 0.88, 0.96], midCol: [0.50, 0.68, 0.92], zenith: [0.20, 0.42, 0.82], sunRim: [1.0, 0.97, 0.88] },
+  sky: { horizon: [0.68, 0.80, 0.91], midCol: [0.39, 0.61, 0.88], zenith: [0.17, 0.37, 0.73], sunRim: [1.0, 0.97, 0.88] },
   // Direction to the sun: elevation ~70 deg, azimuth just south of overhead
   sunOffset: [6, 140, 50],
   nebula: 0.0, env: 0.85,
@@ -1144,6 +1220,11 @@ function _applyLevelStatics(level) {
   sky.position.set(0, 0, 0);
   rimLight.position.set(80, 70, -60); // Tokyo's; Chicago's fill sits opposite its sun
   renderer.toneMappingExposure = 1.15; // Tokyo's; Chicago's is written per frame
+  // IBL strength lives on the materials (three r160 has no scene-level
+  // control). Tokyo: the level's own value. Chicago: 1, the look layer scales
+  // its IBL in the shader (look.js ENV) and was tuned against full strength.
+  scene.userData.envStrength = level === 'chicago' ? 1 : L.env;
+  applyEnvironmentStrength(scene, scene.userData.envStrength);
 }
 
 function buildWorldCity() {
@@ -1151,7 +1232,7 @@ function buildWorldCity() {
   world.festStages = null; // ...and its stages (chicago_fest.js: id, name, x, z, rot, h, group, destroyed)
   world.water = null; // ...and its water surface API (chicago_water.js waterFX)
   world.arena = null; // ...and, built for the wrestling mode, its ring (chicago_arena.js)
-  const res = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT, level: selectedLevel, mode: _modeId(selectedLevel) });
+  const res = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT, level: selectedLevel, mode: (world.builtMode = _runModeId(selectedLevel)) });
   const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = res;
   world.buildings = buildings;
   world.buildingGrid = grid;
@@ -1249,7 +1330,6 @@ const state = {
   damageFlash: 0,    // 0..1 fade, > 0 means recently hit
   upgrades: { hpBonus: 0, dmgMult: 1, speedMult: 1, regenRate: 0, comboTimerBonus: 0, rageGainMult: 1 },
   upgradePending: false,
-  popups: [],          // floating score numbers
   slowMoUntil: 0,      // performance.now() ms until slow-mo ends
   slowMoScale: 1,
   civilians: [],       // tiny pedestrians fleeing the kaiju
@@ -1306,6 +1386,14 @@ function _setKey(code, down) {
   _edgeCodes.push(code);
 }
 window.addEventListener('keydown', (e) => {
+  if (galleryDialog.open) return;
+  if (wrestling && !state.paused && !state.gameOver && !e.repeat) {
+    if (e.code === 'KeyE') wrestleInput.grab = true;
+    if (e.code === 'KeyF') wrestleInput.kick = true;
+  }
+  if(e.code==='Space' && lone && !state.paused && !state.gameOver){
+    e.preventDefault();if(!e.repeat&&lone.role==='infantry')lone.jumpRequested=true;
+  }
   _setKey(e.code, true);
   if (e.code === 'Escape') togglePause();
   // Tab is a gameplay key in a run (free for a mode to bind), not focus traversal
@@ -1315,13 +1403,16 @@ window.addEventListener('keyup', (e) => { _setKey(e.code, false); });
 
 window.addEventListener('mousedown', (e) => {
   if (e.button === 0) state.mouseDown = true;
+  if (e.button === 2) state.aimDown = true;
   if (e.button < 3) _setKey('Mouse' + e.button, true);
   // (middle button: a gameplay button outside the classic mode, not autoscroll)
   if (e.button === 1 && state.kaiju && !state.gameOver && _mode !== MODES.waves) e.preventDefault();
 });
-window.addEventListener('mouseup', (e) => { if (e.button === 0) state.mouseDown = false; if (e.button < 3) _setKey('Mouse' + e.button, false); });
+window.addEventListener('mouseup', (e) => { if (e.button === 0) state.mouseDown = false; if (e.button === 2) state.aimDown = false; if (e.button < 3) _setKey('Mouse' + e.button, false); });
 // The right button is a gameplay button outside the classic mode: no browser menu mid-match
 window.addEventListener('contextmenu', (e) => { if (state.kaiju && !state.gameOver && _mode !== MODES.waves) e.preventDefault(); });
+renderer.domElement.addEventListener('contextmenu',e=>{if(lone)e.preventDefault();});
+window.addEventListener('blur',()=>{state.mouseDown=state.aimDown=false;for(const key of Object.keys(keys))if(keys[key])_setKey(key,false);});
 window.addEventListener('wheel', (e) => { _in.wheel += e.deltaY; }, { passive: true });
 
 renderer.domElement.addEventListener('click', () => {
@@ -1329,41 +1420,50 @@ renderer.domElement.addEventListener('click', () => {
 });
 window.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement === renderer.domElement && _pctl.look) {
-    if (_pctl.faceYaw === null) state.yaw -= e.movementX * 0.0024;
-    state.pitch -= e.movementY * 0.0018;
-    state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
+    const aimSensitivity=1-(lone?.aimBlend||0)*.45;
+    if(lone)lone.lookSway.add(new THREE.Vector2(e.movementX*.00025,e.movementY*.00025)).clampLength(0,.035);
+    if (_pctl.faceYaw === null) state.yaw -= e.movementX * 0.0024*aimSensitivity;
+    state.pitch -= e.movementY * 0.0018*aimSensitivity;
+    state.pitch = THREE.MathUtils.clamp(state.pitch, lone ? -1.35 : -0.6, lone ? 1.35 : 0.4);
   }
 });
 
+let _fitWidth=0,_fitHeight=0,_fitPR=-1,_fitQueued=false,_fitCount=0;
 function fitRenderer() {
   // Prefer visualViewport on iOS Safari -- it tracks the actually-visible area
   // (excludes the dynamic URL bar / keyboard) and updates after rotation.
   const vv = window.visualViewport;
-  const w = vv ? vv.width  : window.innerWidth;
-  const h = vv ? vv.height : window.innerHeight;
+  const w = Math.max(1,Math.round(vv ? vv.width  : window.innerWidth));
+  const h = Math.max(1,Math.round(vv ? vv.height : window.innerHeight));
+  const sizeChanged=w!==_fitWidth||h!==_fitHeight,prChanged=_curPR!==_fitPR;
+  if(!sizeChanged&&!prChanged)return;
+  _fitWidth=w;_fitHeight=h;_fitPR=_curPR;_fitCount++;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(_curPR);
-  renderer.setSize(w, h, true); // updateStyle=true: also sets canvas style.width/height
+  if(prChanged)renderer.setPixelRatio(_curPR);
+  if(sizeChanged)renderer.setSize(w, h, true); // pixel-ratio-only changes keep the CSS size
   if (composer) {
-    composer.setPixelRatio(_curPR);
-    composer.setSize(w, h);
-    if (bloomPass) bloomPass.setSize(w * RP.bloomScale, h * RP.bloomScale);
+    if(prChanged)composer.setPixelRatio(_curPR);
+    if(sizeChanged)composer.setSize(w, h);
   }
   updateOrientationClass();
 }
+function queueFitRenderer(){
+  if(_fitQueued)return;_fitQueued=true;
+  requestAnimationFrame(()=>{_fitQueued=false;fitRenderer();});
+}
 fitRenderer();
-window.addEventListener('resize', fitRenderer);
+window.addEventListener('resize', queueFitRenderer);
 window.addEventListener('orientationchange', () => {
   // iOS Safari fires orientationchange before layout settles; re-fit a few times.
-  fitRenderer();
-  setTimeout(fitRenderer, 120);
-  setTimeout(fitRenderer, 400);
-  setTimeout(fitRenderer, 900);
+  queueFitRenderer();
+  setTimeout(queueFitRenderer, 120);
+  setTimeout(queueFitRenderer, 400);
+  setTimeout(queueFitRenderer, 900);
 });
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', fitRenderer);
-  window.visualViewport.addEventListener('scroll', fitRenderer);
+  window.visualViewport.addEventListener('resize', queueFitRenderer);
+  window.visualViewport.addEventListener('scroll', queueFitRenderer);
 }
 // iOS sometimes leaves the page scrolled after rotation -- snap back to top
 window.addEventListener('scroll', () => window.scrollTo(0, 0), { passive: true });
@@ -1372,9 +1472,9 @@ window.addEventListener('scroll', () => window.scrollTo(0, 0), { passive: true }
 const padInput = {
   moveX: 0, moveZ: 0,
   lookX: 0, lookY: 0,
-  attack: false, sprint: false,
+  attack: false, sprint: false, soldierFire:false, soldierAim:false, soldierSprint:false,
   // edge-trigger latches: button-X-pressed-this-frame
-  pressed: { beam: false, roar: false, charge: false, stomp: false, ult: false, pause: false },
+  pressed: { beam: false, roar: false, charge: false, stomp: false, ult: false, pause: false, grab: false, kick: false },
   prevDown: {},
   // Raw state of every button for modes with their own bindings (ctx.input.pad):
   // held, pressed-this-frame, and the analog triggers
@@ -1391,6 +1491,7 @@ function readGamepad() {
   if (!pad) {
     padInput.moveX = padInput.moveZ = padInput.lookX = padInput.lookY = 0;
     padInput.attack = padInput.sprint = false;
+    padInput.soldierFire=padInput.soldierAim=padInput.soldierSprint=false;
     for (const k of Object.keys(padInput.pressed)) padInput.pressed[k] = false;
     if (padInput.connected) {
       padInput.connected = false; padInput.lt = padInput.rt = 0;
@@ -1412,6 +1513,9 @@ function readGamepad() {
   // Continuous
   // (a button a mode has reserved - ctx.input.pad.reserve - skips its job here)
   padInput.attack = !_padReserved.has(0) && isDown(0); // A held = melee
+  padInput.soldierFire=(pad.buttons[7]?.value||0)>.4;
+  padInput.soldierAim=(pad.buttons[6]?.value||0)>.4;
+  padInput.soldierSprint=isDown(10)||isDown(4);
   padInput.sprint = isDown(4) || (!_padReserved.has(6) && (pad.buttons[6]?.value || 0) > 0.4); // LB or LT
   // Edge-triggered: only fire once per press
   padInput.pressed.beam   = !_padReserved.has(2) && press(2); // X
@@ -1419,6 +1523,8 @@ function readGamepad() {
   padInput.pressed.charge = !_padReserved.has(3) && press(3); // Y
   padInput.pressed.stomp  = !_padReserved.has(5) && press(5); // RB
   padInput.pressed.ult    = !_padReserved.has(7) && (press(7) || ((pad.buttons[7]?.value || 0) > 0.6 && !padInput.prevDown[7])); // RT
+  padInput.pressed.grab = press(12); // D-pad up
+  padInput.pressed.kick = press(13); // D-pad down
   padInput.pressed.pause  = press(9) || (!_padReserved.has(8) && press(8)); // Start / Back
 
   padInput.connected = true;
@@ -1459,12 +1565,13 @@ function _setFocus(items, idx) {
     items[i].classList.toggle('pad-focus', i === idx);
   }
 }
-// Title menu rows, top to bottom: level cards, monster cards, START.
+// Title menu rows, top to bottom: level cards, monster cards, START and extras.
 function _menuRows() {
   return [
     Array.from(document.querySelectorAll('#levelCards .level-card')),
     Array.from(document.querySelectorAll('#monsterCards .monster-card')),
     [document.getElementById('startBtn')],
+    Array.from(document.querySelectorAll('.menu-extras button')).filter(button => button.getClientRects().length),
   ].filter((r) => r.length && r[0]);
 }
 function _menuTargets() {
@@ -1522,6 +1629,14 @@ function pollMenuGamepad(dt) {
   }
   _menuPad.cool = Math.max(0, _menuPad.cool - dt);
   const ax = pad.axes[0] || 0;
+  if (galleryDialog.open) {
+    const pressed = index => pad.buttons[index]?.pressed && !_menuPad.prevDown[index];
+    if (pressed(1)) galleryDialog.close();
+    if (pressed(14)) galleryDialog.querySelector('[data-gallery-step="-1"]').click();
+    if (pressed(15)) galleryDialog.querySelector('[data-gallery-step="1"]').click();
+    for (const index of [0, 1, 9, 12, 13, 14, 15]) _menuPad.prevDown[index] = !!pad.buttons[index]?.pressed;
+    return;
+  }
   const dpadL = !!(pad.buttons[14] && pad.buttons[14].pressed);
   const dpadR = !!(pad.buttons[15] && pad.buttons[15].pressed);
   const dpadU = !!(pad.buttons[12] && pad.buttons[12].pressed);
@@ -1560,7 +1675,8 @@ function pollMenuGamepad(dt) {
 
 // Keyboard fallback: arrow keys + Enter while the menu / upgrade modal are open.
 window.addEventListener('keydown', (e) => {
-  if (!_menuVisible() && !_upgradeVisible()) return;
+  if (galleryDialog.open || (!_menuVisible() && !_upgradeVisible())) return;
+  if (e.target?.closest?.('.menu-extras') && (e.key === 'Enter' || e.key === ' ')) return;
   if (e.key === 'ArrowLeft')  { e.preventDefault(); navigateMenu(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); navigateMenu(+1); }
   else if (e.key === 'ArrowDown' && _menuVisible() && !_upgradeVisible()) {
@@ -1658,6 +1774,7 @@ if (joystickEl && joyZone) {
 if (attackBtn) {
   attackBtn.addEventListener('touchstart', (e) => {
     e.preventDefault(); touchInput.attackHeld = true; _setKey('TouchAttack', true);
+    if (wrestling && !state.gameOver && !state.paused) wrestleInput.punch = true;
   }, { passive: false });
   const endAtk = (e) => { e.preventDefault(); touchInput.attackHeld = false; _setKey('TouchAttack', false); };
   attackBtn.addEventListener('touchend', endAtk);
@@ -1694,7 +1811,7 @@ const _touchControls = []; // extra control elements a mode registered (ctx.inpu
 function isOnControl(target) {
   if (!target || !target.closest) return false;
   for (let i = 0; i < _touchControls.length; i++) if (_touchControls[i].contains(target)) return true;
-  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #powers, #menu, #gameover, #pause-menu, #upgrade-modal');
+  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #vs-moves, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal');
 }
 window.addEventListener('touchstart', (e) => {
   if (!touchUI || state.gameOver || !state.kaiju) return;
@@ -1718,7 +1835,7 @@ window.addEventListener('touchmove', (e) => {
     if (!_pctl.look) continue;
     if (_pctl.faceYaw === null) state.yaw -= dx * 0.005;
     state.pitch -= dy * 0.004;
-    state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
+    state.pitch = THREE.MathUtils.clamp(state.pitch, lone ? -1.35 : -0.6, lone ? 1.35 : 0.4);
   }
 }, { passive: true });
 const endLook = (e) => {
@@ -1786,6 +1903,90 @@ const POWER_ICONS = {
     + '<circle class="d" cx="16" cy="16" r="2.6"/>',
 };
 
+let lone = null;
+let duel = null;
+let wrestling = null;
+const wrestleInput = { grab: false, kick: false, punch: false };
+const grapplePrompt = document.getElementById('grapple-prompt');
+const grappleControls = document.getElementById('vs-moves');
+const grappleButton = document.getElementById('vs-grab');
+for (const [id, key] of [['vs-grab', 'grab'], ['vs-kick', 'kick']]) {
+  document.getElementById(id).addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (wrestling && !state.gameOver && !state.paused) wrestleInput[key] = true;
+  });
+}
+const modePicker = document.getElementById('game-mode');
+const rivalPicker = document.getElementById('vs-rival');
+for (const [key, monster] of Object.entries(MONSTERS)) rivalPicker.add(new Option(monster.name, key));
+const vsWarning = document.getElementById('vs-warning');
+const bossName = document.getElementById('boss-name');
+const militaryBossName = bossName.textContent;
+
+function rivalKey(playerKey) {
+  return rivalPicker.value || Object.keys(MONSTERS).find(key => key !== playerKey);
+}
+
+function _syncDeployment() {
+  const active = modePicker.value === 'lone';
+  const vs = modePicker.value === 'vs';
+  document.getElementById('vs-rival-label').hidden = !vs;
+  document.getElementById('vs-menu-help').hidden = !vs;
+  document.getElementById('lone-role-label').hidden = !active;
+  document.getElementById('lone-menu-help').hidden = !active;
+  // (Kaiju Havoc on a level with its own mode: Chicago plays the title match)
+  const title = !active && !vs && _modeId(selectedLevel) === 'wrestling';
+  document.getElementById('startBtn').textContent = active ? 'DEPLOY · LONE SOLDIER' : vs ? 'FIGHT · VS' : title ? 'RING THE BELL · TITLE MATCH' : 'UNLEASH HAVOC';
+  document.getElementById('menu').classList.toggle('soldier-deployment',active);
+  document.querySelector('#menu .starring').textContent=active?'CHOOSE YOUR OPPONENT':vs?'CHOOSE YOUR FIGHTER':'STARRING · 出演';
+  document.querySelector('#rotate-hint .rh-sub').textContent=active?'Move with your left thumb · Look and fire with your right':'Kaiju Havoc plays sideways: one thumb moves, the other smashes';
+  const hints={infantry:'SPACE / A JUMP · RMB / LT AIM · R / X RELOAD',tank:'MOUSE AIM · LMB / RT CANNON · SHIFT MOVE FASTER',helicopter:'E / SPACE ASCEND · Q / C DESCEND · LMB / RT FIRE'};
+  document.querySelector('#menu .menu-hint').innerHTML=active
+    ? `WASD MOVE · MOUSE LOOK · LMB / RT FIRE<br>${hints[document.getElementById('lone-role').value]}`
+    : 'WASD MOVE · MOUSE LOOK · LMB ATTACK · 1-3 POWERS · SPACE STOMP<br>← → / D-PAD to navigate · ENTER / A to confirm · START to launch';
+  const monster=MONSTERS[state.monsterKey],role=document.getElementById('lone-role').selectedOptions[0]?.textContent.split(' · ')[0];
+  const matchup = vs && monster ? `${monster.name} vs ${MONSTERS[rivalKey(state.monsterKey)].name}` : null;
+  document.getElementById('deployment-selection').textContent=monster
+    ? `${matchup || `${active?`${role} vs `:''}${monster.name}`} · ${LEVELS[selectedLevel].name}${title ? ' · TITLE MATCH' : ''}`
+    : active?'CHOOSE YOUR OPPONENT':'CHOOSE YOUR KAIJU';
+}
+modePicker.addEventListener('change',_syncDeployment);
+rivalPicker.addEventListener('change', _syncDeployment);
+document.getElementById('lone-role').addEventListener('change',_syncDeployment);
+_syncDeployment();
+function updateLoneSoldier(dt) {
+  readGamepad();
+  if(padInput.pressed.pause){togglePause();return;}
+  lone.update(dt, {
+    x: (+!!keys.KeyD)-(+!!keys.KeyA)+touchInput.moveX+padInput.moveX,
+    z: (+!!keys.KeyW)-(+!!keys.KeyS)+touchInput.moveZ+padInput.moveZ,
+    vertical: (+!!(keys.KeyE || keys.Space || lone.touchAscend))-(+!!(keys.KeyQ || keys.KeyC || lone.touchDescend)),
+    jump: keys.Space || padInput.attack || lone.touchJump || lone.jumpRequested,
+    sprint: keys.ShiftLeft || padInput.soldierSprint || touchInput.sprint,
+    fire: state.mouseDown || touchInput.attackHeld || padInput.soldierFire,
+    aim: state.aimDown || padInput.soldierAim || lone.touchAim,
+    reload: keys.KeyR || padInput.pressed.beam || lone.touchReload,
+    lookX: padInput.lookX, lookY: padInput.lookY,
+  });
+  lone.touchReload=false;
+  lone.jumpRequested=false;
+  followSoldierShadow(sun,soldierShadowAnchor,lone.pos,_sunOffset);
+  world._fxSpawned = world._dbSpawned = 0;
+  vfx.tickParticles(dt); updateAtomicBlasts(dt);
+  for (let i=world.effects.length-1;i>=0;i--) { const e=world.effects[i];e.tick(dt);if(e.dead)world.effects.splice(i,1); }
+  while(world.effects.length>MAX_EFFECTS) finishEffect(world.effects.shift());
+  for(let i=world.debris.length-1;i>=0;i--) {
+    const d=world.debris[i];d.userData.life-=dt;
+    if(d.userData.life<=0){d.removeFromParent();_disposeDebris(d);world.debris.splice(i,1);continue;}
+    d.userData.vel.y-=25*dt;d.position.addScaledVector(d.userData.vel,dt);
+    if(d.position.y<.2){d.position.y=.2;d.userData.vel.multiplyScalar(.2);}
+  }
+  while(world.debris.length>MAX_DEBRIS){const d=world.debris.shift();d.removeFromParent();_disposeDebris(d);}
+  flushBodiesIM(world.bodiesIM);
+  for(const a of world.cityAnimators || [])a.update(dt,world.time);
+}
+
 // ------------------------- Monster select UI -------------------------
 // Build cards immediately with the emoji visible, THEN swap in rendered 3D
 // portraits async so the title screen never appears blank if the preview
@@ -1811,6 +2012,7 @@ for (const key of Object.keys(MONSTERS)) {
     card.classList.add('selected');
     state.monsterKey = key;
     document.getElementById('startBtn').disabled = false;
+    _syncDeployment();
   });
   cardsDiv.appendChild(card);
   _cardEls[key] = card;
@@ -1876,7 +2078,6 @@ document.getElementById('startBtn').addEventListener('click', () => {
 }
 
 // Resume audio after iOS suspends it on tab background
-document.addEventListener('visibilitychange', () => { if (!document.hidden) audio.resume(); });
 window.addEventListener('touchstart', () => audio.resume(), { passive: true, once: false });
 window.addEventListener('mousedown', () => audio.resume());
 
@@ -2040,7 +2241,7 @@ function _stageVfx() {
     try {
       vfx.spawn(name, { world: stubWorld, pos: P.clone(), origin: P.clone(), dir: D.clone(), length: 20,
         color: 0xffaa33, glowColor: 0xffffff, a: P.clone(), b: B.clone(), life: 0.5, segs: 6, radius: 10,
-        count: 2, fromPos: P.clone(), toPos: B.clone(), args: [] });
+        count: 2, fromPos: P.clone(), toPos: B.clone(), args: [], source: stage, normal: D.clone() });
     } catch (e) {
       // Builder needs a fuller world: its shaders compile on first use instead
       warnOnce('prewarm|' + name, `[prewarm] vfx '${name}' not prewarmed (compiles on first use):`, e.message);
@@ -2287,6 +2488,8 @@ async function _preuploadTextures(roots) {
 function restartInPlace() {
   _mode.dispose(); // the mode's own objects, DOM and listeners (before the scene goes)
   _resetSeams();
+  clearDuel();
+  lone?.dispose(); lone = null;
   _teardownScene();
   resetAtomicBlasts();
   if (state.kaiju && state.kaiju.mixer && !state.kaiju.glb) state.kaiju.mixer.stopAllAction();
@@ -2315,6 +2518,8 @@ function restartInPlace() {
 /** Remove (and dispose) everything added to the scene since boot: the
  *  city, and after a run the kaiju, enemies, effects, debris and traffic. */
 function _teardownScene() {
+  for (const e of world.effects) finishEffect(e);
+  world.effects.length = 0;
   // The kaiju GLB stays alive in _kaijuCache: reused if the same monster
   // is picked again, disposed by _startGameInner if a different one is.
   const keepRoot = state.kaiju && state.kaiju.glb ? state.kaiju.root : null;
@@ -2355,7 +2560,15 @@ window.__restartInPlace = restartInPlace;
 // ?debug test hooks (QA scripts): inspect state and trigger abilities
 if (/[?&]debug\b/.test(location.search)) {
   // composer(): the post chain (bloom, grade) for in-game-look screenshots
-  window.__qa = { state, world, camera, renderer, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on), gameOver: (v) => gameOver(!!v), upgrades: () => offerUpgrades() };
+  window.__qa = { state, world, camera, renderer,
+    graphics:()=>({width:_fitWidth,height:_fitHeight,pixelRatio:_fitPR,resizeCount:_fitCount,cameraCandidates:_cameraQuery.candidates||0}),
+    soldier:()=>lone,
+    duel:()=>duel,
+    wrestling:()=>wrestling,
+    power: (name) => {
+      const action = { beam: fireBeam, roar: fireRoar, charge: fireCharge, stomp: fireStomp, ult: fireUltimate }[name];
+      if (action && state.kaiju) { state.rage = 100; state.cooldowns[name] = 0; action(); }
+    }, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on), gameOver: (v) => gameOver(!!v), upgrades: () => offerUpgrades() };
 }
 async function startGame(key) {
   if (_startingGame) return;
@@ -2371,6 +2584,11 @@ async function startGame(key) {
     await _startGameInner(key);
   } catch (e) {
     reportLoadError('startGame', key, e);
+    if (modePicker.value === 'vs') {
+      clearDuel();
+      state.kaiju?.root.removeFromParent();
+      state.kaiju = null;
+    }
     document.getElementById('loading-screen')?.classList.remove('visible');
     if (_hudPrewarm) { _hudPrewarm.restore(); _hudPrewarm = null; }
     toast('LOADING FAILED · TAP START TO RETRY', 'bad');
@@ -2379,7 +2597,101 @@ async function startGame(key) {
   }
 }
 
+function clearDuel() {
+  wrestling?.reset();
+  wrestling = null;
+  wrestleInput.grab = wrestleInput.kick = wrestleInput.punch = false;
+  grappleControls.hidden = true;
+  document.getElementById('vs-controls-hint').hidden = true;
+  if (!duel) return;
+  const index = world.enemies.indexOf(duel);
+  if (index >= 0) world.enemies.splice(index, 1);
+  _disposeKaijuGLB(duel.glb);
+  if (state.boss === duel) state.boss = null;
+  duel = null;
+  vsWarning.hidden = true;
+  bossName.textContent = militaryBossName;
+  document.getElementById('wave-label').hidden = false;
+  document.getElementById('waveText').hidden = false;
+  document.getElementById('vs-hud-tag').hidden = true;
+}
+
+async function startDuel(playerKey, loadingStatus) {
+  const key = rivalKey(playerKey);
+  const config = MONSTERS[key];
+  loadingStatus.textContent = `LOADING RIVAL · ${config.name.toUpperCase()}`;
+  const spawns = findDuelSpawns(world);
+  const glb = await loadKaijuModel(key);
+  const player = state.kaiju.root;
+  player.position.copy(spawns.player);
+  const spawn = spawns.rival;
+  state.yaw = Math.atan2(spawn.x - player.position.x, spawn.z - player.position.z);
+  player.rotation.y = state.yaw;
+  glb.root.rotation.y = state.yaw + Math.PI;
+  duel = new KaijuDuelRival(glb, config, spawn, {
+    hurtPlayer(amount, source) {
+      if (state.gameOver) return;
+      if (duel.kind === 'punch' && !wrestling?.action) wrestling?.markPlayerStagger();
+      const dealt = hurtKaiju(amount);
+      state.damageFlash = Math.min(1, state.damageFlash + dealt / 85);
+      world.shake(.35, .22);
+      addDamageIndicator(source.x, source.z);
+    },
+    onWarning(text) {
+      vsWarning.textContent = text;
+      vsWarning.hidden = !text;
+    },
+    onDefeat() {
+      if (!state.gameOver) gameOver(true);
+    },
+  });
+  const rivalSize = new THREE.Box3().setFromObject(glb.root).getSize(new THREE.Vector3());
+  glb.root.userData.wrestleHeight = rivalSize.y;
+  player.userData.wrestleHeight = state.kaiju._camH;
+  wrestling = new KaijuWrestling(world, {...state.kaiju, config: state.monsterCfg}, duel, {
+    hurtPlayer: (amount, source) => duel.hurtPlayer(amount, source),
+    feedback(kind) {
+      world.shake(kind === 'slam' ? 1.7 : .42, kind === 'slam' ? .55 : .22);
+      audio.meleeImpact(kind);
+    },
+    prompt(label) {
+      grapplePrompt.textContent = label;
+      grapplePrompt.hidden = !label;
+      grappleButton.textContent = label.startsWith('HOLDING') ? 'SLAM' : label.startsWith('HELD') ? 'BREAK' : 'GRAB';
+    },
+  });
+  duel.cancelTelegraph = () => {
+    if (duel.telegraph?.cancel) duel.telegraph.cancel();
+    else finishEffect(duel.telegraph);
+    duel.telegraph = null;
+    duel.onWarning('');
+    if (_warnInd?.src === duel) {
+      _warnInd.t = 0;
+      _warnInd.el.style.opacity = '0';
+    }
+  };
+  duel.tryWrestle = () => wrestling?.tryRival();
+  duel.wantsGrab = () => wrestling?.rivalWantsGrab();
+  grappleControls.hidden = !touchUI;
+  document.getElementById('vs-controls-hint').hidden = touchUI;
+  markShadowCaster(glb.root);
+  scene.add(glb.root);
+  world.enemies.push(duel);
+  state.boss = duel;
+  state.rage = 55;
+  bossName.textContent = config.name.toUpperCase() + ' · RIVAL';
+  document.getElementById('wave-label').hidden = true;
+  document.getElementById('waveText').hidden = true;
+  document.getElementById('vs-hud-tag').hidden = false;
+  hudRefs.bossHp.style.transform = 'scaleX(1)';
+  document.getElementById('boss-bar').style.display = 'block';
+  loadingStatus.textContent = 'WARMING UP RIVAL';
+  await _linkAsync(glb.root);
+}
+
 async function _startGameInner(key) {
+  clearDuel();
+  const gameMode = modePicker.value;
   // Clean up any previous kaiju from scene (restart / retry)
   if (state.kaiju && state.kaiju.root) {
     scene.remove(state.kaiju.root);
@@ -2390,7 +2702,7 @@ async function _startGameInner(key) {
   state.monsterKey = key;
   state.monsterCfg = MONSTERS[key];
   audio.setMonster(state.monsterCfg.variant);
-  state.maxHp = state.monsterCfg.stats.hp;
+  state.maxHp = gameMode === 'vs' ? duelHealth(state.monsterCfg) : state.monsterCfg.stats.hp;
   state.hp = state.maxHp;
   state.score = 0;
   state.rage = 0;
@@ -2405,7 +2717,8 @@ async function _startGameInner(key) {
 
   let k;
   const hasGLB = key === 'godzilla' || key === 'ghidorah' || key === 'mecha';
-  const needSwitch = world.level !== selectedLevel;
+  // (also when the same level was built for another mode: Chicago with / without the ring)
+  const needSwitch = world.level !== selectedLevel || world.builtMode !== _runModeId(selectedLevel);
   if (!hasGLB && needSwitch) await _switchLevel(null);
   if (hasGLB) {
     // Show loading screen
@@ -2423,7 +2736,7 @@ async function _startGameInner(key) {
     // The mode this level plays and, for one that fields a rival kaiju
     // (wrestling), which of the other two it is. A cached rival that isn't
     // wanted is freed first (phones also drop it for a run without one).
-    _mode = MODES[_modeId(world.level)];
+    _mode = MODES[world.builtMode];
     const rivalKey = _mode.needsRival ? _pickRivalKey(key) : null;
     if (_rivalCache && _rivalCache.key !== rivalKey && (rivalKey || isMobile)) {
       _disposeKaijuGLB(_rivalCache.glb);
@@ -2545,7 +2858,6 @@ async function _startGameInner(key) {
       try { await prebakeAnims(glb); if (rivalKey) await prebakeAnims(_rivalCache.glb); } catch (e) { warnOnce('prewarm|anims', '[prewarm] anim bake failed (bakes at the bell instead):', e && e.message); }
     }
     await _hudPrewarmEnd();
-    loadingScreen.classList.remove('visible');
 
     k = { root: glb.root, head: glb.head, tail: glb.tail, mixer: glb.mixer, glb };
   } else {
@@ -2583,6 +2895,7 @@ async function _startGameInner(key) {
   scene.add(sun.target);
   scene.add(k.root);
   state.kaiju = k;
+  if (gameMode === 'vs') await startDuel(key, loadingStatus);
   // _startingGame reset is handled by the outer try/finally in startGame().
 
   document.getElementById('menu').classList.add('hidden');
@@ -2616,7 +2929,32 @@ async function _startGameInner(key) {
   // falls back to a procedural ambient drone if no asset is present.
   audio.startMusic();
 
-  _mode.start(); // waves: startWave(1); wrestling: the match
+  if (gameMode === 'lone') {
+    const role = document.getElementById('lone-role').value;
+    const viewModel = await loadLoneView(role);
+    lone = new LoneSoldier({world, state, camera, role, viewModel,
+      pause:()=>togglePause(),
+      sound: () => audio.shoot(role==='infantry'?'rifle':role==='helicopter'?'heli':'tank'),
+      impactSound: (kind,strength)=>audio.meleeImpact(kind,strength),
+      handlingSound: phase=>audio.reloadPhase(phase), finish: won => {
+        gameOver(won); lone.hud.style.display = 'none';
+        document.getElementById('goTitle').textContent = won ? 'KAIJU NEUTRALIZED' : 'SOLDIER DOWN';
+        document.getElementById('goSubtitle').textContent = won ? 'The city survives. You held the line.' : 'The Kaiju prevailed. Redeploy and try again.';
+      }});
+    document.getElementById('powers').classList.add('hidden');
+    document.getElementById('help').classList.add('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('minimap').classList.add('hidden');
+  } else if (duel) {
+    showWaveBanner('VS', `${state.monsterCfg.name} vs ${duel.config.name}`);
+  } else _mode.start(); // waves: startWave(1); wrestling: the title match
+  applyEnvironmentStrength(scene,scene.userData.envStrength);
+  if(lone){
+    loadingStatus.textContent=`DEPLOYING ${lone.unit.name.toUpperCase()}`;
+    if(renderer.compileAsync)await renderer.compileAsync(scene,camera);
+    else renderer.compile(scene,camera);
+  }
+  loadingScreen.classList.remove('visible');
   // Effects not linked behind the menu: phones queue them all now, desktop
   // links them one at a time after the first frames
   // (only a run that skipped the START prewarm: the procedural kaiju)
@@ -2634,6 +2972,8 @@ function _hideRunHUD() {
   document.getElementById('powers').classList.add('hidden');
   document.getElementById('help').classList.add('hidden');
   document.getElementById('boss-bar').style.display = 'none';
+  grappleControls.hidden = true;
+  document.getElementById('vs-controls-hint').hidden = true;
   const oo = document.getElementById('wave-objective');
   if (oo) oo.style.display = 'none';
   const ce = document.getElementById('combo');
@@ -3040,36 +3380,6 @@ function startWave(n) {
   for (const e of enemies) restrictShadowCasters(e.root);
 }
 
-// ---- Floating score popups (HTML overlay) ----
-const popupContainer = document.getElementById('popups');
-function spawnPopup(worldPos, text, color = '#ffee66') {
-  if (!popupContainer) return;
-  const el = document.createElement('div');
-  el.className = 'popup';
-  el.textContent = text;
-  el.style.color = color;
-  popupContainer.appendChild(el);
-  state.popups.push({ el, worldPos: worldPos.clone(), life: 1.1, maxLife: 1.1 });
-}
-// Reused projection vector so we don't clone Vector3 28x per frame
-const _popV = new THREE.Vector3();
-function updatePopups(dt) {
-  for (let i = state.popups.length - 1; i >= 0; i--) {
-    const p = state.popups[i];
-    p.life -= dt;
-    if (p.life <= 0) { p.el.remove(); state.popups.splice(i, 1); continue; }
-    const t = 1 - p.life / p.maxLife;
-    _popV.copy(p.worldPos);
-    _popV.y += t * 7;
-    _popV.project(camera);
-    if (_popV.z > 1 || _popV.z < -1) { p.el.style.opacity = '0'; continue; }
-    const x = (_popV.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-_popV.y * 0.5 + 0.5) * window.innerHeight;
-    p.el.style.transform = `translate(${x}px, ${y}px) scale(${1 + t * 0.4})`;
-    p.el.style.opacity = String(Math.max(0, 1 - t * 1.2));
-  }
-}
-
 // ---- Slow-motion on big moments ----
 // prio: a request below the priority of the slow-mo still running is dropped;
 // equal or higher replaces it (the classic callers are all 0: last one wins).
@@ -3119,10 +3429,6 @@ function registerKill() {
     toastMini(`${tier.label} +${tier.score}`, tier.color);
     state.score += tier.score;
     if (tier.slow && typeof slowMo === 'function') slowMo(tier.slow, tier.slowDur);
-    if (state.kaiju) {
-      _tmpV1.copy(state.kaiju.root.position); _tmpV1.y += 18;
-      spawnPopup(_tmpV1, tier.label + '!', '#ffaa66');
-    }
   }
 }
 function addScore(base) {
@@ -3200,7 +3506,6 @@ world.onBossKilled = () => {
   addScore(5000); addRage(40);
   toast('BOSS DESTROYED · +5000', 'good');
   document.getElementById('boss-bar').style.display = 'none';
-  if (state.boss) spawnPopup(state.boss.root.position.clone().setY(14), '+5000', '#ff66aa');
   state.boss = null;
   slowMo(0.25, 0.7);
   world.shake(2.0, 1.0);
@@ -3230,24 +3535,16 @@ world.onCivilianStomped = () => {
   state.civiliansStomped++;
   addScore(35); addRage(1);
   progressObjective('civilians');
-  // Tiny popup so the player gets feedback on every flatten
-  if (state.kaiju) {
-    _tmpV1.copy(state.kaiju.root.position); _tmpV1.y += 6;
-    spawnPopup(_tmpV1, '+35', '#ffaaaa');
-  }
 };
 world.onPickup = (type, pos) => {
   audio.pickup(type);
   if (pos) world.spawnSparks(pos.clone().setY(2.5), 12);
   if (type === 'hp') {
     state.hp = Math.min(state.maxHp, state.hp + 25);
-    if (pos) spawnPopup(pos.clone().setY(4), '+25 HP', '#66ff99');
   } else if (type === 'rage') {
     addRage(30);
-    if (pos) spawnPopup(pos.clone().setY(4), '+30 RAGE', '#88ccff');
   } else if (type === 'score') {
     addScore(500);
-    if (pos) spawnPopup(pos.clone().setY(4), '+500', '#ffcc44');
   }
 };
 // One objective channel: the chip at the top of the HUD. Completion turns
@@ -3309,10 +3606,6 @@ world.onBuildingDestroyed = (b) => {
   bumpCombo();
   // Drop a pickup at the rubble
   maybeDropPickup(b.group.position.clone(), 'building');
-  // Floating "+N" with combo multiplier shown
-  const shown = Math.floor(base * comboMult());
-  spawnPopup(b.group.position.clone().setY(b.h * 0.6), `+${shown}`,
-    state.combo >= 5 ? '#ff66aa' : '#ffee66');
 };
 
 // ---- Artillery shell support (parabolic) ----
@@ -3349,12 +3642,14 @@ world.spawnArtilleryShell = (origin, target) => {
 // { title, subtitle, waveLabel, waveValue (the "Waves Survived" row),
 //   keepPose (the mode has posed the kaiju: no death / dance clip from here) }
 function gameOver(victory, text) {
+  if (state.gameOver) return;
   state.gameOver = true;
+  wrestling?.reset();
   text = text || _mode.gameOverText(victory) || null;
   // Play death or dance animation on GLB model
   if (state.kaiju && state.kaiju.glb && !(text && text.keepPose)) {
     const glb = state.kaiju.glb;
-    if (victory) {
+    if (lone ? !victory : victory) {
       // As a one-shot so per-frame locomotion 'idle' can't override it.
       kaijuOneShot(['dance'], 0.3);
     } else {
@@ -3375,18 +3670,27 @@ function gameOver(victory, text) {
   document.getElementById('goSubtitle').textContent = (text && text.subtitle) || (victory
     ? 'The kaiju reigns supreme.'
     : 'The military has prevailed...');
+  if (duel) {
+    if (!victory) duel.glb.playOnce('dance', .3);
+    const winner = victory ? state.monsterCfg.name : duel.config.name;
+    const loser = victory ? duel.config.name : state.monsterCfg.name;
+    document.getElementById('goTitle').textContent = `${winner.toUpperCase()} WINS`;
+    document.getElementById('goSubtitle').textContent = `${loser} went down in ${LEVELS[world.level || 'tokyo'].name}.`;
+  }
   if (victory) goEl.classList.add('victory');
   else goEl.classList.remove('victory');
   audio.gameOver();
   audio.stopMusic();
-  const isNewHigh = trySetHighScore(state.score);
+  const isNewHigh = !duel && trySetHighScore(state.score);
   const newHighEl = document.getElementById('newHighScore');
   if (newHighEl) newHighEl.style.display = isNewHigh ? 'block' : 'none';
-  document.getElementById('goHighScore').textContent = getHighScore().toLocaleString();
+  const highScore = document.getElementById('goHighScore');
+  highScore.textContent = getHighScore().toLocaleString();
+  highScore.closest('.stats-row').hidden = !!duel;
   document.getElementById('finalScore').textContent = state.score.toLocaleString();
-  const fw = document.getElementById('finalWave');
-  fw.textContent = text && text.waveValue !== undefined ? text.waveValue : state.wave;
-  if (fw.previousElementSibling) fw.previousElementSibling.textContent = (text && text.waveLabel) || 'Waves Survived';
+  document.getElementById('finalWaveLabel').textContent = duel ? 'Duel Result' : (text && text.waveLabel) || 'Waves Survived';
+  document.getElementById('finalWave').textContent = duel ? (victory ? 'Won' : 'Lost') : text && text.waveValue !== undefined ? text.waveValue : state.wave;
+  document.getElementById('finalTanks').closest('.stats-row').hidden = !!duel;
   document.getElementById('finalBuildings').textContent = state.buildingsDestroyed;
   const totalKills = state.tanksKilled + state.helisKilled + state.mechsKilled +
                      state.jetsKilled + state.artilleryKilled + state.soldiersKilled +
@@ -3408,7 +3712,8 @@ function gameOver(victory, text) {
 // or 'player' = the player (upgrade bonus, score, rage, combo); anything else
 // ('rival', 'env') gets no bonus and credits nobody, and 'rival' cannot hit
 // the rival itself. The player is never damaged here.
-function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample = false, kind = 'aoe', src = null) {
+// rivalScale: share of the damage main's VS rival (duel) takes from this hit.
+function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample = false, kind = 'aoe', src = null, rivalScale = 1) {
   const other = src && src !== 'player' ? src : null;
   if (!other) amount = amount * (state.upgrades?.dmgMult || 1);
   const srcWas = _dmgSrc;
@@ -3439,15 +3744,9 @@ function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample =
     const dz = ep.z - center.z;
     if (dx * dx + dz * dz < radiusSq) {
       const dealt = (isTrample && e.armored) ? amount * 0.15 : amount;
-      e.damage(dealt, world);
+      e.damage(e === duel ? dealt * rivalScale : dealt, world);
       _tmpV1.set(ep.x, ep.y + 4, ep.z);
       world.spawnHitPulse(_tmpV1, 0xffffff);
-      if (e.dead && e.type !== 'soldier' && !other) {
-        _tmpV2.set(ep.x, ep.y + 8, ep.z);
-        spawnPopup(_tmpV2,
-          e.type === 'boss' ? '+5000' : (e.type === 'mech' ? '+700' : (e.type === 'jet' ? '+450' : '+250')),
-          '#ffee44');
-      }
     }
   }
   // The rival kaiju (wrestling): a body-sized target, so its radius counts.
@@ -3523,7 +3822,7 @@ function _assistTarget(origin, dir, maxAngle, maxDist, groundOnly, maxAngleGroun
 // bounds once (lazily cached; 0.35x the max horizontal extent so arms and
 // cannons don't hold the kaiju off), kaiju radius matches the building
 // collision. Small units are crushed instead (crushUnderfoot).
-const _SOLID_TYPES = new Set(['boss', 'mech']);
+const _SOLID_TYPES = new Set(['boss', 'mech', 'rival']);
 const _solidBox = new THREE.Box3();
 const _solidSize = new THREE.Vector3();
 function resolveBigEnemyCollisions(pos) {
@@ -3560,10 +3859,6 @@ function crushUnderfoot() {
     const dx = ep.x - p.x, dz = ep.z - p.z;
     if (dx * dx + dz * dz < r * r) {
       e.damage(999, world);
-      if (e.dead && e.type !== 'soldier') {
-        _tmpV2.set(ep.x, ep.y + 6, ep.z);
-        spawnPopup(_tmpV2, 'CRUSHED!', '#ffee44');
-      }
     }
   }
 }
@@ -3602,7 +3897,7 @@ function kaijuOneShot(names, fade = 0.15, timeScale = 1, opts) {
 }
 
 // Gorrak's atomic breath detonation (atomicBlast.js calls this at the
-// detonation instant, a beat after the bolt arrives). Radial damage with
+// detonation instant, when the bolt arrives). Radial damage with
 // falloff: the core flattens what it touches, the outer ring softens.
 const ATOMIC_RANGE = 190;
 const ATOMIC_CORE_R = 30, ATOMIC_OUTER_R = 60;
@@ -3615,14 +3910,88 @@ function _atomicDetonate(pos) {
   world.spawnSmokeColumn(_tmpV2.set(pos.x, 0, pos.z).clone(), isMobile ? 28 : 55);
   if (!isMobile) world.spawnExplosion(_tmpV2.set(pos.x, Math.max(pos.y, 6), pos.z).clone(), 3); // fireball + pooled light
   world.shake(1.5, 0.9);
-  damageInRadius(pos, ATOMIC_CORE_R, cfg.damage * 2.2, true, false, 'atomic');
-  damageInRadius(pos, ATOMIC_OUTER_R, cfg.damage * 0.5, true, false, 'atomic');
+  damageInRadius(pos, ATOMIC_CORE_R, cfg.damage * 2.2, true, false, 'atomic', null, .3);
+  damageInRadius(pos, ATOMIC_OUTER_R, cfg.damage * 0.5, true, false, 'atomic', null, .3);
   waterImpact(world, pos.x, pos.z, 3, 'ult');
   if (typeof audio.atomicBlast === 'function') audio.atomicBlast(isMobile ? 0.8 : 1);
   else audio.explosion(3);
 }
 
+const atomicCoverQuery = new StructureRayQuery();
+
+function beginAtomicBreath(cfg) {
+  const kaiju = state.kaiju;
+  const origin = new THREE.Vector3();
+  const aim = _aimDir(new THREE.Vector3());
+  const dir = aim.clone();
+  const ray = new THREE.Ray(origin, dir);
+  let building, enemy;
+  const damage = cfg.damage * (state.upgrades.dmgMult || 1);
+  const getMouth = (point) => {
+    kaiju.head.getWorldPosition(point);
+    point.y += 1;
+    point.addScaledVector(dir, 5.5);
+  };
+  getMouth(origin);
+
+  fireAtomicBreath(scene, origin, dir, ATOMIC_RANGE, cfg.color, pos => {
+    if (state.gameOver || state.kaiju !== kaiju) return;
+    if (building && !building.destroyed) building.damage(damage, pos, world);
+    if (enemy && !enemy.dead) {
+      _tmpV1.copy(enemy.root.position);
+      _tmpV1.y += enemy.aimY || 3;
+      if (_tmpV1.distanceToSquared(pos) <= 100) enemy.damage(damage * (enemy === duel ? .55 : .7), world);
+    }
+    _atomicDetonate(pos);
+  }, {
+    kaijuRoot: kaiju.root, world, getMouth,
+    onRelease() {
+      getMouth(origin);
+      const target = _assistTarget(origin, aim, .25, ATOMIC_RANGE, false, .35);
+      if (target) {
+        dir.copy(target.root.position);
+        dir.y += target.aimY || 3;
+        dir.sub(origin).normalize();
+      }
+
+      let distance = ATOMIC_RANGE;
+      if (dir.y < -1e-3) distance = Math.min(distance, -origin.y / dir.y);
+      const cover = atomicCoverQuery.nearest(world, ray, distance, true, .5);
+      if (cover) {
+        distance = cover.distance;
+        building = cover.building;
+      }
+      for (const candidate of world.enemies) {
+        if (candidate.dead) continue;
+        _tmpV1.copy(candidate.root.position).sub(origin);
+        _tmpV1.y += 3;
+        const along = _tmpV1.dot(dir);
+        if (along <= 0 || along >= distance) continue;
+        const lateralSq = Math.max(0, _tmpV1.lengthSq() - along * along);
+        if (lateralSq > 36) continue;
+        distance = along;
+        enemy = candidate;
+        building = null;
+      }
+      // The title match's rival: the same test around its chest, grown by its body
+      if (_rival && !_rivalView.dead) {
+        _tmpV1.copy(_rival.root.position).sub(origin);
+        _tmpV1.y += _rivalView.aimY;
+        const along = _tmpV1.dot(dir), tube = 6 + _rival.radius;
+        if (along > 0 && along < distance && Math.max(0, _tmpV1.lengthSq() - along * along) <= tube * tube) {
+          distance = along; enemy = _rivalView; building = null;
+        }
+      }
+      world.shake(.3, .4);
+      audio.beam();
+      return { origin, dir, distance };
+    },
+  });
+  audio.atomicCharge?.();
+}
+
 function fireBeam() {
+  if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   const cfg = state.monsterCfg.beam;
   if (state.rage < cfg.cost || state.cooldowns.beam > 0) return;
   state.rage -= cfg.cost;
@@ -3637,13 +4006,17 @@ function fireBeam() {
     const anim = v === 'ghidorah' ? 'cast1' : v === 'mecha' ? 'cast1' : 'skill1';
     kaijuOneShot([anim, 'skill1'], 0.15, 1.3, { commit: 0.6 });
   }
+  if (atomic) {
+    beginAtomicBreath(cfg);
+    return;
+  }
   state.kaiju.head.getWorldPosition(_beamOrigin);
   _beamOrigin.y += 1;
   // direction = camera forward, biased horizontally toward enemies
   _aimDir(_beamDir);
   _beamOrigin.addScaledVector(_beamDir, 5.5);
 
-  const length = atomic ? ATOMIC_RANGE : 260;
+  const length = 260;
   // Snap onto an enemy near the aim (horizontal angle only): ground units
   // within ~20 deg (they sit far below the beam's pitch and are small),
   // air units within ~14 deg. The snapped target is hit directly below,
@@ -3653,61 +4026,9 @@ function fireBeam() {
     _tmpV1.copy(tgt.root.position); _tmpV1.y += tgt.aimY || 3; // (a kaiju-sized target: its chest)
     _beamDir.subVectors(_tmpV1, _beamOrigin).normalize();
   }
-  // The atomic breath travels as a bolt instead (fired below, once the
-  // detonation point is known)
-  if (!atomic) world.spawnBeam(_beamOrigin, _beamDir, length, cfg.color, cfg.glow);
+
   world.shake(0.3, 0.4);
   audio.beam();
-  if (atomic && typeof audio.atomicCharge === 'function') audio.atomicCharge();
-
-  // Per-variant beam signature: a few extras spawned alongside the beam.
-  if (variant === 'ghidorah') {
-    // GRAVITY BEAM = a continuous chain of lightning bolts running the
-    // FULL beam length, plus extra branching arcs every 50u for the
-    // electrical-storm read. Bolts are thick + last 0.65s so they're
-    // dominant, not a subtle fork next to a green tube.
-    //
-    // Visibility from the chase cam: the camera looks straight down the
-    // beam from behind Tridon, so bolts ON the beam axis were end-on and
-    // hidden by its wings/body. The main bolt now starts 10 u ahead of the
-    // head and coils around the axis (helix, radius ~3.5 u), and two
-    // extra bolts leap from the wing tips (beside the body, in view) and
-    // converge onto the beam ~50 u out.
-    const right = _tmpV1.crossVectors(_beamDir, THREE.Object3D.DEFAULT_UP).normalize().clone();
-    const up2 = new THREE.Vector3().crossVectors(right, _beamDir).normalize();
-    const SEGS = 6;
-    const START = 10;
-    const segLen = (length - START) / SEGS;
-    const ph0 = Math.random() * Math.PI * 2;
-    const helix = (i) => {
-      const p = _beamOrigin.clone().addScaledVector(_beamDir, START + i * segLen);
-      const a = ph0 + i * 1.4;
-      const r = i === 0 ? 1.0 : 3.5;
-      return p.addScaledVector(right, Math.cos(a) * r).addScaledVector(up2, Math.sin(a) * r);
-    };
-    let prev = helix(0);
-    for (let i = 0; i < SEGS; i++) {
-      const next = helix(i + 1);
-      world.effects.push(makeChainLightning(world, prev, next, cfg.color, 1.3, 12));
-      prev = next;
-    }
-    for (const side of [-1, 1]) {
-      const wing = _beamOrigin.clone()
-        .addScaledVector(right, side * 11).addScaledVector(up2, 4).addScaledVector(_beamDir, -2);
-      const meet = _beamOrigin.clone().addScaledVector(_beamDir, 45 + Math.random() * 15);
-      world.effects.push(makeChainLightning(world, wing, meet, cfg.color, 1.2, 10));
-    }
-    // Branching forks coming off the main bolt
-    for (let f = 0; f < 5; f++) {
-      const distAlong = 40 + Math.random() * (length - 80);
-      const fromP = _beamOrigin.clone().addScaledVector(_beamDir, distAlong);
-      const toP = fromP.clone();
-      toP.x += (Math.random() - 0.5) * 18;
-      toP.y += (Math.random() - 0.5) * 10;
-      toP.z += (Math.random() - 0.5) * 18;
-      world.effects.push(makeChainLightning(world, fromP, toP, cfg.color, 1.0, 8));
-    }
-  }
 
   // Hit detection along ray -- single raycast against the global body IM
   _beamRay.set(_beamOrigin, _beamDir);
@@ -3734,8 +4055,7 @@ function fireBeam() {
   if (hitB) {
     const hp = _beamImpact.clone();
     hitB.damage(beamDmg, hp, world);
-    // (the atomic breath's impact visuals are its detonation)
-    if (!atomic) world.spawnExplosion(hp, 0.8);
+    world.spawnExplosion(hp, 0.8);
     // Variant-specific impact signature at the hit point
     if (variant === 'mecha') {
       // Plasma cannon: secondary explosion ring for double-impact
@@ -3749,16 +4069,50 @@ function fireBeam() {
     const tg = -_beamOrigin.y / _beamDir.y;
     if (tg > 0 && tg < impactDist) { impactDist = tg; _beamImpact.copy(_beamOrigin).addScaledVector(_beamDir, tg).setY(0); }
   }
-  if (atomic) {
-    // Detonate at the first building / ground hit, the snapped target, or
-    // max range, whichever comes first
-    let det = impactDist;
-    if (tgt) {
-      const td = _tmpV1.copy(tgt.root.position).sub(_beamOrigin).dot(_beamDir);
-      if (td > 0 && td < det) det = td;
+  const visualLength = Math.max(1, impactDist);
+  if (variant === 'mecha') world.spawnBeam(_beamOrigin, _beamDir, visualLength, cfg.color, cfg.glow);
+  // Per-variant beam signature: a few extras spawned alongside the beam.
+  if (variant === 'ghidorah') {
+    // Electrical discharge has no solid beam tube: narrow re-striking
+    // branches converge on the first visible contact, with wing arcs
+    // keeping the discharge readable from the chase camera.
+    const right = _tmpV1.crossVectors(_beamDir, THREE.Object3D.DEFAULT_UP).normalize().clone();
+    const up2 = new THREE.Vector3().crossVectors(right, _beamDir).normalize();
+    const SEGS = 6;
+    const START = Math.min(10, visualLength * .15);
+    const segLen = (visualLength - START) / SEGS;
+    const ph0 = Math.random() * Math.PI * 2;
+    const helix = (i) => {
+      const p = _beamOrigin.clone().addScaledVector(_beamDir, START + i * segLen);
+      const a = ph0 + i * 1.4;
+      const r = i === 0 ? 1.0 : 3.5;
+      return p.addScaledVector(right, Math.cos(a) * r).addScaledVector(up2, Math.sin(a) * r);
+    };
+    let prev = helix(0);
+    for (let i = 0; i < SEGS; i++) {
+      const next = helix(i + 1);
+      world.effects.push(makeChainLightning(world, prev, next, cfg.color, 1.3, 12));
+      prev = next;
     }
-    fireAtomicBreath(scene, _beamOrigin, _beamDir, det, cfg.color, _atomicDetonate, { kaijuRoot: state.kaiju.root, world });
-  } else if (impactDist < length) {
+    for (const side of [-1, 1]) {
+      const wing = _beamOrigin.clone()
+        .addScaledVector(right, side * 11).addScaledVector(up2, 4).addScaledVector(_beamDir, -2);
+      const meet = _beamOrigin.clone().addScaledVector(_beamDir, Math.min(visualLength, 45 + Math.random() * 15));
+      world.effects.push(makeChainLightning(world, wing, meet, cfg.color, 1.2, 10));
+    }
+    // Branching forks coming off the main bolt
+    for (let f = 0; f < 5; f++) {
+      const distAlong = visualLength * (.2 + Math.random() * .6);
+      const fromP = _beamOrigin.clone().addScaledVector(_beamDir, distAlong);
+      const toP = fromP.clone();
+      toP.x += (Math.random() - 0.5) * 18;
+      toP.y += (Math.random() - 0.5) * 10;
+      toP.z += (Math.random() - 0.5) * 18;
+      world.effects.push(makeChainLightning(world, fromP, toP, cfg.color, 1.0, 8));
+    }
+  }
+
+  if (impactDist < length) {
     if (_beamImpact.y < 1.5) waterImpact(world, _beamImpact.x, _beamImpact.z, 2, 'beam');
     const fx = vfx.spawn('beamImpact', { world, pos: _beamImpact.clone(), color: cfg.color });
     if (fx) world.effects.push(fx);
@@ -3796,6 +4150,7 @@ function fireBeam() {
 }
 
 function fireRoar() {
+  if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   const cfg = state.monsterCfg.roar;
   if (state.rage < cfg.cost || state.cooldowns.roar > 0) return;
   state.rage -= cfg.cost;
@@ -3821,8 +4176,10 @@ function fireRoar() {
   const roarHeadPos = new THREE.Vector3();
   roarHead.getWorldPosition(roarHeadPos);
   const roarDir = new THREE.Vector3(Math.sin(state.yaw), 0.05, Math.cos(state.yaw));
-  world.effects.push(makeSoundWaveRings(world, roarHeadPos, cfg.color, 3, cfg.radius * 0.95, 1.4));
-  world.effects.push(makeBreathCone(world, roarHeadPos, roarDir, 45, cfg.color, 0.8));
+  if (variant !== 'mecha') {
+    world.effects.push(makeSoundWaveRings(world, roarHeadPos, cfg.color, 3, cfg.radius * 0.95, 1.4));
+    world.effects.push(makeBreathCone(world, roarHeadPos, roarDir, 45, cfg.color, 0.8));
+  }
 
   // Per-variant signature VFX layered on top of the shared shockwave.
   if (variant === 'gojira') {
@@ -3853,13 +4210,14 @@ function fireRoar() {
     }
   } else if (variant === 'mecha') {
     // MISSILE BARRAGE: 8 missiles arcing outward, each exploding on impact.
-    makeMissileSwarm(world, center, cfg.radius, 8);
+    makeMissileSwarm(world, roarHeadPos.clone().setY(Math.max(12, roarHeadPos.y * .7)), cfg.radius, 8);
     // Visible launch flash at the kaiju so the player sees the source
     world.effects.push(makeMissileLaunchFlash(world, roarHeadPos));
   }
 }
 
 function fireCharge() {
+  if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   const cfg = state.monsterCfg.charge;
   if (state.rage < cfg.cost || state.cooldowns.charge > 0) return;
   state.rage -= cfg.cost;
@@ -3928,6 +4286,7 @@ function fireCharge() {
 }
 
 function fireStomp() {
+  if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   if (state.rage < 15 || state.cooldowns.stomp > 0) return;
   state.rage -= 15;
   state.cooldowns.stomp = 1.5;
@@ -3947,6 +4306,7 @@ function fireStomp() {
 }
 
 function fireUltimate() {
+  if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   if (state.rage < 100 || state.cooldowns.ult > 0) return;
   state.rage = 0;
   // Long cooldown to keep ultimates as a real moment of power instead
@@ -4070,6 +4430,8 @@ function fireUltimate() {
 }
 
 function fireMelee() {
+  if (lone) { lone.shoot(); return; }
+  if (wrestling) { wrestling.punch(state.yaw); return; }
   if (state.cooldowns.melee > 0) return;
   state.cooldowns.melee = 0.6;
   const forward = _fwd.set(Math.sin(state.yaw), 0, Math.cos(state.yaw));
@@ -4099,14 +4461,34 @@ function fireMelee() {
 }
 
 // ------------------------- Collision -------------------------
-// Resolve kaiju-vs-buildings as a circle-vs-AABB push, while wearing the
-// building down. Walking into a building no longer phases through it; you
-// have to crush it down (or use beam/charge/melee) to pass.
+// Low structures crush on contact without reducing walking speed. Taller
+// buildings use a circle/AABB push and continuous contact damage.
 const KAIJU_BODY_RADIUS = 8.1;
 // radius / wearDps default to the player's body and the classic 35 dps; a
 // mode passes its own for another body (the rival kaiju). Returns the last
 // building pushed against this call, or null.
 let _bumped = null;
+// Circle-vs-footprint push for a body that is not the classic walking player
+// (a mode's own wear rate, 0 = none): no crush-on-contact, the building
+// simply holds the body out while it stands.
+function _pushOutOfStructure(pos, radius, b, dt, wearDps) {
+  const hw = b.w / 2, hd = b.d / 2;
+  const cx = THREE.MathUtils.clamp(pos.x, b.x - hw, b.x + hw), cz = THREE.MathUtils.clamp(pos.z, b.z - hd, b.z + hd);
+  const dx = pos.x - cx, dz = pos.z - cz, d2 = dx * dx + dz * dz;
+  if (d2 >= radius * radius) return;
+  if (d2 > 1e-6) {
+    const d = Math.sqrt(d2);
+    pos.x = cx + dx / d * radius; pos.z = cz + dz / d * radius;
+  } else {
+    // Centre inside the box: out by the nearest edge
+    const eL = pos.x - (b.x - hw), eR = (b.x + hw) - pos.x, eN = pos.z - (b.z - hd), eS = (b.z + hd) - pos.z;
+    const m = Math.min(eL, eR, eN, eS);
+    if (m === eL) pos.x = b.x - hw - radius; else if (m === eR) pos.x = b.x + hw + radius;
+    else if (m === eN) pos.z = b.z - hd - radius; else pos.z = b.z + hd + radius;
+  }
+  _bumped = b;
+  if (wearDps) b.damage(wearDps * dt, _tmpV1.set(cx, b.h * 0.6, cz), world);
+}
 function resolveBuildingCollisions(pos, dt, radius = 0, wearDps = 35) {
   if (!radius) {
     if (!state.monsterCfg) return null;
@@ -4117,50 +4499,12 @@ function resolveBuildingCollisions(pos, dt, radius = 0, wearDps = 35) {
   _bumped = null;
   // Only query the cells the kaiju overlaps -- typically 1-4 buildings.
   grid.forEachNear(pos.x, pos.z, radius + 30, (b) => {
+    // (wearDps 35: the classic contact, low structures crushed outright - buildingCollision.js)
     if (b.destroyed) return;
-    const bx = b.group.position.x;
-    const bz = b.group.position.z;
-    const halfW = b.w / 2;
-    const halfD = b.d / 2;
-
-    // Quick reject (single-distance test against bounding circle of building)
-    const ddx = pos.x - bx;
-    const ddz = pos.z - bz;
-    const maxR = Math.max(halfW, halfD) + radius;
-    if (ddx * ddx + ddz * ddz > maxR * maxR) return;
-
-    // Closest point on the AABB footprint
-    const cx = THREE.MathUtils.clamp(pos.x, bx - halfW, bx + halfW);
-    const cz = THREE.MathUtils.clamp(pos.z, bz - halfD, bz + halfD);
-    const dx = pos.x - cx;
-    const dz = pos.z - cz;
-    const dist2 = dx * dx + dz * dz;
-    if (dist2 >= radius * radius) return;
-
-    let contactX, contactZ;
-    if (dist2 < 1e-4) {
-      // Center is inside the box -- pop out the nearest edge
-      const exitL = pos.x - (bx - halfW);
-      const exitR = (bx + halfW) - pos.x;
-      const exitN = pos.z - (bz - halfD);
-      const exitS = (bz + halfD) - pos.z;
-      const m = Math.min(exitL, exitR, exitN, exitS);
-      if (m === exitL)      { pos.x = bx - halfW - radius; contactX = bx - halfW; contactZ = pos.z; }
-      else if (m === exitR) { pos.x = bx + halfW + radius; contactX = bx + halfW; contactZ = pos.z; }
-      else if (m === exitN) { pos.z = bz - halfD - radius; contactZ = bz - halfD; contactX = pos.x; }
-      else                  { pos.z = bz + halfD + radius; contactZ = bz + halfD; contactX = pos.x; }
-    } else {
-      const dist = Math.sqrt(dist2);
-      const nx = dx / dist, nz = dz / dist;
-      pos.x = cx + nx * radius;
-      pos.z = cz + nz * radius;
-      contactX = cx; contactZ = cz;
-    }
-
-    // Continuous wear-down: ~35 dps to the building you push into
-    _bumped = b;
-    _tmpV1.set(contactX, b.h * 0.6, contactZ);
-    if (wearDps) b.damage(wearDps * dt, _tmpV1, world);
+    const px = pos.x, pz = pos.z, hp = b.hp;
+    if (wearDps === 35) resolveStructureContact(pos, radius, b, dt, world, _tmpV1);
+    else _pushOutOfStructure(pos, radius, b, dt, wearDps);
+    if (pos.x !== px || pos.z !== pz || b.hp !== hp || b.destroyed) _bumped = b;
   });
   return _bumped;
 }
@@ -4176,7 +4520,22 @@ function updatePlayer(dt) {
   if (C.look && (padInput.lookX !== 0 || padInput.lookY !== 0)) {
     if (C.faceYaw === null) state.yaw -= padInput.lookX * 0.045;
     state.pitch -= padInput.lookY * 0.030;
-    state.pitch = THREE.MathUtils.clamp(state.pitch, -0.6, 0.4);
+    state.pitch = THREE.MathUtils.clamp(state.pitch, lone ? -1.35 : -0.6, lone ? 1.35 : 0.4);
+  }
+  if (wrestling) {
+    if (padInput.pressed.pause) { togglePause(); return; }
+    wrestling.step(dt);
+    if (state.gameOver) return;
+    if (wrestleInput.grab || padInput.pressed.grab) wrestling.grabInput(state.yaw);
+    if (wrestleInput.kick || padInput.pressed.kick) wrestling.kick(state.yaw);
+    if (wrestleInput.punch) wrestling.punch(state.yaw);
+    wrestleInput.grab = wrestleInput.kick = wrestleInput.punch = false;
+    if (wrestling.locked(wrestling.player)) {
+      state.vel.set(0, 0, 0);
+      state._stompJumpT = state._stompJumpD = 0;
+      for (const name of Object.keys(state.cooldowns)) state.cooldowns[name] = Math.max(0, state.cooldowns[name] - dt);
+      return;
+    }
   }
   // Lock-on: the facing (and with it the chase cam and the aim) is steered for the player
   if (C.faceYaw !== null) {
@@ -4281,9 +4640,14 @@ function updatePlayer(dt) {
     // meanwhile are deferred by glb.play until the clip's commit window
     // passes (moving) or it finishes (idle), then crossfade back.
     let loco, fade;
+    const mecha = state.monsterCfg.variant === 'mecha';
+    const backingUp = mecha && mz < 0 && Math.abs(mz) >= Math.abs(mx);
     if (moving) {
       const sprint = keys.ShiftLeft || keys.ShiftRight || touchInput.sprint || padInput.sprint;
-      if (state._turnDir) {
+      if (mecha) {
+        loco = backingUp ? 'walkBackIP' : sprint ? 'run' : 'walk';
+        fade = .2;
+      } else if (state._turnDir) {
         // Turning while moving — fall back to walk turns if run turns unavailable
         const left = state._turnDir > 0;
         if (sprint && glb.actions.turnLeft) loco = left ? 'turnLeft' : 'turnRight';
@@ -4297,12 +4661,19 @@ function updatePlayer(dt) {
     } else {
       loco = 'idle'; fade = 0.4;
     }
-    if (C.loco && !ext && loco !== glb.currentName && (state._locoHoldT <= 0 || glb.oneShotActive)) {
+    if (C.loco && !ext && loco !== glb.currentName && (mecha || state._locoHoldT <= 0 || glb.oneShotActive)) {
       if (glb.play(loco, fade)) state._locoHoldT = 0.3;
     }
 
-    // Keep yaw rotation driven by player input
-    if (!ext) k.root.rotation.y = state.yaw;
+    // Mechra's turn clips contain baked translation and rotation. Use its
+    // in-place gait and point the actor along the movement the game applied.
+    if (ext) { /* an outside system owns the root's facing */ }
+    else if (mecha && moving && !glb.oneShotActive && C.faceYaw === null) {
+      const sign = backingUp ? -1 : 1;
+      k.root.rotation.y = Math.atan2(move.x * sign, move.z * sign);
+    } else {
+      k.root.rotation.y = state.yaw;
+    }
 
     // Vertical bob for stomp jump (parabolic arc)
     state._stompJumpT = Math.max(0, (state._stompJumpT || 0) - dt);
@@ -4683,53 +5054,24 @@ function updateDamageIndicators(dt) {
   }
 }
 
-const _camRay = new THREE.Raycaster();
+const _camRay = new THREE.Ray();
+const _cameraQuery = new StructureRayQuery();
 const _camHead = new THREE.Vector3();
 const _camOffset = new THREE.Vector3();
 const _camTarget = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
-const _camCandidates = []; // reused across frames -- we only mutate length
-const _camBox = new THREE.Box3();
-const _camHit = new THREE.Vector3();
 /** Camera boom length from origin along dir (unit) that stays out of the
  *  buildings: desiredDist, pulled in to 1.5u short of the first wall (never
  *  under minDist). Also the occlusion test for a mode's own camera. */
+const _clearRay = new THREE.Ray(), _clearQuery = new StructureRayQuery();
 function _camClearDist(origin, dir, desiredDist, minDist = 11) {
-  let dist = desiredDist;
-  _camRay.set(origin, dir);
-  _camRay.far = desiredDist + 2;
-  _camRay.near = 0.1;
-
-  // One raycast against the global building InstancedMesh -- Three.js does
-  // the per-instance bounds tests internally, no candidate filtering needed.
-  if (world.bodiesIM) {
-    const hit = _camRay.intersectObject(world.bodiesIM, false)[0];
-    if (hit && hit.distance < dist) dist = Math.max(minDist, hit.distance - 1.5);
-  }
-  // GLB towers and landmarks are separate customMesh roots, not instances
-  // in bodiesIM, so the raycast above misses them and the camera dives
-  // inside. Test the ray against each nearby building's footprint AABB
-  // (w/d/h are rewritten to the GLB's scaled bounds on placement). Boxes
-  // that already contain the head are skipped so smashing through a
-  // building doesn't yank the camera in.
-  if (world.buildingGrid) {
-    const midX = origin.x + dir.x * desiredDist * 0.5;
-    const midZ = origin.z + dir.z * desiredDist * 0.5;
-    world.buildingGrid.forEachNear(midX, midZ, desiredDist * 0.5 + 30, (b) => {
-      if (b.destroyed || !b.customMesh) return;
-      _camBox.min.set(b.x - b.w / 2, 0, b.z - b.d / 2);
-      _camBox.max.set(b.x + b.w / 2, b.h, b.z + b.d / 2);
-      if (_camBox.containsPoint(origin)) return;
-      if (_camRay.ray.intersectBox(_camBox, _camHit)) {
-        const d = _camHit.distanceTo(origin);
-        if (d < dist) dist = Math.max(minDist, d - 1.5);
-      }
-    });
-  }
-  return dist;
+  _clearRay.set(origin, dir);
+  const hit = _clearQuery.nearest(world, _clearRay, desiredDist + 2, true, .1);
+  return hit && hit.distance < desiredDist ? Math.max(minDist, hit.distance - 1.5) : desiredDist;
 }
-// dtReal: real seconds since the last frame (clamped), for a mode's camera
-function updateCamera(dtReal = 1 / 60) {
+// dt: real seconds since the last frame (clamped), also handed to a mode's camera
+function updateCamera(dt=1/60) {
+  if (lone) { lone.cameraUpdate(); return; }
   const k = state.kaiju;
   if (!k) return;
   // Sun offset stays constant relative to the kaiju so shadows follow it
@@ -4739,20 +5081,46 @@ function updateCamera(dtReal = 1 / 60) {
   }
   // A mode's camera (wrestling: fight cam, entrances, finishers) takes the
   // frame when it returns true; the chase cam below is the fallback.
-  if (_camOverride && _camOverride(camera, dtReal)) { _camOverridden = true; return; }
+  if (_camOverride && _camOverride(camera, Math.min(0.05, dt))) { _camOverridden = true; return; }
   if (_camOverridden) {
     _camOverridden = false;
     if (camera.fov !== CAM_FOV) { camera.fov = CAM_FOV; camera.updateProjectionMatrix(); }
   }
   k.head.getWorldPosition(_camHead);
-  const desiredDist = 51;
+  let desiredDist = 51;
+  const grapple = wrestling?.action;
+  const paired = grapple?.paired;
+  if (paired) {
+    const a = grapple.attacker.root.position, b = grapple.defender.root.position;
+    _camHead.addVectors(a, b).multiplyScalar(.5);
+    _camHead.y += 14;
+    desiredDist = 51 + Math.min(19, a.distanceTo(b) * .32);
+  }
   _camOffset.set(
     -Math.sin(state.yaw),
     (28 - state.pitch * 25) / desiredDist,
     -Math.cos(state.yaw)
   ).normalize();
 
-  const dist = _camClearDist(_camHead, _camOffset, desiredDist);
+  if (paired) {
+    const {x, z} = grapple.direction;
+    _camOffset.set(z, .49, -x).normalize();
+    if (!grapple.cameraSide) {
+      _camRay.set(_camHead, _camOffset);
+      const right = _cameraQuery.nearest(world, _camRay, desiredDist, true, .1)?.distance ?? desiredDist;
+      _camOffset.x *= -1;
+      _camOffset.z *= -1;
+      _camRay.set(_camHead, _camOffset);
+      const left = _cameraQuery.nearest(world, _camRay, desiredDist, true, .1)?.distance ?? desiredDist;
+      grapple.cameraSide = left > right ? -1 : 1;
+    }
+    _camOffset.set(z * grapple.cameraSide - x * .16, .49,
+      -x * grapple.cameraSide - z * .16).normalize();
+  }
+  let dist = desiredDist;
+  _camRay.set(_camHead, _camOffset);
+  const obstruction=_cameraQuery.nearest(world,_camRay,desiredDist+2,true,.1);
+  if(obstruction&&obstruction.distance<dist)dist=Math.max(11,obstruction.distance-1.5);
 
   _camTarget.copy(_camHead).addScaledVector(_camOffset, dist);
   const target = _camTarget;
@@ -4775,19 +5143,18 @@ function updateCamera(dtReal = 1 / 60) {
     target.x += (Math.random() - 0.5) * world._shakeMag * 2;
     target.y += (Math.random() - 0.5) * world._shakeMag * 2;
     target.z += (Math.random() - 0.5) * world._shakeMag * 2;
-    world._shakeTime -= 1 / 60;
+    world._shakeTime -= dt;
     if (world._shakeTime <= 0) world._shakeMag = 0;
   }
-  camera.position.lerp(target, 0.18);
+  camera.position.lerp(target, cameraFollowAlpha(dt));
   _camLook.copy(_camHead);
-  _camLook.y += state.pitch * 27;
+  if (!paired) _camLook.y += state.pitch * 27;
   camera.lookAt(_camLook);
 }
 
 // ------------------------- World tick -------------------------
 const MAX_EFFECTS = isMobile ? 90 : 180;
 const MAX_DEBRIS  = isMobile ? 60 : 140;
-const MAX_POPUPS  = 28;
 
 // Debris cleanup: only dispose geometries / materials that the mesh owns.
 // GLB-cloned debris shares geom + material with the template (Three.js
@@ -4820,12 +5187,7 @@ function updateWorld(dt, dtReal = dt) {
     const drop = world.effects.length - MAX_EFFECTS;
     for (let i = 0; i < drop; i++) {
       const e = world.effects[i];
-      // End it through its own cleanup: an effect owns more than e.mesh (sprites
-      // and layers it added to the scene, pooled materials and lights);
-      // dropping only the mesh left the rest frozen in the scene for good
-      if (e && e.maxLife !== undefined && !e.dead) { e.life = 0; e.tick(0); }
-      if (e && e.mesh && e.mesh.parent) e.mesh.parent.remove(e.mesh);
-      if (e && e.mesh) disposeInstance(e.mesh);
+      finishEffect(e); // (ends it through its own cleanup: sprites, layers, pooled lights)
     }
     world.effects.splice(0, drop);
   }
@@ -4869,20 +5231,14 @@ function updateWorld(dt, dtReal = dt) {
     }
     world.debris.splice(0, drop);
   }
-  if (state.popups.length > MAX_POPUPS) {
-    const drop = state.popups.length - MAX_POPUPS;
-    for (let i = 0; i < drop; i++) {
-      const p = state.popups[i];
-      if (p && p.el) p.el.remove();
-    }
-    state.popups.splice(0, drop);
-  }
+
 
   // Enemies
   const kpos = state.kaiju ? state.kaiju.root.position : new THREE.Vector3();
   for (let i = world.enemies.length - 1; i >= 0; i--) {
     const e = world.enemies[i];
     if (e.dead) { world.enemies.splice(i, 1); continue; }
+    if (e === duel && wrestling?.locked(wrestling.rival)) continue;
     // (a run-in sent after the rival kaiju hunts it instead: spawnRunIn)
     e.update(dt, world, e._tgtRival && _rival ? _rival.root.position : kpos);
   }
@@ -4943,14 +5299,14 @@ function updateWorld(dt, dtReal = dt) {
   if (_rival) _rivalWorldTick(dt); // the rival kaiju wades and crushes what it stands on, as the player does
 
   // Slowly regenerate small rage when idle (rageGain upgrade)
-  if (_rules.passiveRage) state.rage = Math.min(state.maxRage, state.rage + dt * 1.5 * state.upgrades.rageGainMult);
+  if (_rules.passiveRage) state.rage = Math.min(state.maxRage, state.rage + dt * (duel ? 5 : 1.5) * state.upgrades.rageGainMult);
   // Passive HP regen if upgraded
   if (state.upgrades.regenRate > 0) {
     state.hp = Math.min(state.maxHp, state.hp + state.upgrades.regenRate * dt);
   }
   if (state._dmgWindow) state._dmgWindow *= Math.exp(-dt / DPS_WINDOW);
   // Out-of-combat regen: after OOC_REGEN_DELAY s without taking damage.
-  if (_rules.oocRegen && !state.gameOver && state.hp > 0 && world.time - (state._lastHurtT || 0) > OOC_REGEN_DELAY) {
+  if (_rules.oocRegen && !duel && !state.gameOver && state.hp > 0 && world.time - (state._lastHurtT || 0) > OOC_REGEN_DELAY) {
     state.hp = Math.min(state.maxHp, state.hp + OOC_REGEN_RATE * dt);
   }
   // Decay damage flash
@@ -5309,7 +5665,7 @@ function _hudPrewarmBegin() {
   // way by its own module. Its first appearances were 0.3-0.6 s raster
   // program builds each, in the middle of a match.
   try {
-    if (_modeId(selectedLevel) === 'wrestling') {
+    if (_runModeId(selectedLevel) === 'wrestling') {
       if (!_wr) _wr = createWrestling(ctx);
       _hudPrewarm.wr = _wr.W.hud.prewarm();
     }
@@ -5381,12 +5737,6 @@ function _hudPrewarmBegin() {
     }
     msg.textContent = '☢︎ WARM UP'; msg.classList.add('show');
     banner.innerHTML = 'WAVE 1<small>WARM UP</small>'; banner.classList.add('show');
-    for (const color of ['#ffee66', '#ff66aa']) {
-      const pop = document.createElement('div');
-      pop.className = 'popup'; pop.textContent = '+1500'; pop.style.color = color;
-      pop.style.transform = 'translate(50vw, 50vh) scale(1.2)'; pop.style.opacity = '0.6';
-      popupContainer?.appendChild(pop); extra.push(pop);
-    }
     const di = $('dmg-indicators');
     for (const cls of ['dmg-ind', 'dmg-ind warn']) {
       const d = document.createElement('div');
@@ -5885,7 +6235,8 @@ const ctx = {
   markShadowCaster(root) { markShadowCaster(root); restrictShadowCasters(root); },
   // screen feedback
   ui: {
-    popup: spawnPopup, message: showMessage, banner: showWaveBanner, toast, toastMini,
+    popup() {}, // (floating world popups were removed from the game; kept so old callers do nothing)
+    message: showMessage, banner: showWaveBanner, toast, toastMini,
     warnIndicator: addWarnIndicator, damageIndicator: addDamageIndicator,
   },
   // raw input (edges last one frame; see _setKey / readGamepad)
@@ -6033,6 +6384,10 @@ let last = performance.now();
 // a ceiling for 30 s so it doesn't oscillate. Only measured during
 // gameplay frames (menus are throttled to ~15 fps).
 const _dyn = { ema: 16.7, slowT: 0, fastT: 0, ceil: Infinity, ceilUntil: 0 };
+document.addEventListener('visibilitychange',()=>{
+  last=performance.now();_dyn.ema=16.7;_dyn.slowT=_dyn.fastT=0;
+  if(!document.hidden)audio.resume();
+});
 function _dynResTick(dtRaw) {
   if (!RP.dynRes || dtRaw <= 0 || dtRaw > 0.25) return;
   const ms = dtRaw * 1000;
@@ -6062,6 +6417,7 @@ window.__dynRes = () => ({ pr: _curPR, emaMs: +_dyn.ema.toFixed(1) });
 function tick(now) {
   const dtRaw = (now - last) / 1000;
   last = now;
+  if(document.hidden){requestAnimationFrame(tick);return;}
   const slowActive = now < state.slowMoUntil;
   // Hit-stop outranks slow-mo: the simulation holds still (dt = 0) while the
   // camera, HUD and audio keep running on real time, and a slow-mo in force
@@ -6071,30 +6427,32 @@ function tick(now) {
   const dtReal = Math.min(0.05, dtRaw);
   const dt = frozen ? 0 : dtReal * (slowActive ? state.slowMoScale : 1);
   _lastDt = dt;
-  if (!state.paused && !state.gameOver) {
+  if(state.paused&&state.kaiju&&!state.gameOver&&!state.upgradePending){
+    readGamepad();if(padInput.pressed.pause)togglePause(false);
+  }
+  const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible');
+  if (!state.paused && !state.gameOver && !loadingUp) {
     state.elapsedTime += dtRaw;
     world.time += dt;
     skyMat.uniforms.time.value = world.time;
     if (state.kaiju) {
-      updatePlayer(dt);
-      updateWorld(dt, dtReal);
+      if (lone) updateLoneSoldier(dt);
+      else { updatePlayer(dt); if (!state.paused && !state.gameOver) updateWorld(dt, dtReal); }
       _dynResTick(dtRaw);
     }
-    updateCamera(dtReal);
+    updateCamera(Math.min(.1,dtRaw));
     updateHUD();
     // Minimap is a full canvas redraw; ~15Hz is plenty
     if (now - (state._lastMini || 0) > 66) { drawMinimap(); state._lastMini = now; }
-    updatePopups(dt);
   } else if (state.kaiju) {
-    // Keep GLB animation mixer running during pause/gameOver so
-    // death, dance, and idle animations continue playing
-    if (state.kaiju.mixer) {
+    // Keep victory and defeat animations playing after the simulation stops.
+    if (state.kaiju.mixer && (state.gameOver || !state.paused)) {
       state.kaiju.mixer.update(Math.min(0.05, dtRaw));
       if (state._topple) _updateTopple(Math.min(0.05, dtRaw));
     }
     _mode.updateIdle(dtReal); // the mode's own actors (the rival kaiju's mixer, its camera and HUD)
-    updateCamera(dtReal);
-    updatePopups(dt);
+    if (state.gameOver) duel?.updateResult(Math.min(.05, dtRaw));
+    updateCamera(Math.min(.1,dtRaw));
   }
   // This frame's key / button edges have been seen by everything that ran
   if (_edgeCodes.length) {
@@ -6146,7 +6504,6 @@ function tick(now) {
   // No draws behind the (opaque) loading screen: a draw there would link the
   // just-flushed GLB buildings' programs on first use, behind the
   // compileAsync queue (_prewarmShaders).
-  const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible');
   if (!loadingUp && (!idleScreen || now - _lastIdleRender >= IDLE_RENDER_MS)) {
     _lastIdleRender = now;
     if (RP.shadows && RP.shadowEvery > 1 && ++_shadowFrame >= RP.shadowEvery) {

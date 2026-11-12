@@ -4,7 +4,7 @@
 //  travel (0.3-0.5 s): a bright core bolt inside a wider soft glow, a
 //    spiralling ribbon, sparks shed along the path, dust kicked up where it
 //    runs low
-//  detonation (a 0.15 s beat after it arrives): a white-hot core flash and a
+//  detonation (when the bolt arrives): a white-hot core flash and a
 //    second pulse, an expanding shell (bluish-white cooling into the beam
 //    colour), a condensation torus at the equator, radial ember streaks, dust
 //    walls rolling outward, a rising heat cap; over water a steam column and
@@ -21,15 +21,14 @@
 // Tiers: desktop gets everything; phone MED the core layers (charge glow,
 // bolt core + outer glow, torus, scorch, fewer embers); LOW the minimum.
 import * as THREE from 'three';
-import { registerBuilder } from './vfx.js';
-import { isMobile, Q_LOW } from './quality.js';
+import { registerBuilder, spawn as spawnVFX } from './vfx.js';
+import { isMobile, Q_LOW, LEGACY_VFX } from './quality.js';
 
 const FULL = !isMobile && !Q_LOW;   // desktop MED / HIGH
 const MID = !FULL && !Q_LOW;        // phone MED
 const SLOTS = 2;                    // breath cooldown 6 s vs ~3 s per blast (scorch outlives it: own pool)
-const CHARGE = Q_LOW ? 0.25 : 0.4;
+const CHARGE = 0.4;
 const TRAVEL_SPEED = 420;           // u/s -> 0.3-0.45 s to 125-190u
-const BEAT = 0.15;
 const CORE_T = 0.28, PULSE_AT = 0.32, PULSE_T = 0.22;
 const SHELL_GROW = 0.45, SHELL_HOLD = 0.35, SHELL_FADE = 0.9;
 const CAP_T = 1.8, TORUS_T = 1.6, SCORCH_T = 7.0;
@@ -75,7 +74,7 @@ const _GLOW_FS = `
     float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
     float a = mix(1.0, pow(f, 1.6), rim);
     vec3 c = mix(hot, color, f);
-    gl_FragColor = vec4(c * (1.0 + 1.5 * (1.0 - f)), a * opacity);
+    gl_FragColor = vec4(min(c * (1.0 + .35 * (1.0 - f)), vec3(2.2)), a * opacity * .65);
   }`;
 function _glowMat(rim) {
   return new THREE.ShaderMaterial({
@@ -331,16 +330,7 @@ function _setGlow(s, amt) {
   for (let i = 0; i < s.mats.length; i++) s.mats[i].emissive.copy(s.emis[i]).lerp(s.color, Math.max(0, Math.min(1, amt)));
 }
 
-/**
- * Fire a breath from origin (the mouth) along dir, detonating dist ahead.
- * opts: { kaijuRoot (body glow), world (isWater + water API for the
- * steam/ring-wave variant) }. onDetonate(pos) runs once at the detonation
- * instant (gameplay, audio).
- */
-export function fireAtomicBreath(scene, origin, dir, dist, color, onDetonate, opts = {}) {
-  _pools(scene);
-  const s = _slot(scene);
-  s.active = true; s.t = 0; s.detonated = false; s.emitAcc = 0;
+function positionShot(s, origin, dir, dist) {
   s.origin.copy(origin); s.dir.copy(dir).normalize();
   s.side.crossVectors(s.dir, _up).normalize();
   if (s.side.lengthSq() < 1e-4) s.side.set(1, 0, 0);
@@ -348,11 +338,26 @@ export function fireAtomicBreath(scene, origin, dir, dist, color, onDetonate, op
   s.dist = dist;
   s.travel = Math.min(0.5, Math.max(0.3, dist / TRAVEL_SPEED));
   s.pos.copy(origin).addScaledVector(s.dir, dist);
+  s.ground = Math.max(0, s.pos.y);
+  s.water = !!s.world?.isWater?.(s.pos.x, s.pos.z);
+}
+
+/**
+ * Fire a breath from origin (the mouth) along dir, detonating dist ahead.
+ * getMouth(point) updates the charge glow from the animated head.
+ * onRelease() may supply the final { origin, dir, distance } once charging ends.
+ * onDetonate(pos) runs once when the bolt reaches that point.
+ */
+export function fireAtomicBreath(scene, origin, dir, dist, color, onDetonate, opts = {}) {
+  _pools(scene);
+  const s = _slot(scene);
+  s.active = true; s.t = 0; s.detonated = false; s.emitAcc = 0;
   s.color.set(color);
   s.onDetonate = onDetonate;
-  s.ground = Math.max(0, s.pos.y);
+  s.onRelease = opts.onRelease || null;
+  s.getMouth = opts.getMouth || null;
   s.world = opts.world || null;
-  s.water = !!(s.world && s.world.isWater && s.world.isWater(s.pos.x, s.pos.z));
+  positionShot(s, origin, dir, dist);
   _restoreGlow(s);
   _collectGlow(s, opts.kaijuRoot);
   for (const k in s.parts) {
@@ -385,20 +390,29 @@ export function updateAtomicBlasts(dt) {
 function _updateSlot(s, dt) {
   s.t += dt;
   const { mouth, bolt, boltOuter, ribbon, head, core, shell, torus, cap } = s.parts;
-  const t = s.t, tr = s.travel, C = s.color;
+  const t = s.t, C = s.color;
   // --- Charge: the body glows up, the mouth swells
   if (t < CHARGE) {
     const k = t / CHARGE;
-    _setGlow(s, 0.65 * k * k * (0.85 + 0.15 * Math.sin(t * 50)));
+    _setGlow(s, 0.28 * k * k * (0.85 + 0.15 * Math.sin(t * 50)));
     if (mouth) {
+      s.getMouth?.(mouth.position);
       mouth.scale.setScalar(1.2 + 3.4 * k + Math.sin(t * 70) * 0.3);
       mouth.material.uniforms.opacity.value = 0.4 + 0.6 * k;
     }
     return;
   }
+  if (s.onRelease) {
+    const release = s.onRelease;
+    s.onRelease = null;
+    const shot = release();
+    positionShot(s, shot.origin, shot.dir, shot.distance);
+    mouth?.position.copy(s.origin);
+  }
+  const tr = s.travel;
   const tt = t - CHARGE; // travel clock
   // Body glow decays through the travel
-  if (tt < tr + 0.4) _setGlow(s, 0.65 * Math.max(0, 1 - tt / (tr + 0.4)));
+  if (tt < tr + 0.4) _setGlow(s, 0.28 * Math.max(0, 1 - tt / (tr + 0.4)));
   else if (s.mats.length) _restoreGlow(s);
   if (mouth && mouth.visible) {
     if (tt > 0.25) mouth.visible = false;
@@ -419,8 +433,8 @@ function _updateSlot(s, dt) {
     bolt.material.uniforms.opacity.value = 1.0 * fade;
     bolt.material.uniforms.hot.value.setRGB(2.2, 2.4, 2.6);
     if (boltOuter) {
-      boltOuter.scale.set(4.2 + Math.sin(tt * 40) * 0.4, len, 4.2 + Math.sin(tt * 40) * 0.4);
-      boltOuter.material.uniforms.opacity.value = 0.55 * fade;
+      boltOuter.scale.set(2.2 + Math.sin(tt * 40) * .2, len, 2.2 + Math.sin(tt * 40) * .2);
+      boltOuter.material.uniforms.opacity.value = .12 * fade;
     }
     if (ribbon) {
       ribbon.scale.set(2.6, len, 2.6);
@@ -454,21 +468,21 @@ function _updateSlot(s, dt) {
     for (const m of [bolt, boltOuter, ribbon, head]) if (m) m.visible = false;
   }
   // --- Detonation
-  const td = tt - tr - BEAT;
+  const td = tt - tr;
   if (td >= 0 && !s.detonated) _detonate(s);
   if (td < 0) return;
   // Core: a white-hot flash, then a second, smaller pulse
   if (core.visible) {
     if (td < CORE_T) {
       const k = td / CORE_T;
-      core.scale.setScalar(3 + 13 * (1 - (1 - k) * (1 - k)));
-      core.material.uniforms.opacity.value = 1 - k;
+      core.scale.setScalar(2 + 5 * (1 - (1 - k) * (1 - k)));
+      core.material.uniforms.opacity.value = Math.max(0, 1 - k * 3);
     } else if (td < PULSE_AT) {
       core.material.uniforms.opacity.value = 0;
     } else if (td < PULSE_AT + PULSE_T && !Q_LOW) {
       const k = (td - PULSE_AT) / PULSE_T;
       core.scale.setScalar(8 + 10 * k);
-      core.material.uniforms.opacity.value = 0.75 * Math.sin(Math.PI * k);
+      core.material.uniforms.opacity.value = .12 * Math.sin(Math.PI * k);
     } else core.visible = false;
   }
   // Shell: grows (ease-out) bluish-white, holds, then cools into the beam
@@ -534,12 +548,16 @@ function _detonate(s) {
   s.detonated = true;
   const { core, shell, torus, cap } = s.parts;
   const P = s.pos, C = s.color, g = s.ground;
+  if (s.world && !LEGACY_VFX) {
+    const plume = spawnVFX('atomicDetonation', { world: s.world, pos: P.clone() });
+    if (plume) s.world.effects.push(plume);
+  }
   core.position.copy(P); core.visible = true;
   core.material.uniforms.hot.value.setRGB(3, 3, 3);
   core.material.uniforms.color.value.setRGB(2.2, 2.4, 2.6);
-  shell.position.set(P.x, g + 4, P.z); shell.visible = true;
-  if (torus) { torus.position.set(P.x, g + 4, P.z); torus.visible = true; }
-  if (cap) { cap.position.copy(P); cap.visible = true; }
+  shell.position.set(P.x, g + 4, P.z); shell.visible = LEGACY_VFX;
+  if (torus) { torus.position.set(P.x, g + 4, P.z); torus.visible = LEGACY_VFX; }
+  if (cap) { cap.position.copy(P); cap.visible = LEGACY_VFX; }
   // Radial ember streaks flung outward
   const embers = FULL ? 160 : (MID ? 40 : 14);
   for (let i = 0; i < embers; i++) {
@@ -590,7 +608,9 @@ function _detonate(s) {
     sc.glow.material.uniforms.color.value.copy(C).lerp(_c.setRGB(1, 0.6, 0.2), 0.4);
     sc.t = 0;
   }
-  try { s.onDetonate && s.onDetonate(P); } catch (e) { /* gameplay error must not stall the pool */ }
+  const onDetonate = s.onDetonate;
+  s.onDetonate = s.getMouth = null;
+  onDetonate?.(P);
 }
 
 function _updateScorch(sc, dt) {
@@ -605,7 +625,7 @@ function _updateScorch(sc, dt) {
 export function resetAtomicBlasts() {
   for (const s of _slots) {
     _restoreGlow(s);
-    s.active = false;
+    s.active = false; s.onRelease = s.onDetonate = s.getMouth = null;
     for (const k in s.parts) if (s.parts[k]) s.parts[k].visible = false;
   }
   for (const sc of _scorches) { sc.t = -1; sc.dark.visible = sc.glow.visible = false; }
