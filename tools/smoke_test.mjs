@@ -25,10 +25,10 @@ import { register } from 'node:module';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // (iphone low chicago: the procedural-only tier, where Chicago still loads its building GLBs)
-// Chicago is built as game.js builds it by default (the title match: ring, ringside crowd); the two 'waves'
-// configs build the classic city (VS, Lone Soldier, ?mode=waves) with the festival and its rigged crowd.
+// Chicago configs without a mode build the Title Match city (ring, ringside crowd); the 'waves' configs build
+// the classic city that Kaiju Havoc, VS and Lone Soldier play on, with the festival and its rigged crowd.
 const CONFIGS = [['desktop', 'high', 'tokyo'], ['iphone', 'med', 'tokyo'], ['desktop', 'high', 'chicago'], ['iphone', 'med', 'chicago'], ['iphone', 'low', 'chicago'],
-  ['desktop', 'high', 'chicago', 'waves'], ['iphone', 'med', 'chicago', 'waves']];
+  ['desktop', 'high', 'chicago', 'waves'], ['iphone', 'med', 'chicago', 'waves'], ['iphone', 'low', 'chicago', 'waves']];
 
 const argv = process.argv.slice(2);
 if (argv[0] !== '--run') {
@@ -214,7 +214,7 @@ for (const role of ['infantry','tank','helicopter']) await step(`first-person ${
 await step('level data', () => city.loadLevelData(level));
 if (Q.GLB_CONTENT) await step('tree/ped/car templates', () => Promise.all([city.loadTreeTemplates(undefined, level), city.loadPedestrianTemplates(), city.loadCarTemplates(undefined, level)]));
 else if (level === 'chicago') await step('car templates', () => city.loadCarTemplates(undefined, level)); // as game.js: GLB cars on Chicago LOW
-// Game mode as game.js picks it (LEVELS[level].mode): Chicago is built for the wrestling match, ring included
+// Chicago without a mode argument: the Title Match build, ring included (game.js: MODE = Title Match)
 const mode = modeArg || (level === 'chicago' ? 'wrestling' : 'waves');
 const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q.isMobile, glb: Q.GLB_CONTENT, level, mode }));
 // (the classic Chicago build: in the title match the lawns are empty, everyone is at ringside)

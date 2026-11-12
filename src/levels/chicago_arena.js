@@ -394,7 +394,7 @@ function _ropeMaterial() {
   const v4s = (n) => Array.from({ length: n }, () => new THREE.Vector4());
   const mat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-      uTime: { value: 0 }, uRadius: { value: 0.3 }, uBright: { value: 1 },
+      uTime: { value: 0 }, uRadius: { value: 0.27 }, uBright: { value: 1 },
       uPush: { value: v4s(4) },  // per side: body centre u (0..1), half width, displacement (+ out), vibration
       uSnap: { value: v4s(4) },  // per side: snap time (< 0 = whole), break u, sag, glow
       uPost: { value: v4s(4) },  // per tower: lean dir x, z, sin, cos
@@ -455,9 +455,12 @@ function _ropeMaterial() {
           p.y = max(p.y, 0.45 + fr * 0.14);
           bright = 0.3 + 0.7 * exp(-tau * 1.5) + 0.35 * step(0.92, fract(sin(floor(uTime * 22.0) * 12.9898 + fr * 7.1) * 43758.5453)) * exp(-tau * 0.5);
         }
-        p += (vec3(o2.x, 0.0, o2.y) * aRing.x + vec3(0.0, aRing.y, 0.0)) * uRadius;
-        vCol = uCol[rope] * bright;
-        vTF = vec3(t, smoothstep(12.0, 55.0, length(cameraPosition - p)), S.w);
+        // close to the lens a cable thins to a thread and fades out; far across the ring it dims
+        float cd = length(cameraPosition - p);
+        float nearK = smoothstep(16.0, 52.0, cd);
+        p += (vec3(o2.x, 0.0, o2.y) * aRing.x + vec3(0.0, aRing.y, 0.0)) * (uRadius * mix(0.3, 1.0, nearK));
+        vCol = uCol[rope] * bright * (1.0 - 0.4 * smoothstep(55.0, 120.0, cd));
+        vTF = vec3(t, nearK, S.w);
         vec4 mvPosition = viewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
@@ -473,7 +476,8 @@ function _ropeMaterial() {
         float band = 0.8 + 0.2 * sin(vTF.x * 160.0 - uTime * 5.0);
         vec3 c = vCol * band * uBright;
         c = mix(c, vec3(3.0), clamp(vTF.z, 0.0, 1.0) * 0.8) * (0.55 + 0.45 * vTF.y);
-        gl_FragColor = vec4(c, mix(0.1, 1.0, vTF.y));
+        gl_FragColor = vec4(c, mix(0.0, 1.0, vTF.y * vTF.y));
+        if (gl_FragColor.a < 0.02) discard;
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>
@@ -733,16 +737,27 @@ export function buildArena(scene, world, o) {
     const def = [['nw', -1, -1, 'neutral', C.WHITE], ['ne', 1, -1, 'player', C.BLUE], ['se', 1, 1, 'neutral', C.WHITE], ['sw', -1, 1, 'rival', C.RED]];
     const geoms = {};
     rt.postMesh = [];
+    // phone LOW: the four towers are one instanced draw (same pads, lamps as one)
+    const pim = tier ? null : new THREE.InstancedMesh(_towerGeom(T, C.WHITE), AS.mPost[0], 4);
+    if (pim) { pim.name = 'arena_posts'; pim.frustumCulled = false; pim.castShadow = true; pim.receiveShadow = true; scene.add(pim); }
+    /** A tower's transform changed (its quaternion was written): push it to the scene. */
+    rt.postSync = (i) => { const m = rt.postMesh[i]; m.updateMatrix(); if (pim) { pim.setMatrixAt(i, m.matrix); pim.instanceMatrix.needsUpdate = true; } };
     def.forEach(([corner, sx, sz, role, pad], i) => {
       const x = cx + sx * H, z = cz + sz * H;
-      const g = geoms[pad] || (geoms[pad] = _towerGeom(T, pad));
-      const m = _mesh(g, AS.mPost[i], true);
-      m.name = 'arena_post_' + corner;
+      let m;
+      if (pim) m = new THREE.Object3D();
+      else {
+        const g = geoms[pad] || (geoms[pad] = _towerGeom(T, pad));
+        m = _mesh(g, AS.mPost[i], true);
+        m.name = 'arena_post_' + corner;
+        m.frustumCulled = false; // it leans and falls
+        scene.add(m);
+      }
+      m.matrixAutoUpdate = false;
       m.userData.yaw = Math.atan2(cx - x, cz - z);
-      m.position.set(x, 0, z); m.rotation.y = m.userData.yaw; m.updateMatrix();
-      m.frustumCulled = false; // it leans and falls
-      scene.add(m);
+      m.position.set(x, 0, z); m.rotation.y = m.userData.yaw;
       rt.postMesh.push(m);
+      rt.postSync(i);
       posts.push({ i, x, z, r: 3.2, corner, role, up: true, hits: 0 });
     });
   }
@@ -920,6 +935,7 @@ export function buildArena(scene, world, o) {
     }
     const sm = _mesh(SB.build(), AS.mStruct, true);
     sm.name = 'arena_structure';
+    rt.structMesh = sm;
     scene.add(sm);
     const lg = LB.build();
     rt.ledGeom = lg;
@@ -983,13 +999,24 @@ export function buildArena(scene, world, o) {
         }
       }
     }
-    const g = B.build();
-    g.attributes.position.setUsage(THREE.DynamicDrawUsage);
-    rt.standGeom = g;
-    rt.standPos0 = new Float32Array(g.attributes.position.array);
-    const m = _mesh(g, AS.mStruct, true);
-    m.name = 'arena_stands';
-    scene.add(m);
+    rt.standPos0 = new Float32Array(B.p);
+    if (tier) {
+      const g = B.build();
+      g.attributes.position.setUsage(THREE.DynamicDrawUsage);
+      rt.standGeom = g;
+      const m = _mesh(g, AS.mStruct, true);
+      m.name = 'arena_stands';
+      scene.add(m);
+    } else {
+      // phone LOW: the stands ride in the structure's draw (their vertices first, so the crush still finds them)
+      const off = B.p.length / 3, sg = rt.structMesh.geometry;
+      B.p.push(...sg.attributes.position.array); B.n.push(...sg.attributes.normal.array); B.uv.push(...sg.attributes.uv.array);
+      for (const i of sg.index.array) B.idx.push(i + off);
+      sg.dispose();
+      const g = B.build();
+      g.attributes.position.setUsage(THREE.DynamicDrawUsage);
+      rt.standGeom = rt.structMesh.geometry = g;
+    }
   }
 
   // ---- the audience: every seat faces the ring ----
@@ -1127,7 +1154,7 @@ export function buildArena(scene, world, o) {
   /** Re-place the stand vertices (and ribbon boards) inside a rectangle from the crush field. */
   rt.reseat = (x0, z0, x1, z1) => {
     const g = rt.standGeom, p = g.attributes.position.array, p0 = rt.standPos0;
-    for (let i = 0; i < p.length; i += 3) {
+    for (let i = 0; i < p0.length; i += 3) {
       const x = p0[i], z = p0[i + 2];
       if (x < x0 || x > x1 || z < z0 || z > z1) continue;
       const c = crushAt(x, z);
@@ -1183,8 +1210,8 @@ export function buildArena(scene, world, o) {
     return { x: p.x + Math.sin(yaw) * 1.6, y: A0.towerH - 3.6, z: p.z + Math.cos(yaw) * 1.6, on: 1 };
   });
 
-  // ---- beams: a soft cone from every bank, plus movers that sweep the crowd ----
-  {
+  // ---- beams: a soft cone from every bank, plus movers that sweep the crowd (not on phone LOW) ----
+  if (tier) {
     const g = new THREE.CylinderGeometry(0.03, 0.55, 1, tier ? 14 : 8, 1, true);
     g.translate(0, -0.5, 0); // apex at the origin, opening down -Y
     const movers = [];
@@ -1258,7 +1285,7 @@ function _resetUniforms(rt, posts) {
   const P = rt.AS.mPool.uniforms;
   rt.lamps.forEach((l, i) => { l.on = 1; P.uLamp.value[i].set(l.x, l.y, l.z, 1); });
   P.uBody.value[0].set(0, 0, 0, 0); P.uBody.value[1].set(0, 0, 0, 0);
-  if (rt.postMesh) rt.postMesh.forEach((m, i) => { m.quaternion.setFromAxisAngle(_Y, m.userData.yaw); m.updateMatrix(); if (posts) { posts[i].up = true; posts[i].hits = 0; } });
+  if (rt.postMesh) rt.postMesh.forEach((m, i) => { m.quaternion.setFromAxisAngle(_Y, m.userData.yaw); rt.postSync(i); if (posts) { posts[i].up = true; posts[i].hits = 0; } });
 }
 
 // ------------------------------------------------------------ runtime
@@ -1270,7 +1297,7 @@ export function createArena(ctx, W) {
   const rope = SIDES.map(() => ({ d: 0, v: 0, u: 0.5, w: 0.1, vib: 0, vibPh: 0, glow: 0, snapT: -1, snapU: 0.5, sag: 0, held: false }));
   const hold = [0, 1].map(() => SIDES.map(() => ({ st: 0, from: 1 })));
   const post = [0, 1, 2, 3].map(() => ({ dx: 0, dz: 0, ang: 0, vel: 0, rest: 0, fallen: false, landed: false, flick: 0 }));
-  const cr = { hype: 0.25, heat: 0.2, dir: -1, pop: 0, flash: 0, waveAmp: 0, waveAng: 0, waveCd: 6, celebrate: 0, shockS: 0, land: { x: 0, z: 0, s: 0 } };
+  const cr = { defense: 0, hype: 0.25, heat: 0.2, dir: -1, pop: 0, flash: 0, waveAmp: 0, waveAng: 0, waveCd: 6, celebrate: 0, shockS: 0, land: { x: 0, z: 0, s: 0 } };
   const col = new THREE.Color(), dirV = new THREE.Vector3(), posV = new THREE.Vector3(), down = new THREE.Vector3(0, -1, 0), qB = new THREE.Quaternion(), sclV = new THREE.Vector3(), mB = new THREE.Matrix4();
   let showT = 0, lastCrushed = 0;
 
@@ -1368,9 +1395,10 @@ export function createArena(ctx, W) {
     on(EV.MATCH_START, (e) => {
       const l = led();
       if (l) { l.state.a = e.playerName || 'PLAYER'; l.state.b = e.rivalName || 'RIVAL'; l.state.pips[0] = 0; l.state.pips[1] = 0; l.state.dirty = true; }
+      cr.defense = e.defense | 0;
       show('idle', '', '', 0);
     });
-    on(EV.ENTRANCE_START, (e) => { show('name', e.name || '', e.who === 'player' ? 'FROM LAKE MICHIGAN' : 'THE CHALLENGER', 6); pop(0.7, 1); cr.waveCd = 0.5; });
+    on(EV.ENTRANCE_START, (e) => { show('name', e.name || '', (e.who === 'rival') === (cr.defense === 0) ? 'THE CHAMPION' : 'THE CHALLENGER', 6); pop(0.7, 1); cr.waveCd = 0.5; });
     on(EV.ENTRANCE_BEAT, (e) => { cr.flash = Math.max(cr.flash, 0.8); if (e.beat === 'roar' || e.beat === 'pose' || e.beat === 'crash') pop(0.6, 1); });
     on(EV.BELL, (e) => { pop(e.kind === 'start' ? 0.8 : 0.6, 0.6); });
     on(EV.FALL_START, (e) => { show('callout', 'FALL ' + e.fall, 'RING THE BELL', 2.5); });
@@ -1481,7 +1509,7 @@ export function createArena(ctx, W) {
         // lean: about the horizontal axis square to the fall direction, then the tower's own yaw
         _q.setFromAxisAngle(_v.set(p.dz, 0, -p.dx), p.ang);
         m.quaternion.setFromAxisAngle(_Y, m.userData.yaw).premultiply(_q);
-        m.updateMatrix();
+        rt.postSync(i);
         U.uPost.value[i].set(p.dx, p.dz, Math.sin(p.ang), Math.cos(p.ang));
       }
       // lamps: steady, flickering after a blow, dead once it is down
@@ -1490,7 +1518,8 @@ export function createArena(ctx, W) {
       if (on && (p.flick > 0 || P.hits > 1) && Math.random() < (p.flick > 0 ? 0.45 : 0.04)) on = 0.25;
       const lamp = rt.lamps[i];
       lamp.on += (on - lamp.on) * (on < lamp.on ? 1 : 0.35);
-      rt.AS.mPost[i].emissiveIntensity = lampBase * lamp.on;
+      if (rt.tier) rt.AS.mPost[i].emissiveIntensity = lampBase * lamp.on;
+      else if (i === 3) rt.AS.mPost[0].emissiveIntensity = lampBase * (rt.lamps[0].on + rt.lamps[1].on + rt.lamps[2].on + lamp.on) / 4;
       // the bank rides the mast as it leans
       const y = lamp.y, s = Math.sin(p.ang), c = Math.cos(p.ang);
       PU.uLamp.value[i].set(lamp.x + p.dx * y * s, Math.max(4, y * c), lamp.z + p.dz * y * s, lamp.on * (0.35 + 0.65 * tod));
@@ -1535,6 +1564,7 @@ export function createArena(ctx, W) {
 
   const simBeams = (A, dtReal, tod) => {
     const rt = A._rt, im = rt.beams, t = showT;
+    if (!im) return;
     for (let i = 0; i < 4; i++) {
       const l = rt.lamps[i], p = post[i];
       const y = l.y, s = Math.sin(p.ang), c = Math.cos(p.ang);
@@ -1546,7 +1576,7 @@ export function createArena(ctx, W) {
       const rad = 21;
       sclV.set(rad / 0.55, len, rad / 0.55);
       im.setMatrixAt(i, mB.compose(posV, qB, sclV));
-      const k = l.on * (0.10 + 0.45 * tod) * (0.9 + 0.1 * Math.sin(t * 1.3 + i));
+      const k = l.on * (0.04 + 0.17 * tod) * (0.9 + 0.1 * Math.sin(t * 1.3 + i));
       im.setColorAt(i, col.setRGB(1.0 * k, 0.95 * k, 0.82 * k));
     }
     // movers: parked dim over the crowd, sweeping hard on a pop
@@ -1561,7 +1591,7 @@ export function createArena(ctx, W) {
       qB.setFromUnitVectors(down, dirV.normalize());
       sclV.set(7, len, 7);
       im.setMatrixAt(4 + j, mB.compose(posV, qB, sclV));
-      col.setHSL(mv.hue, mv.hue === 0.12 ? 0.25 : 0.85, 0.5).multiplyScalar(1.1 * live);
+      col.setHSL(mv.hue, mv.hue === 0.12 ? 0.25 : 0.85, 0.5).multiplyScalar(0.55 * live);
       im.setColorAt(4 + j, col);
     }
     im.instanceMatrix.needsUpdate = true;

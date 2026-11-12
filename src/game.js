@@ -75,24 +75,16 @@ function trySetHighScore(s) {
 // ?level= wins (testing), then the saved menu pick, then Tokyo.
 const LEVELS = {
   tokyo:   { name: 'TOKYO',   jp: '東京', tag: 'NEON DUSK · SHINJUKU', h2: 'TOKYO DESTRUCTION', h2jp: '東京破壊' },
-  chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'HIGH NOON · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊', mode: 'wrestling' },
+  chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'GOLDEN HOUR · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊', arena: true },
 };
-// A level's game mode: 'waves' (the survival loop) unless its LEVELS entry
-// names another. ?mode=waves puts such a level back on the classic loop for
-// testing; a level without a mode of its own (Tokyo) is always waves.
-function _modeId(level) {
-  const own = (LEVELS[level] && LEVELS[level].mode) || 'waves';
-  if (own === 'waves') return own;
-  const m = location.search.match(/[?&]mode=(\w+)/);
-  return m && (m[1] === 'waves' || m[1] === own) ? m[1] : own;
-}
-// The mode a run on `level` plays, given the menu's MODE picker: its own mode
-// (Chicago: the title match) under "Kaiju Havoc"; VS and Lone Soldier are
-// main-menu modes of their own on the classic city, so the level's mode
-// stands down for them.
+// The game mode a run on `level` plays: 'waves', the city-destruction loop
+// (Kaiju Havoc, and the classic city that VS and Lone Soldier play on), or
+// 'wrestling', the Title Match, picked from the menu's MODE list
+// (?mode=wrestling preselects it) and staged only on a level with an arena.
 function _runModeId(level) {
   const pick = document.getElementById('game-mode');
-  return pick && pick.value !== 'havoc' ? 'waves' : _modeId(level);
+  const title = pick ? pick.value === 'title' : /[?&]mode=wrestling\b/.test(location.search);
+  return title && LEVELS[level] && LEVELS[level].arena ? 'wrestling' : 'waves';
 }
 const LEVEL_KEY = 'kaijuLevel';
 function _detectLevel() {
@@ -1847,6 +1839,7 @@ window.addEventListener('touchend', endLook);
 window.addEventListener('touchcancel', endLook);
 
 // ------------------------- Level select UI -------------------------
+let _showLevel = () => {}; // highlights a level card (set by the block below)
 // Two cards above the monsters. Picking one only records the choice; the
 // city is swapped when the run starts (_startGameInner -> _switchLevel),
 // behind the loading screen.
@@ -1864,11 +1857,16 @@ window.addEventListener('touchcancel', endLook);
       card.className = 'level-card';
       card.dataset.level = lv;
       card.innerHTML = `<b><span class="jp">${L.jp}</span>${L.name}</b><span>${L.tag}</span>`;
-      card.addEventListener('click', () => { _setLevel(lv); showLevel(lv); });
+      card.addEventListener('click', () => {
+        // The Title Match needs an arena: another city goes back to Kaiju Havoc
+        if (modePicker.value === 'title' && !L.arena) modePicker.value = 'havoc';
+        _setLevel(lv); showLevel(lv);
+      });
       levelDiv.appendChild(card);
     }
   }
   showLevel(selectedLevel);
+  _showLevel = showLevel;
 }
 
 // Slot icons: 32x32 filled glyphs, drawn for a distinct silhouette at
@@ -1931,15 +1929,21 @@ function rivalKey(playerKey) {
 function _syncDeployment() {
   const active = modePicker.value === 'lone';
   const vs = modePicker.value === 'vs';
+  const title = modePicker.value === 'title';
+  // The Title Match is staged in Chicago's arena: picking it moves the menu there
+  if (title && !LEVELS[selectedLevel].arena) {
+    const lv = Object.keys(LEVELS).find((k) => LEVELS[k].arena);
+    _setLevel(lv); _showLevel(lv);
+    return; // _setLevel synced again
+  }
   document.getElementById('vs-rival-label').hidden = !vs;
   document.getElementById('vs-menu-help').hidden = !vs;
+  document.getElementById('title-menu-help').hidden = !title;
   document.getElementById('lone-role-label').hidden = !active;
   document.getElementById('lone-menu-help').hidden = !active;
-  // (Kaiju Havoc on a level with its own mode: Chicago plays the title match)
-  const title = !active && !vs && _modeId(selectedLevel) === 'wrestling';
   document.getElementById('startBtn').textContent = active ? 'DEPLOY · LONE SOLDIER' : vs ? 'FIGHT · VS' : title ? 'RING THE BELL · TITLE MATCH' : 'UNLEASH HAVOC';
   document.getElementById('menu').classList.toggle('soldier-deployment',active);
-  document.querySelector('#menu .starring').textContent=active?'CHOOSE YOUR OPPONENT':vs?'CHOOSE YOUR FIGHTER':'STARRING · 出演';
+  document.querySelector('#menu .starring').textContent=active?'CHOOSE YOUR OPPONENT':vs||title?'CHOOSE YOUR FIGHTER':'STARRING · 出演';
   document.querySelector('#rotate-hint .rh-sub').textContent=active?'Move with your left thumb · Look and fire with your right':'Kaiju Havoc plays sideways: one thumb moves, the other smashes';
   const hints={infantry:'SPACE / A JUMP · RMB / LT AIM · R / X RELOAD',tank:'MOUSE AIM · LMB / RT CANNON · SHIFT MOVE FASTER',helicopter:'E / SPACE ASCEND · Q / C DESCEND · LMB / RT FIRE'};
   document.querySelector('#menu .menu-hint').innerHTML=active
@@ -1951,6 +1955,7 @@ function _syncDeployment() {
     ? `${matchup || `${active?`${role} vs `:''}${monster.name}`} · ${LEVELS[selectedLevel].name}${title ? ' · TITLE MATCH' : ''}`
     : active?'CHOOSE YOUR OPPONENT':'CHOOSE YOUR KAIJU';
 }
+if (/[?&]mode=wrestling\b/.test(location.search)) modePicker.value = 'title';
 modePicker.addEventListener('change',_syncDeployment);
 rivalPicker.addEventListener('change', _syncDeployment);
 document.getElementById('lone-role').addEventListener('change',_syncDeployment);
@@ -5844,7 +5849,7 @@ if (muteBtn) {
 }
 
 // ------------------------- Game modes + the wrestling seam -------------------------
-// A level plays one game mode (see _modeId): 'waves', the classic survival
+// A run plays one game mode (see _runModeId): 'waves', the classic survival
 // loop, or 'wrestling', Chicago's title match, which lives in src/wrestling/
 // and never imports this file. Everything those modules may do here goes
 // through the ctx object below (the contract: notes/wrestling_api.md).

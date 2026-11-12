@@ -145,7 +145,7 @@ function fitDist(fx, fy, fz, az, el, tanH, tanV) {
 }
 
 // Obstruction candidates: slide sideways, raise, or both (costs in the solver prefer the first entries)
-const CAND_AZ = [0, 0.32, -0.32, 0.7, -0.7, 1.15, -1.15];
+const CAND_AZ = [0, 0.32, -0.32, 0.7, -0.7, 1.15, -1.15, 2.0, -2.0]; // (the last pair: round to the other side when this one is walled in)
 const CAND_EL = [0, 0.22, 0.48, 0.85];
 // Per-kaiju finisher camera style (hero angle, lens, and how the apex is shot)
 const FIN_STYLE = {
@@ -541,7 +541,7 @@ export function createFightCam(ctx, W) {
           shot.fresh = false;
           let run = 150;
           if (ringA) run = clamp(Math.hypot(ringA.cx - S.x, ringA.cz - S.z) + 8, 60, 170);
-          shot.anchor.set(S.x + Math.sin(h) * run + Math.cos(h) * 7 * s, ringA ? ringA_top + 4 : 5, S.z + Math.cos(h) * run - Math.sin(h) * 7 * s); // over the top rope
+          shot.anchor.set(S.x + Math.sin(h) * run + Math.cos(h) * 18 * s, ringA ? ringA_top + 4 : 5, S.z + Math.cos(h) * run - Math.sin(h) * 18 * s); // over the top rope
           refreshNear(shot.anchor.x, shot.anchor.z, 70, 9);
           pushOut(shot.anchor, 3);
         }
