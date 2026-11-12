@@ -28,8 +28,8 @@ import { EV } from './events.js';
 const DEG = Math.PI / 180;
 const FREE = 0, FIGHT = 1, SHOT = 2;
 const CHASE_FOV = 70;          // game.js's chase cam
-const LOCK_RANGE = 260;        // further apart than this the fight framing lets go...
-const LOCK_RANGE_IN = 225;     // ...and comes back inside this
+const LOCK_RANGE = 340;        // further apart than this the fight framing lets go...
+const LOCK_RANGE_IN = 300;     // ...and comes back inside this
 const MIN_Y = 3.2;             // lowest the lens goes (ground 0, lake 0.2, crowd 1.2)
 const MIN_DIST = 34, MAX_DIST = 330;
 
@@ -48,6 +48,8 @@ const _back = new THREE.Vector3();
 // Buildings near the action (refreshed a few times a second), for the ray and push-out tests
 const _near = [];
 function _collect(b) { if (b.h >= 3 && !b.isFence) _near.push(b); }
+// The arena's own solids (grandstands, corner towers) as boxes of the same shape, always in the list
+const _solids = [];
 
 /** Does the segment A -> B cross a standing building? Boxes that contain A (a body inside a tower) are ignored. */
 function segBlocked(ax, ay, az, bx, by, bz) {
@@ -71,7 +73,7 @@ function segBlocked(ax, ay, az, bx, by, bz) {
     }
     // inside the footprint for t0..t1: blocked if the line is under the roof anywhere in that span
     const ya = ay + dy * t0, yb = ay + dy * t1;
-    if (Math.min(ya, yb) < b.h) return true;
+    if (Math.min(ya, yb) < b.h && !(b.y0 > Math.max(ya, yb))) return true;
   }
   return false;
 }
@@ -80,7 +82,7 @@ function inBuilding(x, y, z, pad) {
   for (let i = 0; i < _near.length; i++) {
     const b = _near[i];
     if (b.destroyed) continue;
-    if (Math.abs(x - b.x) < b.w * 0.5 + pad && Math.abs(z - b.z) < b.d * 0.5 + pad && y < b.h + pad) return true;
+    if (Math.abs(x - b.x) < b.w * 0.5 + pad && Math.abs(z - b.z) < b.d * 0.5 + pad && y < b.h + pad && !(b.y0 - pad > y)) return true;
   }
   return false;
 }
@@ -93,7 +95,7 @@ function pushOut(p, pad) {
       if (b.destroyed) continue;
       const hw = b.w * 0.5 + pad, hd = b.d * 0.5 + pad;
       const ex = hw - Math.abs(p.x - b.x), ez = hd - Math.abs(p.z - b.z), ey = b.h + pad - p.y;
-      if (ex <= 0 || ez <= 0 || ey <= 0) continue;
+      if (ex <= 0 || ez <= 0 || ey <= 0 || b.y0 - pad > p.y) continue;
       if (ey <= ex && ey <= ez) p.y += ey;
       else if (ex <= ez) p.x += p.x >= b.x ? ex : -ex;
       else p.z += p.z >= b.z ? ez : -ez;
@@ -107,12 +109,16 @@ function pushOut(p, pad) {
 const _bod = new Float64Array(15);
 let _nBod = 0;
 const LOW_STATES = { downed: 1, pinned: 1, ko: 1, pinning: 1 };
+// A body's vertical extent: standing = root..root + height; on the mat = low and long; carried / thrown
+// (root off the ground, lying on its side) = a 22 u slab around the root
+const bodyLo = (f) => (f.root.position.y > 6 ? f.root.position.y - 9 : Math.max(-2, f.root.position.y));
+const bodyH = (f) => (f.root.position.y > 6 ? 22 : LOW_STATES[f.state] === 1 ? 16 : f.height * 1.08);
 function addBody(f, w, ax, ay, az) {
-  const low = LOW_STATES[f.state] === 1;
+  const wide = LOW_STATES[f.state] === 1 || f.root.position.y > 6;
   const p = f.root.position, i = _nBod * 5;
-  _bod[i] = lerp(ax, p.x, w); _bod[i + 1] = lerp(ay, Math.max(-2, p.y), w); _bod[i + 2] = lerp(az, p.z, w);
-  _bod[i + 3] = low ? 18 : f.radius * 1.15;
-  _bod[i + 4] = low ? 16 : f.height * 1.08;
+  _bod[i] = lerp(ax, p.x, w); _bod[i + 1] = lerp(ay, bodyLo(f), w); _bod[i + 2] = lerp(az, p.z, w);
+  _bod[i + 3] = wide ? 18 : f.radius * 1.15;
+  _bod[i + 4] = bodyH(f);
   _nBod++;
 }
 // Safe area of the frame the bodies must stay inside (fractions of the half-frame), set per viewport
@@ -164,7 +170,7 @@ export function createFightCam(ctx, W) {
   const blend = { t: 1, dur: 0, pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: CHASE_FOV, roll: 0 };
   // Fight rig: spherical around a smoothed focus
   const rig = { focus: new THREE.Vector3(), az: 0, el: 0, dist: 60, fov: 58, side: 1, snap: true, axX: 1, axZ: 0,
-    selI: 0, selJ: 0, solveT: 0, userAz: 0, userIdle: 9, closeK: 0, nearT: 9, nearX: 1e9, nearZ: 1e9, nearR: 0 };
+    selI: 0, selJ: 0, solveT: 0, userAz: 0, userIdle: 9, closeK: 0, swingK: 0, nearT: 9, nearX: 1e9, nearZ: 1e9, nearR: 0 };
   const V = new Float64Array(8); // smoothDamp velocities: 0 az, 1 el, 2 dist, 3-5 focus, 6 fov
   // Thrown-body tracking
   const track = { id: '', w: 0, on: false, landed: false, hold: 0, dirX: 0, dirZ: 0, speed: 0, t: 0 };
@@ -191,6 +197,7 @@ export function createFightCam(ctx, W) {
     rig.nearT = 0; rig.nearX = x; rig.nearZ = z; rig.nearR = r;
     _near.length = 0;
     if (ctx.forEachBuildingNear) ctx.forEachBuildingNear(x, z, r, _collect);
+    for (let i = 0; i < _solids.length; i++) _near.push(_solids[i]);
   }
   function beginBlend(dur) {
     if (dur <= 0) { blend.t = 1; blend.dur = 0; return; }
@@ -268,7 +275,12 @@ export function createFightCam(ctx, W) {
   const inRing = (x, z, pad) => Math.abs(x - ringA.cx) < ringA.half - pad && Math.abs(z - ringA.cz) < ringA.half - pad;
   /** Both kaiju inside the ring: how far the boom (azimuth az) can run before it reaches a standing rope. */
   function ringLimit(x, z, az) {
-    if (!ringA || !inRing(x, z, 1) || !inRing(W.player.pos.x, W.player.pos.z, -3) || !inRing(W.rival.pos.x, W.rival.pos.z, -3)) return 1e9;
+    if (!ringA || !inRing(W.player.pos.x, W.player.pos.z, -3) || !inRing(W.rival.pos.x, W.rival.pos.z, -3)) return 1e9;
+    return ringRun(x, z, az);
+  }
+  /** From a point inside the ring: the flat run along az to a standing rope (1e9 when outside / the rope is down). */
+  function ringRun(x, z, az) {
+    if (!ringA || !inRing(x, z, 1)) return 1e9;
     const sa = Math.sin(az), ca = Math.cos(az), h = ringA.half - RING_PAD;
     const tx = Math.abs(sa) < 1e-4 ? 1e9 : ((sa > 0 ? ringA.cx + h : ringA.cx - h) - x) / sa;
     const tz = Math.abs(ca) < 1e-4 ? 1e9 : ((ca > 0 ? ringA.cz + h : ringA.cz - h) - z) / ca;
@@ -292,20 +304,6 @@ export function createFightCam(ctx, W) {
     }
     return t0 <= t1;
   }
-  /** Does the flat segment pass a standing corner tower? */
-  function postBlocked(ax, az, bx, bz) {
-    if (!ringA || !ringA.posts) return false;
-    const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
-    for (let i = 0; i < ringA.posts.length; i++) {
-      const P = ringA.posts[i];
-      if (P.up === false) continue;
-      const t = clamp(((P.x - ax) * dx + (P.z - az) * dz) / l2, 0, 1);
-      if (t < 0.12) continue; // the body is leaning on it
-      const ex = ax + dx * t - P.x, ez = az + dz * t - P.z;
-      if (ex * ex + ez * ez < 20) return true;
-    }
-    return false;
-  }
   function solve(fxx, fy, fz, azB, elB, tanH, tanV, wOther, tb) {
     if (_near.length === 0 && !ringA) { rig.selI = 0; rig.selJ = 0; return; }
     const p = W.player, r = W.rival;
@@ -324,8 +322,6 @@ export function createFightCam(ctx, W) {
         if (inBuilding(cx, cy, cz, 2.5)) cost += 2.2;
         if (cost >= best) continue;
         const P = p.pos, R = r.pos;
-        if (postBlocked(P.x, P.z, cx, cz)) cost += 0.7 * wp;
-        if (postBlocked(R.x, R.z, cx, cz)) cost += 0.6 * wr;
         if (cy < ringA_top + 8) {
           if (crossesRing(P.x, P.z, cx, cz)) cost += 0.45 * wp;
           if (crossesRing(R.x, R.z, cx, cz)) cost += 0.45 * wr;
@@ -347,7 +343,7 @@ export function createFightCam(ctx, W) {
   function computeFight(dt) {
     const p = W.player, r = W.rival, P = p.pos, R = r.pos;
     const dx = R.x - P.x, dz = R.z - P.z, sep = Math.hypot(dx, dz);
-    if (sep > 1.5) { rig.axX = dx / sep; rig.axZ = dz / sep; }
+    if (sep > 14) { rig.axX = dx / sep; rig.axZ = dz / sep; } // (bodies on top of each other: keep the last line)
     const ax = rig.axX, az_ = rig.axZ;
     const tanV = Math.tan(rig.fov * 0.5 * DEG), tanH = tanV * aspect;
 
@@ -355,14 +351,15 @@ export function createFightCam(ctx, W) {
     let tb = null, wT = 0, wOther = 1;
     if (track.w > 0.001) {
       tb = W[track.id];
-      if (tb) { wT = track.w * smooth(50, 110, sep); wOther = 1 - track.w * smooth(70, 125, sep); }
+      if (tb) { wT = track.w * smooth(35, 75, sep); wOther = 1 - track.w * smooth(45, 85, sep); } // a body that leaves takes the camera with it
     }
     const grap = p.state === 'grappling' || p.state === 'grappled' || r.state === 'pinning' || p.state === 'pinning';
-    rig.closeK += ((grap ? 1 : 0) - rig.closeK) * (1 - Math.exp(-dt * 3));
+    const hold = W.grapple && W.grapple.hold, swing = !!(hold && hold.active && hold.type === 'swing');
+    rig.closeK += ((grap && !swing ? 1 : 0) - rig.closeK) * (1 - Math.exp(-dt * 3));
+    rig.swingK += ((swing ? 1 : 0) - rig.swingK) * (1 - Math.exp(-dt * (swing ? 5 : 1.5)));
 
     // focus: midpoint of the two, body mid-height; slides onto a tracked body
-    const pH = LOW_STATES[p.state] ? 16 : p.height, rH = LOW_STATES[r.state] ? 16 : r.height;
-    const lo = Math.max(0, Math.min(P.y, R.y)), hi = Math.max(P.y + pH, R.y + rH);
+    const lo = Math.max(0, Math.min(bodyLo(p), bodyLo(r))), hi = Math.max(bodyLo(p) + bodyH(p), bodyLo(r) + bodyH(r));
     let fxx = P.x + dx * 0.5, fy = (lo + hi) * 0.5, fz = P.z + dz * 0.5;
     if (tb && wT > 0) {
       const lead = track.landed ? 0 : Math.min(26, track.speed * 0.3);
@@ -371,7 +368,7 @@ export function createFightCam(ctx, W) {
       fy = lerp(fy, Math.max(0, tb.pos.y) + tb.height * 0.5, wT);
     }
     if (fx.pushK > 0.01) {
-      const k = fx.pushK * 0.4;
+      const k = fx.pushK * 0.5;
       fxx = lerp(fxx, pushPt.x, k); fy = lerp(fy, pushPt.y, k); fz = lerp(fz, pushPt.z, k);
     }
 
@@ -381,6 +378,7 @@ export function createFightCam(ctx, W) {
     if (tb && wT > 0) beta = lerp(beta, (tb === r ? 50 : -45) * DEG, wT); // trail a thrown body, whoever threw it
     let elB = lerp(-0.2, 0.15, smooth(45, 140, sep)) - 0.05 * rig.closeK;
     if (tb && wT > 0) elB = lerp(elB, 0.2, wT);
+    elB += 0.3 * rig.swingK;
     elB -= clamp(ctx.player.pitch || 0, -0.6, 0.4) * 0.5; // look up / down input tilts the boom
     const cb = Math.cos(beta), sb = Math.sin(beta);
     // ideal azimuth on side s: perp * cos(beta) - axis * sin(beta), perp = s * (axis rotated -90 deg)
@@ -395,7 +393,7 @@ export function createFightCam(ctx, W) {
     }
     // manual orbit from look input (if game.js provides it), easing home once the stick rests
     const lx = ctx.input.lookX || 0;
-    if (lx !== 0) { rig.userAz = clamp(rig.userAz - lx, -1.3, 1.3); rig.userIdle = 0; } else {
+    if (lx !== 0) { rig.userAz = clamp(rig.userAz - lx * 1.9 * dt, -1.3, 1.3); rig.userIdle = 0; } else {
       rig.userIdle += dt;
       if (rig.userIdle > 2.5) rig.userAz *= Math.exp(-dt * 1.2);
     }
@@ -408,6 +406,12 @@ export function createFightCam(ctx, W) {
       const o = tb === p ? r : p;
       if (wOther > 0.02) addBody(o, wOther, tb.pos.x, Math.max(0, tb.pos.y), tb.pos.z);
     } else { addBody(p, 1, 0, 0, 0); addBody(r, 1, 0, 0, 0); }
+    if (swing) {
+      // the whole circle the swung body sweeps, so it never comes through the lens
+      const c = W[hold.who] || p, i = _nBod * 5;
+      _bod[i] = c.pos.x; _bod[i + 1] = 0; _bod[i + 2] = c.pos.z; _bod[i + 3] = 46; _bod[i + 4] = 24;
+      _nBod++;
+    }
 
     // obstruction: pick the cheapest clear boom, ~12 times a second
     refreshNear(fxx, fz, rig.dist + 80, dt);
@@ -426,7 +430,7 @@ export function createFightCam(ctx, W) {
       rig.az = sd(rig.az, rig.az + wrap(azT - rig.az), 0, 0.5, dt);
       rig.el = sd(rig.el, elT, 1, 0.45, dt);
       const st = lerp(0.2, 0.08, track.w);
-      rig.focus.x = sd(rig.focus.x, fxx, 3, st, dt); rig.focus.y = sd(rig.focus.y, fy, 4, st * 1.3, dt); rig.focus.z = sd(rig.focus.z, fz, 5, st, dt);
+      rig.focus.x = sd(rig.focus.x, fxx, 3, st, dt); rig.focus.y = sd(rig.focus.y, fy, 4, fy < rig.focus.y ? 0.1 : st * 1.3, dt); rig.focus.z = sd(rig.focus.z, fz, 5, st, dt);
       rig.fov = sd(rig.fov, fovT, 6, 0.6, dt);
       // pull out at once when a body is about to leave the frame, creep back in
       const need = clamp(fitDist(rig.focus.x, rig.focus.y, rig.focus.z, rig.az, rig.el, tanH, tanV), MIN_DIST, MAX_DIST);
@@ -435,7 +439,7 @@ export function createFightCam(ctx, W) {
     // inside the ropes: stop the boom short of them and widen the lens to keep the pair in frame
     const limK = Math.min(1, ringLimit(rig.focus.x, rig.focus.z, rig.az) / (Math.cos(rig.el) * rig.dist));
     rig.limK = rig.limK === undefined ? limK : rig.limK + (limK - rig.limK) * (1 - Math.exp(-dt * 6));
-    const D = rig.dist * rig.limK * (1 - 0.2 * fx.pushK - 0.06 * fx.slowK);
+    const D = rig.dist * rig.limK * (1 - 0.24 * fx.pushK - 0.06 * fx.slowK);
     // keep the lens off the ground: lift the boom, not just the position, so the horizon stays put
     let el = rig.el;
     if (rig.focus.y + Math.sin(el) * D < MIN_Y) el = Math.asin(clamp((MIN_Y - rig.focus.y) / D, -1, 1));
@@ -486,9 +490,11 @@ export function createFightCam(ctx, W) {
     refreshNear(cx, cz, dist + 60, 9);
     shot.azOff = 0; shot.elOff = 0;
     if (_near.length === 0) return;
+    const dist0 = dist;
     for (let j = 0; j < CAND_EL.length; j++) {
       for (let i = 0; i < CAND_AZ.length; i++) {
         const a = az + CAND_AZ[i], e = el + CAND_EL[j], ce = Math.cos(e);
+        if (cy + Math.sin(e) * dist < ringA_top + 6) dist = Math.min(dist0, ringRun(cx, cz, a) / Math.max(0.2, ce)); else dist = dist0;
         const x = cx + Math.sin(a) * ce * dist, y = Math.max(MIN_Y, cy + Math.sin(e) * dist), z = cz + Math.cos(a) * ce * dist;
         if (inBuilding(x, y, z, 3) || segBlocked(cx, cy, cz, x, y, z)) continue;
         shot.azOff = CAND_AZ[i]; shot.elOff = CAND_EL[j];
@@ -501,7 +507,13 @@ export function createFightCam(ctx, W) {
   function lowOrbit(cx, cy, cz, az, camY, dist, fov) {
     const el = Math.asin(clamp((camY - cy) / dist, -0.95, 0.95));
     if (shot.fresh) { clearOrbit(cx, cy, cz, az, el, dist); shot.fresh = false; }
-    orbit(cx, cy, cz, az + shot.azOff, el + shot.elOff, dist);
+    // a low lens stays inside the ropes with its subject (the lens widens to keep the framing)
+    const e2 = el + shot.elOff, run = ringRun(cx, cz, az + shot.azOff) / Math.max(0.2, Math.cos(e2));
+    if (run < dist && cy + Math.sin(e2) * dist < ringA_top + 6) {
+      fov = Math.min(RING_FOV, 2 * Math.atan(Math.tan(fov * 0.5 * DEG) * Math.min(1.5, dist / run)) / DEG);
+      dist = run;
+    }
+    orbit(cx, cy, cz, az + shot.azOff, e2, dist);
     tgt.fov = fov; tgt.roll = 0;
   }
   function follow(v, f, rate, dt) {
@@ -620,7 +632,7 @@ export function createFightCam(ctx, W) {
     } else if (sub === 'lift' || sub === 'rise' || (sub === 'apex' && st.apex === 'low')) {
       // from the ground, under them: the lens stays down and tilts up as they go
       const k = sub === 'lift' ? 0 : ease((sub === 'rise' ? t : 9) / 0.8);
-      lowOrbit(shot.pt.x, 16, shot.pt.z, shot.az0, MIN_Y, lerp(44, 58, k), lerp(64, 70, k));
+      lowOrbit(shot.pt.x, 16, shot.pt.z, shot.az0, MIN_Y, lerp(44, 58, k), lerp(64, 48, k)); // tighten as they shrink into the sky
       tgt.look.set(mx, my, mz);
       tgt.roll = st.roll * (sub === 'apex' ? 1 + t : k);
     } else if (sub === 'apex') {
@@ -640,7 +652,7 @@ export function createFightCam(ctx, W) {
     } else { // 'impact': crane up and out over the shockwave
       const k = ease(t / 1.1), P = shot.pt;
       if (shot.fresh) { shot.fresh = false; refreshNear(P.x, P.z, 200, 9); }
-      orbit(P.x, lerp(9, 12, k), P.z, shot.az1 + 0.1 * t * s, lerp(0.05, 0.42, k), lerp(58, Math.max(92, shot.radius * 1.15 + 40), k));
+      orbit(P.x, lerp(9, 12, k), P.z, shot.az1 + 0.05 * t * s, lerp(0.05, 0.5, k), lerp(58, Math.max(84, shot.radius + 30), k));
       tgt.fov = lerp(62, 64, k); tgt.roll = 0;
       if (shot.endT >= 0 && shot.t > shot.endT) endShot(1.0);
     }
@@ -749,11 +761,11 @@ export function createFightCam(ctx, W) {
       hit(0.35 + 0.5 * w, 0, -1, 0, 40 + 60 * w, 50 + 90 * w);
     });
     on(EV.KNOCKDOWN, (e) => { const w = clamp(e.impact, 0, 1); hit(0.2 + 0.35 * w, 0, -1, 0, 26 + 40 * w, 30 + 50 * w); });
-    on(EV.ROPE_REBOUND, () => hit(0.18, 0, 0, 0, 0, 30));
+    on(EV.ROPE_REBOUND, (e) => { hit(0.18, 0, 0, 0, 0, 30); if (track.on && track.id === e.who) { track.dirX = -track.dirX; track.dirZ = -track.dirZ; track.speed = e.speed; } });
     on(EV.ROPE_SNAP, () => hit(0.4, 0, 0, 0, 0, 50));
     on(EV.POST_IMPACT, (e) => hit(0.3 + 0.4 * clamp(e.impact, 0, 1), track.dirX, -0.3, track.dirZ, 50, 60));
     on(EV.WATER_IMPACT, (e) => hit(0.15 * e.size, 0, -1, 0, 14 * e.size, 0));
-    on(EV.TAUNT_START, (e) => { const f = W[e.who]; if (f) push(Math.max(0.8, e.dur * 0.8), 0.45, f.pos.x, f.pos.y + 22, f.pos.z); });
+    on(EV.TAUNT_START, (e) => { const f = W[e.who]; if (f) push(Math.max(0.8, e.dur * 0.9), 1, f.pos.x, f.pos.y + 20, f.pos.z); });
     on(EV.TAUNT_INTERRUPTED, () => { fx.pushT = 0; });
     on(EV.BELL, () => hit(0.06, 0, 0, 0, 0, 26));
     on(EV.TIME_HITSTOP, (e) => { fx.freezeT = Math.max(fx.freezeT, e.dur); });
@@ -761,6 +773,8 @@ export function createFightCam(ctx, W) {
     on(EV.FIGHTER_STATE, (e) => {
       // a new exchange while the last throw is still being admired: let go
       if (track.on && track.landed && (e.state === 'grappling' || e.state === 'pinning')) track.on = false;
+      // a whip ends in a stagger / stun / clothesline, with no throw:land
+      if (track.on && !track.landed && e.who === track.id && e.prev === 'airborne' && e.state !== 'airborne') { track.landed = true; track.hold = 0.5; track.speed = 0; }
     });
 
     // ---- cinematics ----
@@ -837,7 +851,9 @@ export function createFightCam(ctx, W) {
       hit(1, 0, -1, 0, 120, 190);
       if (mode !== SHOT || shot.name !== 'finisher') return;
       shot.pt.set(e.x, e.y, e.z); shot.radius = e.radius || 60;
+      // crane out between the corner towers (they stand on the diagonals), on the nearest square side
       shot.az1 = camAzAround(e.x, e.z);
+      if (ringA && inRing(e.x, e.z, -10)) shot.az1 = Math.round(shot.az1 / (Math.PI / 2)) * (Math.PI / 2) + 0.12 * shot.side;
       setSub('impact', 0.35);
       shot.max = shot.t + 6;
     });
@@ -850,7 +866,14 @@ export function createFightCam(ctx, W) {
       if (mode === SHOT && (shot.name === 'finisher' || shot.name === 'pin')) return;
       const d0 = out.valid ? Math.hypot(out.pos.x - f.pos.x, out.pos.z - f.pos.z) : 70;
       startShot('ko', f, 0.45, 2.6);
-      shot.az0 = camAzAround(f.pos.x, f.pos.z); shot.d0 = clamp(d0, 50, 110); shot.f0 = out.valid ? out.fov : 56;
+      // square to the pair on the side the lens is on, so the one left standing is beside the body, not in front of it
+      const o = f.opponent, cur = camAzAround(f.pos.x, f.pos.z);
+      shot.az0 = cur;
+      if (o && f.distTo(o) > 6 && f.distTo(o) < 70) {
+        const ax = Math.atan2(f.pos.x - o.pos.x, f.pos.z - o.pos.z) + 0.5;
+        shot.az0 = Math.abs(wrap(ax + Math.PI / 2 - cur)) <= Math.abs(wrap(ax - Math.PI / 2 - cur)) ? ax + Math.PI / 2 : ax - Math.PI / 2;
+      }
+      shot.d0 = clamp(d0, 50, 110); shot.f0 = out.valid ? out.fov : 56;
       shot.side = rig.side;
     });
     on(EV.CAM_CUE, (e) => {
@@ -900,7 +923,7 @@ export function createFightCam(ctx, W) {
     start() {
       lockWanted = true; idle = false; active = true; time = 0;
       mode = FREE; cam.locked = false;
-      out.valid = false; blend.t = 1; rig.snap = true; rig.userAz = 0; rig.closeK = 0; rig.selI = 0; rig.selJ = 0; rig.nearT = 9;
+      out.valid = false; blend.t = 1; rig.snap = true; rig.userAz = 0; rig.closeK = 0; rig.swingK = 0; rig.selI = 0; rig.selJ = 0; rig.nearT = 9;
       track.on = false; track.w = 0; track.id = '';
       kick.set(0, 0, 0); kickV.set(0, 0, 0); wsLP.set(0, 0, 0);
       for (const k in fx) fx[k] = 0;
@@ -909,6 +932,19 @@ export function createFightCam(ctx, W) {
       _near.length = 0;
       ringA = (W.arena && W.arena.info) || null;
       if (ringA && ringA.ropeY) ringA_top = ringA.ropeY[ringA.ropeY.length - 1];
+      _solids.length = 0;
+      if (ringA) {
+        for (const st of ringA.stands || []) _solids.push({ x: (st.x0 + st.x1) / 2, z: (st.z0 + st.z1) / 2, w: Math.abs(st.x1 - st.x0), d: Math.abs(st.z1 - st.z0), h: st.h + 3, destroyed: false });
+        for (const P of ringA.posts || []) _solids.push({ x: P.x, z: P.z, w: 7, d: 7, h: ringA.towerH || 55, get destroyed() { return P.up === false; } });
+        // video walls (raised slabs) and the gateway's pylons + truss
+        for (const sc of ringA.screens || []) _solids.push({ x: sc.x, z: sc.z, w: sc.nx ? 3 : sc.w, d: sc.nx ? sc.w : 3, y0: sc.y - sc.h / 2, h: sc.y + sc.h / 2, destroyed: false });
+        const G = ringA.gate;
+        if (G) {
+          const hw = G.halfWidth + 5;
+          _solids.push({ x: G.x, z: G.z - hw, w: 7, d: 7, h: G.top, destroyed: false }, { x: G.x, z: G.z + hw, w: 7, d: 7, h: G.top, destroyed: false },
+            { x: G.x, z: G.z, w: 6, d: hw * 2, y0: G.clearance, h: G.top, destroyed: false });
+        }
+      }
       // phones: touch controls sit in the lower corners, so frame a little looser there
       // (HUD: top 13 % is bars; touch: joystick / buttons cover the lower corners, so sit the pair above centre)
       _fill.x = touch ? 0.64 : 0.8; _fill.top = touch ? 0.72 : 0.7; _fill.bot = touch ? 0.56 : 0.84;
@@ -949,7 +985,7 @@ export function createFightCam(ctx, W) {
       active = false; cam.locked = false; mode = FREE; ringA = null;
       shot.name = ''; shot.who = null; shot.other = null;
       track.on = false; track.w = 0;
-      _near.length = 0;
+      _near.length = 0; _solids.length = 0;
       ctx.setCameraOverride(null);
       const camera = ctx.camera;
       camera.up.set(0, 1, 0);

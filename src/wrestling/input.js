@@ -99,6 +99,7 @@ export function createInput(ctx, W) {
   let lastMash = -1, touchTaps = 0;
   let phaseT = 0;
   let touchBound = false;
+  const touchUI = !!(ctx.quality && ctx.quality.touchUI);
 
   const onMashTouch = (e) => {
     if (e.cancelable) e.preventDefault();
@@ -121,7 +122,8 @@ export function createInput(ctx, W) {
     const pad = inp.pad;
     if (touchTaps > 0) { ui.device = 'touch'; return; }
     for (let i = 0; i < TOUCH_CODES.length; i++) if (inp.pressed(TOUCH_CODES[i])) { ui.device = 'touch'; return; }
-    for (let i = 0; i < KBM_CODES.length; i++) if (inp.pressed(KBM_CODES[i])) { ui.device = 'kbm'; return; }
+    // (a tap on a touch screen also arrives as a compatibility mouse click: there, only real keys count)
+    for (let i = 0; i < KBM_CODES.length; i++) if (inp.pressed(KBM_CODES[i]) && !(touchUI && KBM_CODES[i].startsWith('Mouse'))) { ui.device = 'kbm'; return; }
     if (!pad.connected) { if (ui.device === 'pad') ui.device = ctx.quality && ctx.quality.touchUI ? 'touch' : 'kbm'; return; }
     for (let i = 0; i < 16; i++) if (pad.pressed(i)) { ui.device = 'pad'; return; }
     if (Math.abs(pad.axis(0)) > 0.5 || Math.abs(pad.axis(1)) > 0.5 || pad.lt > 0.4) ui.device = 'pad';
@@ -176,7 +178,8 @@ export function createInput(ctx, W) {
       it.dirX = dx; it.dirZ = dz;
 
       // Strike: out on the press; a hold becomes a heavy
-      const sPress = inp.pressed('Mouse0') || pad.pressed(PAD.strike) || inp.pressed(TOUCH.strike);
+      // (on a touch screen a tap's compatibility click is not a strike: the mouse only counts once it is pointer-locked)
+      const sPress = (inp.pressed('Mouse0') && (!touchUI || inp.pointerLocked)) || pad.pressed(PAD.strike) || inp.pressed(TOUCH.strike);
       it.strike = sPress;
       it.strikeHeld = inp.attack;
       it.heavy = inp.pressed(KEY.heavy);

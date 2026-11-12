@@ -1095,6 +1095,15 @@
   body.hud-prewarm #damage-flash, body.hud-prewarm #lowhp-warning, body.hud-prewarm #dmg-indicators {
     opacity: 0.01 !important; z-index: 300 !important; pointer-events: none !important;
   }
+  /* perf: while the loading screen is up they are drawn at full strength BEHIND it instead, and the loading
+     screen goes 99% opaque so the compositor cannot cull what it covers. Chrome keys each raster / compositor
+     program on what it draws into: at 1% opacity the HUD went through an offscreen pass, which warmed a
+     different set of programs from the ones play uses (measured, devtools/perf: first-use shader builds during
+     a 45 s match 3 -> 0, 0.3-1 s each). */
+  html body.hud-prewarm :is(#hud, #powers, #mobile-ui > *, #message, #wave-banner, #popups, #upgrade-modal, #pause-menu,
+    #damage-flash, #lowhp-warning, #dmg-indicators, #wr-hud, #wr-skip, #gameover.wr-warm),
+  html body.hud-prewarm.touch :is(#wr-touch, #wr-touch > *) { opacity: 1 !important; z-index: 150 !important; }
+  body.hud-prewarm #loading-screen.visible { opacity: 0.992; }
 
   /* Reduced motion: no pulses, slides or spins; state changes stay visible */
   @media (prefers-reduced-motion: reduce) {
@@ -1396,7 +1405,7 @@
   .wr-call.t-result b { font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif; letter-spacing: 0.08em; text-shadow: 0 0 44px #ff2244, 0 0 14px #ff8866, 0 0.07em 0 #1a0006; }
 
   /* ---- pin count ---- */
-  #wr-pin { position: absolute; top: 30%; left: 50%; width: 0; display: flex; flex-direction: column; align-items: center; white-space: nowrap; opacity: 0; will-change: transform, opacity; }
+  #wr-pin { position: absolute; top: 14%; left: 50%; width: 0; display: flex; flex-direction: column; align-items: center; white-space: nowrap; opacity: 0; will-change: transform, opacity; }
   #wr-pin b, .wr-pin-warm b {
     font-family: var(--f-display); font-weight: 400; font-size: clamp(84px, 31vmin, 300px); line-height: 0.82; letter-spacing: 0.04em;
     color: var(--c-cream); transform: skewX(-8deg);
@@ -1404,7 +1413,7 @@
   }
   #wr-pin.c2 b, .wr-pin-warm.c2 b { color: var(--c-score); }
   #wr-pin.c3 b, .wr-pin-warm.c3 b { color: #fff; text-shadow: 0 0 44px #ffb300, 0 0 14px #ffee66, 0.05em 0.05em 0 #1a0006; }
-  .wr-count { position: absolute; top: calc(30% + clamp(40px, 15vmin, 150px)); left: 50%; transform: translateX(-50%); display: flex; gap: clamp(8px, 1.6vmin, 16px); opacity: 0; transition: opacity 0.15s; }
+  .wr-count { position: absolute; top: calc(14% + clamp(84px, 31vmin, 300px) * 0.86 + 4px); left: 50%; transform: translateX(-50%); display: flex; gap: clamp(8px, 1.6vmin, 16px); opacity: 0; transition: opacity 0.15s; }
   .wr-count.on { opacity: 1; }
   .wr-count i { width: clamp(22px, 5vmin, 46px); height: clamp(5px, 1vmin, 9px); transform: skewX(-14deg); background: rgba(8, 0, 3, 0.7); border: 1px solid rgba(255, 230, 200, 0.5); }
   .wr-count i.on { background: var(--c-score); border-color: #fff; }
@@ -1441,7 +1450,7 @@
     border-radius: 4px; background: var(--c-cream); color: var(--c-ink); text-shadow: none;
     font-family: var(--f-display); font-style: normal; font-size: 0.95em; line-height: 1; letter-spacing: 1px; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
   }
-  .wr-k.pb { min-width: 1.7em; height: 1.7em; padding: 0; border-radius: 50%; background: #14060c; color: var(--pc); border: 2px solid var(--pc); box-shadow: none; }
+  .wr-k.pb { --pc: var(--c-cream); min-width: 1.7em; height: 1.7em; padding: 0; border-radius: 50%; background: #14060c; color: var(--pc); border: 2px solid var(--pc); box-shadow: none; }
   .wr-k.pb.a { --pc: #7bdc5a; } .wr-k.pb.b { --pc: #ff5a5a; } .wr-k.pb.x { --pc: #5aa8ff; } .wr-k.pb.y { --pc: #ffd24a; }
   .wr-k.sh { border-radius: 7px 7px 3px 3px; background: #2a1c24; color: var(--c-cream); border: 1px solid rgba(255, 230, 200, 0.55); box-shadow: none; }
   .wr-k.tk { border-radius: var(--r-pill); padding: 0 0.6em; background: var(--tc, var(--c-red)); color: #fff; border: 1px solid var(--c-gold); box-shadow: none; }
@@ -1478,6 +1487,7 @@
   }
   body.touch #wr-ticker.on { transform: translate(-50%, 0); }
   body.touch #wr-ticker .tag { display: none; }
+  body.touch #wr-hud.pinning #wr-ticker { opacity: 0; }   /* the count owns the top of a phone screen */
   body.touch #wr-ticker .line { font-size: var(--fs-cap); }
   body.touch.wr-mode #hud-toasts { margin-top: 20px; }
 
@@ -1496,7 +1506,7 @@
     font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif; font-size: clamp(40px, 12px + 9vmin, 124px); line-height: 1; letter-spacing: 0.06em; color: var(--c-cream);
     text-shadow: 0 0 40px #ff2244, 0 0 14px #ff8866, 0 0.05em 0 #1a0006;
   }
-  .wr-card .ep { font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 0.3em; color: #ff9966; }
+  .wr-card .ep { font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 0.3em; color: #ffd9b8; }
   .wr-card .st { margin-top: 3px; font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 3px; color: #aaccff; }
 
   /* ---- fall result band (between falls) ---- */
@@ -1567,7 +1577,7 @@
   #help .help-wr .wr-k { font-size: 0.92em; height: 1.45em; min-width: 1.5em; margin: 1px 0; box-shadow: none; vertical-align: baseline; }
   #wr-moves, #wr-corner { display: none; }
   body.wr-mode #pause-menu { gap: var(--sp-4); }
-  body.wr-mode #wr-moves { display: block; width: min(430px, 48vw); text-align: left; padding: var(--sp-3) var(--sp-4) var(--sp-4); }
+  body.wr-mode #wr-moves { display: block; width: min(430px, 48vw); text-align: left; padding: var(--sp-3) var(--sp-4) var(--sp-4); scrollbar-width: thin; scrollbar-color: rgba(255, 204, 102, 0.5) transparent; }
   #wr-moves h4 { margin: var(--sp-2) 0 3px; font-family: var(--f-display); font-weight: 400; font-size: var(--fs-cap); letter-spacing: 4px; color: var(--c-gold); border-bottom: 1px solid rgba(255, 204, 102, 0.22); }
   #wr-moves h4:first-child { margin-top: 0; }
   #wr-moves .mv { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: 24px; font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 2px; color: var(--c-cream); }
@@ -1621,9 +1631,10 @@
     display: block !important; opacity: 0.01 !important; z-index: 300 !important; pointer-events: none !important;
   }
   :is(body.hud-prewarm, body.wr-warming) #gameover.wr-warm { display: flex !important; opacity: 0.01 !important; z-index: 300 !important; pointer-events: none !important; }
-  :is(body.hud-prewarm, body.wr-warming) :is(#wr-hud .wr-call, #wr-pin, .wr-pin-warm, #wr-mash, #wr-wheel, #wr-ticker, .wr-card, #wr-inter, .wr-count, .wr-name .chip) { opacity: 1 !important; }
+  /* No forced opacity on the inner layers: an !important rule would beat the animations prewarm() runs on them,
+     and it is exactly the part-faded states (a group at 0 < opacity < 1 is its own render surface) that must be drawn */
   body.wr-warming #wr-moves { display: block; }
-  .wr-pin-warm { position: absolute; top: 30%; left: 30%; }
+  .wr-pin-warm { position: absolute; top: 14%; left: 30%; }
   @media (prefers-reduced-motion: reduce) {
     .wr-side.crit .wr-hp .fill, .wr-side.full .wr-mom span, #wr-mash.on .t, .wr-tb.cue::after, .wr-ts.cue::after, #wr-belt, #wr-belt .shine { animation: none !important; }
     .wr-hp .ghost, .wr-hp .fill, .wr-sta i, .wr-mom .track i, #wr-top, .wr-lb, #wr-ticker { transition: none; }

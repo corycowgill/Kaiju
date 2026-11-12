@@ -56,6 +56,24 @@ function rigFor(glb) {
 }
 const ckey = (name) => 'w_' + name;
 
+/** Bake and register every clip for a loaded kaiju, a few per slice, yielding
+ *  between slices. game.js awaits this behind the loading screen (perf): the
+ *  45 clips cost 25-35 ms each and start() used to bake both kaiju's at the
+ *  bell, a 1.4-3 s frozen frame as the match began. start()'s own ensure()
+ *  then finds every clip present. */
+export async function prebakeAnims(glb, sliceMs = 30) {
+  const rig = rigFor(glb);
+  if (!rig) return;
+  let t0 = performance.now();
+  for (const name in DEFS) {
+    const key = ckey(name);
+    if (glb.actions[key]) continue;
+    const def = DEFS[name];
+    glb.addClip(key, rig.clips[name] || (rig.clips[name] = bakeClip(rig.R, key, def)), !def.loop);
+    if (performance.now() - t0 > sliceMs) { await new Promise((r) => setTimeout(r, 0)); t0 = performance.now(); }
+  }
+}
+
 const LOCO = { idle: 0, walk: 1, back: 1, strafe_l: 1, strafe_r: 1, run: 1 };
 
 // ---- hand IK: where the hands go on the OTHER body, per anim ----

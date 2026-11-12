@@ -208,7 +208,7 @@ export function createHud(ctx, W) {
   }
 
   // ---- callouts ---------------------------------------------------------------
-  function callout(text, sub, tier, who, pre) {
+  function callout(text, sub, tier, who, pre, sec) {
     if (!live || !text) return;
     tier = CALL_DUR[tier] ? tier : 'move';
     const m = !pre && PRE_RE.exec(text);
@@ -220,12 +220,13 @@ export function createHud(ctx, W) {
     for (const c of el.calls) if (c._pos === pos && c._on > 0) { node = c; break; }
     if (!node) for (const c of el.calls) if (!(c._on > 0)) { node = c; break; }
     if (!node) node = el.calls[callI = (callI + 1) % el.calls.length];
-    node._pos = pos; node._on = CALL_DUR[tier];
+    const dur = sec || CALL_DUR[tier];
+    node._pos = pos; node._on = dur;
     node.className = `wr-call t-${tier}${pos ? ' ' + pos : ''}`;
     node.children[0].textContent = pre || '';
     node.children[1].textContent = text;
     node.children[2].textContent = sub || '';
-    const ms = CALL_DUR[tier] * 1000, dir = pos === 'p1' ? -1 : pos === 'p2' ? 1 : 0, big = tier === 'result' || tier === 'finisher';
+    const ms = dur * 1000, dir = pos === 'p1' ? -1 : pos === 'p2' ? 1 : 0, big = tier === 'result' || tier === 'finisher';
     play(node, reduced ? [{ opacity: 1 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }] : [
       { opacity: 0, transform: `translateX(${dir * 70}px) scale(${big ? 2.3 : 1.8})` },
       { opacity: 1, transform: 'translateX(0) scale(0.95)', offset: 110 / ms },
@@ -249,6 +250,7 @@ export function createHud(ctx, W) {
     ], 1000);
   }
   function pinEnd(burst) {
+    el.root.classList.remove('pinning');
     if (pinT < 0 && !el.count.classList.contains('on')) return;
     pinT = -1;
     el.count.classList.remove('on');
@@ -490,7 +492,7 @@ export function createHud(ctx, W) {
   function hideLayers() {
     live = false;
     el.root.classList.add('hidden'); el.touch.classList.add('hidden'); el.skip.classList.add('hidden');
-    el.root.classList.remove('lbox', 'cine');
+    el.root.classList.remove('lbox', 'cine', 'pinning');
     doc.body.classList.remove('wr-cine');
     if (el.mashZone) el.mashZone.classList.remove('on');
   }
@@ -532,7 +534,7 @@ export function createHud(ctx, W) {
     on(EV.ENTRANCE_BEAT, (e) => { if (e.beat === 'namecard') showCard(e.who); });
     on(EV.ENTRANCE_SKIP, hideCards);
     on(EV.BELL, (e) => {
-      if (e.kind === 'start') callout('FIGHT!', '', 'result', '', W.match.state.bestOf > 1 ? `FALL ${W.match.state.fall}` : 'CHICAGO HEAVYWEIGHT TITLE');
+      if (e.kind === 'start') callout('FIGHT!', '', 'result', '', W.match.state.bestOf > 1 ? `FALL ${W.match.state.fall}` : 'CHICAGO HEAVYWEIGHT TITLE', 1.3);
     });
     on(EV.FALL_START, () => { writePips(); for (const id of ['player', 'rival']) { side[id].hp = -1; writeSide(id); } });
     on(EV.FALL_END, (e) => {
@@ -556,6 +558,7 @@ export function createHud(ctx, W) {
       el.pinB.textContent = ''; el.pin.className = '';
       for (let i = 0; i < 3; i++) el.count.children[i].classList.remove('on');
       el.count.classList.add('on');
+      el.root.classList.add('pinning');
       pinT = 4;
       slowT = 1;
     });
@@ -603,7 +606,8 @@ export function createHud(ctx, W) {
     const body = doc.body, temps = [], anims = [];
     const loop = (node, frames, ms = 700) => { if (node && node.animate) anims.push(node.animate(frames, { duration: ms, iterations: Infinity, direction: 'alternate' })); };
     const FADE = [{ opacity: 0.9 }, { opacity: 0 }];
-    const SLAM = [{ opacity: 0, transform: 'translateX(-70px) scale(2.3)' }, { opacity: 1, transform: 'translateX(0) scale(1)' }];
+    const SLAM = [{ opacity: 0, transform: 'translateX(-70px) scale(2.3)' }, { opacity: 1, transform: 'translateX(0) scale(1)', offset: 0.4 },
+      { opacity: 1, transform: 'translateX(0) scale(1.02)', offset: 0.6 }, { opacity: 0, transform: 'translateX(24px) translateY(-10px) scale(1.02)' }];
     body.classList.add('wr-warming');
     // top band: both sides, every state class, bars part-filled, hit flashes running
     [el.p1, el.p2].forEach((s, i) => {
@@ -659,6 +663,21 @@ export function createHud(ctx, W) {
     panels('kbm', 'ATOMIC DRIVER');
     if (el.corner) el.corner.innerHTML = 'GORRAK 1 - 0 MECHRA · FALL 2 NEXT<small>SCOUTING MECHRA: guards strings, so grab it</small>';
     el.go.classList.add('wr', 'wr-win', 'wr-warm');
+    // Everything that fades or slides by a CSS transition in play: run it through its part-way states too.
+    // Not the prompt pills: a layer under a running opacity animation is drawn into its own surface, and the
+    // pills pop in plainly in play (measured: looping them here left a 2 s build at the first prompt of a match).
+    const HALF = [{ opacity: 0.15 }, { opacity: 1 }];
+    for (const n of [el.mash, el.wheel, el.count, el.p1.chip, el.p2.chip, el.btnGrab, el.btnBlock, el.btnTaunt, el.btnLock]) loop(n, HALF, 500);
+    loop(el.ticker, [{ opacity: 0, transform: 'translateX(-14px)' }, { opacity: 1, transform: 'translateX(0)' }], 500);
+    loop(el.top, [{ opacity: 0, transform: 'translateY(-130%)' }, { opacity: 1, transform: 'translateY(0)' }], 900);
+    for (const lb of el.root.querySelectorAll('.wr-lb')) loop(lb, [{ transform: `translateY(${lb.classList.contains('t') ? -101 : 101}%)` }, { transform: 'translateY(0)' }], 900);
+    for (const sd of [el.p1, el.p2]) {
+      loop(sd.fill, [{ transform: 'scaleX(0.25)' }, { transform: 'scaleX(0.7)' }], 900);
+      loop(sd.ghost, [{ transform: 'scaleX(0.5)' }, { transform: 'scaleX(0.9)' }], 1300);
+      loop(sd.sta, [{ transform: 'scaleX(0.1)' }, { transform: 'scaleX(0.9)' }], 900);
+      loop(sd.mom, [{ transform: 'scaleX(0.2)' }, { transform: 'scaleX(1)' }], 900);
+    }
+    loop(el.mashFill, [{ transform: 'scaleX(0.1)' }, { transform: 'scaleX(1)' }], 600);
     unwarm = () => {
       unwarm = null;
       for (const a of anims) a.cancel();

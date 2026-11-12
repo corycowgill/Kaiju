@@ -31,6 +31,7 @@ import { fireAtomicBreath, updateAtomicBlasts, resetAtomicBlasts } from './atomi
 import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk, waterDepth } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures, flipbooksReady } from './vfx.js';
 import { createWrestling } from './wrestling/index.js';
+import { prebakeAnims } from './wrestling/anims.js';
 import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, lookSunUp, withLookEnvSky, setLookDip } from './look.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
@@ -2538,6 +2539,11 @@ async function _startGameInner(key) {
       loadingPct.textContent = pct + '%';
       loadingStatus.textContent = `WARMING UP SHADERS \u2022 ${ready}/${total}`;
     }, rivalKey ? _rivalCache.glb.root : null);
+    // The match's procedural clips, both kaiju (once per model: see prebakeAnims)
+    if (_mode.id === 'wrestling') {
+      loadingStatus.textContent = 'REHEARSING THE MATCH';
+      try { await prebakeAnims(glb); if (rivalKey) await prebakeAnims(_rivalCache.glb); } catch (e) { warnOnce('prewarm|anims', '[prewarm] anim bake failed (bakes at the bell instead):', e && e.message); }
+    }
     await _hudPrewarmEnd();
     loadingScreen.classList.remove('visible');
 

@@ -2432,7 +2432,7 @@ export class Building {
 //    anyway, and dropped the rest after they had been paid for.
 // The follow-up explosions run on game time (world.time), so they hold during
 // hit-stop and pause and stretch with slow motion, and a restart drops them.
-const _FX_INLINE = 2;                          // collapses per frame that get their effects inside collapse()
+const _FX_INLINE = isMobile ? 1 : 2;           // collapses per frame that get their effects inside collapse()
 const _FX_BUDGET_MS = isMobile ? 2.5 : 1.5;    // per frame, for the queued ones
 const _FX_FULL_BACKLOG = isMobile ? 3 : 8;     // jobs waiting behind this one: up to here the full show,
 const _FX_MID_BACKLOG = isMobile ? 8 : 24;     // up to here a reduced one, beyond it a fireball and (below) a ring
