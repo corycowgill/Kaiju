@@ -36,9 +36,10 @@ import { setKaijuGlow, setLookFxDip } from '../look.js';
 
 const FULL = !isMobile && !Q_LOW;                 // desktop MED / HIGH: every layer
 const PM = !isMobile ? (Q_HIGH ? 1 : Q_LOW ? 0.35 : 0.6) : (Q_LOW ? 0.2 : 0.35); // particle count multiplier
-const CAP = !isMobile ? (Q_HIGH ? 1792 : 1024) : (Q_LOW ? 384 : 640);            // burst ring (incl. decals)
+const CAP = !isMobile ? (Q_HIGH ? 2048 : 1280) : (Q_LOW ? 480 : 768);            // burst ring (incl. decals + long)
 const DECALS = !isMobile ? 16 : 8;                // persistent ground cracks
-const LIVE_CAP = 72;
+const LONG = !isMobile ? (Q_HIGH ? 512 : 384) : (Q_LOW ? 96 : 160); // ceremony confetti: its own ring, so pyro churn never eats it
+const LIVE_CAP = 96;
 const STRIDE = 24;
 const MAX_ANG = isMobile ? 0.75 : 1.5;            // sprite size cap as a fraction of view distance (overdraw)
 const CRACK_LIFE = 70;                            // s a ground crack stays (fades over the last fifth)
@@ -314,7 +315,7 @@ function _batch(mat, cap, order) {
   mesh.frustumCulled = false; mesh.castShadow = false; mesh.receiveShadow = false;
   mesh.matrixAutoUpdate = false; mesh.renderOrder = order; mesh.visible = false;
   // pending: what the GPU copy still lacks (0 nothing, 1 the range, 2 everything); cleared when three uploads
-  const Bt = { arr, ib, g, mesh, cap, lo: 1e9, hi: -1, until: 0, cur: 0, dcur: 0, n: 0, pending: 2, range: { start: 0, count: 0 } };
+  const Bt = { arr, ib, g, mesh, cap, lo: 1e9, hi: -1, until: 0, cur: 0, dcur: 0, lcur: 0, n: 0, pending: 2, range: { start: 0, count: 0 } };
   ib.onUpload(() => { Bt.pending = 0; });
   return Bt;
 }
@@ -366,8 +367,9 @@ export function createVfx(ctx, W) {
   let S = null, B = null, L = null;
   let T = 0;             // effect clock: simulation seconds (frozen by hit-stop, stretched by slow-mo)
   let spawned = 0;
+  let _long = false;     // P() writes into the long-lived ring while set (confetti)
   const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
-  const _col = new THREE.Color(), _col2 = new THREE.Color();
+  const _col = new THREE.Color(), _col2 = new THREE.Color(), _hsl = { h: 0, s: 0, l: 0 };
   const _bz = { origin: new THREE.Vector3(), dir: new THREE.Vector3() };
 
   // ---- writers ----
@@ -385,8 +387,9 @@ export function createVfx(ctx, W) {
   /** One burst sprite. a: intensity (additive may exceed 1). delay: seconds until it appears. */
   function P(tile, mode, x, y, z, vx, vy, vz, life, s0, s1, col, a, add, drag = 0, grav = 0, rot = 0, spin = 0, asp = 1, fin = 0, hold = 0, erode = 0, delay = 0) {
     if (!B) return;
-    const i = DECALS + B.cur;
-    B.cur = (B.cur + 1) % (CAP - DECALS);
+    let i;
+    if (_long) { i = DECALS + B.lcur; B.lcur = (B.lcur + 1) % LONG; }
+    else { i = DECALS + LONG + B.cur; B.cur = (B.cur + 1) % (CAP - DECALS - LONG); }
     _write(B, i, tile, mode, x, y, z, vx, vy, vz, life, s0, s1, col, a, add, drag, grav, rot, spin, asp, fin, hold, erode, T + delay);
     if (T + delay + life > B.until) B.until = T + delay + life;
     spawned++;
@@ -488,7 +491,7 @@ export function createVfx(ctx, W) {
   }
 
   // ---- fighters ----
-  const pal = { player: { main: C(1, 1, 1), alt: C(1, 1, 1), hot: C(1, 1, 1) }, rival: { main: C(1, 1, 1), alt: C(1, 1, 1), hot: C(1, 1, 1) } };
+  const pal = { player: { main: C(1, 1, 1), alt: C(1, 1, 1), hot: C(1, 1, 1), glow: C(1, 1, 1) }, rival: { main: C(1, 1, 1), alt: C(1, 1, 1), hot: C(1, 1, 1), glow: C(1, 1, 1) } };
   const mkSt = () => ({
     auraAcc: 0, full: false, exhausted: false, steamAcc: 0, blockK: 0, stunT: 0,
     trail: { on: false, type: '', dx: 0, dz: 1, t: 0, acc: 0, dacc: 0, by: 'player', px: 0, py: 0, pz: 0 },
@@ -878,11 +881,13 @@ export function createVfx(ctx, W) {
     }
     tickTrail(f, s, dt);
     // -- the body itself: look.js's rim glow in the kaiju's colour (a uniform write)
-    let g = full ? 0.55 + 0.2 * Math.sin(T * 9) : m > 0.4 ? 0.35 * (m - 0.4) / 0.6 : 0;
-    if (te.on && te.heavy) g = Math.max(g, 0.9 * te.t / te.dur);
-    if (fin.on && !fin.hit && fin.who === f.id) g = Math.max(g, Math.min(1.3, 0.5 + fin.t * 0.5));
+    // look.js adds col * k * (0.18 + 1.5 * rim^2): past ~0.4 the flat term fills the body and the model's form is
+    // lost in one colour, so these stay low and the read lives on the silhouette edge
+    let g = full ? 0.2 + 0.06 * Math.sin(T * 9) : m > 0.4 ? 0.14 * (m - 0.4) / 0.6 : 0;
+    if (te.on && te.heavy) g = Math.max(g, 0.28 * te.t / te.dur);
+    if (fin.on && !fin.hit && fin.who === f.id) g = Math.max(g, Math.min(0.36, 0.2 + fin.t * 0.1));
     if (f.state === 'ko') g = 0;
-    if (g !== s.glow) { s.glow = g; setKaijuGlow(f.root, col.getHex(), g); }
+    if (g !== s.glow) { s.glow = g; setKaijuGlow(f.root, (pal[f.id] || pal.player).glow.getHex(), g); }
   }
   // Lock-up: sparks grinding out from between the two bodies
   let lock = false, lockAcc = 0;
@@ -924,6 +929,22 @@ export function createVfx(ctx, W) {
           const a = j / 12 * TAU + T * 0.6;
           LV(T_COL, M_BEAM, t.x + Math.cos(a) * t.r, 0.3, t.z + Math.sin(a) * t.r, 2.6, _col, (0.5 + 0.6 * k) * urgent, 1, 0, 1, 0, 7 + 12 * k, 0);
         }
+        // a big radius puts the fight camera inside the disc, where the rim is behind it: waves keep running out
+        // from the caster across the ground in view, quicker as the moment nears
+        for (let j = 0; j < 3; j++) {
+          const ph = (t.t * (1.2 + 1.6 * k) + j / 3) % 1;
+          LV(T_RING, M_FLAT, t.x, 0.5, t.z, t.r * 2.5 * ph, _col, (1 - ph) * (0.9 + 0.6 * k), 1);
+        }
+        // and the one in the way is marked where it stands: a reticle, and pickets standing up round its feet
+        const V = fighter(t.target);
+        if (V && Math.hypot(V.pos.x - t.x, V.pos.z - t.z) < t.r + V.radius) {
+          const q = V.pos, rr0 = (V.radius + 6) * (1.4 - 0.4 * k);
+          LV(T_RETICLE, M_FLAT, q.x, 0.6, q.z, rr0 * 2.5, DANGER, (0.8 + 0.5 * k) * urgent, 1, -T * 2);
+          for (let j = 0; j < 8; j++) {
+            const a = j / 8 * TAU - T * 1.2;
+            LV(T_COL, M_BEAM, q.x + Math.cos(a) * rr0, 0.3, q.z + Math.sin(a) * rr0, 2.8, DANGER, (0.6 + 0.6 * k) * urgent, 1, 0, 1, 0, 6 + 10 * k, 0);
+          }
+        }
       } else {
         // a line: from the attacker's head toward its target, thin, tightening
         const V = fighter(t.target) || f.opponent;
@@ -933,8 +954,8 @@ export function createVfx(ctx, W) {
           LV(T_COL, M_BEAM, _a.x, _a.y, _a.z, (5 - 3.5 * k), _col, 0.5 + 0.5 * k * urgent, 1, 0, 1, (_b.x - _a.x) * 1.9, (_b.y - _a.y) * 1.9, (_b.z - _a.z) * 1.9);
         }
       }
-      // and the tell on the attacker itself: its head lights up in its own colour
-      headPos(f, _a);
+      // and the tell on the attacker itself: a light over its head in its own colour
+      anchor(f, 'crown', _a);
       LV(T_GLINT, M_BILL, _a.x, _a.y, _a.z, 12 + 22 * k, k > 0.7 ? WHITE : col, 1 + 0.6 * k, 1, T * 4);
       LV(T_GLOW, M_BILL, _a.x, _a.y, _a.z, 14 + 8 * k, col, 0.7, 1);
     }
@@ -943,7 +964,7 @@ export function createVfx(ctx, W) {
   // ---- emitters (pyro, confetti, aftermath) ----
   const E_PYRO = 1, E_CONFETTI = 2, E_EMBERS = 3, E_SMOLDER = 4, E_ARCS = 5, E_STORM = 6;
   const ems = [];
-  for (let i = 0; i < 20; i++) ems.push({ on: false, kind: 0, t: 0, dur: 0, x: 0, y: 0, z: 0, r: 0, acc: 0, col: C(1, 1, 1), started: false });
+  for (let i = 0; i < 48; i++) ems.push({ on: false, kind: 0, t: 0, dur: 0, x: 0, y: 0, z: 0, r: 0, acc: 0, col: C(1, 1, 1), started: false });
   function emitter(kind, x, y, z, dur, col, r = 0, delay = 0) {
     let e = null;
     for (let i = 0; i < ems.length; i++) if (!ems[i].on) { e = ems[i]; break; }
@@ -966,21 +987,23 @@ export function createVfx(ctx, W) {
           column(e.x, e.y, e.z, 52, 5, 9, e.dur * 0.9, e.col, 0.9, 1, 7, 1);
           column(e.x, e.y, e.z, 34, 2.5, 4, e.dur * 0.8, WHITE, 0.8, 1, 8, 1);
         }
-        e.acc += dt * (FULL ? 90 : 36) * (1 - k * 0.6);
+        e.acc += dt * (FULL ? 55 : 22) * (1 - k * 0.6);
         while (e.acc >= 1) {
           e.acc -= 1;
-          const white = rnd() < 0.35;
+          const white = rnd() < 0.18;
           P(T_STREAK, M_VEL, e.x, e.y + 1, e.z, rr(-9, 9), rr(55, 95), rr(-9, 9), rr(0.7, 1.2), white ? 0.9 : 1.3, 0.3, white ? WHITE : e.col, 1.5, 1, 0.5, 60, 0, 0, rr(5, 8));
         }
         if (FULL && rnd() < dt * 8) P(T_PUFF, M_BILL, e.x + rr(-2, 2), e.y + rr(8, 30), e.z + rr(-2, 2), rr(-3, 3), rr(6, 12), rr(-3, 3), 1.8, 4, 12, STEAM, 0.25, 0, 0.5, 0, rnd() * TAU, 0, 1, 0.2, 0.2, 1);
       } else if (e.kind === E_CONFETTI) {
-        e.acc += dt * (FULL ? 110 : 40) * (k < 0.75 ? 1 : (1 - k) * 4);
+        e.acc += dt * (FULL ? 50 : 20) * (k < 0.75 ? 1 : (1 - k) * 4);
+        _long = true;
         while (e.acc >= 1) {
           e.acc -= 1;
           const pick = rnd(), c = pick < 0.45 ? e.col : pick < 0.75 ? WHITE : GOLD;
-          const sz = rr(1.3, 2.3);
+          const sz = rr(1.8, 3);
           P(T_CHIP, M_BILL, e.x + rr(-e.r, e.r), e.y + rr(-8, 8), e.z + rr(-e.r, e.r), rr(-5, 5), rr(-13, -7), rr(-5, 5), rr(4.5, 6), sz, sz, c, 1, 0, 0, 0, rnd() * TAU, rr(-3, 3), -rr(0.5, 0.9), 0.05, 0.85);
         }
+        _long = false;
       } else if (e.kind === E_EMBERS) {
         e.acc += dt * (FULL ? 46 : 16) * (1 - k);
         while (e.acc >= 1) {
@@ -1080,7 +1103,7 @@ export function createVfx(ctx, W) {
     const pulse = 0.7 + 0.3 * Math.sin(T * 14);
     LV(T_RETICLE, M_FLAT, p.x, 0.5, p.z, 70, col, 0.9 * pulse, 1, T * 2.2);
     LV(T_RING, M_FLAT, p.x, 0.5, p.z, 82, alt, 0.8, 1, -T);
-    LV(T_GLOW, M_BILL, _a.x, _a.y, _a.z, 26 + 5 * pulse, col, 0.55, 1);
+    LV(T_GLOW, M_BILL, _a.x, _a.y, _a.z, 26 + 5 * pulse, pal[fin.who].glow, 0.4, 1); // saturated: a pale signature washes the close-up
     fin.acc2 += dt * (FULL ? 16 : 7);
     while (fin.acc2 >= 1) {
       fin.acc2 -= 1;
@@ -1176,10 +1199,10 @@ export function createVfx(ctx, W) {
     //    three ground rings racing to the radius; the world's own shockwave underneath
     D(T_CRACK, x, z, R * 1.5, CHAR, 0.8, CRACK_LIFE, rnd() * TAU);
     P(T_CRACK, M_FLAT, x, 0.22, z, 0, 0, 0, 5, R * 1.3, R * 1.5, col, 1.0, 1, 0, 0, rnd() * TAU, 0, 1, 0, 0.1);
-    P(T_SHELL, M_BILL, x, 2, z, 0, 0, 0, 0.75, R * 0.3, R * 1.5, col, 0.6, 1, 0, 0, 0, 0, 1, 0, 0.25);
-    P(T_SHELL, M_BILL, x, 2, z, 0, 0, 0, 0.5, R * 0.2, R * 0.9, WHITE, 0.35, 1, 0, 0, 0, 0, 1, 0, 0.2);
+    P(T_SHELL, M_BILL, x, 2, z, 0, 0, 0, 0.75, R * 0.3, R * 1.5, col, 0.5, 1, 0, 0, 0, 0, 1, 0, 0.25);
+    P(T_SHELL, M_BILL, x, 2, z, 0, 0, 0, 0.5, R * 0.2, R * 0.9, (pal[id] || pal.player).hot, 0.28, 1, 0, 0, 0, 0, 1, 0, 0.2);
     P(T_BURST, M_BILL, x, 6, z, 0, 0, 0, 0.2, 30, R * 1.2, WHITE, 0.8, 1, 0, 0, rnd() * TAU);
-    for (let i = 0; i < 3; i++) gring(x, z, 6, R * (0.7 + 0.25 * i), 0.55 + 0.15 * i, i === 1 ? WHITE : col, 1.1 - 0.25 * i, T_RING, i * 0.11);
+    for (let i = 0; i < 3; i++) gring(x, z, 6, R * (0.7 + 0.25 * i), 0.55 + 0.15 * i, i === 1 ? (pal[id] || pal.player).hot : col, 0.85 - 0.2 * i, T_RING, i * 0.11);
     P(T_RIPPLE, M_FLAT, x, 0.3, z, 0, 0, 0, 1.4, R * 0.6, R * 4.4, alt, 0.5, 1, 0, 0, 0, 0, 1, 0, 0.1, 0, 0.1);
     dustRing(x, z, cnt(26), R * 0.3, 60, 95, 8, 22, 2.2, DUST, 0.6);
     chips(x, 1, z, 0, 0, cnt(30), 14, 60, 50, 120, EARTH, 1.2, 3.4, 2.2);
@@ -1233,7 +1256,7 @@ export function createVfx(ctx, W) {
       column(x, 0.3, z, 170, 7, 16, 0.9, WHITE, 0.6, 1, 8, 1);
       for (let i = 0; i < cnt(16); i++) {
         const a = i / 16 * TAU + rnd() * 0.3;
-        _col.copy(CHAR).lerp(col, 0.25);
+        _col.copy(CHAR).lerp(DUST, 0.35).lerp(col, 0.05); // smoke: a whisper of the colour, never a neon cloud
         P(T_PUFF, M_BILL, x + Math.cos(a) * 14, 12, z + Math.sin(a) * 14, Math.cos(a) * 22, rr(34, 52), Math.sin(a) * 22, rr(2.2, 3), 12, rr(26, 36), _col, 0.55, 0, 0.9, 0, rnd() * TAU, rr(-0.4, 0.4), 1, 0.1, 0.3, 1, 0.15);
       }
       for (let i = 0; i < cnt(40); i++) {
@@ -1273,7 +1296,7 @@ export function createVfx(ctx, W) {
       if (!f) return;
       headPos(f, _a);
       const fx = Math.sin(f.yaw), fz = Math.cos(f.yaw);
-      for (let i = 0; i < 3; i++) P(T_RING, M_PLANE, _a.x + fx * 4, _a.y, _a.z + fz * 4, fx, 0.1, fz, 0.6, 6, 70 + 16 * i, i === 1 ? WHITE : col, 1 - 0.2 * i, 1, 0, 0, 0, 0, 1, 0, 0.2, 0, i * 0.13);
+      for (let i = 0; i < 3; i++) P(T_RING, M_PLANE, _a.x + fx * 4, _a.y, _a.z + fz * 4, fx, 0.1, fz, 0.6, 6, 50 + 14 * i, i === 1 ? WHITE : col, 0.9 - 0.2 * i, 1, 0, 0, 0, 0, 1, 0, 0.2, 0, i * 0.13);
       igniteAura(f);
     } else if (e.beat === 'crash') {
       // the challenger comes through the Loop: the same exit wound as a thrown body, bigger
@@ -1299,10 +1322,23 @@ export function createVfx(ctx, W) {
     }
   }
   function fxWin(winner) {
-    const A = W.arena && W.arena.info, col = colOf(winner), f = fighter(winner);
-    for (let i = 0; i < 3; i++) pyro(i === 1 ? GOLD : col, 0.2 + i * 1.1, 1.6, true);
+    const A = W.arena && W.arena.info, col = colOf(winner), sat = (pal[winner] || pal.player).glow, f = fighter(winner);
+    // (the saturated hue: a pale signature over the golden-hour sky would go up as white steam)
+    for (let i = 0; i < 3; i++) pyro(i === 1 ? GOLD : sat, 0.2 + i * 1.1, 1.8, true);
     if (A) {
-      emitter(E_CONFETTI, A.cx, 78, A.cz, 11, col, A.half * 0.95, 0.3);
+      emitter(E_CONFETTI, A.cx, 62, A.cz, 11, col, A.half * 0.95, 0.6);
+      // confetti cannons at every post: an arc that peaks inside the fight camera's frame within two seconds,
+      // before the result screen dims the scene
+      _long = true;
+      for (let i = 0; i < A.posts.length; i++) {
+        const q = A.posts[i];
+        dir2(q.x, q.z, A.cx, A.cz);
+        for (let j = 0, n = cnt(48); j < n; j++) {
+          const pick = rnd(), c = pick < 0.45 ? col : pick < 0.75 ? WHITE : GOLD, sz = rr(2, 3.4), sp = rr(8, 34), d = 0.15 + (j % 3) * 0.12;
+          P(T_CHIP, M_BILL, q.x, A.postH + 2, q.z, _dx * sp + rr(-10, 10), rr(45, 85), _dz * sp + rr(-10, 10), rr(4.5, 6), sz, sz, c, 1, 0, 1.2, 9, rnd() * TAU, rr(-4, 4), -rr(0.5, 0.9), 0.02, 0.85, 0, d);
+        }
+        P(T_GLINT, M_BILL, q.x, A.postH + 3, q.z, 0, 0, 0, 0.3, 26, 8, WHITE, 1.3, 1, 0, 0, 0.3, 2, 1, 0, 0, 0, 0.15);
+      }
       // streamers: ribbons thrown from every post across the ring
       const pts = A.posts;
       for (let i = 0; i < pts.length; i++) {
@@ -1312,6 +1348,7 @@ export function createVfx(ctx, W) {
           P(T_STREAK, M_VEL, pts[i].x, A.postH + 2, pts[i].z, _dx * sp + rr(-12, 12), rr(30, 52), _dz * sp + rr(-12, 12), rr(2.6, 3.4), 1.1, 0.9, c, 1, 0, 0.25, 22, 0, 0, rr(14, 22), 0.05, 0.8, 0, d);
         }
       }
+      _long = false;
     }
     if (f) igniteAura(f);
   }
@@ -1353,6 +1390,8 @@ export function createVfx(ctx, W) {
     pal[id].main.setHex(cfg.beam && cfg.beam.color !== undefined ? cfg.beam.color : sig[0]);
     pal[id].alt.setHex(sig[1]);
     pal[id].hot.copy(pal[id].main).lerp(WHITE, 0.6);
+    // the body glow: the same hue at full saturation (a pale signature like Tridon's 0xffee66 would bleach the model)
+    pal[id].main.getHSL(_hsl); pal[id].glow.setHSL(_hsl.h, 1, 0.5);
   }
   function resetState() {
     for (const id of ['player', 'rival']) {
@@ -1392,7 +1431,7 @@ export function createVfx(ctx, W) {
     start() {
       S = _sys(); B = S.burst; L = S.live;
       T = 0; spawned = 0;
-      B.arr.fill(0); B.cur = 0; B.dcur = 0; B.until = 0; B.lo = 1e9; B.hi = -1; _flush(B, true);
+      B.arr.fill(0); B.cur = 0; B.dcur = 0; B.lcur = 0; B.until = 0; B.lo = 1e9; B.hi = -1; _flush(B, true);
       L.n = 0; L.g.instanceCount = 0;
       S.mat.uniforms.uT.value = 0;
       B.mesh.visible = false; L.mesh.visible = false;
@@ -1568,7 +1607,7 @@ export function createVfx(ctx, W) {
       resetState();
       if (B) {
         // every pooled sprite back (decals included) and both meshes out of the scene
-        B.arr.fill(0); B.until = 0; B.cur = 0; B.dcur = 0; _flush(B, true);
+        B.arr.fill(0); B.until = 0; B.cur = 0; B.dcur = 0; B.lcur = 0; _flush(B, true);
         L.n = 0; L.g.instanceCount = 0;
         B.mesh.visible = false; L.mesh.visible = false;
         if (B.mesh.parent) B.mesh.parent.remove(B.mesh);
@@ -1577,6 +1616,6 @@ export function createVfx(ctx, W) {
       B = null; L = null; S = null;
     },
     /** QA: { spawned, cap, liveNow, clock }. */
-    get stats() { return { spawned, cap: CAP, decals: DECALS, liveNow: L ? L.n : 0, clock: T, pm: PM }; },
+    get stats() { return { spawned, cap: CAP, decals: DECALS, long: LONG, liveNow: L ? L.n : 0, clock: T, pm: PM }; },
   };
 }
