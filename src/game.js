@@ -5277,8 +5277,9 @@ function _hudPrewarmBegin() {
   const modal = $('upgrade-modal'), cards = $('upgrade-cards'), msg = $('message'), banner = $('wave-banner');
   const extra = [];
   const touchIds = ['joy-zone', 'joystick', 'attack-btn', 'sprint-btn'];
-  _hudPrewarm = { imgs: [], anim: 0, restore: () => {
+  _hudPrewarm = { imgs: [], anim: 0, wr: null, restore: () => {
     clearInterval(_hudPrewarm && _hudPrewarm.anim);
+    try { if (_hudPrewarm && _hudPrewarm.wr) _hudPrewarm.wr(); } catch (e) { /* hud.start() restores it too */ }
     for (const el of extra) el.remove();
     for (const id of ['hud-toasts', 'mini-toasts']) { const w = $(id); if (w) w.innerHTML = ''; }
     hud.classList.add('hidden');
@@ -5298,6 +5299,17 @@ function _hudPrewarmBegin() {
     _hudComboOn = false; _hudLowHp = false; _hudKey = {};
     document.body.classList.remove('hud-prewarm');
   } };
+  // The match HUD too (wrestling runs): every state of it, drawn the same
+  // way by its own module. Its first appearances were 0.3-0.6 s raster
+  // program builds each, in the middle of a match.
+  try {
+    if (_modeId(selectedLevel) === 'wrestling') {
+      if (!_wr) _wr = createWrestling(ctx);
+      _hudPrewarm.wr = _wr.W.hud.prewarm();
+    }
+  } catch (e) {
+    warnOnce('prewarm|wrhud', '[prewarm] match HUD prewarm failed:', e && e.message);
+  }
   try {
     document.body.classList.add('hud-prewarm');
     hud.classList.remove('hidden');

@@ -17,6 +17,7 @@
 import { EV } from './events.js';
 import { BINDINGS, wheelLayout } from './input.js';
 import { FINISHERS } from './grapple.js';
+import { PERSONAS } from './rivalAI.js';
 
 // Face crop of assets/<key>.webp (640x360 in-engine renders) for the band portrait
 const PORTRAIT = {
@@ -81,6 +82,7 @@ export function createHud(ctx, W) {
   let tut = null, tutOn = false;
   let prev = null;                       // strings swapped in start(), restored in dispose()
   let lockSeen = false;
+  let stallT = 0;                        // seconds the player has kept away (the director boos at 6)
 
   const $ = (id) => doc.getElementById(id);
   const cls = (id) => (id === 'rival' ? 'p2' : 'p1');
@@ -329,7 +331,10 @@ export function createHud(ctx, W) {
       key = 'ground'; html = pill(B.grab, 'PIN', 'HOLD', 'hot') + pill(B.grab, 'PICK UP', 'TAP');
       if (needs('taunt')) { key += 't'; html += pill(B.taunt, 'TAUNT'); }
     } else if (fight && R.state === 'stunned' && P.canAct !== false || evPrompt.grab) { key = 'grab'; html = pill(B.grab, 'GRAB'); }
-    else if (tipId && tipT > 0 && fight) {
+    else if (fight && stallT >= 5) {
+      key = stallT >= 6 ? 'stall2' : 'stall1';
+      html = `<div class="wr-pill hot">${stallT >= 6 ? 'STALLING!' : 'GET BACK IN THERE'}</div>` + note(stallT >= 6 ? `${R.name} IS GAINING MOMENTUM` : 'THE CROWD IS TURNING');
+    } else if (tipId && tipT > 0 && fight) {
       key = 'tip' + tipId;
       if (tipId === 'strike') html = pill(B.strike, 'STRIKE') + pill(B.strike, 'HEAVY', 'HOLD');
       else if (tipId === 'block') html = pill(B.block, 'BLOCK', 'HOLD') + note('JUST BEFORE THE HIT = REVERSAL');
@@ -360,9 +365,12 @@ export function createHud(ctx, W) {
   }
   /** First-match teaching: raise a tip at the moment the action becomes useful. */
   function tutorial() {
-    if (!tutOn || phase !== 'fight') return;
     const P = W.player, R = W.rival;
-    if (typeof P.gapTo !== 'function') return;
+    if (phase !== 'fight' || typeof P.gapTo !== 'function') { stallT = 0; return; }
+    // Keeping away: the same test match.js runs (stallDist 48 u, penalties from 6 s); warn a second early
+    const apart = R.state === 'neutral' && (P.state === 'neutral' || P.state === 'blocking') && P.distTo(R) > 48;
+    stallT = apart ? stallT + 0.1 : 0;
+    if (!tutOn) return;
     const gap = P.gapTo(R), up = R.state !== 'downed' && R.state !== 'ko';
     if (needs('strike')) { if (gap < 30 && up) tip('strike', 1); }
     else if (needs('block') && hitsTaken >= 2) tip('block', 1);
@@ -406,7 +414,13 @@ export function createHud(ctx, W) {
     play(el.inter, reduced ? [{ opacity: 1 }, { opacity: 1, offset: 0.9 }, { opacity: 0 }] : [
       { opacity: 0, transform: 'scaleY(0.2)' }, { opacity: 1, transform: 'scaleY(1)', offset: 0.07 }, { opacity: 1, transform: 'scaleY(1)', offset: 0.9 }, { opacity: 0, transform: 'scaleY(0.4)' },
     ], 2600);
-    if (el.corner) el.corner.textContent = `${nameOf('player')} ${ms.playerFalls} - ${ms.rivalFalls} ${nameOf('rival')} · FALL ${e.fall + 1} NEXT`;
+    if (el.corner) {
+      // Corner advice: the score, and one line of the scouting report on this rival
+      const tells = PERSONAS[W.rival.key] && PERSONAS[W.rival.key].tells ? PERSONAS[W.rival.key].tells.split(';') : [];
+      const t = tells.length ? tells[(e.fall - 1) % tells.length].trim() : '';
+      el.corner.innerHTML = `${nameOf('player')} ${ms.playerFalls} - ${ms.rivalFalls} ${nameOf('rival')} · FALL ${e.fall + 1} NEXT`
+        + (t ? `<small>SCOUTING ${nameOf('rival')}: ${t}</small>` : '');
+    }
   }
   function syncCine() {
     const bars = live && (phase === 'entrance' || phase === 'finisher' || !!BAR_SHOTS[shot]);
@@ -421,8 +435,13 @@ export function createHud(ctx, W) {
     if (d === device) return;
     device = d;
     promptKey = wheelKey = '\u0000'; // force a redraw with the new glyphs
-    const B = BINDINGS[d], P = W.player;
-    const fin = (P && FINISHERS[P.key] && FINISHERS[P.key].name) || 'FINISHER';
+    const P = W.player;
+    panels(d, (P && FINISHERS[P.key] && FINISHERS[P.key].name) || 'FINISHER');
+    if (mashKind) { const k = mashKind; mashKind = ''; setMash(k); }
+  }
+  /** The pause sheet's move list and the help card for device d. */
+  function panels(d, fin) {
+    const B = BINDINGS[d];
     const mv = (label, html) => `<div class="mv">${label}<span>${html}</span></div>`;
     const or = (a, b) => glyph(a) + (b ? `<em>OR</em>${glyph(b)}` : '');
     const dirs = d === 'kbm' ? null : '<em>PUSH</em>';
@@ -440,7 +459,6 @@ export function createHud(ctx, W) {
         + `${glyph(B.grab)} Grab, then a direction<br>${glyph(B.grab)} hold: Pin a downed rival<br>${glyph(B.taunt)} Taunt · ${glyph(B.finisher)} ${title(fin)}<br>`
         + `${glyph(B.beam)}${glyph(B.roar)}${glyph(B.charge)}${glyph(B.stomp)} Powers<br>${glyph(B.lock)} Lock-on · ${glyph(B.pause)} Pause + moves`;
     }
-    if (mashKind) { const k = mashKind; mashKind = ''; setMash(k); }
   }
 
   // ---- lifecycle ----------------------------------------------------------------
@@ -453,7 +471,7 @@ export function createHud(ctx, W) {
     lastClock = -1; lastFallTxt = ''; slowT = 1;
     pinT = -1; mashKind = ''; mashQ = -1; promptKey = '\u0000'; wheelKey = '\u0000'; wheelSel = ''; wheelSelT = 0;
     for (const k in evPrompt) evPrompt[k] = false;
-    tipId = ''; tipT = 0; tickT = 0; tickGap = 0; interT = -1; hitsTaken = 0;
+    tipId = ''; tipT = 0; tickT = 0; tickGap = 0; interT = -1; hitsTaken = 0; stallT = 0;
     for (const c of el.calls) { stopAnim(c); c._on = 0; c._pos = ''; }
     stopAnim(el.pin); stopAnim(el.inter); hideCards();
     el.count.classList.remove('on'); el.mash.classList.remove('on'); el.wheel.classList.remove('on'); el.ticker.className = '';
@@ -559,16 +577,111 @@ export function createHud(ctx, W) {
     });
   }
   const onDefend = (e) => { if (e) e.preventDefault(); W.input.ui.defend = true; };
+  /** Resolve the DOM once per page. False without the match markup (or without a DOM). */
+  function ensure() {
+    if (el) return true;
+    if (!doc) return false;
+    el = resolve();
+    if (!el) return false;
+    if (el.defend) { el.defend.addEventListener('click', onDefend); el.defend.addEventListener('touchstart', onDefend, { passive: false }); }
+    for (const k of ['godzilla', 'ghidorah', 'mecha']) { const im = new Image(); im.src = `assets/${k}.webp`; } // decoded before the first card
+    return true;
+  }
+
+  /**
+   * START prewarm: put every match layer into every visual state it can take,
+   * with real text and its one-shot animations looping, so Chrome compiles the
+   * raster / compositor programs behind the loading screen instead of at the
+   * first callout. Works before any match exists. The layers are forced
+   * near-invisible by body.wr-warming (and by game.js's body.hud-prewarm).
+   * Call restore() (the return value) a few frames later; start() also calls it.
+   */
+  let unwarm = null;
+  function prewarm() {
+    if (unwarm) return unwarm;
+    if (!ensure() || live) return () => {};
+    const body = doc.body, temps = [], anims = [];
+    const loop = (node, frames, ms = 700) => { if (node && node.animate) anims.push(node.animate(frames, { duration: ms, iterations: Infinity, direction: 'alternate' })); };
+    const FADE = [{ opacity: 0.9 }, { opacity: 0 }];
+    const SLAM = [{ opacity: 0, transform: 'translateX(-70px) scale(2.3)' }, { opacity: 1, transform: 'translateX(0) scale(1)' }];
+    body.classList.add('wr-warming');
+    // top band: both sides, every state class, bars part-filled, hit flashes running
+    [el.p1, el.p2].forEach((s, i) => {
+      const key = i ? 'mecha' : 'godzilla', p = PORTRAIT[key];
+      s.port.style.backgroundImage = `url(assets/${key}.webp)`; s.port.style.backgroundPosition = p.pos; s.port.style.backgroundSize = p.size;
+      s.root.classList.add(i ? 'gassed' : 'crit', i ? 'out' : 'full');
+      s.chip.textContent = i ? 'STUNNED' : 'DANGER'; s.chip.className = 'chip on' + (i ? ' open' : '');
+      s.ghost.style.transition = 'none';
+      s.fill.style.transform = 'scaleX(0.6)'; s.ghost.style.transform = 'scaleX(0.8)'; s.sta.style.transform = 'scaleX(0.5)'; s.mom.style.transform = 'scaleX(1)';
+      loop(s.flash, FADE); loop(s.portFlash, FADE);
+      loop(s.meters, [{ transform: 'translate(0,0)' }, { transform: 'translate(8px,3px)' }]);
+    });
+    for (const n of el.pips.player.children) n.classList.add('on');
+    // callouts: one node per tier
+    const tiers = [['move', 'p1'], ['landmark', ''], ['result', ''], ['finisher', ''], ['defend', 'p2']];
+    el.calls.forEach((c, i) => {
+      const t = tiers[i % tiers.length];
+      c.className = `wr-call t-${t[0]}${t[1] ? ' ' + t[1] : ''}`;
+      c.children[0].textContent = 'THROUGH THE'; c.children[1].textContent = 'WILLIS TOWER!'; c.children[2].textContent = 'GORRAK';
+      loop(c, SLAM);
+    });
+    // pin count: the three colours side by side
+    for (let n = 1; n <= 3; n++) {
+      let node = el.pin;
+      if (n < 3) { node = doc.createElement('div'); node.innerHTML = `<b>${COUNT_WORD[n]}</b>`; el.root.appendChild(node); temps.push(node); }
+      else el.pinB.textContent = COUNT_WORD[3];
+      node.className = (n < 3 ? 'wr-pin-warm ' : '') + 'c' + n;
+      loop(node, [{ opacity: 0, transform: 'scale(2.6)' }, { opacity: 1, transform: 'scale(1)' }]);
+    }
+    el.count.classList.add('on');
+    for (const n of el.count.children) n.classList.add('on');
+    // mash meter, every glyph kind, prompt pills, move wheel
+    const ALL = ['E', 'SPACE', 'M0', 'M2', 'M1', 'DU', 'DD', 'PA', 'PB', 'PX', 'PY', 'LS', 'R3', 'LT', 'START', 'T:GRAB', 'T:BLOCK', 'T:ULT', 'T:SMASH', 'T:TAUNT'];
+    el.mash.classList.add('on');
+    el.mashT.textContent = 'KICK OUT!'; el.mashG.innerHTML = `MASH ${glyph('M0')}<em>TAP ANYWHERE</em>`; el.mashFill.style.transform = 'scaleX(0.5)';
+    el.prompt.classList.remove('off');
+    el.prompt.innerHTML = pill('E', 'PIN', 'HOLD', 'hot') + pill('PB', 'PICK UP', 'TAP') + note('JUST BEFORE THE HIT = REVERSAL') + `<div class="wr-pill">${ALL.map(glyph).join('')}</div>`;
+    el.wheel.classList.add('on');
+    ['u', 'r', 'd', 'l'].forEach((sl, i) => { const n = el.wheel.querySelector('.' + sl); n.className = sl + (i ? '' : ' sel'); n.innerHTML = `${glyph('W')}<span class="ar">▲</span>WHIP`; });
+    el.wheel.querySelector('.c').innerHTML = `${glyph('E')}SLAM`;
+    el.ticker.className = 'on hype'; el.tickerLine.textContent = 'There is the bell! We are under way in Chicago!';
+    // cards, fall band, letterbox, skip, touch cues
+    for (const id of ['player', 'rival']) {
+      const c = el.cards[id];
+      c.querySelector('.pic i').style.backgroundImage = `url(assets/${id === 'player' ? 'godzilla' : 'mecha'}.webp)`;
+      loop(c, [{ opacity: 0, transform: 'translateX(-120px)' }, { opacity: 1, transform: 'translateX(0)' }]);
+    }
+    loop(el.inter, [{ opacity: 0, transform: 'scaleY(0.2)' }, { opacity: 1, transform: 'scaleY(1)' }]);
+    el.root.classList.add('lbox');
+    el.skip.firstElementChild.innerHTML = glyph('ENTER');
+    if (el.btnGrab) { el.btnGrab.classList.add('cue'); el.btnTaunt.classList.add('cue'); el.btnLock.classList.add('on'); }
+    // pause move list, corner advice, champion screen (belt, shine, title type)
+    panels('kbm', 'ATOMIC DRIVER');
+    if (el.corner) el.corner.innerHTML = 'GORRAK 1 - 0 MECHRA · FALL 2 NEXT<small>SCOUTING MECHRA: guards strings, so grab it</small>';
+    el.go.classList.add('wr', 'wr-win', 'wr-warm');
+    unwarm = () => {
+      unwarm = null;
+      for (const a of anims) a.cancel();
+      for (const n of temps) n.remove();
+      body.classList.remove('wr-warming');
+      for (const s of [el.p1, el.p2]) { s.root.classList.remove('crit', 'gassed', 'full', 'out'); s.chip.className = 'chip'; s.chipTxt = ''; s.hp = s.st = s.mo = -1; s.crit = s.gassed = s.full = s.out = false; }
+      for (const n of el.pips.player.children) n.classList.remove('on');
+      el.pin.className = ''; el.count.classList.remove('on');
+      el.mash.classList.remove('on'); el.wheel.classList.remove('on'); el.ticker.className = '';
+      el.prompt.classList.add('off'); el.prompt.innerHTML = '';
+      el.root.classList.remove('lbox');
+      if (el.btnGrab) { el.btnGrab.classList.remove('cue'); el.btnTaunt.classList.remove('cue'); }
+      if (el.corner) el.corner.textContent = '';
+      el.go.classList.remove('wr', 'wr-win', 'wr-warm');
+      device = ''; promptKey = wheelKey = '\u0000';
+    };
+    return unwarm;
+  }
 
   return {
     start() {
-      if (!doc) return;
-      if (!el) {
-        el = resolve();
-        if (!el) return;
-        if (el.defend) { el.defend.addEventListener('click', onDefend); el.defend.addEventListener('touchstart', onDefend, { passive: false }); }
-        for (const k of ['godzilla', 'ghidorah', 'mecha']) { const im = new Image(); im.src = `assets/${k}.webp`; } // decoded before the first card
-      }
+      if (!ensure()) return;
+      if (unwarm) unwarm();
       for (const off of offs) off();
       offs = [];
       lockSeen = false;
@@ -578,6 +691,7 @@ export function createHud(ctx, W) {
       subscribe();
       begin(); // match.js starts after us: its match:start runs begin() again with the final state
     },
+    prewarm,
     update(dt, dtReal) { tick(dtReal); },
     updateIdle(dtReal) { tick(dtReal); },
     /** The run ended (result screen up): game.js has hidden the classic HUD. */
@@ -595,6 +709,7 @@ export function createHud(ctx, W) {
     },
     dispose() {
       if (!el) return;
+      if (unwarm) unwarm();
       for (const off of offs) off();
       offs = [];
       hideLayers();

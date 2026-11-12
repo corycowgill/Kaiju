@@ -88,11 +88,11 @@ export const AI_TUNE = {
   react: [0.42, 0.22],        // s to notice something (x persona.react, x1.6 while rocked, +-15 %)
   expect: 0.55,               // x reaction when it is braced for a strike (close, and the foe has been swinging)
   guardOut: [0.08, 0.80],     // P(raises its guard between the hits of your string): what stops a button-masher (on k^1.5: it comes late)
-  reversal: [0.03, 0.42],     // P(goes for the just-in-time block against a strike it saw coming)
+  reversal: [0.03, 0.55],     // P(goes for the just-in-time block against a strike it saw coming)
   revJitter: [0.15, 0.04],    // s of timing error on that attempt
-  block: [0.22, 0.85],        // P(simply blocks a slow strike it saw coming: heavy, clothesline)
-  grabRev: [0.04, 0.60],      // P(turns your grab around in the tie-up)
-  grabDodge: [0.05, 0.35],    // P(steps back out of your reach)
+  block: [0.22, 0.92],        // P(simply blocks a slow strike it saw coming: heavy, clothesline)
+  grabRev: [0.04, 0.72],      // P(turns your grab around in the tie-up)
+  grabDodge: [0.05, 0.50],    // P(steps back out of your reach)
   mash: [2.5, 8.0],           // presses / s when held or down (it also sells: slower when hurt)
   punish: [0.30, 0.95],       // P(goes after a whiff, a taunt, a committed power)
   hitConfirm: [0.25, 0.95],   // P(stops a string that is hitting air)
@@ -519,12 +519,12 @@ export function createRivalAI(ctx, W) {
       opt('grab', !flee && gap < 12 ? 2 : 0); opt('string', !flee && gap < 10 ? 1 : 0);
       opt('close', 2);
     } else if (S.nextRush && gap > 12 && !me.tired) { S.nextRush = false; opt('rush', 3); opt('stomp', powerW(me, 'stomp', gap) * 2); opt('string', 0.6); }
-    else if (soft && gap < 18) { opt('grab', P.w.grab * 2 * env * fit); opt('heavy', P.w.heavy * 1.6); opt('string', 0.3); }
+    else if (soft && gap < 18) { opt('grab', P.w.grab * 2 * env * fit * (me.momentum >= 100 ? 3 : 1)); opt('heavy', P.w.heavy * 1.6); opt('string', 0.3); }
 else {
       const last = hpF(foe) < 0.04 ? 1 : 0; // only a big move takes the last of its health
       opt('string', P.w.string * (turtle > 0.6 ? 0.5 : 1) * (last ? 0.15 : 1));
       opt('heavy', P.w.heavy * (foe.tired ? 1.6 : 1) * (turtle > 0.6 ? 0.6 : 1) * (1 + last));
-      opt('grab', P.w.grab * (1 + 2.6 * turtle) * env * (foe.tired ? 1.8 : 1) * fit * (1 + 1.5 * last));
+      opt('grab', P.w.grab * (1 + 2.6 * turtle) * env * (foe.tired ? 1.8 : 1) * fit * (1 + 1.5 * last) * (me.momentum >= 100 ? 3 : 1)); // (a full meter: the finisher comes out of the tie-up)
       opt('rush', gap > 13 && gap < 42 && !me.tired ? P.w.rush * fit * (1 + 0.6 * S.desperate) : 0);
       opt('feint', gap < 34 ? P.w.feint * (1 + turtle) : 0);
       opt('roar', powerW(me, 'roar', gap) * (1 + turtle));
@@ -532,7 +532,7 @@ else {
       opt('stomp', powerW(me, 'stomp', gap));
       opt('beam', powerW(me, 'beam', gap) * 0.6);
       // Full momentum and no opening for the finisher: the big one
-      if (me.can('ult') && gap < 60 && (S.fullT > 7 || S.desperate > 0.6)) opt('ult', 1.5);
+      if (me.can('ult') && gap < 60 && (S.fullT > 5 || S.desperate > 0.6)) opt('ult', 2.5);
     }
     const a = choose();
     if (a === 'feint') setPlan('feint', 0.9 + rnd() * 0.6);
@@ -770,7 +770,10 @@ else {
       // (on its last legs jabs and stomps cannot finish it: cover it)
       if (foe.finished > 0 || est < 0.2 || hpF(foe) < 0.04) opt('pin', 12);
       else {
-        opt('pin', est < 0.36 ? G.pin * 2.5 : est < 0.45 ? G.pin * (0.35 + 1.2 * S.desperate) : G.pin * 0.25 * S.desperate); // (a cover on a fresh foe is cheap: only a desperate one tries it)
+        // After a slam or another big move on a hurt foe it covers early and hopefully (the kick-out at two is the drama);
+        // a cover on a fresh foe is cheap: only a desperate one tries it
+        const big = foe.lastImpact >= 0.55 && hpF(foe) < 0.75 ? 1 : 0;
+        opt('pin', est < 0.36 ? G.pin * 4 : est < 0.5 ? G.pin * (0.9 + 1.2 * S.desperate) * (1 + 1.2 * big) : big ? G.pin * 0.7 : G.pin * 0.25 * S.desperate);
         if (!mercy) {
           opt('stomp', gg < 30 ? G.stomp * (second ? 0.6 : 1) : 0);
           opt('splash', gg > 12 && gg < MOVES.splash.reach - 2 && me.stamina > 20 ? G.splash * (1 + 0.5 * S.cocky) : 0);

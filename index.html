@@ -1562,7 +1562,8 @@
   #help .help-wr { display: none; }
   body.wr-mode #help .help-classic { display: none; }
   body.wr-mode #help .help-wr { display: block; }
-  body.wr-mode #help { max-width: 270px; }
+  body.wr-mode #help { max-width: 270px; background: var(--glass-strong); color: #f2e8dc; }
+  body.wr-mode #help.dim { opacity: 0.6; }
   #help .help-wr .wr-k { font-size: 0.92em; height: 1.45em; min-width: 1.5em; margin: 1px 0; box-shadow: none; vertical-align: baseline; }
   #wr-moves, #wr-corner { display: none; }
   body.wr-mode #pause-menu { gap: var(--sp-4); }
@@ -1574,7 +1575,8 @@
   #wr-moves .mv em { font-style: normal; font-size: 0.82em; color: var(--c-gold); }
   #wr-moves .mv .wr-k { font-size: 0.86em; box-shadow: none; }
   @media (max-height: 420px) { #wr-moves .mv { min-height: 21px; font-size: 12px; } #wr-moves h4 { margin-top: 4px; } }
-  body.wr-mode #wr-corner { display: block; font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 4px; color: var(--c-gold); text-shadow: var(--txt-outline); margin-top: -10px; }
+  body.wr-mode #wr-corner, body.wr-warming #wr-corner { display: block; font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 4px; color: var(--c-gold); text-shadow: var(--txt-outline); margin-top: -10px; text-align: center; }
+  #wr-corner small { display: block; max-width: min(760px, 86vw); margin-top: 4px; font-family: var(--f-jp); font-size: var(--fs-body); font-style: italic; letter-spacing: 0; line-height: 1.35; color: var(--c-cream); }
 
   /* ---- result screen: champion (belt) / defeat, over the live celebration ---- */
   .go-col { display: contents; }
@@ -1854,7 +1856,7 @@
         <linearGradient id="wrShineG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.75"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
         <clipPath id="wrPlate"><path d="M260 6 L338 30 Q352 88 338 146 L260 170 L182 146 Q168 88 182 30 Z"/></clipPath>
         <path id="wrStar" d="M0-9 2.6-4.5 7.8-4.5 5.2 0 7.8 4.5 2.6 4.5 0 9-2.6 4.5-7.8 4.5-5.2 0-7.8-4.5-2.6-4.5Z"/>
-        <path id="wrArc" d="M196 70 Q260 26 324 70"/>
+        <path id="wrArc" d="M190 78 Q260 6 330 78"/>
       </defs>
       <!-- strap -->
       <path d="M22 62 Q4 88 22 114 L498 114 Q516 88 498 62 Z" fill="url(#wrLeather)" stroke="#000" stroke-width="2"/>
@@ -1871,8 +1873,8 @@
       <!-- main plate -->
       <path d="M260 6 L338 30 Q352 88 338 146 L260 170 L182 146 Q168 88 182 30 Z" fill="url(#wrGold)" stroke="#5a3400" stroke-width="3"/>
       <path d="M260 17 L329 38 Q340 88 329 138 L260 159 L191 138 Q180 88 191 38 Z" fill="url(#wrGoldIn)" stroke="#fff6c8" stroke-width="1.5" opacity="0.92"/>
-      <text font-family="'Bebas Neue', sans-serif" font-size="17" letter-spacing="3" fill="#5a1200" text-anchor="middle"><textPath href="#wrArc" startOffset="50%">CHICAGO HEAVYWEIGHT</textPath></text>
-      <text x="260" y="112" font-family="'Yuji Boku', 'Yuji Mai', serif" font-size="50" fill="#8e0a1c" stroke="#3a0006" stroke-width="0.8" text-anchor="middle">王者</text>
+      <text font-family="'Bebas Neue', sans-serif" font-size="14" letter-spacing="1.5" fill="#5a1200" text-anchor="middle"><textPath href="#wrArc" startOffset="50%">CHICAGO HEAVYWEIGHT</textPath></text>
+      <text x="260" y="116" font-family="'Yuji Boku', 'Yuji Mai', serif" font-size="46" fill="#8e0a1c" stroke="#3a0006" stroke-width="0.8" text-anchor="middle">王者</text>
       <text x="260" y="136" font-family="'Bebas Neue', sans-serif" font-size="18" letter-spacing="5" fill="#5a1200" text-anchor="middle">CHAMPION</text>
       <g fill="#c8102e" stroke="#5a0010" stroke-width="0.8"><use href="#wrStar" transform="translate(236 149) scale(0.6)"/><use href="#wrStar" transform="translate(252 152) scale(0.6)"/><use href="#wrStar" transform="translate(268 152) scale(0.6)"/><use href="#wrStar" transform="translate(284 149) scale(0.6)"/></g>
       <g clip-path="url(#wrPlate)"><rect class="shine" x="230" y="0" width="60" height="176" fill="url(#wrShineG)" transform="skewX(-20)"/></g>
