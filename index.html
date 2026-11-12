@@ -1383,7 +1383,7 @@
     text-shadow: 0 0 30px #ff2244, 0 0 10px #ffaa44, 0.055em 0.055em 0 #1a0006;
   }
   .wr-call small {
-    font-family: 'Yuji Mai', 'Noto Sans JP', serif; font-size: max(11px, calc(var(--fs) * 0.24)); letter-spacing: 0.3em; margin: 0.35em -0.3em 0 0;
+    font-family: var(--f-display); font-size: max(11px, calc(var(--fs) * 0.27)); letter-spacing: 0.3em; margin: 0.3em -0.3em 0 0;
     color: #ff9966; padding-top: 0.3em; border-top: 1px solid rgba(255, 150, 100, 0.4);
   }
   .wr-call small:empty, .wr-call .pre:empty { display: none; }
@@ -1397,13 +1397,13 @@
 
   /* ---- pin count ---- */
   #wr-pin { position: absolute; top: 30%; left: 50%; width: 0; display: flex; flex-direction: column; align-items: center; white-space: nowrap; opacity: 0; will-change: transform, opacity; }
-  #wr-pin b {
+  #wr-pin b, .wr-pin-warm b {
     font-family: var(--f-display); font-weight: 400; font-size: clamp(84px, 31vmin, 300px); line-height: 0.82; letter-spacing: 0.04em;
     color: var(--c-cream); transform: skewX(-8deg);
     text-shadow: 0 0 44px #ff2244, 0 0 14px #ffaa44, 0.05em 0.05em 0 #1a0006;
   }
-  #wr-pin.c2 b { color: var(--c-score); }
-  #wr-pin.c3 b { color: #fff; text-shadow: 0 0 44px #ffb300, 0 0 14px #ffee66, 0.05em 0.05em 0 #1a0006; }
+  #wr-pin.c2 b, .wr-pin-warm.c2 b { color: var(--c-score); }
+  #wr-pin.c3 b, .wr-pin-warm.c3 b { color: #fff; text-shadow: 0 0 44px #ffb300, 0 0 14px #ffee66, 0.05em 0.05em 0 #1a0006; }
   .wr-count { position: absolute; top: calc(30% + clamp(40px, 15vmin, 150px)); left: 50%; transform: translateX(-50%); display: flex; gap: clamp(8px, 1.6vmin, 16px); opacity: 0; transition: opacity 0.15s; }
   .wr-count.on { opacity: 1; }
   .wr-count i { width: clamp(22px, 5vmin, 46px); height: clamp(5px, 1vmin, 9px); transform: skewX(-14deg); background: rgba(8, 0, 3, 0.7); border: 1px solid rgba(255, 230, 200, 0.5); }
@@ -1496,7 +1496,7 @@
     font-family: 'Reggae One', 'Bebas Neue', 'Noto Sans JP', sans-serif; font-size: clamp(40px, 12px + 9vmin, 124px); line-height: 1; letter-spacing: 0.06em; color: var(--c-cream);
     text-shadow: 0 0 40px #ff2244, 0 0 14px #ff8866, 0 0.05em 0 #1a0006;
   }
-  .wr-card .ep { font-family: 'Yuji Mai', 'Noto Sans JP', serif; font-size: var(--fs-value); letter-spacing: 0.24em; color: #ff9966; }
+  .wr-card .ep { font-family: var(--f-display); font-size: var(--fs-value); letter-spacing: 0.3em; color: #ff9966; }
   .wr-card .st { margin-top: 3px; font-family: var(--f-display); font-size: var(--fs-body); letter-spacing: 3px; color: #aaccff; }
 
   /* ---- fall result band (between falls) ---- */
@@ -1613,13 +1613,15 @@
   }
 
   /* START prewarm: every match layer drawn once behind the loading screen (see body.hud-prewarm above) */
-  body.hud-prewarm #wr-hud, body.touch.hud-prewarm #wr-touch, body.touch.hud-prewarm #wr-touch > *, body.hud-prewarm #wr-skip {
+  /* (body.wr-warming: hud.js prewarm() on its own; it also fills in every state and runs the one-shot animations) */
+  :is(body.hud-prewarm, body.wr-warming) #wr-hud, :is(body.hud-prewarm, body.wr-warming).touch #wr-touch,
+  :is(body.hud-prewarm, body.wr-warming).touch #wr-touch > *, :is(body.hud-prewarm, body.wr-warming) #wr-skip {
     display: block !important; opacity: 0.01 !important; z-index: 300 !important; pointer-events: none !important;
   }
-  body.hud-prewarm #wr-hud .wr-call, body.hud-prewarm #wr-pin, body.hud-prewarm #wr-mash, body.hud-prewarm #wr-wheel,
-  body.hud-prewarm #wr-ticker, body.hud-prewarm .wr-card, body.hud-prewarm #wr-inter, body.hud-prewarm .wr-count,
-  body.hud-prewarm .wr-name .chip { opacity: 1 !important; }
-  body.hud-prewarm #wr-hud .wr-lb { transform: none; }
+  :is(body.hud-prewarm, body.wr-warming) #gameover.wr-warm { display: flex !important; opacity: 0.01 !important; z-index: 300 !important; pointer-events: none !important; }
+  :is(body.hud-prewarm, body.wr-warming) :is(#wr-hud .wr-call, #wr-pin, .wr-pin-warm, #wr-mash, #wr-wheel, #wr-ticker, .wr-card, #wr-inter, .wr-count, .wr-name .chip) { opacity: 1 !important; }
+  body.wr-warming #wr-moves { display: block; }
+  .wr-pin-warm { position: absolute; top: 30%; left: 30%; }
   @media (prefers-reduced-motion: reduce) {
     .wr-side.crit .wr-hp .fill, .wr-side.full .wr-mom span, #wr-mash.on .t, .wr-tb.cue::after, .wr-ts.cue::after, #wr-belt, #wr-belt .shine { animation: none !important; }
     .wr-hp .ghost, .wr-hp .fill, .wr-sta i, .wr-mom .track i, #wr-top, .wr-lb, #wr-ticker { transition: none; }
@@ -1782,6 +1784,8 @@
   <div class="wr-call p1"><span class="pre"></span><b>SUPLEX!</b><small></small></div>
   <div class="wr-call t-landmark"><span class="pre">THROUGH THE</span><b>WILLIS TOWER!</b><small>シカゴ</small></div>
   <div class="wr-call t-result"><span class="pre">FALL 1</span><b>FIGHT!</b><small></small></div>
+  <div class="wr-call t-finisher"><span class="pre"></span><b>ATOMIC DRIVER</b><small>GORRAK</small></div>
+  <div class="wr-call t-defend p2"><span class="pre"></span><b>REVERSAL!</b><small></small></div>
   <div id="wr-pin"><b>ONE!</b></div>
   <div class="wr-count"><i></i><i></i><i></i></div>
   <div id="wr-mash"><div class="t">KICK OUT!</div><div class="row"><span class="g"></span><div class="track"><i></i></div></div></div>

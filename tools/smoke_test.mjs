@@ -190,8 +190,11 @@ const trisOf = (root) => { let t = 0; root?.traverse((o) => { if (o.isMesh) { co
 
 // Wrestling mode (src/wrestling/, composed by index.js; game.js itself is not importable
 // here): the modules load without a DOM, the event bus delivers, every anim name's stand-in
-// clips exist on some rig, and a match runs headless against a stub of game.js's ctx:
-// start, the rival takes a player hit, a KO ends it with the win screen, dispose, start again.
+// clips exist on some rig, and matches run headless against a stub of game.js's ctx with
+// scripted intents: entrance and bell, the light string, block and reversal, every throw
+// (through a building, off the ropes), the ground game, a pin kick-out, the finisher, a
+// fall by pin and one by knockout, corner advice, the win and a title defense; then the
+// rival's grabs and powers against the player, a mash-out, and a best-of-three loss.
 let wrestlingSummary = '';
 if (mode === 'wrestling') await step('wrestling', async () => {
   const { createWrestling } = await imp('wrestling/index.js');
@@ -222,59 +225,303 @@ if (mode === 'wrestling') await step('wrestling', async () => {
   if (inRing.length) fail(`wrestling: ${inRing.length} buildings stand inside the ring, e.g. (${inRing[0].x.toFixed(1)}, ${inRing[0].z.toFixed(1)})`);
   // A stub of game.js's ctx (the members the modules use; see notes/wrestling_api.md)
   const P = { hp: 220, maxHp: 220, rage: 0, yaw: 0 };
-  const cfg = (name, hp) => ({ name, stats: { hp, speed: 1.4, melee: 60, scale: 1 } });
+  const cfg = (name, hp) => ({ name, stats: { hp, speed: 1.4, melee: 60, scale: 1 }, beam: { name: 'BEAM', cost: 40 }, roar: { name: 'ROAR', radius: 70, cost: 30 }, charge: { name: 'CHARGE', cost: 40 } });
+  const MON = { godzilla: cfg('Gorrak', 220), mecha: cfg('Mechra', 260), ghidorah: cfg('Tridon', 170) };
   const control = { external: false, move: 1, melee: true, powers: true, ult: true, look: true, loco: true, faceYaw: null, faceRate: 10, moveYaw: null, damageMult: 1 };
   const never = () => false;
-  let over = null, rivalBody = null;
+  let over = null, rivalBody = null, upgradesOffered = 0, wr = null;
+  // Stand-in blocks for throws to go through (the city's own buildings are left standing for the checks below)
+  const blocks = [];
+  const sweepBlocks = (x0, z0, x1, z1, r, cb) => {
+    for (const b of blocks) {
+      if (b.destroyed) continue;
+      for (let i = 0; i <= 8; i++) {
+        const x = x0 + (x1 - x0) * i / 8, z = z0 + (z1 - z0) * i / 8;
+        if (Math.abs(x - b.x) < b.w / 2 + r && Math.abs(z - b.z) < b.d / 2 + r) { cb(b, i / 8); break; }
+      }
+    }
+  };
+  world.bounds = res.bounds || { minX: -330, maxX: 330, minZ: -330, maxZ: 330 };
   const ctx = {
-    scene, camera: new THREE.PerspectiveCamera(), world, audio: new Proxy({}, { get: () => noop }), debug: true,
-    quality: { tier: tier, isMobile: Q.isMobile, particleMul: 1 }, events: null,
+    scene, camera: new THREE.PerspectiveCamera(), world, audio: new Proxy({}, { get: () => noop }), debug: true, MONSTERS: MON,
+    quality: { tier: tier, isMobile: Q.isMobile, particleMul: 1 }, events: null, renderer: null, vfx, frozen: false,
+    get rival() { return { key: 'mecha', cfg: MON.mecha, glb: kaijuGLB.mecha }; },
     slowMo: noop, hitStop: noop, shake: noop, shakeOffset: (o) => o.set(0, 0, 0), setCameraOverride: noop, camClearDist: (o, d, dist) => dist,
     player: {
-      root: kaijuGLB.godzilla.root, glb: kaijuGLB.godzilla, head: kaijuGLB.godzilla.head, key: 'godzilla', cfg: cfg('Gorrak', 220),
+      root: kaijuGLB.godzilla.root, glb: kaijuGLB.godzilla, head: kaijuGLB.godzilla.head, key: 'godzilla', cfg: MON.godzilla,
       get hp() { return P.hp; }, set hp(v) { P.hp = v; }, get maxHp() { return P.maxHp; }, set maxHp(v) { P.maxHp = v; },
-      get rage() { return P.rage; }, set rage(v) { P.rage = v; }, get yaw() { return P.yaw; }, set yaw(v) { P.yaw = v; },
-      control,
+      get rage() { return P.rage; }, set rage(v) { P.rage = Math.max(0, Math.min(100, v)); }, get yaw() { return P.yaw; }, set yaw(v) { P.yaw = v; },
+      control, upgrades: { dmgMult: 1, rageGainMult: 1 }, cooldowns: { beam: 0, roar: 0, charge: 0, stomp: 0, melee: 0, ult: 0 },
+      maxRage: 100, pitch: -0.15, vel: new THREE.Vector3(), airborne: false, bodyRadius: 12, collideRadius: 8.1,
+      releaseControl: noop, playOnce: never, firePower: never,
     },
     setRivalBody: (b) => { rivalBody = b; }, bodyRadius: () => 12, collideRadius: () => 8.1,
-    hurtPlayer: (a) => { const d = Math.min(a, P.hp); P.hp -= d; return d; },
-    resolveBuildingCollisions: () => null, clampToBounds: noop, isWater: never, landmarkName: () => '',
+    loadRival: async (key) => ({ key, cfg: MON[key], glb: kaijuGLB[key] }), continueRun: () => { over = null; return true; },
+    hurtPlayer: (a) => { const d = Math.min(a, Math.max(0, P.hp)); P.hp -= d; return d; },
+    damageInRadius: noop, forEachBuildingNear: noop, sweepBuildings: sweepBlocks, damageBuilding: (b, a) => a,
+    buildingAt: (x, z) => blocks.find((b) => !b.destroyed && Math.abs(x - b.x) < b.w / 2 && Math.abs(z - b.z) < b.d / 2) || null,
+    collapseBuilding: (b, src) => { if (!b.destroyed) { b.destroyed = true; wr.onBuildingDestroyed(b, src); } },
+    resolveBuildingCollisions: () => null, clampToBounds: noop, isWater: never, waterDepth: () => 0, landmarkName: (b) => (b.landmarkId ? 'Test Tower' : ''),
     fx: { dustBurst: noop, add: noop, waterImpact: never }, markShadowCaster: noop,
     ui: { popup: noop, message: noop, banner: noop, toast: noop, toastMini: noop, warnIndicator: noop, damageIndicator: noop },
-    input: { held: never, pressed: never, released: never, moveX: 0, moveZ: 0, sprint: false, attack: false, pad: { down: never, pressed: never, axis: () => 0, lt: 0, rt: 0, reserve: noop } },
+    input: { keys: {}, held: never, pressed: never, released: never, moveX: 0, moveZ: 0, sprint: false, attack: false, wheel: 0, lookX: 0, lookY: 0, pointerLocked: false, registerTouchControl: noop, bindTouchButton: noop, pad: { connected: false, down: never, pressed: never, axis: () => 0, lt: 0, rt: 0, reserve: noop } },
     rules: { oocRegen: true, passiveRage: true }, addScore: noop, addRage: noop,
-    gameOver: (victory, text) => { over = { victory, text }; }, offerUpgrades: noop, military: { spawn: noop, clear: noop, count: 0 },
+    gameOver: (victory, text) => { over = { victory, text }; },
+    offerUpgrades: (cb) => { upgradesOffered++; if (cb) cb({}); }, // corner advice: picked at once
+    military: { spawn: (k, n) => n, clear: noop, count: 0 },
   };
+  // The stub must offer everything game.js's real ctx does (game.js cannot be imported here, so its
+  // source is read): a member added there and to wrestling_api.md but not here fails now, not when a
+  // module first calls it mid-match.
+  {
+    const src = fs.readFileSync(path.join(REPO, 'src', 'game.js'), 'utf8').replace(/\r/g, '');
+    const block = (open) => { const i = src.indexOf(open); if (i < 0) { fail(`ctx stub check: '${open}' not found in game.js`); return ''; } return src.slice(i + open.length, src.indexOf('\n};', i)); };
+    const keysAt = (text, indent) => {
+      const keys = new Set(), pad = ' '.repeat(indent);
+      for (const line of text.split('\n')) {
+        if (!line.startsWith(pad) || line[indent] === ' ' || line[indent] === '/' || line[indent] === '}' || line[indent] === '*') continue;
+        const body = line.slice(indent);
+        const m = body.match(/^(?:get |set |async )?([A-Za-z_]\w*)\s*[:(]/);
+        if (m) { keys.add(m[1]); continue; }
+        if (/^[\w\s,]+,?$/.test(body)) for (const k of body.split(',')) if (k.trim()) keys.add(k.trim()); // shorthand list
+      }
+      return keys;
+    };
+    const ctxSrc = block('\nconst ctx = {');
+    const sub = (name) => { const i = ctxSrc.indexOf(`\n  ${name}: {`); return i < 0 ? '' : ctxSrc.slice(i + 1, ctxSrc.indexOf('\n  },', i)); };
+    const missing = [];
+    for (const k of keysAt(ctxSrc, 2)) if (!(k in ctx)) missing.push('ctx.' + k);
+    for (const k of keysAt(block('\nconst _playerView = {'), 2)) if (!(k in ctx.player)) missing.push('ctx.player.' + k);
+    for (const [name, obj] of [['input', ctx.input], ['fx', ctx.fx], ['ui', ctx.ui], ['military', ctx.military]]) {
+      for (const k of keysAt(sub(name), 4)) if (!(k in obj)) missing.push(`ctx.${name}.${k}`);
+    }
+    if (missing.length) fail(`wrestling: the smoke test's stub ctx lacks ${missing.join(', ')} (game.js has them: add them to the stub above)`);
+  }
   kaijuGLB.godzilla.root.position.set(res.spawn.x, 0, res.spawn.z);
   scene.add(kaijuGLB.godzilla.root);
-  const wr = createWrestling(ctx);
+  wr = createWrestling(ctx);
+  // Scripted input for both fighters: merged into their intents after input.js and the AI have written theirs
+  const drive = { player: {}, rival: {} };
+  const EDGES = ['strike', 'heavy', 'grab', 'pin', 'taunt', 'finisher', 'mash', 'power'];
+  {
+    const g = wr.W.grapple, gu = g.update;
+    g.update = function (dt) {
+      for (const id of ['player', 'rival']) { Object.assign(wr.W[id].intent, drive[id]); for (const k of EDGES) delete drive[id][k]; }
+      return gu.call(this, dt);
+    };
+  }
   for (let round = 0; round < 2; round++) {
-    over = null; P.hp = P.maxHp;
-    wr.start({ rival: { key: 'mecha', cfg: cfg('Mechra', 260), glb: kaijuGLB.mecha } });
-    const { W } = wr, qa = wr.qa;
+    over = null; P.hp = P.maxHp; P.rage = 0; upgradesOffered = 0;
+    blocks.length = 0;
+    drive.player = {}; drive.rival = {};
+    kaijuGLB.godzilla.root.position.set(res.spawn.x, 0, res.spawn.z);
+    wr.start({ rival: { key: 'mecha', cfg: MON.mecha, glb: kaijuGLB.mecha } });
+    const { W } = wr, qa = wr.qa, M = W.match.state;
+    const pl = W.player;
+    let rv = W.rival;
     qa.events.start();
+    const tick = (frames = 1) => { for (let f = 0; f < frames; f++) wr.update(1 / 60, 1 / 60); };
+    const until = (cond, sec = 10) => { for (let f = 0; f < sec * 60 && !cond(); f++) tick(); return !!cond(); };
+    const n = (name) => qa.events.counts[name] || 0;
+    const expect = (ok, what) => { if (!ok) fail(`wrestling (round ${round + 1}): ${what}`); };
+    const cx = A.cx, cz = A.cz, _mid = new THREE.Vector3();
+    const thrown = {};
+    W.bus.on(EV.THROW_LAUNCH, (e) => { if (e.who === 'player' && e.speed > 0) thrown[e.type] = true; }); // (this event's own `type` field is the throw type)
+    // Both on their feet, chest to chest, rested (ox: where along the east-west line through the ring centre)
+    const faceOff = (ox = 0) => {
+      W.grapple.clear();
+      for (const f of [pl, rv]) {
+        f.held = false; f.invuln = false; f.invulnT = 0; f.lie = 0; f._lieP = 0; f.lieTarget = 0; f.vel.set(0, 0, 0);
+        f.stamina = 100; f.tired = false; f.grabChain = 0; f.lockT = 0; f.lockHits = 0; f.targetable = true;
+        if (f.state !== 'neutral') f.setState('neutral');
+      }
+      pl.root.position.set(cx + ox + 13, 0, cz); pl.root.rotation.set(0, -Math.PI / 2, 0); P.yaw = -Math.PI / 2;
+      rv.root.position.set(cx + ox - 12, 0, cz); rv.root.rotation.set(0, Math.PI / 2, 0);
+      drive.player = {}; drive.rival = {};
+      tick(2);
+    };
     if (!W.rival || W.rival.root.parent !== scene) fail('wrestling: the rival is not in the scene after start()');
     if (rivalBody !== W.rival) fail('wrestling: the rival was not registered with ctx.setRivalBody');
     if (!STATES.includes(W.rival.state)) fail(`wrestling: rival state '${W.rival.state}'`);
-    for (let f = 0; f < 30; f++) wr.update(1 / 60, 1 / 60);
-    const hp0 = W.rival.hp;
-    const p = W.player.pos;
-    if (!(W.rival.takeHit(100, 'melee', p.x, p.z) > 0) || !(W.rival.hp < hp0)) fail('wrestling: a player melee hit did not reduce the rival\'s HP');
-    if (!qa.events.counts[EV.STRIKE_LANDED]) fail('wrestling: no strike:landed event for the hit');
-    qa.force('rival', 'downed', 0.2);
-    // (a downed fighter may pass through other states on its way up: get-up, its invulnerable window)
-    for (let f = 0; f < 600 && W.rival.state !== 'neutral'; f++) wr.update(1 / 60, 1 / 60);
-    if (W.rival.state !== 'neutral') fail(`wrestling: a forced timed state did not lead back to neutral within 10 s (rival is '${W.rival.state}')`);
-    qa.ko('rival');
-    for (let f = 0; f < 150 && !over; f++) wr.update(1 / 60, 1 / 60);
-    if (!over || over.victory !== true || !over.text || !over.text.title) fail('wrestling: a rival KO did not end the match as a win with result text');
-    for (const n of [EV.MATCH_START, EV.BELL, EV.KO, EV.FALL_END, EV.MATCH_OVER, EV.MATCH_WON]) if (!qa.events.counts[n]) fail(`wrestling: '${n}' was never emitted`);
-    for (const e of qa.events.list) if (!EVENTS[e.type]) fail(`wrestling: emitted an unlisted event '${e.type}'`);
-    wr.onGameOver(true);
-    for (let f = 0; f < 5; f++) wr.updateIdle(1 / 60);
+    // ---- entrance, then the bell ----
+    expect(M.phase === 'entrance' && n(EV.MATCH_START) === 1 && n(EV.ENTRANCE_START) >= 1, `match did not open on the entrance (phase '${M.phase}')`);
+    tick(60);
+    if (round === 0) expect(until(() => M.phase === 'fight', 20), 'the entrance never reached the bell');
+    else { W.match.skipEntrance(); expect(M.phase === 'fight', 'skipping the entrance did not start the fight'); }
+    expect(n(EV.BELL) >= 1 && n(EV.FALL_START) === 1 && M.fall === 1 && pl.state === 'neutral' && rv.state === 'neutral', 'no bell / fall 1 / neutral fighters after the entrance');
+    expect(Math.abs(pl.pos.x - cx) < A.half && Math.abs(pl.pos.z - cz) < A.half, 'the player is not in the ring at the bell');
+    expect(control.melee === false && ctx.rules.passiveRage === false, 'the match did not take strikes / passive momentum over');
+    W.ai.enabled = false;
+    rv.maxHp = 5000; rv.hp = 5000; P.maxHp = 5000; P.hp = 5000; // room for the whole move list
+    if (round === 0) {
+      // ---- a classic player attack on the rival ----
+      faceOff();
+      const hp0 = rv.hp;
+      if (!(rv.takeHit(100, 'melee', pl.pos.x, pl.pos.z) > 0) || !(rv.hp < hp0)) fail('wrestling: a player melee hit did not reduce the rival\'s HP');
+      if (!n(EV.STRIKE_LANDED)) fail('wrestling: no strike:landed event for the hit');
+      qa.force('rival', 'downed', 0.2);
+      // (a downed fighter may pass through other states on its way up: get-up, its invulnerable window)
+      until(() => rv.state === 'neutral', 10);
+      if (rv.state !== 'neutral') fail(`wrestling: a forced timed state did not lead back to neutral within 10 s (rival is '${rv.state}')`);
+      // ---- the light string: three presses, three hits, the last one staggers ----
+      faceOff();
+      let landed = n(EV.STRIKE_LANDED);
+      for (let i = 0; i < 80; i++) { if (i % 9 === 0) drive.player.strike = true; tick(); }
+      expect(n(EV.STRIKE_LANDED) - landed >= 3 && n(EV.STAGGER) >= 1, `light string landed ${n(EV.STRIKE_LANDED) - landed} of 3 hits (staggers: ${n(EV.STAGGER)})`);
+      // ---- block, and the just-in-time reversal ----
+      faceOff();
+      drive.player.block = true; tick(30);
+      drive.rival.strike = true;
+      expect(until(() => n(EV.STRIKE_BLOCKED) >= 1, 2), 'a held guard did not block the rival\'s strike');
+      faceOff();
+      drive.rival.strike = true; tick(8); drive.player.block = true;
+      expect(until(() => n(EV.STRIKE_REVERSED) >= 1, 2) && rv.state === 'staggered', 'a guard raised just before the hit was not a reversal');
+      // ---- every throw ----
+      const throwIt = (label, type, dir, ox, during) => {
+        faceOff(ox);
+        const l0 = n(EV.THROW_LAUNCH), g0 = n(EV.GRAB_MOVE);
+        drive.player.grab = true;
+        expect(until(() => W.grapple.hold.active, 2), `${label}: the grab did not lock up`);
+        Object.assign(drive.player, dir);
+        until(() => n(EV.GRAB_MOVE) > g0, 2);
+        expect(W.grapple.hold.type === type || n(EV.THROW_LAUNCH) > l0, `${label}: the lock-up chose '${W.grapple.hold.type}'`);
+        if (during) during();
+        expect(until(() => n(EV.THROW_LAUNCH) > l0, 8), `${label}: nothing was thrown`);
+        drive.player = {};
+        expect(until(() => !W.grapple.active && (rv.state === 'downed' || rv.state === 'staggered' || rv.state === 'stunned' || rv.state === 'neutral'), 12), `${label}: the body never came to rest (rival '${rv.state}')`);
+        expect(pl.state !== 'grappling' && !pl.held && control.external === pl.helpless, `${label}: the thrower was not released`);
+        until(() => rv.state === 'neutral' && pl.state === 'neutral', 10);
+      };
+      const lands0 = n(EV.THROW_LAND);
+      throwIt('suplex', 'suplex', { dirZ: -1 }, 0);
+      expect(n(EV.THROW_LAND) === lands0 + 1 && n(EV.KNOCKDOWN) >= 1, 'suplex: no throw:land / knockdown');
+      throwIt('irish whip in the ring', 'whip', { dirZ: 1 }, 0);
+      expect(n(EV.ROPE_REBOUND) >= 1, 'whip: the body did not rebound off the ropes');
+      blocks.push({ x: cx - 190, z: cz, w: 22, d: 22, h: 40, destroyed: false, landmarkId: 'test_tower' }, { x: cx - 225, z: cz, w: 22, d: 22, h: 30, destroyed: false, landmarkId: '' });
+      throwIt('irish whip outside', 'whip', { dirZ: 1 }, -110);
+      expect(n(EV.BUILDING_IMPACT) >= 1 && blocks[0].destroyed && n(EV.BUILDING_DESTROYED) >= 1, 'whip: the body did not go through the building in its path');
+      expect(qa.events.list.some((e) => /TEST TOWER/.test(e.text || '')), 'whip through a landmark: no landmark callout');
+      throwIt('press slam', 'slam', {}, 0, () => { until(() => W.grapple.hold.phase === 'carry', 3); tick(20); drive.player.grab = true; });
+      expect(n(EV.LIFT_START) >= 1, 'press slam: no lift:start');
+      throwIt('toss', 'slam', {}, 0, () => { until(() => W.grapple.hold.phase === 'carry', 3); drive.player.moveX = -1; drive.player.moveZ = 0; tick(20); drive.player.grab = true; });
+      throwIt('giant swing', 'swing', { dirX: 1 }, 0, () => { until(() => W.grapple.hold.turns >= 1, 6); drive.player.grab = true; });
+      expect(n(EV.SWING_SPIN) >= 1, 'giant swing: no swing:spin');
+      for (const t of ['whip', 'suplex', 'slam', 'toss', 'swing']) expect(thrown[t], `throw '${t}': no throw:launch of that type`);
+      // ---- ground game: stomp, splash, pick-up, pin with a kick-out ----
+      // (knocked down, then the player steps in beside the body)
+      const beside = (a, v) => { v.mid(_mid); a.root.position.set(_mid.x, 0, _mid.z + a.radius + 8); a.root.rotation.y = Math.PI; if (a.isPlayer) P.yaw = Math.PI; };
+      const floor = () => { faceOff(); rv.knockDown('player', 'strike', 0.5, -1, 0, 10); until(() => rv.state === 'downed' && rv.falling <= 0, 2); tick(20); beside(pl, rv); };
+      floor();
+      landed = n(EV.STRIKE_LANDED);
+      drive.player.strike = true;
+      expect(until(() => n(EV.STRIKE_LANDED) > landed, 2), 'ground stomp did not hit the downed rival');
+      until(() => pl.state === 'neutral', 2);
+      if (rv.state === 'downed') {
+        landed = n(EV.STRIKE_LANDED);
+        const whiffs = n(EV.STRIKE_WHIFFED);
+        drive.player.heavy = true;
+        expect(until(() => n(EV.STRIKE_LANDED) > landed || n(EV.STRIKE_WHIFFED) > whiffs, 3), 'diving splash never came down');
+      }
+      until(() => rv.state === 'neutral' && pl.state === 'neutral', 10);
+      floor();
+      drive.player.grab = true;
+      expect(until(() => n(EV.PICKUP) >= 1 && W.grapple.hold.phase === 'lockup', 3), 'grab on a downed rival did not pick it up into a lock-up');
+      drive.player.dirZ = -1;
+      until(() => !W.grapple.active && rv.state === 'downed', 6);
+      drive.player = {};
+      until(() => pl.state === 'neutral', 3);
+      beside(pl, rv);
+      drive.player.pin = true;
+      expect(until(() => W.grapple.pin.active, 3) && M.phase === 'pin' && pl.state === 'pinning' && rv.state === 'pinned', 'pin: no cover on the downed rival');
+      expect(until(() => n(EV.PIN_KICKOUT) >= 1, 4) && M.phase === 'fight', 'pin: a healthy rival did not kick out');
+      until(() => rv.state === 'neutral' && pl.state === 'neutral', 6);
+      // ---- finisher ----
+      faceOff();
+      pl.momentum = 100; rv.stun(3, 'player'); tick(2);
+      expect(W.grapple.canFinisher(pl), 'finisher: conditions (full momentum + stunned foe in reach) not recognised');
+      const hpF = rv.hp;
+      drive.player.finisher = true;
+      expect(until(() => n(EV.FINISHER_START) >= 1, 1) && M.phase === 'finisher', 'finisher did not start');
+      expect(until(() => n(EV.FINISHER_END) >= 1, 8) && n(EV.FINISHER_IMPACT) === 1 && n(EV.FINISHER_BEAT) >= 4 && rv.hp < hpF && pl.momentum < 50, 'finisher did not play through (beats, impact, damage, momentum spent)');
+      expect(rv.state === 'downed' && pl.state === 'neutral' && M.phase === 'fight', `after the finisher: player '${pl.state}', rival '${rv.state}', phase '${M.phase}'`);
+      // ---- fall 1 by pinfall on a beaten rival, corner advice, fall 2 ----
+      rv.hp = rv.maxHp * 0.02; rv.stamina = 0;
+      beside(pl, rv);
+      drive.player.pin = true;
+      expect(until(() => n(EV.PIN_FALL) >= 1, 8), 'pin: three count never came on a beaten rival');
+      expect(n(EV.PIN_COUNT) >= 3 && n(EV.FALL_END) === 1 && M.playerFalls === 1 && M.phase === 'between', `fall 1 not scored (falls ${M.playerFalls}, phase '${M.phase}')`);
+      expect(until(() => M.phase === 'fight' && M.fall === 2, 12) && upgradesOffered === 1, 'no corner advice / second fall after the first');
+      expect(pl.state === 'neutral' && rv.state === 'neutral' && rv.hp > rv.maxHp * 0.5, 'fighters were not reset for the second fall');
+      // ---- a knockout is a fall: forced cover, three count, the match is won ----
+      qa.ko('rival');
+      expect(n(EV.KO) === 1, 'no ko event');
+      expect(until(() => !!over, 20), 'a rival KO in the deciding fall did not end the match');
+      if (!over || over.victory !== true || !over.text || !over.text.title) fail('wrestling: a rival KO did not end the match as a win with result text');
+      expect(M.by === 'ko' && qa.events.list.some((e) => e.forced === true && e.count === 3), 'the knockout was not scored through a forced pin');
+      for (const name of [EV.MATCH_START, EV.BELL, EV.KO, EV.FALL_END, EV.MATCH_OVER, EV.MATCH_WON, EV.CALLOUT, EV.COMMENTARY, EV.CROWD_INTENSITY, EV.CROWD_POP, EV.PROMPT, EV.GRAB_START, EV.THROW_LAND, EV.DAMAGE]) if (!n(name)) fail(`wrestling: '${name}' was never emitted`);
+      wr.onGameOver(true);
+      for (let f = 0; f < 5; f++) wr.updateIdle(1 / 60);
+      // ---- title defense: same run, the other kaiju ----
+      expect(W.match.defend() === true, 'title defense did not start');
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      rv = W.rival;
+      expect(rv.key === 'ghidorah' && rv.root.parent === scene && !kaijuGLB.mecha.root.parent && rivalBody === rv, 'title defense: the rival was not swapped for the third kaiju');
+      expect(M.defense === 1 && M.phase === 'entrance' && n(EV.MATCH_START) === 2 && M.playerFalls === 0, 'title defense: no new match');
+      expect(until(() => M.phase === 'fight', 15), 'title defense: the challenger\'s entrance never reached the bell');
+    } else {
+      // ---- the rival's side: grab + suplex on the player, a mash escape, its powers, and a loss ----
+      faceOff();
+      drive.rival.grab = true;
+      expect(until(() => W.grapple.hold.active && W.grapple.hold.A === rv, 2) && control.external === true, 'the rival\'s grab did not take hold of the player');
+      drive.rival.dirZ = -1;
+      expect(until(() => pl.state === 'downed', 5) && P.hp < 5000, 'the rival\'s suplex did not put the player down');
+      drive.rival = {};
+      until(() => pl.state === 'neutral' && rv.state === 'neutral', 10);
+      expect(control.external === false, 'the player did not get its body back after getting up');
+      faceOff();
+      drive.rival.grab = true;
+      until(() => W.grapple.hold.active, 2);
+      for (let i = 0; i < 40 && W.grapple.hold.active; i++) { drive.player.mash = 2; tick(); }
+      expect(n(EV.GRAB_ESCAPED) >= 1 && !W.grapple.hold.active, 'mashing did not break the rival\'s lock-up');
+      for (const pw of ['beam', 'roar', 'charge', 'stomp', 'ult']) {
+        faceOff();
+        if (pw === 'beam' || pw === 'charge' || pw === 'stomp') rv.root.position.x -= 20;
+        rv.momentum = 100; rv.cd[pw] = 0;
+        const f0 = n(EV.POWER_FIRED), h0 = n(EV.POWER_HIT), t0 = n(EV.POWER_TELEGRAPH);
+        drive.rival.power = pw;
+        expect(until(() => n(EV.POWER_FIRED) > f0, 4) && n(EV.POWER_TELEGRAPH) > t0, `rival power '${pw}': no telegraph + fire`);
+        until(() => rv.state === 'neutral', 5);
+        expect(n(EV.POWER_HIT) > h0, `rival power '${pw}' did not hit a player standing in it`);
+        until(() => pl.state === 'neutral' && rv.state === 'neutral', 10);
+      }
+      // pinned by the rival: mash out once, then lose two falls
+      faceOff();
+      pl.knockDown('rival', 'strike', 0.5, 1, 0, 10);
+      until(() => pl.state === 'downed' && pl.falling <= 0, 2);
+      tick(20);
+      pl.mid(_mid); rv.root.position.set(_mid.x, 0, _mid.z + rv.radius + 8); rv.root.rotation.y = Math.PI;
+      drive.rival.pin = true;
+      expect(until(() => W.grapple.pin.active && W.grapple.pin.V === pl, 3), 'the rival did not cover the downed player');
+      for (let i = 0; i < 200 && W.grapple.pin.active; i++) { if (i % 3 === 0) drive.player.mash = 1; tick(); }
+      expect(n(EV.PIN_KICKOUT) >= 1, 'the player could not mash out of a pin at full health');
+      until(() => pl.state === 'neutral', 5);
+      for (let fall = 1; fall <= 2; fall++) {
+        qa.ko('player');
+        expect(until(() => M.rivalFalls === fall, 12), `the rival was not given fall ${fall} for a knockout`);
+        if (fall === 1) expect(until(() => M.phase === 'fight' && M.fall === 2, 12) && P.hp > 0, 'no second fall after the player lost the first');
+      }
+      expect(until(() => !!over, 10) && over && over.victory === false && /WINS/.test(over.text.title), 'losing two falls did not end the match as a loss');
+      if (!n(EV.MATCH_LOST)) fail('wrestling: match:lost was never emitted');
+      wr.onGameOver(false);
+      for (let f = 0; f < 5; f++) wr.updateIdle(1 / 60);
+    }
+    for (const name of Object.keys(qa.events.counts)) if (!EVENTS[name]) fail(`wrestling: emitted an unlisted event '${name}'`);
+    const rivalRoot = W.rival.root;
     wr.dispose();
-    if (kaijuGLB.mecha.root.parent) fail('wrestling: dispose() left the rival in the scene');
+    if (rivalRoot.parent || kaijuGLB.mecha.root.parent) fail('wrestling: dispose() left the rival in the scene');
     if (rivalBody !== null || control.external) fail('wrestling: dispose() left the rival registered / the player under external control');
+    if (kaijuGLB.godzilla.root.rotation.order !== 'XYZ' || kaijuGLB.godzilla.root.rotation.x !== 0) fail('wrestling: dispose() left the player root tilted / with a changed rotation order');
   }
   scene.remove(kaijuGLB.godzilla.root);
   wrestlingSummary = `wrestling ok (${Object.keys(EVENTS).length} events, ${Object.keys(ANIMS).length} anims, ring at ${A.cx}, ${A.cz}, crowd ${A.crowd ? A.crowd.alive.length : 0}); `;

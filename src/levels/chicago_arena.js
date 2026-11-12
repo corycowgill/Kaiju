@@ -196,7 +196,7 @@ function _paintMat(cx, px) {
   cx.save(); cx.scale(U, U);
   const S = MAT * 2;
   // canvas
-  cx.fillStyle = '#8a94a1'; cx.fillRect(0, 0, S, S);
+  cx.fillStyle = '#3d4b6b'; cx.fillRect(0, 0, S, S);
   // weave + wear
   for (let i = 0; i < 2600; i++) {
     const x = Math.random() * S, y = Math.random() * S, l = 0.6 + Math.random() * 2.4;
@@ -204,23 +204,23 @@ function _paintMat(cx, px) {
     if (i & 1) cx.fillRect(x, y, l, 0.09); else cx.fillRect(x, y, 0.09, l);
   }
   // the flag's two bars
-  cx.fillStyle = '#4f9dcc';
+  cx.fillStyle = '#2a77b3';
   cx.fillRect(0, S * 0.235, S, S * 0.105); cx.fillRect(0, S * 0.66, S, S * 0.105);
-  cx.fillStyle = 'rgba(255,255,255,0.5)';
+  cx.fillStyle = 'rgba(230,236,244,0.75)';
   for (const y of [0.235, 0.34, 0.66, 0.765]) cx.fillRect(0, S * y - 0.12, S, 0.24);
   // four stars
   for (let i = 0; i < 4; i++) {
     const x = S / 2 + (i - 1.5) * 16.5;
     _star(cx, x + 0.25, S / 2 + 0.3, 7.2, 'rgba(10,14,30,0.35)');
-    _star(cx, x, S / 2, 7.2, '#c4162c');
-    _star(cx, x, S / 2, 5.4, '#d8283a');
+    _star(cx, x, S / 2, 7.2, '#e6e4da');
+    _star(cx, x, S / 2, 6.3, '#c4162c');
   }
   // lettering
   cx.textAlign = 'center'; cx.textBaseline = 'middle';
   _fit(cx, 'KAIJU HAVOC', 13.5, 70);
-  cx.fillStyle = '#131b3a'; cx.fillText('KAIJU HAVOC', S / 2, S * 0.137);
+  cx.fillStyle = '#e6e4da'; cx.fillText('KAIJU HAVOC', S / 2, S * 0.137);
   _fit(cx, 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', 6.2, 74);
-  cx.fillStyle = '#131b3a'; cx.fillText('CHICAGO HEAVYWEIGHT CHAMPIONSHIP', S / 2, S * 0.862);
+  cx.fillStyle = '#e6e4da'; cx.fillText('CHICAGO HEAVYWEIGHT CHAMPIONSHIP', S / 2, S * 0.862);
   // corners: the player's (north-east: top right from the lake) and the rival's (south-west)
   const cs = 13;
   cx.fillStyle = 'rgba(43,98,192,0.55)'; cx.fillRect(S - 3.5 - cs, S - 3.5 - cs, cs, cs);
@@ -234,7 +234,7 @@ function _paintMat(cx, px) {
     cx.fillStyle = g; cx.fillRect(x - r, y - r, r * 2, r * 2);
   }
   // apron: navy border, inner white line where the ropes hang
-  cx.fillStyle = '#131b3a';
+  cx.fillStyle = '#0d1226';
   cx.fillRect(0, 0, S, 3.5); cx.fillRect(0, S - 3.5, S, 3.5); cx.fillRect(0, 0, 3.5, S); cx.fillRect(S - 3.5, 0, 3.5, S);
   cx.strokeStyle = '#e6e4da'; cx.lineWidth = 0.45; cx.strokeRect(3.5, 3.5, S - 7, S - 7);
   cx.strokeStyle = '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
@@ -375,7 +375,7 @@ function _getAssets(tier) {
     mPost: [struct(), struct(), struct(), struct()],     // one per tower: its lamps flicker / die on their own
     mMat: std({ map: matTex, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     mScreen: std({ map: led.tex, emissiveMap: led.tex, emissive: 0xffffff, emissiveIntensity: 1.25, roughness: 0.5 }),
-    mBeam: new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true }),
+    mBeam: _beamMaterial(),
     mFlash: new THREE.PointsMaterial({ size: 2.2, sizeAttenuation: true, map: new THREE.CanvasTexture(dot), color: new THREE.Color(3.2, 3.2, 3.6), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
     mRope: _ropeMaterial(), mPool: _poolMaterial(T),
     crowdU: festCrowdUniforms(),
@@ -394,12 +394,12 @@ function _ropeMaterial() {
   const v4s = (n) => Array.from({ length: n }, () => new THREE.Vector4());
   const mat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-      uTime: { value: 0 }, uRadius: { value: 0.42 }, uBright: { value: 1 },
+      uTime: { value: 0 }, uRadius: { value: 0.3 }, uBright: { value: 1 },
       uPush: { value: v4s(4) },  // per side: body centre u (0..1), half width, displacement (+ out), vibration
       uSnap: { value: v4s(4) },  // per side: snap time (< 0 = whole), break u, sag, glow
       uPost: { value: v4s(4) },  // per tower: lean dir x, z, sin, cos
       uEnds: { value: v4s(4) },  // per side: end towers ax, az, bx, bz
-      uCol: { value: [new THREE.Vector3(0.25, 0.75, 2.3), new THREE.Vector3(1.9, 1.85, 1.75), new THREE.Vector3(2.4, 0.3, 0.26)] },
+      uCol: { value: [new THREE.Vector3(0.16, 0.5, 1.5), new THREE.Vector3(1.2, 1.17, 1.1), new THREE.Vector3(1.6, 0.2, 0.17)] },
     }]),
     vertexShader: `
       #include <common>
@@ -457,7 +457,7 @@ function _ropeMaterial() {
         }
         p += (vec3(o2.x, 0.0, o2.y) * aRing.x + vec3(0.0, aRing.y, 0.0)) * uRadius;
         vCol = uCol[rope] * bright;
-        vTF = vec3(t, smoothstep(8.0, 34.0, length(cameraPosition - p)), S.w);
+        vTF = vec3(t, smoothstep(12.0, 55.0, length(cameraPosition - p)), S.w);
         vec4 mvPosition = viewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
@@ -472,8 +472,8 @@ function _ropeMaterial() {
         // chase lights running along the cable; a hit floods it white for a moment
         float band = 0.8 + 0.2 * sin(vTF.x * 160.0 - uTime * 5.0);
         vec3 c = vCol * band * uBright;
-        c = mix(c, vec3(3.2), clamp(vTF.z, 0.0, 1.0) * 0.8);
-        gl_FragColor = vec4(c, mix(0.14, 1.0, vTF.y));
+        c = mix(c, vec3(3.0), clamp(vTF.z, 0.0, 1.0) * 0.8) * (0.55 + 0.45 * vTF.y);
+        gl_FragColor = vec4(c, mix(0.1, 1.0, vTF.y));
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>
@@ -481,6 +481,40 @@ function _ropeMaterial() {
     fog: true, transparent: true, depthWrite: true,
   });
   mat.name = 'arena_ropes';
+  return mat;
+}
+
+/** Light shafts: additive cones that are brightest seen through their middle,
+ *  die away along their length and thin out close to the camera (a camera
+ *  inside one must not see a veil). Per-instance colour carries the level. */
+function _beamMaterial() {
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: `
+      varying vec3 vC, vN, vV;
+      varying float vL;
+      void main() {
+        vL = -position.y;
+        mat4 im = modelMatrix * instanceMatrix;
+        vec4 wp = im * vec4(position, 1.0);
+        mat3 m3 = mat3(im);
+        vec3 inv = vec3(dot(m3[0], m3[0]), dot(m3[1], m3[1]), dot(m3[2], m3[2]));
+        vN = m3 * (normal / inv);
+        vV = cameraPosition - wp.xyz;
+        vC = instanceColor;
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }`,
+    fragmentShader: `
+      varying vec3 vC, vN, vV;
+      varying float vL;
+      void main() {
+        float d = length(vV);
+        float f = abs(dot(normalize(vN), vV / d));
+        float a = f * f * f * pow(1.0 - vL, 1.3) * smoothstep(0.0, 0.06, vL) * smoothstep(14.0, 70.0, d);
+        gl_FragColor = vec4(vC * a, 1.0);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  });
+  mat.name = 'arena_beams';
   return mat;
 }
 
@@ -521,7 +555,7 @@ function _poolMaterial(T) {
           float inv = inversesqrt(dot(L, L));
           vec3 dir = L * inv;
           vec3 aim = normalize(Lp.xyz - vec3(uAim.x, 0.0, uAim.y));
-          float spot = smoothstep(0.74, 0.96, dot(dir, aim));
+          float spot = smoothstep(0.78, 0.975, dot(dir, aim));
           float I = Lp.w * spot * dir.y * 2300.0 * inv * inv;
           #if POOL_SHADOWS > 0
           for (int k = 0; k < 2; k++) {
@@ -1512,7 +1546,7 @@ export function createArena(ctx, W) {
       const rad = 21;
       sclV.set(rad / 0.55, len, rad / 0.55);
       im.setMatrixAt(i, mB.compose(posV, qB, sclV));
-      const k = l.on * (0.012 + 0.075 * tod) * (0.9 + 0.1 * Math.sin(t * 1.3 + i));
+      const k = l.on * (0.10 + 0.45 * tod) * (0.9 + 0.1 * Math.sin(t * 1.3 + i));
       im.setColorAt(i, col.setRGB(1.0 * k, 0.95 * k, 0.82 * k));
     }
     // movers: parked dim over the crowd, sweeping hard on a pop
@@ -1527,7 +1561,7 @@ export function createArena(ctx, W) {
       qB.setFromUnitVectors(down, dirV.normalize());
       sclV.set(7, len, 7);
       im.setMatrixAt(4 + j, mB.compose(posV, qB, sclV));
-      col.setHSL(mv.hue, mv.hue === 0.12 ? 0.25 : 0.85, 0.5).multiplyScalar(0.5 * live);
+      col.setHSL(mv.hue, mv.hue === 0.12 ? 0.25 : 0.85, 0.5).multiplyScalar(1.1 * live);
       im.setColorAt(4 + j, col);
     }
     im.instanceMatrix.needsUpdate = true;
@@ -1576,7 +1610,7 @@ export function createArena(ctx, W) {
     RU.uBright.value = 0.75 + 0.45 * tod;
     // the pool: shadows of whoever is standing in it
     const PU = rt.AS.mPool.uniforms, F = fighters();
-    PU.uGain.value = (rt.tier ? 1.15 : 0.5) * (0.4 + 0.6 * tod);
+    PU.uGain.value = (rt.tier ? 1.9 : 0.7) * (0.4 + 0.6 * tod);
     for (let f = 0; f < 2; f++) {
       const b = F[f], u = PU.uBody.value[f];
       if (b && b.root && b.root.parent && b.root.visible) u.set(b.pos.x, b.pos.z, (b.radius || 12) * 0.62, Math.max(6, (b.height || 30) * 0.92 * (b.state === 'downed' || b.state === 'pinned' || b.state === 'ko' ? 0.35 : 1) + b.pos.y));

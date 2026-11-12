@@ -206,7 +206,7 @@ export function createBus() {
   const depth = {};     // name -> emits of it in progress
   for (const name of Object.keys(EVENTS)) {
     subs[name] = [];
-    payloads[name] = { ...EVENTS[name], type: name };
+    payloads[name] = { ...EVENTS[name], event: name }; // (`type` is a payload field of the throw events)
     depth[name] = 0;
   }
   const check = (name) => { if (!subs[name]) throw new Error(`[wrestling] unknown event '${name}' (add it to EVENTS in events.js)`); };

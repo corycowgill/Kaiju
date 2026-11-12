@@ -94,7 +94,7 @@ export function createWrestling(ctx) {
   const tap = (name, p) => {
     log.counts[name] = (log.counts[name] || 0) + 1;
     if (!log.on || log.events.length >= log.max) return;
-    const copy = { t: +ctx.world.time.toFixed(3) };
+    const copy = { t: +ctx.world.time.toFixed(3), ev: name }; // ev: the event name (a throw's own `type` field is its throw type)
     for (const k in p) { const v = p[k]; copy[k] = v && typeof v === 'object' ? (v.landmarkId || v.name || '[object]') : v; }
     log.events.push(copy);
   };
@@ -179,12 +179,12 @@ export function createWrestling(ctx) {
       get rival() { return W.rival; },
       get match() { return W.match.state; },
       EVENTS, ANIM_NAMES,
-      /** events.start() / stop() / clear(); events.list = captured payload copies; events.counts = emits per name since start(). */
+      /** events.start() / stop() / clear(); events.list = captured payload copies (+ t = sim time, ev = event name); events.counts = emits per name since start(). */
       events: {
         start() { log.on = true; }, stop() { log.on = false; },
         clear() { log.events.length = 0; log.counts = {}; },
         get list() { return log.events; }, get counts() { return log.counts; },
-        names(prefix = '') { return log.events.filter((e) => e.type.startsWith(prefix)).map((e) => e.type); },
+        names(prefix = '') { return log.events.filter((e) => e.ev.startsWith(prefix)).map((e) => e.ev); },
       },
       /** Put 'player' | 'rival' into a fighter state for dur seconds. */
       force(who, state, dur = 2) { W[who].setState(state, dur); },

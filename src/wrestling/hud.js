@@ -267,8 +267,9 @@ export function createHud(ctx, W) {
   function writeMash(dtReal) {
     const g = W.grapple;
     let v;
-    if (mashKind === 'kickout' && g.pin) v = g.pin.meter;
-    else if (mashKind === 'escape' && g.hold) v = g.hold.escape;
+    if (typeof W.player.struggle === 'number' && W.player.struggle > 0) v = W.player.struggle;
+    else if (mashKind === 'kickout' && g.pin && g.pin.active) v = g.pin.meter;
+    else if (mashKind === 'escape' && g.hold && g.hold.active) v = g.hold.escape;
     else { mashOwn = Math.max(0, Math.min(1, mashOwn + W.player.intent.mash * 0.1 - dtReal * 0.3)); v = mashOwn; }
     const q = Math.round(Math.max(0, Math.min(1, v)) * 100);
     if (q !== mashQ) { mashQ = q; el.mashFill.style.transform = `scaleX(${q / 100})`; }
@@ -480,6 +481,9 @@ export function createHud(ctx, W) {
     const ui = W.input.ui;
     if (ui.defend) ui.defend = false; // match.js polled it earlier this frame
     if (!live) return;
+    // The fight cam's cinematic shot ('' = fight / free cam) decides the letterbox
+    const sh = (W.cam && W.cam.shot) || '';
+    if (sh !== shot) { shot = sh; syncCine(); }
     if (mashKind) writeMash(dtReal);
     for (const c of el.calls) if (c._on > 0) c._on -= dtReal;
     if (pinT > 0) { pinT -= dtReal; if (pinT <= 0) pinEnd(false); }
@@ -503,11 +507,9 @@ export function createHud(ctx, W) {
     on(EV.MATCH_START, begin);
     on(EV.MATCH_PHASE, (e) => {
       phase = e.phase;
-      if (e.phase === 'fight' || e.phase === 'between') shot = '';
       if (e.phase !== 'entrance') hideCards();
       syncCine();
     });
-    on(EV.CAM_CUE, (e) => { shot = e.shot; syncCine(); });
     on(EV.ENTRANCE_START, (e) => { cardWait[e.who] = 1.2; }); // unless its 'namecard' beat comes first
     on(EV.ENTRANCE_BEAT, (e) => { if (e.beat === 'namecard') showCard(e.who); });
     on(EV.ENTRANCE_SKIP, hideCards);

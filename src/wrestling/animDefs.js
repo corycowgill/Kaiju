@@ -81,7 +81,6 @@ function gait(P, R, ph, dx, dz, S, duty, lift, o) {
       pit = (q < 0.5 ? 0.55 * (1 - q * 2) : -0.3 * Math.sin((q - 0.5) * TAU)) * (dz >= 0 ? 1 : -0.4) * Math.abs(dz);
     }
     if (p > duty - 0.12 && p < duty) pit = 0.55 * ((p - duty + 0.12) / 0.12) * Math.max(0, dz);   // heel peels before the foot leaves
-    up += Math.abs(pit) * 1.8;                                    // (a pitched foot pivots about the ankle: keep the toes out of the ground)
     const wx = dx * along * S, wz = dz * along * S;
     if (s === 0) { P.fLx += wx; P.fLz += wz; P.fLy += up; P.fLpit += pit; }
     else { P.fRx -= wx; P.fRz += wz; P.fRy += up; P.fRpit += pit; }
@@ -401,13 +400,13 @@ const K = {
   jabWind(Q) { torso(Q, 0.02, 0.24, 0); hand(Q, 'L', 0.32, -0.14, 0.4); Q.hz -= 0.6; },
   jabHit(Q) {
     torso(Q, 0.14, -0.55, 0); Q.hyaw -= 0.12; Q.hz += 1.7; Q.fLz += 1.2; Q.fRpit = 0.3;
-    hand(Q, 'L', 0.0, 0.12, 1.0); elbow(Q, 'L', 0.6, -0.4, -0.3); Q.hLp = 0.25;
+    hand(Q, 'L', 0.0, 0.12, 1.0); elbow(Q, 'L', 0.6, -0.4, -0.3); Q.hLp = 0.25; Q.aLs = 1.3;
     hand(Q, 'R', 0.28, -0.05, 0.42); Q.hdp -= 0.05;
   },
   hookWind(Q) { torso(Q, 0.02, -0.5, 0); hand(Q, 'R', 0.8, -0.02, 0.0); elbow(Q, 'R', 0.8, 0.1, -0.6); Q.hz -= 0.5; Q.hx -= 0.6; },
   hookHit(Q) {
     torso(Q, 0.12, 0.8, -0.06); Q.hyaw += 0.38; Q.hz += 1.3; Q.hx += 0.8; Q.fRpit = 0.55; Q.fRz += 0.8;
-    hand(Q, 'R', -0.28, 0.06, 0.8); elbow(Q, 'R', 1, 0.15, -0.1); Q.hRp = 0.2;
+    hand(Q, 'R', -0.28, 0.06, 0.8); elbow(Q, 'R', 1, 0.15, -0.1); Q.hRp = 0.2; Q.aRs = 1.3;
     hand(Q, 'L', 0.2, 0.12, 0.4); Q.hdy -= 0.3;
   },
   hookThru(Q) {
@@ -421,7 +420,7 @@ const K = {
   },
   hammerDown(Q, R) {
     torso(Q, 0.62, -0.1, 0); Q.hy -= 2.6; Q.hz += 1.6; Q.hyaw = 0; Q.fLz += 1.0;
-    hand(Q, 'L', 0.03, -0.25, 0.9); hand(Q, 'R', 0.03, -0.25, 0.9); elbow(Q, 'L', 1, -0.2, -0.2); elbow(Q, 'R', 1, -0.2, -0.2);
+    hand(Q, 'L', 0.03, -0.25, 0.9); hand(Q, 'R', 0.03, -0.25, 0.9); elbow(Q, 'L', 1, -0.2, -0.2); elbow(Q, 'R', 1, -0.2, -0.2); Q.aLs = 1.3; Q.aRs = 1.3;
     Q.hdp -= 0.4; Q.nkp -= 0.15; wings(Q, R, -0.3, 0.3);
   },
   heavyWind(Q, R) {
@@ -431,7 +430,7 @@ const K = {
   },
   heavyHit(Q, R) {
     Q.hz += 3.2; Q.hy -= 0.6; Q.hyaw += 0.5; torso(Q, 0.26, 0.95, -0.06); Q.fLz += 1.5; Q.fRz += 2.4; Q.fRpit = 0.65;
-    hand(Q, 'R', -0.2, 0.1, 0.96); elbow(Q, 'R', 1, 0.3, -0.2); Q.hRp = 0.2;
+    hand(Q, 'R', -0.2, 0.1, 0.96); elbow(Q, 'R', 1, 0.3, -0.2); Q.hRp = 0.2; Q.aRs = 1.5;
     hand(Q, 'L', 0.45, -0.25, 0.1); Q.hdy -= 0.6; tail(Q, R, -0.45); wings(Q, R, -0.1, 0.4);
   },
   heavyThru(Q, R) {
@@ -441,7 +440,7 @@ const K = {
   lariatWind(Q) { torso(Q, 0.25, -0.5, 0); hand(Q, 'R', 0.7, 0.1, -0.4); elbow(Q, 'R', 0.6, 0.5, -1); Q.hy -= 1.0; Q.fLz += 1.5; },
   lariat(Q, R) {
     torso(Q, 0.34, 0, -0.08); Q.hyaw = -0.1; Q.hy -= 1.4; Q.hz += 2.0; Q.fLz += 2.6; Q.fRz -= 2.2; Q.fRpit = 0.7;
-    hand(Q, 'R', 0.99, 0.06, 0.05); elbow(Q, 'R', 0.5, 0.6, -0.6); Q.hRp = 0;
+    hand(Q, 'R', 0.99, 0.06, 0.05); elbow(Q, 'R', 0.5, 0.6, -0.6); Q.hRp = 0; Q.aRs = 1.45;
     hand(Q, 'L', 0.35, -0.5, -0.15); Q.hdp -= 0.2; wings(Q, R, 0.2, 0.5);
   },
   skid(Q) { Q.hy -= 2.2; Q.hz -= 1.2; torso(Q, 0.3, 0.3, 0); Q.fLz += 2.5; Q.fRz -= 1.0; hand(Q, 'L', 0.5, -0.4, 0.4); hand(Q, 'R', 0.6, -0.3, 0.3); },

@@ -32,6 +32,7 @@ import { EV } from './events.js';
 import { registerBuilder, acquirePooledLight } from '../vfx.js';
 import { fireAtomicBreath } from '../atomicBlast.js';
 import { isMobile, Q_HIGH, Q_LOW } from '../quality.js';
+import { setKaijuGlow, setLookFxDip } from '../look.js';
 
 const FULL = !isMobile && !Q_LOW;                 // desktop MED / HIGH: every layer
 const PM = !isMobile ? (Q_HIGH ? 1 : Q_LOW ? 0.35 : 0.6) : (Q_LOW ? 0.2 : 0.35); // particle count multiplier
@@ -491,7 +492,8 @@ export function createVfx(ctx, W) {
   const mkSt = () => ({
     auraAcc: 0, full: false, exhausted: false, steamAcc: 0, blockK: 0, stunT: 0,
     trail: { on: false, type: '', dx: 0, dz: 1, t: 0, acc: 0, dacc: 0, by: 'player', px: 0, py: 0, pz: 0 },
-    tele: { on: false, t: 0, dur: 0, heavy: false, both: false },
+    tele: { on: false, t: 0, dur: 0, heavy: false, both: false, hand: 'handR' },
+    glow: 0,
   });
   const st = { player: mkSt(), rival: mkSt() };
   const fighter = (id) => (id === 'player' || id === 'rival' ? W[id] : null);
@@ -505,6 +507,16 @@ export function createVfx(ctx, W) {
     const h = (f.bones && f.bones.head) || f.head;
     if (h) return h.getWorldPosition(out);
     return out.copy(f.pos).setY(f.pos.y + f.height * 0.9);
+  }
+  /** anims.js anchors ('crown', 'hands', 'back', 'mouth', 'chest'...) where it offers them; bones until then. */
+  function anchor(f, name, out) {
+    const A = W.anims;
+    if (A && typeof A.anchor === 'function') { const r = A.anchor(f, name, out); if (r !== false && r !== null) return out; }
+    if (name === 'crown') { headPos(f, out); out.y += f.key === 'mecha' ? 2.5 : f.key === 'ghidorah' ? 6 : 5; return out; }
+    if (name === 'hands') { bonePos(f, 'handL', out); bonePos(f, 'handR', _c); return out.add(_c).multiplyScalar(0.5); }
+    if (name === 'handL' || name === 'handR') return bonePos(f, name, out);
+    if (name === 'back') return bonePos(f, 'spine', out);
+    return headPos(f, out);
   }
   function bonePos(f, name, out) {
     const b = f.bones && f.bones[name];
@@ -602,7 +614,7 @@ export function createVfx(ctx, W) {
     ctx.fx.waterImpact(x, z, Math.min(3, 1 + Math.round(w * 2)), 'stomp'); // the level's own splash, ripple and sound
     const n = FULL ? 5 : 3;
     column(x, 0.3, z, 42 + 46 * w, 9 + 6 * w, 20 + 12 * w, 1.5, WATER, 0.85, 0, 4, 1);
-    column(x, 0.3, z, 30 + 30 * w, 5, 9, 0.9, WHITE, 0.5, 1, 5, 1);
+    column(x, 0.3, z, 30 + 30 * w, 4, 7, 0.8, WATER, 0.4, 1, 5, 1);
     for (let i = 0; i < n; i++) {
       const a = i / n * TAU + rnd(), r = rr(9, 16) * (0.7 + w * 0.5);
       column(x + Math.cos(a) * r, 0.3, z + Math.sin(a) * r, rr(18, 34) * (0.7 + w * 0.6), 4, 11, rr(1, 1.4), WATER, 0.75, 0, 4, 1, rr(0.04, 0.16));
@@ -671,7 +683,7 @@ export function createVfx(ctx, W) {
     let vx = (p.x - tr.px) / dt, vy = (p.y - tr.py) / dt, vz = (p.z - tr.pz) / dt;
     tr.px = p.x; tr.py = p.y; tr.pz = p.z;
     const sp = Math.hypot(vx, vy, vz);
-    if (tr.t > 6 || (tr.t > 0.3 && f.state !== 'airborne' && sp < 4)) { tr.on = false; return; }
+    if (tr.t > 6 || (tr.t > 0.25 && f.state !== 'airborne' && tr.type !== 'finisher')) { tr.on = false; return; } // a whip ends without throw:land
     if (sp < 12) return;
     const inv = 1 / sp, col = colOf(tr.by);
     vx *= inv; vy *= inv; vz *= inv;
@@ -741,13 +753,11 @@ export function createVfx(ctx, W) {
     if (!A || !ropeLine(e.side)) return;
     dir2(_rx0, _rz0, _rx1, _rz1);
     const ax = _dx, az = _dz, k = Math.min(1, (e.speed || 60) / 90);
+    // (the arena flashes and bends the cable itself: these are only the sparks it throws under load)
     for (let i = 0; i < A.ropeY.length; i++) {
-      // the cable flashes white-hot where the body loads it, fading along its length
-      const y = A.ropeY[i], len = 26 + 20 * k;
-      P(T_COL, M_BEAM, e.x, y, e.z, ax * len, 0, az * len, 0.3, 2.2, 0.8, WHITE, 1.2, 1, 0, 0, 0, 0, 1, 0, 0.2);
-      P(T_COL, M_BEAM, e.x, y, e.z, -ax * len, 0, -az * len, 0.3, 2.2, 0.8, WHITE, 1.2, 1, 0, 0, 0, 0, 1, 0, 0.2);
-      P(T_GLOW, M_BILL, e.x, y, e.z, 0, 0, 0, 0.22, 8, 3, WHITE, 1.2, 1);
-      sparks(e.x, y, e.z, 0, 0.6, 0, cnt(4), 20, 50, 1, SPARK, 0.8, 0.35, 50, 1.3);
+      const y = A.ropeY[i];
+      sparks(e.x, y, e.z, -az, 0.5, ax, cnt(5 + 6 * k), 20, 60, 0.9, SPARK, 0.9, 0.4, 50, 1.3);
+      sparks(e.x + ax * rr(-14, 14), y, e.z + az * rr(-14, 14), 0, 0.6, 0, cnt(3), 15, 40, 1, WHITE, 0.7, 0.35, 50, 1.2);
     }
     P(T_RING, M_PLANE, e.x, A.ropeY[1], e.z, -az, 0, ax, 0.3, 6, 40, colOf(e.who), 0.8, 1, 0, 0, 0, 0, 1, 0, 0.2);
   }
@@ -755,14 +765,16 @@ export function createVfx(ctx, W) {
     const A = W.arena && W.arena.info;
     if (!A || !ropeLine(e.side)) return;
     const x0 = _rx0, z0 = _rz0, x1 = _rx1, z1 = _rz1;
+    // (the arena whips the cable halves: mine is the crack at the break and what the turnbuckles throw)
     for (let i = 0; i < A.ropeY.length; i++) {
       const y = A.ropeY[i];
-      // the whip crack: each cable lashes back from the break toward its posts
-      bolt(e.x, y, e.z, x0, y + rr(-3, 6), z0, 4, 5, 3, WHITE, 1.4, 0.22, i * 0.03);
-      bolt(e.x, y, e.z, x1, y + rr(-3, 6), z1, 4, 5, 3, WHITE, 1.4, 0.22, i * 0.03);
+      P(T_GLINT, M_BILL, e.x, y, e.z, 0, 0, 0, 0.22, 22, 6, WHITE, 1.1, 1, 0, 0, rnd() * TAU, 3, 1, 0, 0.2, 0, i * 0.04);
+      for (let k = -1; k <= 1; k += 2) for (let j = 0; j < cnt(6); j++) {
+        const dx = (x1 - x0) * k, dz = (z1 - z0) * k, l = Math.hypot(dx, dz) || 1, sp = rr(90, 190);
+        P(T_STREAK, M_VEL, e.x, y, e.z, dx / l * sp + rr(-12, 12), rr(-6, 26), dz / l * sp + rr(-12, 12), rr(0.25, 0.45), 1, 0.3, WHITE, 1.4, 1, 2.5, 30, 0, 0, rr(8, 14));
+      }
     }
-    P(T_GLINT, M_BILL, e.x, A.ropeY[1], e.z, 0, 0, 0, 0.3, 50, 12, WHITE, 1.6, 1, 0, 0, 0.3, 2, 1, 0, 0.2);
-    P(T_RING, M_BILL, e.x, A.ropeY[1], e.z, 0, 0, 0, 0.35, 8, 60, WHITE, 1, 1, 0, 0, 0, 0, 1, 0, 0.2);
+    P(T_RING, M_BILL, e.x, A.ropeY[1], e.z, 0, 0, 0, 0.3, 6, 44, WHITE, 0.7, 1, 0, 0, 0, 0, 1, 0, 0.2);
     // turnbuckles let go at both posts
     for (let k = 0; k < 2; k++) {
       const px = k ? x1 : x0, pz = k ? z1 : z0;
@@ -830,12 +842,12 @@ export function createVfx(ctx, W) {
     // -- dizzy: stars circling the head for as long as the state lasts
     if (f.state === 'stunned') {
       s.stunT += dt;
-      headPos(f, _a);
-      const cy = _a.y + 5.5, n = 5;
-      LV(T_RIPPLE, M_FLAT, _a.x, cy, _a.z, 19, STARY, 0.5, 1, -T * 2);
+      anchor(f, 'crown', _a);
+      const cy = _a.y + 1.5, n = 5, sr = f.key === 'ghidorah' ? 9 : 7;
+      LV(T_RIPPLE, M_FLAT, _a.x, cy, _a.z, sr * 2.7, STARY, 0.5, 1, -T * 2);
       for (let i = 0; i < n; i++) {
         const a = T * 3.6 + i / n * TAU;
-        LV(T_STAR, M_BILL, _a.x + Math.cos(a) * 7, cy + Math.sin(a * 2 + i) * 0.9, _a.z + Math.sin(a) * 7, 4.4, STARY, 1.25, 1, a * 1.7);
+        LV(T_STAR, M_BILL, _a.x + Math.cos(a) * sr, cy + Math.sin(a * 2 + i) * 0.9, _a.z + Math.sin(a) * sr, 4.4, STARY, 1.25, 1, a * 1.7);
       }
     }
     // -- guard up: a cool shell in front of the body, flaring when it soaks a hit
@@ -857,7 +869,7 @@ export function createVfx(ctx, W) {
       else {
         const late = k > 0.7, c1 = late ? WHITE : col, sz = te.heavy ? 1 : 0.5;
         for (let h = 0; h < (te.both ? 2 : 1); h++) {
-          bonePos(f, h ? 'handL' : 'handR', _a);
+          anchor(f, te.both ? (h ? 'handL' : 'handR') : te.hand, _a);
           LV(T_GLINT, M_BILL, _a.x, _a.y, _a.z, (9 + 16 * k) * sz, c1, 0.9 + 0.7 * k, 1, T * 5);
           LV(T_GLOW, M_BILL, _a.x, _a.y, _a.z, (7 + 6 * k) * sz, late ? DANGER : col, 0.8, 1);
           if (te.heavy) LV(T_RING, M_BILL, _a.x, _a.y, _a.z, 30 - 24 * k, late ? DANGER : col, 0.5 + 0.6 * k, 1);
@@ -865,6 +877,12 @@ export function createVfx(ctx, W) {
       }
     }
     tickTrail(f, s, dt);
+    // -- the body itself: look.js's rim glow in the kaiju's colour (a uniform write)
+    let g = full ? 0.55 + 0.2 * Math.sin(T * 9) : m > 0.4 ? 0.35 * (m - 0.4) / 0.6 : 0;
+    if (te.on && te.heavy) g = Math.max(g, 0.9 * te.t / te.dur);
+    if (fin.on && !fin.hit && fin.who === f.id) g = Math.max(g, Math.min(1.3, 0.5 + fin.t * 0.5));
+    if (f.state === 'ko') g = 0;
+    if (g !== s.glow) { s.glow = g; setKaijuGlow(f.root, col.getHex(), g); }
   }
   // Lock-up: sparks grinding out from between the two bodies
   let lock = false, lockAcc = 0;
@@ -1007,17 +1025,19 @@ export function createVfx(ctx, W) {
       P(T_STREAK, M_VEL, x, 1.5, z, Math.cos(a) * rr(20, 50), rr(20, 50), Math.sin(a) * rr(20, 50), 0.4, 1, 0.3, col, 1.4, 1, 1.5, 60, 0, 0, 5, 0, 0, 0, delay);
     }
   }
-  function pyro(col, delay = 0, dur = 1.5) {
+  function pyro(col, delay = 0, dur = 1.5, big = false) {
     const A = W.arena && W.arena.info;
     if (!A) return;
     const pts = A.pyro || A.posts;
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
+      if (p.kind && p.kind !== 'post' && p.kind !== 'gate' && !(big && p.kind === 'stand')) continue;
       emitter(E_PYRO, p.x, p.y !== undefined ? p.y : A.postH + 2.6, p.z, dur, col, 0, delay + (i % 2) * 0.08);
     }
   }
 
   // ---- finishers ----
+  let dip = 0; // exposure dip asked of look.js around a finisher, so its glow has somewhere to go
   const fin = { on: false, who: 'player', target: 'rival', key: '', t: 0, hit: false, acc: 0, acc2: 0 };
   // deferred calls into the world's own spawners (staggered shockwaves): a tiny fixed queue on the effect clock
   const later = [];
@@ -1046,6 +1066,7 @@ export function createVfx(ctx, W) {
     if (!A || !V) { fin.on = false; return; }
     fin.t += dt;
     if (fin.hit || fin.t > 12) return;
+    dip = Math.min(0.45, dip + dt * 0.35);
     const col = pal[fin.who].main, alt = pal[fin.who].alt, p = A.pos;
     chest(A, _a);
     // charge: power drawn in to the chest from all around, the ground ring spinning up
@@ -1098,9 +1119,28 @@ export function createVfx(ctx, W) {
       P(T_RING, M_FLAT, _b.x, _b.y, _b.z, 0, 0, 0, 0.3, 10, 50, WHITE, 0.9, 1, 0, 0, 0, 0, 1, 0, 0.2);
       return;
     }
-    // lift / apex / anything else: the pose beat. A column of the kaiju's power through both bodies.
-    gring(p.x, p.z, 6, 40, 0.45, col, 1.1);
-    dustRing(p.x, p.z, cnt(12), 10, 24, 40, 5, 13, 1.2, DUST, 0.5);
+    if (e.beat === 'lift') {
+      // the hoist: the ground answers
+      gring(p.x, p.z, 6, 40, 0.45, col, 1.1);
+      dustRing(p.x, p.z, cnt(12), 10, 24, 40, 5, 13, 1.2, DUST, 0.5);
+      return;
+    }
+    if (e.beat === 'rise') {
+      // both leave the ground: a launch ring, a kick of dust, streaks torn upward
+      gring(p.x, p.z, 8, 60, 0.5, WHITE, 0.9);
+      gring(p.x, p.z, 6, 44, 0.45, col, 1.1, T_RING, 0.06);
+      dustRing(p.x, p.z, cnt(18), 8, 30, 56, 6, 16, 1.5, DUST, 0.55);
+      column(p.x, 0.3, p.z, 90, 14, 26, 0.6, col, 0.6, 1, 6, 1);
+      for (let i = 0; i < cnt(24); i++) {
+        const a = rnd() * TAU, r = rr(6, 18);
+        P(T_STREAK, M_VEL, p.x + Math.cos(a) * r, rr(2, 14), p.z + Math.sin(a) * r, 0, rr(70, 130), 0, rr(0.3, 0.55), 1.2, 0.4, rnd() < 0.3 ? WHITE : col, 1.3, 1, 1, 0, 0, 0, 10);
+      }
+      const tr = st[A.id].trail;
+      tr.on = true; tr.type = 'finisher'; tr.t = 0; tr.acc = 0; tr.dacc = 0; tr.by = e.who; tr.px = p.x; tr.py = p.y; tr.pz = p.z;
+      return;
+    }
+    // apex (and any beat not named above): the pose at the top, in the kaiju's own element
+    st[A.id].trail.on = false;
     if (A.key === 'ghidorah') {
       skyBolt(_b.x, _b.z, alt, 1.2, 0);
       bolt(_b.x + rr(-20, 20), 190, _b.z + rr(-20, 20), _b.x, _b.y, _b.z, 6, 8, 6, col, 1.6, 0.25, 0.05);
@@ -1126,7 +1166,7 @@ export function createVfx(ctx, W) {
     const key = A ? A.key : fin.key, id = e.who || fin.who;
     const col = (pal[id] || pal.player).main, alt = (pal[id] || pal.player).alt;
     const x = e.x, z = e.z, R = e.radius > 10 ? e.radius : 75;
-    fin.hit = true;
+    fin.hit = true; dip = 0.6;
     const V = fighter(e.target);
     if (V) st[V.id].trail.on = false;
     lastSlamT = -9;
@@ -1260,7 +1300,7 @@ export function createVfx(ctx, W) {
   }
   function fxWin(winner) {
     const A = W.arena && W.arena.info, col = colOf(winner), f = fighter(winner);
-    for (let i = 0; i < 3; i++) pyro(i === 1 ? GOLD : col, 0.2 + i * 1.1, 1.6);
+    for (let i = 0; i < 3; i++) pyro(i === 1 ? GOLD : col, 0.2 + i * 1.1, 1.6, true);
     if (A) {
       emitter(E_CONFETTI, A.cx, 78, A.cz, 11, col, A.half * 0.95, 0.3);
       // streamers: ribbons thrown from every post across the ring
@@ -1322,7 +1362,8 @@ export function createVfx(ctx, W) {
     for (const t of teles) t.on = false;
     for (const e of ems) e.on = false;
     for (const q of later) q.t = -1;
-    fin.on = false; lock = false; lockAcc = 0; lastSlamT = -9;
+    fin.on = false; lock = false; lockAcc = 0; lastSlamT = -9; dip = 0; setLookFxDip(0);
+    for (const id of ['player', 'rival']) { st[id].glow = 0; if (W[id]) setKaijuGlow(W[id].root, 0, 0); }
     if (light.l && light.l._seq === light.seq) { light.l.intensity = 0; light.l.distance = 60; light.l.color.setHex(0xffaa33); }
     light.l = null;
   }
@@ -1338,6 +1379,7 @@ export function createVfx(ctx, W) {
       tickLock(dt); tickTeles(dt); tickFinisher(dt);
     }
     tickLight(dt);
+    if (dip > 0) { if (!fin.on || fin.hit) dip = Math.max(0, dip - dt * 0.3); setLookFxDip(dip); }
     S.mat.uniforms.uT.value = T;
     _flush(B, false);
     B.mesh.visible = T < B.until;
@@ -1364,7 +1406,9 @@ export function createVfx(ctx, W) {
         if (!f) return;
         const te = st[f.id].tele;
         te.on = true; te.t = 0; te.dur = Math.max(0.12, e.windup || 0.3);
-        te.heavy = e.kind !== 'light'; te.both = e.kind === 'clothesline' || e.kind === 'splash';
+        te.heavy = e.kind !== 'light';
+        te.both = e.kind === 'splash' || (e.kind === 'light' && e.combo === 3); // strike_3 is the double hammer
+        te.hand = e.kind === 'light' && e.combo === 1 ? 'handL' : 'handR';       // the jab is the lead hand
       });
       on(EV.STRIKE_LANDED, (e) => {
         const f = fighter(e.who);

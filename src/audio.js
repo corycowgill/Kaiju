@@ -98,7 +98,7 @@ const STAGE_GAIN = 0.8;
 
 // Monster variant (monsters.js cfg.variant) or monster key -> per-kaiju SFX suffix
 // Takes the compressor node's built-in make-up gain back out (see _buildMatchMix)
-const LIMIT_TRIM = 1;
+const LIMIT_TRIM = 0.7807; // -2.15 dB, measured in Chrome (devtools/audio limiter render) for the settings below
 const KAIJU_SFX = { gojira: 'gorrak', ghidorah: 'tridon', mecha: 'mechra', godzilla: 'gorrak', gorrak: 'gorrak', tridon: 'tridon', mechra: 'mechra' };
 
 // ---- Wrestling pack (Chicago title match). Synthesized offline by tools/wrestling_sfx/

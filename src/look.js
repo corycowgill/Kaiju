@@ -490,7 +490,7 @@ const KEYS = [
     discElev: -3, lightElev: 13,
     sun: lin(0xff8a5e), sunI: 1.45,
     fill: lin(0xaab4e0), fillI: 0.55,
-    hemiSky: lin(0x7d88c4), hemiGround: lin(0x44394e), hemiI: 0.44,
+    hemiSky: lin(0x7d88c4), hemiGround: lin(0x44394e), hemiI: 0.54,
     amb: lin(0x4b5280), ambI: 0.12,
     haze: lin(0x4d527e), hazeSun: lin(0xf0794e), hazeExp: 1.8, fogD: 0.0014, fogK: 0.011, fogMax: 0.92,
     zen: lin(0x10173f), mid: lin(0x3d4690), glow: lin(0xff6a3c), disc: 0,

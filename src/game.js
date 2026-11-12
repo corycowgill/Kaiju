@@ -5881,6 +5881,8 @@ const ctx = {
     get sprint() { return _in.sprint; },
     get attack() { return _in.attack; },
     get wheel() { return _in.wheel; },
+    get lookX() { return padInput.lookX; },
+    get lookY() { return padInput.lookY; },
     get pointerLocked() { return document.pointerLockElement === renderer.domElement; },
     pad: {
       get connected() { return padInput.connected; },

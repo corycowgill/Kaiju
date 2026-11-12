@@ -516,8 +516,8 @@ export function createFightCam(ctx, W) {
     if (!shot.beats && (sub === 'rise' || sub === 'walk') && t > 3.6) return setSub('namecard', 0);
     if (sub === 'rise') {
       // low over the water, three-quarter front, creeping in as it surfaces
-      lowOrbit(S.x, 17, S.z, h + 0.5 * s, MIN_Y, lerp(76, 54, ease(t / 4.5)), 46);
-      tgt.look.y = lerp(13, 21, ease(t / 3.5));
+      lowOrbit(S.x, 17, S.z, h + 0.5 * s, MIN_Y, lerp(48, 37, ease(t / 3)), 58);
+      tgt.look.y = lerp(9, 22, ease(t / 2.4));
     } else if (sub === 'walk') {
       if (f.isPlayer) {
         // behind the shoulder, low: the skyline and the ring lights ahead of it
@@ -529,7 +529,7 @@ export function createFightCam(ctx, W) {
           shot.fresh = false;
           let run = 150;
           if (ringA) run = clamp(Math.hypot(ringA.cx - S.x, ringA.cz - S.z) + 8, 60, 170);
-          shot.anchor.set(S.x + Math.sin(h) * run + Math.cos(h) * 7 * s, 4.6, S.z + Math.cos(h) * run - Math.sin(h) * 7 * s);
+          shot.anchor.set(S.x + Math.sin(h) * run + Math.cos(h) * 7 * s, ringA ? ringA_top + 4 : 5, S.z + Math.cos(h) * run - Math.sin(h) * 7 * s); // over the top rope
           refreshNear(shot.anchor.x, shot.anchor.z, 70, 9);
           pushOut(shot.anchor, 3);
         }
@@ -553,9 +553,10 @@ export function createFightCam(ctx, W) {
       lowOrbit(S.x, 24, S.z, h + 0.32 * s, 4, lerp(40, 34, ease(t / 2.5)), 56);
     } else if (sub === 'namecard') {
       // three-quarter front, long-ish lens, the kaiju on its third of the frame (player left, rival right), slow drift
-      const dist = 60;
-      lowOrbit(S.x, 17, S.z, h + (0.62 + 0.045 * t) * s, 5, dist, 42);
-      offCentre(0.36 * s, dist);
+      // (the HUD's card is lower-left for the player, lower-right for the rival: the kaiju takes the other side)
+      const dist = 42;
+      lowOrbit(S.x, 19, S.z, h + (0.62 + 0.045 * t) * s, 4.5, dist, 52);
+      offCentre(-0.3 * s, dist);
     } else { // 'arrive': both in the ring, wide and low
       const o = shot.other, mx = (S.x + o.pos.x) * 0.5, mz = (S.z + o.pos.z) * 0.5, sep = f.distTo(o);
       if (shot.fresh) shot.az0 = camAzAround(mx, mz);
@@ -862,7 +863,7 @@ export function createFightCam(ctx, W) {
         shot.az0 = sep < 75 && sep > 4 ? Math.atan2(l.pos.x - w.pos.x, l.pos.z - w.pos.z) + 0.3 * rig.side : camAzAround(w.pos.x, w.pos.z);
         shot.side = rig.side;
       } else if (e.shot === 'between') { if (!(mode === SHOT && shot.name === 'between')) startBetween(W[e.who], e.dur); }
-      else if (e.shot === 'bell') { if (mode === SHOT && shot.name === 'entrance') { setSub('arrive', 0.9); shot.max = shot.t + Math.max(3, e.dur + 1.5); } }
+      else if (e.shot === 'bell') { if (mode === SHOT && shot.name === 'entrance') endShot(1.3); } // the fight framing is the two-shot for the bell
       else if (e.shot === 'ko') { /* started off the ko event itself */ }
       else if (e.shot === '' && mode === SHOT) endShot(0.9);
     });

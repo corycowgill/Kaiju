@@ -106,9 +106,10 @@ export function buildRig(key, rest) {
     const pole0 = lu0.clone().addScaledVector(ha, -lu0.dot(ha));
     if (pole0.length() < 0.02 * lu0.length()) pole0.set(0, 0, 1);
     R.leg[s] = { sign, iUp: L.a, iLo: L.b, iEnd: L.c, iToe: I[side + 'ToeBase'], kneeOnly, ankle0, l1: lu0.length(), l2: lf0.length(), len: lu0.length() + lf0.length(),
-      f0: lf0.clone(), pole0: pole0.normalize(),
+      f0: lf0.clone(), pole0: pole0.normalize(), toe: 0,
       qU0inv: frameQuat(new THREE.Quaternion(), lu0, ln0).invert(), qF0inv: frameQuat(new THREE.Quaternion(), lf0, ln0).invert() };
   }
+  for (let s = 0; s < 2; s++) { const G = R.leg[1], t = rest.wp[G.iToe]; R.leg[s].toe = Math.hypot(t.x - G.ankle0.x, t.z - G.ankle0.z) + 1.2; }
   R.armLen = (R.arm[0].len + R.arm[1].len) / 2;
   R.legLen = R.leg[1].len;
   R.shoulderY = rest.wp[R.arm[0].iUp].y;
@@ -144,6 +145,8 @@ const DEFAULTS = {
   // legs, FK (lXfk = 1): thigh flexion (knee forward +), abduction (out +), twist, knee bend (+), ankle pitch (toes down +)
   lLfk: 0, tLp: 0, tLr: 0, tLy: 0, kLb: 0, anLp: 0,
   lRfk: 0, tRp: 0, tRr: 0, tRy: 0, kRb: 0, anRp: 0,
+  // forearm + hand scale: a smear on a strike's contact frames (1 = normal). The IK accounts for the longer forearm
+  aLs: 1, aRs: 1,
   // 1 = lower the hips as far as needed for planted feet to reach their targets
   reach: 1,
 };
@@ -199,7 +202,8 @@ export function twoBone(c, S, T, pole, dUp, dLo, mid) {
  * R._P (rig-space joint positions) and, when given, local quaternions into
  * outQ (n x 4) and the hips' local position into outHip (3).
  */
-export function solvePose(R, P, outQ, outHip) {
+const _arm = { l1: 0, l2: 0, qU0inv: null, qF0inv: null };
+export function solvePose(R, P, outQ, outHip, outScale) {
   const D = R._D, pos = R._P, wp = R.wp, par = R.parent, Q = R.quirks;
   const iH = R.iHips;
   eulerQuat(D[iH], P.hpit, P.hyaw, P.hrol);
@@ -253,8 +257,11 @@ export function solvePose(R, P, outQ, outHip) {
     const w = L ? P.aLw : P.aRw;
     if (w > 0) _T.lerp(_v3.set(sg * (L ? P.aLwx : P.aRwx), L ? P.aLwy : P.aRwy, L ? P.aLwz : P.aRwz), w);
     _pole.set(sg * (L ? P.eLx : P.eRx), L ? P.eLy : P.eRy, L ? P.eLz : P.eRz).applyQuaternion(D[R.iS3]);
-    twoBone(A, _S, _T, _pole, D[A.iUp], D[A.iLo], pos[A.iLo]);
-    refresh(A.iEnd);
+    const sc = L ? P.aLs : P.aRs;
+    _arm.l1 = A.l1; _arm.l2 = A.l2 * sc; _arm.qU0inv = A.qU0inv; _arm.qF0inv = A.qF0inv;
+    twoBone(_arm, _S, _T, _pole, D[A.iUp], D[A.iLo], pos[A.iLo]);
+    pos[A.iEnd].copy(wp[A.iEnd]).sub(wp[A.iLo]).multiplyScalar(sc).applyQuaternion(D[A.iLo]).add(pos[A.iLo]);
+    if (outScale) outScale[s] = sc;
     D[A.iEnd].copy(D[A.iLo]).multiply(eulerQuat(_q1, L ? P.hLp : P.hRp, sg * (L ? P.hLy : P.hRy), sg * (L ? P.hLr : P.hRr)));
   }
   // ---- legs ----
@@ -265,7 +272,8 @@ export function solvePose(R, P, outQ, outHip) {
     const fyaw = sg * (L ? P.fLyaw : P.fRyaw), fpit = L ? P.fLpit : P.fRpit;
     refresh(G.iUp);
     _S.copy(pos[G.iUp]);
-    _T.set(G.ankle0.x + sg * (L ? P.fLx : P.fRx), G.ankle0.y + (L ? P.fLy : P.fRy), G.ankle0.z + (L ? P.fLz : P.fRz));
+    // (a pitched foot turns about the ankle: lift the ankle so the toes or heel stay out of the ground)
+    _T.set(G.ankle0.x + sg * (L ? P.fLx : P.fRx), G.ankle0.y + (L ? P.fLy : P.fRy) + Math.abs(Math.sin(fpit)) * G.toe * (fpit > 0 ? 1 : 0.6), G.ankle0.z + (L ? P.fLz : P.fRz));
     // foot orientation when planted: flat, turned by its yaw, heel raised by its pitch
     eulerQuat(_q2, fpit, fyaw, 0);
     if (G.kneeOnly) {
@@ -326,14 +334,17 @@ const _bakePose = newPose();
  */
 export function bakeClip(R, name, def) {
   const dur = def.dur, N = Math.max(2, Math.round(dur * FPS) + 1);
-  const times = new Float32Array(N), q = new Float32Array(R.n * 4), hip = [0, 0, 0];
+  const times = new Float32Array(N), q = new Float32Array(R.n * 4), hip = [0, 0, 0], sc = [1, 1];
+  const scl = [new Float32Array(N * 3), new Float32Array(N * 3)];
+  let scaled = false;
   const qs = Array.from({ length: R.n }, () => new Float32Array(N * 4)), hp = new Float32Array(N * 3);
   for (let k = 0; k < N; k++) {
     const t = dur * k / (N - 1);
     times[k] = t;
     resetPose(_bakePose);
     def.pose(def.loop && k === N - 1 ? 0 : t, _bakePose, R, dur);
-    solvePose(R, _bakePose, q, hip);
+    solvePose(R, _bakePose, q, hip, sc);
+    for (let s = 0; s < 2; s++) { scl[s][k * 3] = scl[s][k * 3 + 1] = scl[s][k * 3 + 2] = sc[s]; if (Math.abs(sc[s] - 1) > 1e-3) scaled = true; }
     hp[k * 3] = hip[0]; hp[k * 3 + 1] = hip[1]; hp[k * 3 + 2] = hip[2];
     for (let i = 0; i < R.n; i++) {
       const o = qs[i], b = k * 4;
@@ -345,6 +356,8 @@ export function bakeClip(R, name, def) {
   }
   const tracks = [new THREE.VectorKeyframeTrack('Hips.position', times, hp)];
   for (let i = 0; i < R.n; i++) tracks.push(new THREE.QuaternionKeyframeTrack(R.names[i] + '.quaternion', times, qs[i]));
+  // Forearm scale keys go on every clip (all 1 on most) so a smear always blends back to 1
+  for (let s = 0; s < 2; s++) tracks.push(new THREE.VectorKeyframeTrack(R.names[R.arm[s].iLo] + '.scale', scaled ? times : new Float32Array([0, dur]), scaled ? scl[s] : new Float32Array([1, 1, 1, 1, 1, 1])));
   return new THREE.AnimationClip(name, dur, tracks);
 }
 
