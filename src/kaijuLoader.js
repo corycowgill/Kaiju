@@ -269,6 +269,7 @@ export async function loadKaijuModel(monsterKey, onProgress) {
     if (!action) return false;
     if (oneShot && oneShot.name === name && action.isRunning() && !opts.restart) return true;
     const clipDur = action.getClip().duration || 1;
+    const hold = !!opts.hold;   // (callers reuse one opts object: read it now, not when the clip ends)
     if (opts.duration) timeScale = clipDur / opts.duration;
     const realDur = clipDur / Math.max(1e-3, timeScale);
 
@@ -278,8 +279,8 @@ export async function loadKaijuModel(monsterKey, onProgress) {
 
     const onFinished = (e) => {
       if (e.action !== action) return;
-      if (locoLocked && !opts.hold) { _clearOneShot(); return; }
-      if (opts.hold) {
+      if (locoLocked && !hold) { _clearOneShot(); return; }
+      if (hold) {
         // Stay on the clamped last frame (death pose) and keep blocking
         // locomotion until something explicitly plays a new one-shot.
         mixer.removeEventListener('finished', onFinished);

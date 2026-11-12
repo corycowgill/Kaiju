@@ -22,10 +22,11 @@
 //   suplex      V's centre travels a half circle of radius (rA + rV - 3) over
 //               A's head, pitching forward 270 deg: it lands flat on its back
 //               behind A, head toward A. A bridges back up to 0.5 rad.
-//   lift/carry  V flat on its back across A's raised hands: centre at
+//   lift/carry  V lying on its SIDE over A's raised hands (head forward, belly
+//               out to A's side, so its tail stays level): centre at
 //               (front 2, up A.height + 8), body axis across A's shoulders.
 //   press slam  from there straight down to front (rA + 9), on its back.
-//   swing       V flat, feet in A's hands: centre at radius (rA + hc + 3),
+//   swing       V flat, feet in A's hands: centre at radius (rA + hc - 3),
 //               height 9, head outward, turning counter-clockwise with A.
 //   pin         A face-down (root pitched 1.35 rad forward) across V's chest,
 //               at right angles to it.
@@ -56,7 +57,7 @@ export const GRAPPLE = {
   ropeHp: 3,
   // pin
   countAt: [1.0, 2.0, 3.0], forcedAt: [0.8, 1.6, 2.4], nearFall: 2.55,
-  pinGain: 0.05, pinGainS: 0.22, pinDecay: 0.22,
+  pinGain: 0.07, pinGainS: 0.22, pinDecay: 0.22, pinLate: 2.7,
   // finisher
   finDmg: 55, finRadius: 70, finRange: 22,
 };
@@ -80,7 +81,7 @@ const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
 const mkFlight = () => ({ on: false, V: null, by: null, type: '', mode: '', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, roll: 0, spinP: 0, spinR: 0,
-  count: 0, rebounds: 0, t: 0, impact: 0, landed: false });
+  count: 0, rebounds: 0, t: 0, impact: 0, landed: false, mom: 0 });
 
 /** @returns the grapple runtime (see the members' comments) */
 export function createGrapple(ctx, W) {
@@ -100,6 +101,8 @@ export function createGrapple(ctx, W) {
 
   const flightOf = (f) => flights[f.isPlayer ? 0 : 1];
   const groundY = (f) => -f.sink;
+  // Height of a carried body's centre over the lifter's feet: the anim layer knows where the raised hands are
+  const carryH = (A, V) => (W.anims.carryY ? W.anims.carryY(A, V) : A.height + 8);
   const play = (f, name, dur, fade = 0.12) => {
     _animOpt.fade = fade; _animOpt.timeScale = 1; _animOpt.duration = dur; _animOpt.commit = dur;
     return W.anims.play(f, name, _animOpt);
@@ -222,7 +225,7 @@ export function createGrapple(ctx, W) {
 
   /** Pick a downed foe up into a lock-up. */
   function startPickup(A, V) {
-    if (hold.active || pin.active || fin.active || V.held || V.state !== 'downed') return false;
+    if (hold.active || pin.active || fin.active || V.held || V.state !== 'downed' || V.invuln) return false;
     const locked = V.grabChain < 1; // the first pick-up after a clean knockdown is free; dragged up again right after a throw, it can fight the hold
     take(A, V);
     hold.active = true; hold.A = A; hold.V = V; hold.who = A.id; hold.target = V.id;
@@ -340,15 +343,15 @@ export function createGrapple(ctx, W) {
         break;
       }
       case 'hoist': {
-        const u = smooth(t / G.hoist), H = A.height + 8;
+        const u = smooth(t / G.hoist), H = carryH(A, V);
         stand(A, pa.x, pa.z, hold.yaw, -0.12 * Math.sin(Math.PI * u));
-        V.setPose(pa.x + fx * lerp(hold.d0, 2, u), lerp(V.hc, H, u) + groundY(A), pa.z + fz * lerp(hold.d0, 2, u), hold.yaw + Math.PI - HALF_PI * u, -HALF_PI * u, 0);
+        V.setPose(pa.x + fx * lerp(hold.d0, 2, u), lerp(V.hc, H, u) + groundY(A), pa.z + fz * lerp(hold.d0, 2, u), hold.yaw + Math.PI - HALF_PI * u, 0, HALF_PI * u);
         if (t >= G.hoist) { hold.phase = 'carry'; hold.t = 0; }
         break;
       }
       case 'carry': {
         // Walk it where you want it
-        const H = A.height + 8, mv = Math.hypot(ia.moveX, ia.moveZ);
+        const H = carryH(A, V), mv = Math.hypot(ia.moveX, ia.moveZ);
         if (mv > 0.3) {
           const sp = A.cfg.stats.speed * 18 * G.carrySpeed * (A.tired ? 0.6 : 1);
           pa.x += ia.moveX / mv * sp * dt; pa.z += ia.moveZ / mv * sp * dt;
@@ -360,7 +363,7 @@ export function createGrapple(ctx, W) {
         }
         A.spend(G.carryDrain * dt);
         stand(A, pa.x, pa.z, hold.yaw);
-        V.setPose(pa.x + fx * 2, H + groundY(A) + Math.sin(t * 5) * 0.5, pa.z + fz * 2, hold.yaw + HALF_PI, -HALF_PI, 0);
+        V.setPose(pa.x + fx * 2, H + groundY(A) + Math.sin(t * 5) * 0.5, pa.z + fz * 2, hold.yaw + HALF_PI, 0, HALF_PI);
         if ((t >= 0.2 && (ia.grab || ia.strike)) || t >= G.carryMax || A.stamina <= 0) {
           if (mv > 0.3) {
             // Thrown: out over the ropes, at whatever is in the way
@@ -380,9 +383,9 @@ export function createGrapple(ctx, W) {
         break;
       }
       case 'slamdown': {
-        const u = Math.min(1, t / G.slamTime), e = u * u, H = A.height + 8, out = A.radius + 9;
+        const u = Math.min(1, t / G.slamTime), e = u * u, H = carryH(A, V), out = A.radius + 9;
         stand(A, pa.x, pa.z, hold.yaw, 0.45 * e);
-        V.setPose(pa.x + fx * lerp(2, out, e), lerp(H + groundY(A), V.lieY, e), pa.z + fz * lerp(2, out, e), hold.yaw + HALF_PI, -HALF_PI, 0);
+        V.setPose(pa.x + fx * lerp(2, out, e), lerp(H + groundY(A), V.lieY, e), pa.z + fz * lerp(2, out, e), hold.yaw + HALF_PI + HALF_PI * e, -HALF_PI * e, HALF_PI * (1 - e));
         if (u >= 1) {
           endHold();
           impact(V, A, 'slam', G.slamDmg, 0.72, true);
@@ -391,7 +394,7 @@ export function createGrapple(ctx, W) {
         break;
       }
       case 'swing': {
-        const Rs = A.radius + V.hc + 3;
+        const Rs = A.radius + V.hc - 3; // the ankles within the swinger's reach
         if (t < G.swingSetup) {
           const u = smooth(t / G.swingSetup);
           stand(A, pa.x, pa.z, hold.ang, -0.15 * u);
@@ -417,7 +420,7 @@ export function createGrapple(ctx, W) {
         const b = ctx.buildingAt(hx, hz);
         if (b && !b.destroyed) {
           const f = flightOf(V);
-          f.count = hold.launched ? f.count : 0; hold.launched = true;
+          if (!hold.launched) { f.count = 0; f.mom = 0; } hold.launched = true;
           f.V = V; f.by = A; f.type = 'swing'; f.x = hx; f.y = 9; f.z = hz;
           smash(f, b, 60, true);
           hold.omega *= 0.85;
@@ -435,7 +438,7 @@ export function createGrapple(ctx, W) {
           endHold();
           launch(V, A, 'swing', 'air', x, 10 + groundY(A), z, Math.sin(heading), Math.cos(heading),
             G.swingSpeed + G.swingPerTurn * Math.min(G.swingTurns, turns), G.swingUp + 3 * Math.min(G.swingTurns, turns));
-          flightOf(V).count = n;
+          flightOf(V).count = n; flightOf(V).mom = 14; // (the wrecking-ball hits already paid)
           flightOf(V).pitch = -HALF_PI; flightOf(V).yaw = hold.ang + Math.PI; flightOf(V).spinP = 0; flightOf(V).spinR = 0;
           releaseThrower(A, 0.6);
         }
@@ -455,9 +458,9 @@ export function createGrapple(ctx, W) {
     const f = flightOf(V);
     f.on = true; f.V = V; f.by = by; f.type = type; f.mode = mode;
     f.x = x; f.y = y; f.z = z; f.vx = dx * speed; f.vz = dz * speed; f.vy = up;
-    f.yaw = mode === 'run' ? Math.atan2(dx, dz) : V.root.rotation.y; f.pitch = V.root.rotation.x; f.roll = 0;
+    f.yaw = mode === 'run' ? Math.atan2(dx, dz) : V.root.rotation.y; f.pitch = V.root.rotation.x; f.roll = mode === 'air' ? V.root.rotation.z : 0;
     f.spinP = mode === 'air' ? -(2.5 + speed * 0.02) : 0; f.spinR = 0;
-    f.count = 0; f.rebounds = 0; f.t = 0; f.impact = 0; f.landed = false;
+    f.count = 0; f.rebounds = 0; f.t = 0; f.impact = 0; f.landed = false; f.mom = 0;
     V.held = true; V.targetable = false; V.solid = false; V.lean = 0;
     V.vel.set(0, 0, 0);
     V.setState('airborne', 0, mode === 'run' ? 'whip_run' : 'carried');
@@ -470,14 +473,15 @@ export function createGrapple(ctx, W) {
   // A travelling body meets a building. Returns the share of its speed it keeps (0 = stopped dead).
   function smash(f, b, speed, forceCollapse) {
     const V = f.V, by = f.by;
-    if (b.isFence || b.h < 5) { ctx.collapseBuilding(b, by.id); return 1; } // stalls and fences are confetti
+    if (b.isFence || b.fest || b.h < 5) { ctx.collapseBuilding(b, by.id); return b.fest ? 0.97 : 1; } // festival tents, stalls and fences are confetti: no damage, no momentum, no callout
     const name = ctx.landmarkName(b), big = !!name;
     const through = forceCollapse || speed >= GRAPPLE.smashMin;
     f.count++;
     const dmg = (GRAPPLE.bldgDmg + speed * GRAPPLE.bldgSpeedDmg) * (big ? 1.5 : 1) * by.atkMult;
     const dealt = V.applyDamage(dmg, 'building', by.id, f.x, Math.max(6, f.y), f.z, false);
     if (through) ctx.collapseBuilding(b, by.id); else ctx.damageBuilding(b, 500, null, by.id);
-    by.gainMomentum(big ? 10 : 5);
+    // (one throw is worth at most 14 momentum from what it goes through, however long the plough)
+    if (f.mom < 14) { const m = big ? 7 : 3; f.mom += m; by.gainMomentum(m); }
     if (by.isPlayer) ctx.addScore(big ? 1500 : 350);
     const e = bus.ev(EV.BUILDING_IMPACT);
     e.who = V.id; e.by = by.id; e.type = f.type; e.building = b; e.landmarkId = b.landmarkId || ''; e.name = name; e.destroyed = !!b.destroyed;
@@ -571,7 +575,7 @@ export function createGrapple(ctx, W) {
     if (b && !b.destroyed) {
       // Put down ON something
       f.V = V; f.by = by; f.type = type; f.x = x; f.y = V.lieY; f.z = z;
-      if (settle) f.count = 0;
+      if (settle) { f.count = 0; f.mom = 0; }
       smash(f, b, 80, true);
       surface = 'building';
     }
@@ -593,7 +597,7 @@ export function createGrapple(ctx, W) {
     W.rival.targetable = tw;
     const imp = Math.min(1, size + speed * 0.002 + f.impact * (settle ? 0 : 1));
     const dealt = V.applyDamage((base + speed * GRAPPLE.landSpeedDmg) * by.dmgMult, type === 'whip' ? 'slam' : type, by.id, x, V.lieY, z, false);
-    by.gainMomentum(6);
+    by.gainMomentum(4);
     if (by.isPlayer) ctx.addScore(Math.round(dealt * 15));
     if (water) {
       const e = bus.ev(EV.WATER_IMPACT);
@@ -625,7 +629,8 @@ export function createGrapple(ctx, W) {
     V.setState('neutral');
     V.lockT = 0; V.lockHits = 0;
     if (V.hp <= 0) return; // the next update makes it a KO
-    if (dizzy) V.stun(1.2, by ? by.id : ''); else V.stagger(0.7, by ? by.id : '', 0, 0, 0);
+    // Dizzy off the ropes once; sent the same way again soon after, it only stumbles (no whip -> stun -> grab -> whip loop)
+    if (dizzy && V.reboundCd <= 0) { V.reboundCd = 14; V.stun(1.2, by ? by.id : ''); } else V.stagger(0.7, by ? by.id : '', 0, 0, 0);
   }
   /** A whipped body on the run can be struck (the rebound clothesline). */
   function strikable(V) { const f = flightOf(V); return f.on && f.mode === 'run'; }
@@ -687,7 +692,7 @@ export function createGrapple(ctx, W) {
       const ns = Math.max(0, speed - G.runDecel * dt);
       if (speed > 0) { f.vx *= ns / speed; f.vz *= ns / speed; }
       V.root.position.set(f.x, groundY(V), f.z);
-      V.root.rotation.set(0.28, f.yaw, 0);
+      V.root.rotation.set(0.12, f.yaw, 0); // (the stumble itself is the whip_run clip's)
       V._wade(dt);
       const by = f.by;
       // Back into the arms of the one who sent it, or out of steam
@@ -737,7 +742,7 @@ export function createGrapple(ctx, W) {
   /** A covers the downed V. forced: a knockout cover that cannot be kicked out of. */
   function startPin(A, V, forced) {
     if (hold.active || pin.active || fin.active || V.held || flightOf(V).on) return false;
-    if (V.state !== 'downed' && V.state !== 'ko') return false;
+    if ((V.state !== 'downed' && V.state !== 'ko') || (V.invuln && !forced)) return false;
     take(A, V);
     pin.active = true; pin.done = false; pin.A = A; pin.V = V; pin.who = A.id; pin.target = V.id;
     pin.t = 0; pin.count = 0; pin.meter = 0; pin.forced = !!forced;
@@ -747,7 +752,7 @@ export function createGrapple(ctx, W) {
     else {
       // The rival's kick-out is decided as the cover goes on: fresh = at one, hurt = the last instant, spent = never
       const r = S + (Math.random() * 0.2 - 0.1);
-      pin.kickAt = r < 0.17 ? Infinity : 2.95 - 2.5 * Math.pow(clamp01((r - 0.17) / 0.6), 1.7);
+      pin.kickAt = r < 0.13 ? Infinity : 2.95 - 2.5 * Math.pow(clamp01((r - 0.13) / 0.62), 4);
     }
     V.mid(_c);
     A.setPose(_c.x, V.lieY + 8, _c.z, V.root.rotation.y + HALF_PI, 1.35, 0);
@@ -782,7 +787,11 @@ export function createGrapple(ctx, W) {
     A.lockT = 0; A.lockHits = 0;
     A.stagger(0.9, V.id, -Math.sin(A.root.rotation.y), -Math.cos(A.root.rotation.y), 26);
     V.held = false; V.targetable = true;
-    V.getUp();
+    // The burst that throws the cover off, then up (untouchable from the first twitch)
+    V.invuln = true;
+    V.setState('downed', 0.25, null);
+    _animOpt.fade = 0.06; _animOpt.timeScale = 1; _animOpt.duration = undefined; _animOpt.commit = undefined;
+    W.anims.play(V, 'kickout', _animOpt);
   }
   function breakPin(reason) {
     const A = pin.A, V = pin.V;
@@ -818,6 +827,9 @@ export function createGrapple(ctx, W) {
       const S = clamp01(pin.strength);
       if (V.intent.mash > 0) pin.meter += V.intent.mash * (G.pinGain + G.pinGainS * S);
       pin.meter = Math.max(0, pin.meter - G.pinDecay * dt);
+      // The more beaten it is, the later even perfect mashing can get the shoulder up: a hurt kaiju's kick-outs are near falls
+      const minT = G.pinLate * (1 - clamp01((pin.strength - 0.25) / 0.45));
+      if (pin.t < minT) pin.meter = Math.min(pin.meter, 0.97 * pin.t / minT);
       if (pin.meter >= 1) kickOut();
     } else {
       pin.meter = pin.kickAt === Infinity ? Math.min(0.8, pin.t / 3 * 0.6 + Math.sin(pin.t * 9) * 0.05) : clamp01(pin.t / pin.kickAt);
@@ -877,7 +889,7 @@ export function createGrapple(ctx, W) {
     const A = fin.A, V = fin.V, T = FIN_T, def = fin.def;
     fin.t += dt;
     const t = fin.t, fx = Math.sin(fin.yaw), fz = Math.cos(fin.yaw);
-    const d0 = A.radius + V.radius - 3, H = A.height + 8, gy = groundY(A);
+    const d0 = A.radius + V.radius - 3, H = carryH(A, V), gy = groundY(A);
     if (t < T.grab) {
       // Hauled in (off the mat if it was down) to the tie-up
       const e = smooth(t / T.grab), lie = fin.vlie * (1 - e);
@@ -891,7 +903,7 @@ export function createGrapple(ctx, W) {
     if (t < T.lift) {
       const u = smooth((t - T.grab) / (T.lift - T.grab));
       stand(A, fin.x, fin.z, fin.yaw, -0.12 * Math.sin(Math.PI * u));
-      V.setPose(fin.x + fx * lerp(d0, 2, u), lerp(V.hc, H, u) + gy, fin.z + fz * lerp(d0, 2, u), fin.yaw + Math.PI - HALF_PI * u, -HALF_PI * u, 0);
+      V.setPose(fin.x + fx * lerp(d0, 2, u), lerp(V.hc, H, u) + gy, fin.z + fz * lerp(d0, 2, u), fin.yaw + Math.PI - HALF_PI * u, 0, HALF_PI * u);
       return;
     }
     if (fin.beat < 2) { fin.beat = 2; beat('rise'); }
@@ -902,7 +914,7 @@ export function createGrapple(ctx, W) {
       const y = gy + def.apex * e, spin = def.spin * TWO_PI * e;
       A.root.position.set(fin.x, y, fin.z);
       A.root.rotation.set(-0.1, fin.yaw + spin, 0);
-      V.setPose(fin.x + Math.sin(fin.yaw + spin) * 2, H + y, fin.z + Math.cos(fin.yaw + spin) * 2, fin.yaw + spin + HALF_PI, -HALF_PI, 0);
+      V.setPose(fin.x + Math.sin(fin.yaw + spin) * 2, H + y, fin.z + Math.cos(fin.yaw + spin) * 2, fin.yaw + spin + HALF_PI, 0, HALF_PI);
       return;
     }
     if (fin.beat < 4) {
@@ -916,14 +928,14 @@ export function createGrapple(ctx, W) {
       const y = gy + def.apex * (1 - e);
       A.root.position.set(fin.x, y, fin.z);
       A.root.rotation.set(0.5 * e, fin.yaw, 0);
-      V.setPose(fin.x + fx * lerp(2, out, e), lerp(H + y, V.lieY, e), fin.z + fz * lerp(2, out, e), fin.yaw + HALF_PI, -HALF_PI, 0);
+      V.setPose(fin.x + fx * lerp(2, out, e), lerp(H + y, V.lieY, e), fin.z + fz * lerp(2, out, e), fin.yaw + HALF_PI + HALF_PI * e, -HALF_PI * e, HALF_PI * (1 - e));
       return;
     }
     if (!fin.hit) {
       fin.hit = true;
       const out = A.radius + 8, x = fin.x + fx * out, z = fin.z + fz * out;
       stand(A, fin.x, fin.z, fin.yaw, 0.5);
-      V.setPose(x, V.lieY, z, fin.yaw + HALF_PI, -HALF_PI, 0);
+      V.setPose(x, V.lieY, z, fin.yaw + Math.PI, -HALF_PI, 0);
       V.invuln = false;
       const dealt = V.applyDamage(GRAPPLE.finDmg * A.dmgMult, 'finisher', A.id, x, V.lieY, z, false);
       V.invuln = true;
@@ -935,7 +947,6 @@ export function createGrapple(ctx, W) {
       ctx.damageInRadius(_c, GRAPPLE.finRadius, 700, _dmgOpt);
       W.rival.targetable = tw;
       if (ctx.world.crowdHit) ctx.world.crowdHit(x, z, 20 * 20);
-      A.gainMomentum(10);
       if (A.isPlayer) ctx.addScore(2500);
       const e = emit2(EV.FINISHER_IMPACT, A, V);
       e.name = fin.name; e.damage = dealt; e.radius = GRAPPLE.finRadius; e.x = x; e.y = 0; e.z = z;

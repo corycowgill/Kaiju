@@ -207,7 +207,9 @@ export function solvePose(R, P, outQ, outHip, outScale) {
   const D = R._D, pos = R._P, wp = R.wp, par = R.parent, Q = R.quirks;
   const iH = R.iHips;
   eulerQuat(D[iH], P.hpit, P.hyaw, P.hrol);
-  pos[iH].set(wp[iH].x + P.hx, wp[iH].y + P.hy, wp[iH].z + P.hz);
+  // A leg that only bends at the knee (Tridon's left: its thigh is its tail) cannot fold under a crouch, so that body crouches a quarter as deep
+  const crouch = P.hy < 0 && P.reach > 0 && R.leg[0].kneeOnly ? 0.25 + 0.75 * Math.max(P.lLfk, 1 - P.reach) : 1;
+  pos[iH].set(wp[iH].x + P.hx, wp[iH].y + P.hy * crouch, wp[iH].z + P.hz);
   eulerQuat(_hy, 0, P.hyaw, 0);
   // Hip drop so planted feet can reach (two passes: the hip joints move with the hips)
   if (P.reach > 0) {

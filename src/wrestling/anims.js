@@ -20,7 +20,7 @@
 // rootDriven are body-frame poses meant to sit on a root tipped that way.
 import * as THREE from 'three';
 import { EV } from './events.js';
-import { buildRig, bakeClip } from './animRig.js';
+import { buildRig, bakeClip, twoBone, eulerQuat } from './animRig.js';
 import { DEFS } from './animDefs.js';
 
 /** name -> { loop, hold, rootDriven, clips, dur, marks }.
@@ -38,6 +38,7 @@ const FALLBACK = {
   pin_cover: ['stomp'], pinned: ['dead', 'death'], kickout: ['jump'], taunt_a: ['cheer', 'shrug', 'skill2'], taunt_b: ['cast2', 'skill2'],
   taunt_win: ['dance'], finisher_windup: ['cast3', 'skill2'], finisher_strike: ['stomp'], finisher_victim: ['dead', 'death'],
   ko: ['death', 'dead'], entrance: ['walk'],
+  power_beam: ['skill1', 'cast1'], power_roar: ['skill2', 'cast2'], power_charge: ['skill3', 'stomp'], power_stomp: ['jump', 'stomp'], power_ult: ['cast3', 'stomp'],
 };
 export const ANIMS = Object.freeze(Object.fromEntries(Object.keys(FALLBACK).map((name) => {
   const d = DEFS[name] || {};
@@ -56,6 +57,50 @@ function rigFor(glb) {
 const ckey = (name) => 'w_' + name;
 
 const LOCO = { idle: 0, walk: 1, back: 1, strafe_l: 1, strafe_r: 1, run: 1 };
+
+// ---- hand IK: where the hands go on the OTHER body, per anim ----
+// L / R: anchor bones on the opponent for my left / right hand (null = that
+// hand is not used). Two bones + split: the two support points of a carried
+// body, shared out so the arms do not cross. t0..t1: the clip-time window the
+// grip holds (loops: always). fade: seconds to ease in / out. out: elbow-out
+// bias. press: how far (u) the hand stops short of the bone, toward my
+// shoulder, so it rests on the surface. wrap: reach round the far side (u).
+// w: peak weight.
+const GRIP = {
+  lockup:          { L: ['RightArm'], R: ['LeftForeArm'], t0: 0, t1: 1e9, fade: 0.22, out: 0.5, press: 2.5 },
+  grab_reach:      { L: ['RightArm'], R: ['LeftArm'], t0: 0.2, t1: 0.5, fade: 0.1, out: 0.5, press: 2.5 },
+  lift:            { L: ['Spine', 'Hips'], R: ['Spine', 'Hips'], t0: 0.0, t1: 1e9, fade: 0.15, out: 1, press: 4.5, split: true },
+  carry_idle:      { L: ['Spine', 'Hips'], R: ['Spine', 'Hips'], t0: 0, t1: 1e9, fade: 0.1, out: 1, press: 4.5, split: true },
+  carry_walk:      { L: ['Spine', 'Hips'], R: ['Spine', 'Hips'], t0: 0, t1: 1e9, fade: 0.1, out: 1, press: 4.5, split: true },
+  throw:           { L: ['Spine', 'Hips'], R: ['Spine', 'Hips'], t0: 0, t1: 0.24, fade: 0.08, out: 1, press: 4.5, split: true },
+  suplex:          { L: ['Hips'], R: ['Hips'], t0: 0.12, t1: 0.9, fade: 0.12, out: 0.8, press: 3.5, wrap: 3 },
+  swing:           { L: ['RightFoot', 'LeftFoot'], R: ['RightFoot', 'LeftFoot'], t0: 0, t1: 1e9, fade: 0.2, out: 0.3, press: 0, split: true },
+  whip_send:       { L: ['LeftForeArm'], R: ['LeftForeArm'], t0: 0, t1: 0.44, fade: 0.1, out: 0.4, press: 1 },
+  pin_cover:       { L: ['Spine'], R: ['Hips'], t0: 0.1, t1: 1e9, fade: 0.2, out: 0.8, press: 4 },
+  finisher_windup: { L: ['Spine', 'Hips'], R: ['Spine', 'Hips'], t0: 0.3, t1: 1e9, fade: 0.15, out: 1, press: 4.5, split: true },
+  fin_rise:        { L: ['Spine', 'Hips'], R: ['Spine', 'Hips'], t0: 0, t1: 1e9, fade: 0.1, out: 1, press: 4.5, split: true },
+  finisher_strike: { L: ['Spine', 'Hips'], R: ['Spine', 'Hips'], t0: 0, t1: 0.5, fade: 0.1, out: 1, press: 4.5, split: true },
+  // strikes: the hitting hand finds the target for the contact frames
+  strike_1:        { L: ['Head'], R: null, t0: 0.16, t1: 0.3, fade: 0.07, out: 0.4, press: 3, w: 0.8 },
+  strike_2:        { L: null, R: ['Spine'], t0: 0.14, t1: 0.27, fade: 0.07, out: 1, press: 4, w: 0.8 },
+  strike_3:        { L: ['Head'], R: ['Head'], t0: 0.24, t1: 0.36, fade: 0.06, out: 0.8, press: 3, w: 0.7 },
+  heavy:           { L: null, R: ['Head'], t0: 0.5, t1: 0.62, fade: 0.07, out: 1, press: 3, w: 0.8 },
+};
+
+// ---- anchors: named points on a body for effects (W.anims.anchor) ----
+// name -> [bone, x, y, z]: an offset from the bone in rig space at the bind pose (u; +x the kaiju's left, +z forward), carried by the bone.
+// Measured by eye on the bind meshes: good to a couple of units.
+const ANCHORS = {
+  godzilla: { head: ['neck', 0, 3, 3], crown: ['neck', 0, 6.5, 1], mouth: ['neck', 0, 0, 6], chest: ['Spine', 0, -1, 6], back: ['Spine', 0, 2, -6] },
+  ghidorah: { head: ['Head', 0, 3.5, 9], headL: ['Head', 5, 2.5, 9], headR: ['Head', -5, 2.5, 9], crown: ['Head', 0, 7.5, 6], mouth: ['Head', 0, 1.5, 13], chest: ['Spine', 0, -3, 4], back: ['Spine', 0, 1, -5] },
+  mecha:    { head: ['Head', 0, 1, 6], crown: ['Head', 0, 2.8, 3], mouth: ['Head', 0, -0.5, 10], chest: ['Spine', 0, -3, 4.5], back: ['Spine', 0, 0, -5] },
+};
+const ANCHOR_ALIAS = { headL: 'head', headR: 'head' };
+
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3(), _pole = new THREE.Vector3(), _mid = new THREE.Vector3();
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _dU = new THREE.Quaternion(), _dF = new THREE.Quaternion(), _rootQ = new THREE.Quaternion();
+const _ikArm = { l1: 0, l2: 0, qU0inv: null, qF0inv: null };
+const smooth01 = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 const _once = { duration: undefined, commit: undefined, hold: false, restart: true };
 
 /** @returns {{ start, play, stop, current, update, updateIdle, dispose, info, markTime }} */
@@ -63,12 +108,19 @@ export function createAnims(ctx, W) {
   // Per-fighter runtime state, rebuilt whenever a fighter's GLB changes (restart, title defense)
   const states = { player: null, rival: null };
   let started = false;
+  const offs = [];
 
   function makeState(f) {
     const rig = rigFor(f.glb);
     return {
       f, glb: f.glb, rig, R: rig ? rig.R : null,
       anim: '', loop: false, hold: false,      // wrestling anim in force ('' = locomotion)
+      sub: '',                                  // private clip standing in for it (carry_idle / carry_walk / fin_rise)
+      // layers: bones this module writes after the mixer, the mixer's values for them, and what was written
+      B: null, mod: null, base: null, wrote: null,
+      // recoil spring (pitch, yaw, roll: angle + velocity), head tracking, grip weights and targets
+      sp: 0, sv: 0, sy: 0, syv: 0, sr: 0, srv: 0, lookY: 0, lookP: 0, gripL: 0, gripR: 0, gripName: '',
+      gL: new THREE.Vector3(), gR: new THREE.Vector3(),
       gait: '', gaitT: 0, px: f.root.position.x, pz: f.root.position.z, vx: 0, vz: 0, yaw: f.root.rotation.y, yawRate: 0,
     };
   }
@@ -80,6 +132,172 @@ export function createAnims(ctx, W) {
     }
     return st;
   }
+  function bonesOf(st) {
+    if (st.mod || !st.R) return;
+    const R = st.R;
+    st.B = st.glb.rest.bones;
+    st.mod = [R.iS2, R.iS3, R.iNeck, R.iHead, R.arm[0].iUp, R.arm[0].iLo, R.arm[1].iUp, R.arm[1].iLo];
+    st.base = st.mod.map(() => new THREE.Quaternion());
+    st.wrote = st.mod.map(() => new THREE.Quaternion(9, 9, 9, 9));
+  }
+
+  // ---- layers on top of the mixer's pose ----
+  // Rotate bone i by a pitch / yaw / roll given about the rig axes, relative to its parent (the convention of the pose channels)
+  function nudge(st, i, pitch, yaw, roll) {
+    const R = st.R, p = R.parent[i];
+    eulerQuat(_q1, pitch, yaw, roll);
+    _q2.copy(R.wqInv[p]).multiply(_q1).multiply(R.wq[p]);
+    st.B[i].quaternion.premultiply(_q2);
+  }
+  function springs(st, dt) {
+    const k = 190, c = 9;                         // ~2.2 Hz, lightly damped: one clear overshoot
+    if (dt > 0) {
+      const h = Math.min(dt, 0.033);
+      st.sv += (-k * st.sp - c * st.sv) * h; st.sp += st.sv * h;
+      st.syv += (-k * st.sy - c * st.syv) * h; st.sy += st.syv * h;
+      st.srv += (-k * st.sr - c * st.srv) * h; st.sr += st.srv * h;
+    }
+    if (Math.abs(st.sp) + Math.abs(st.sy) + Math.abs(st.sr) < 1e-4) return;
+    const R = st.R;
+    nudge(st, R.iS2, st.sp * 0.4, st.sy * 0.4, st.sr * 0.4);
+    nudge(st, R.iS3, st.sp * 0.35, st.sy * 0.4, st.sr * 0.3);
+    nudge(st, R.iNeck, st.sp * 0.45, st.sy * 0.3, st.sr * 0.4);
+    if (!R.quirks.headOnNeck) nudge(st, R.iHead, st.sp * 0.4, st.sy * 0.2, st.sr * 0.3);
+  }
+  /** A hit from world (x, z): kick the recoil spring away from it. mag ~0..1.5 */
+  function recoil(st, x, z, mag) {
+    const f = st.f, p = f.root.position, yaw = f.root.rotation.y;
+    let dx = p.x - x, dz = p.z - z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.01) { dx = -Math.sin(yaw); dz = -Math.cos(yaw); } else { dx /= d; dz /= d; }
+    // the blow's direction of travel in the body frame: fwd < 0 = it came from the front, lat > 0 = it is heading to the body's left
+    const s = Math.sin(yaw), c = Math.cos(yaw), fwd = dx * s + dz * c, lat = dx * c - dz * s;
+    st.sv += fwd * 9 * mag;                        // from the front: the torso snaps back (pitch < 0)
+    st.srv += -lat * 7 * mag;                      // heading left: the body leans left (roll < 0)
+    st.syv += lat * 4 * mag;
+  }
+  function look(st, dt) {
+    const f = st.f, o = f.opponent, R = st.R;
+    let wantY = 0, wantP = 0;
+    const d = DEFS[st.sub || st.anim || st.gait];
+    const upright = Math.abs(f.root.rotation.x) < 0.2 && Math.abs(f.root.rotation.z) < 0.2;
+    const w = !upright ? 0 : d && d.look !== undefined ? d.look : st.anim ? 0.4 : 1;
+    if (o && w > 0) {
+      const a = f.root.position, hips = o.bones && o.bones.hips;
+      if (hips) hips.getWorldPosition(_v1); else _v1.copy(o.root.position).setY(o.root.position.y + 14);
+      const dx = _v1.x - a.x, dz = _v1.z - a.z, dist = Math.hypot(dx, dz);
+      if (dist > 4) {
+        let dy = Math.atan2(dx, dz) - f.root.rotation.y;
+        dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+        if (Math.abs(dy) < 2.3) wantY = Math.max(-0.85, Math.min(0.85, dy)) * w;
+        // its body centre against my head height: look down at a foe on the mat, up at one overhead
+        wantP = Math.max(-0.5, Math.min(0.6, Math.atan2(R.headY - 9 - _v1.y + a.y, dist))) * w;
+      }
+    }
+    const k = 1 - Math.exp(-dt * 7);
+    st.lookY += (wantY - st.lookY) * k; st.lookP += (wantP - st.lookP) * k;
+    if (Math.abs(st.lookY) + Math.abs(st.lookP) < 1e-3) return;
+    nudge(st, R.iS3, st.lookP * 0.15, st.lookY * 0.2, 0);
+    if (R.quirks.headOnNeck) nudge(st, R.iNeck, st.lookP * 0.7, st.lookY * 0.65, 0);
+    else { nudge(st, R.iNeck, st.lookP * 0.4, st.lookY * 0.35, 0); nudge(st, R.iHead, st.lookP * 0.45, st.lookY * 0.45, 0); }
+  }
+  // Index of an anchor bone on a body (Tridon's left foot bones are parked in its tail: use the right foot)
+  function anchorBone(ost, name) {
+    if (name === 'LeftFoot' && ost.R.leg[0].kneeOnly) name = 'RightFoot';
+    return ost.R.index[name];
+  }
+  // Stop a hand short of its anchor, toward my shoulder, so it rests on the surface rather than in the bone
+  function pressOut(st, side, G, out) {
+    if (!G.press) return;
+    st.B[st.R.arm[side].iUp].getWorldPosition(_v3);
+    _v4.copy(_v3).sub(out);
+    const l = _v4.length();
+    if (l > 1e-3) out.addScaledVector(_v4, Math.min(G.press, l * 0.5) / l);
+  }
+  function gripTargets(st, ost, G) {
+    const y = st.f.root.rotation.y, lx = Math.cos(y), lz = -Math.sin(y);   // my left, in the world
+    if (G.split && G.L && G.L.length > 1) {
+      // Two support points along the other body: the one further to my left goes to my left hand
+      ost.B[anchorBone(ost, G.L[0])].getWorldPosition(_v1);
+      ost.B[anchorBone(ost, G.L[1])].getWorldPosition(_v2);
+      const da = _v1.x * lx + _v1.z * lz, db = _v2.x * lx + _v2.z * lz;
+      if (Math.abs(da - db) < 3) {
+        // in line with my facing (or one bone for both): a hand either side of the midpoint
+        _v3.copy(_v1).add(_v2).multiplyScalar(0.5);
+        st.gL.copy(_v3); st.gR.copy(_v3);
+        st.gL.x += lx * 3.4; st.gL.z += lz * 3.4; st.gR.x -= lx * 3.4; st.gR.z -= lz * 3.4;
+      } else if (da > db) { st.gL.copy(_v1); st.gR.copy(_v2); } else { st.gL.copy(_v2); st.gR.copy(_v1); }
+    } else {
+      if (G.L) ost.B[anchorBone(ost, G.L[0])].getWorldPosition(st.gL);
+      if (G.R) ost.B[anchorBone(ost, G.R[0])].getWorldPosition(st.gR);
+      if (G.wrap) { st.gL.x += lx * G.wrap; st.gL.z += lz * G.wrap; st.gR.x -= lx * G.wrap; st.gR.z -= lz * G.wrap; }
+    }
+    if (G.L) pressOut(st, 0, G, st.gL);
+    if (G.R) pressOut(st, 1, G, st.gR);
+  }
+  function armIK(st, side, target, w, out) {
+    if (w <= 0.001) return;
+    const R = st.R, A = R.arm[side], B = st.B, root = st.f.root;
+    const up = B[A.iUp], lo = B[A.iLo];
+    // into rig space (root-local x scale)
+    const sc = root.scale.x;
+    up.getWorldPosition(_v1); root.worldToLocal(_v1).multiplyScalar(sc);
+    _v2.copy(target); root.worldToLocal(_v2).multiplyScalar(sc);
+    const d = _v1.distanceTo(_v2);
+    if (d > A.len * 1.9) w *= Math.max(0, 1 - (d - A.len * 1.9) / (A.len * 0.6));   // far out of reach: do not point at it
+    if (w <= 0.001) return;
+    _pole.set(A.sign * out, -0.7, -0.5);
+    if (_v2.y - _v1.y > A.len * 0.5) _pole.set(A.sign, -0.1, 0.25);                 // overhead: elbows out to the sides
+    _ikArm.l1 = A.l1; _ikArm.l2 = A.l2 * lo.scale.x; _ikArm.qU0inv = A.qU0inv; _ikArm.qF0inv = A.qF0inv;
+    twoBone(_ikArm, _v1, _v2, _pole, _dU, _dF, _mid);
+    root.getWorldQuaternion(_rootQ);
+    up.parent.getWorldQuaternion(_q1); _q1.premultiply(_q3.copy(_rootQ).invert());  // the clavicle's orientation in rig space
+    _q2.copy(_dU).multiply(R.wq[A.iUp]);                                            // upper arm, rig space
+    _q3.copy(_q1).invert().multiply(_q2);
+    up.quaternion.slerp(_q3, w);
+    _q3.copy(_q2).invert().multiply(_dF).multiply(R.wq[A.iLo]);
+    lo.quaternion.slerp(_q3, w);
+  }
+  function grips(st, dt) {
+    const o = st.f.opponent;
+    const name = st.sub || st.anim, G = GRIP[name];
+    let wantL = 0, wantR = 0;
+    const ost = o ? states[o.id] : null;
+    if (G && ost && ost.B && o.root.visible !== false) {
+      let on = true;
+      if (!DEFS[name] || !DEFS[name].loop) {
+        const act = st.glb.actions[ckey(name)], t = act ? act.time : 0;
+        on = t >= G.t0 && t <= G.t1;
+      }
+      if (on) { wantL = G.L ? (G.w || 1) : 0; wantR = G.R ? (G.w || 1) : 0; }
+      st.gripName = name;
+    }
+    const H = G || GRIP[st.gripName];
+    const k = dt > 0 ? Math.min(1, dt / (H ? H.fade : 0.15)) : 0;
+    st.gripL += Math.sign(wantL - st.gripL) * Math.min(Math.abs(wantL - st.gripL), k);
+    st.gripR += Math.sign(wantR - st.gripR) * Math.min(Math.abs(wantR - st.gripR), k);
+    if (st.gripL <= 0.001 && st.gripR <= 0.001) return;
+    if (!H || !ost || !ost.B) { st.gripL = 0; st.gripR = 0; return; }
+    if (G) gripTargets(st, ost, G);   // (a grip easing out after its anim keeps heading for where it last was)
+    armIK(st, 0, st.gL, smooth01(st.gripL), H.out);
+    armIK(st, 1, st.gR, smooth01(st.gripR), H.out);
+  }
+  function layers(st, dt) {
+    if (!st.R) return;
+    bonesOf(st);
+    const B = st.B, mod = st.mod;
+    // The mixer rewrites these bones every time it ticks. If it did not tick (a frozen frame), start again from what it last wrote
+    for (let i = 0; i < mod.length; i++) {
+      const q = B[mod[i]].quaternion;
+      if (q.equals(st.wrote[i])) q.copy(st.base[i]); else st.base[i].copy(q);
+    }
+    springs(st, dt);
+    look(st, dt);
+    st.f.root.updateMatrixWorld(true);
+    grips(st, dt);
+    for (let i = 0; i < mod.length; i++) st.wrote[i].copy(B[mod[i]].quaternion);
+  }
+
   /** Bake (once per kaiju) and register (once per GLB) the clip for a name; returns its action key or ''. */
   function ensure(st, name) {
     const def = DEFS[name];
@@ -139,12 +357,39 @@ export function createAnims(ctx, W) {
       // A finished one-shot (ours or a mocap power clip) hands back to locomotion
       if (st.anim && !st.loop && !st.hold && !st.glb.oneShotActive) st.anim = '';
       if (!st.anim && !st.glb.oneShotActive) locomote(st, dt);
+      else if (st.anim) follow(st);
     }
+    // Layers once BOTH kaiju have their clip pose (the grips read the other body's bones)
+    for (const id in states) if (W[id] && states[id]) { bonesOf(states[id]); W[id].root.updateMatrixWorld(true); }
+    for (const id in states) if (W[id] && states[id]) layers(states[id], dt);
+  }
+  // What a playing anim needs from frame to frame: cycles matched to the root's speed, and held poses that turn into loops
+  function follow(st) {
+    const glb = st.glb, sp = Math.hypot(st.vx, st.vz);
+    if (st.anim === 'lift' || st.anim === 'finisher_windup') {
+      const act = glb.actions[ckey(st.anim)];
+      if (st.sub || (act && act.time >= act.getClip().duration - 0.02)) {
+        const want = st.anim === 'lift' ? (sp > 2 ? 'carry_walk' : 'carry_idle') : (st.sub === 'fin_rise' || st.f.root.position.y > 1.5 ? 'fin_rise' : '');
+        if (want && want !== st.sub) {
+          const key = ensure(st, want);
+          if (key) { glb.loop(key, 0.28, 1); st.sub = want; }
+        }
+        if (st.sub === 'carry_walk') glb.loop(ckey('carry_walk'), 0.25, Math.min(1.8, Math.max(0.5, sp / DEFS.carry_walk.speed)));
+      }
+      return;
+    }
+    const d = DEFS[st.anim];
+    if (d && d.loop && d.speed && sp > 1) glb.loop(ckey(st.anim), 0.2, Math.min(1.8, Math.max(0.5, sp / d.speed)));
   }
 
   return {
     start() {
       started = true;
+      // Every hit lands on the body: a recoil through spine and head, away from where it came from
+      offs.push(W.bus.on(EV.DAMAGE, (e) => {
+        const st = W[e.who] ? states[e.who] : null;
+        if (st) recoil(st, e.x, e.z, Math.min(1.4, 0.3 + e.amount / 14) * (e.blocked ? 0.4 : 1));
+      }));
       // Locomotion clips are ours for the whole match: game.js stops picking idle / walk / run for the player
       ctx.player.control.loco = false;
       for (const id in states) {
@@ -170,14 +415,15 @@ export function createAnims(ctx, W) {
       if (key) {
         if (def.loop) {
           if (opts && opts.duration) ts = def.dur / opts.duration;
-          glb.loop(key, fade, ts);
+          // two kaiju in a tie-up push against each other: half a cycle apart
+          glb.loop(key, fade, ts, name === 'lockup' && !fighter.isPlayer ? 0.5 : undefined);
         } else {
           _once.duration = opts ? opts.duration : undefined;
           _once.commit = opts ? opts.commit : undefined;
           _once.hold = def.hold;
           glb.playOnce(key, fade, ts, _once);
         }
-        st.anim = name; st.loop = def.loop; st.hold = def.hold; st.gait = '';
+        st.anim = name; st.loop = def.loop; st.hold = def.hold; st.gait = ''; st.sub = '';
         fighter.animName = name;
         return true;
       }
@@ -201,10 +447,37 @@ export function createAnims(ctx, W) {
     stop(fighter, fade = 0.25) {
       fighter.animName = '';
       const st = stateOf(fighter);
-      st.anim = ''; st.gait = '';
+      st.anim = ''; st.gait = ''; st.sub = '';
       if (!started) { fighter.glb.resetAnim(); return; }
       const key = ensure(st, 'idle');
       if (key) { fighter.glb.loop(key, fade); st.gait = 'idle'; st.gaitT = 1; } else fighter.glb.loop('idle', fade);
+    },
+    /**
+     * World position of a named point on a fighter, for effects: 'head' (centre skull), 'headL' / 'headR' (Tridon's
+     * side heads; the head on the others), 'crown' (top of the skull), 'mouth', 'chest', 'back' (between the
+     * shoulders), 'handL', 'handR', 'hands' (midpoint), 'hips'. Allocation-free; current as of the last update.
+     */
+    anchor(fighter, name, out) {
+      const st = stateOf(fighter);
+      if (!st.R) return fighter.center ? fighter.center(out) : out.copy(fighter.root.position);
+      bonesOf(st);
+      const R = st.R, B = st.B;
+      if (name === 'handL') return B[R.arm[0].iEnd].getWorldPosition(out);
+      if (name === 'handR') return B[R.arm[1].iEnd].getWorldPosition(out);
+      if (name === 'hands') { B[R.arm[0].iEnd].getWorldPosition(out); B[R.arm[1].iEnd].getWorldPosition(_v4); return out.add(_v4).multiplyScalar(0.5); }
+      if (name === 'hips') return B[R.iHips].getWorldPosition(out);
+      const T = ANCHORS[R.key] || ANCHORS.mecha, a = T[name] || T[ANCHOR_ALIAS[name]] || T.chest;
+      const i = R.index[a[0]];
+      // the rig-space offset, taken into the bone's own frame, then out through wherever the bone is now
+      out.set(a[1], a[2], a[3]).applyQuaternion(R.wqInv[i]).multiplyScalar(1 / R.unit);
+      return B[i].localToWorld(out);
+    },
+    /** Root-to-root distance (u) at which this pair's tie-up poses meet (heads cheek to cheek, hands on shoulders). */
+    lockDist(a, b) { return ctx.bodyRadius(a.key) + ctx.bodyRadius(b.key) - 3; },
+    /** Height (u above the lifter's root) for the centre of a body carried overhead so it rests on the lifter's raised hands. */
+    carryY(lifter, victim) {
+      const st = stateOf(lifter);
+      return st.R ? st.R.shoulderY + st.R.armLen * 0.92 + 5.5 : 38;
     },
     /** The wrestling anim last played on the fighter ('' after stop()). */
     current(fighter) { return fighter.animName; },
@@ -220,6 +493,8 @@ export function createAnims(ctx, W) {
     updateIdle(dtReal) { tick(dtReal); },
     dispose() {
       started = false;
+      for (let i = 0; i < offs.length; i++) offs[i]();
+      offs.length = 0;
       for (const id in states) {
         const st = states[id];
         if (st) { st.glb.lockLoco(false); st.glb.resetAnim(); }

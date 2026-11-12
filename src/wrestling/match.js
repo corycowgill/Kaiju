@@ -20,10 +20,11 @@ export const MATCH = {
   rivalHp: 1.1,           // x that for the rival (the player has its powers on tap and a human's reads)
   rivalHpPerDefense: 0.2,
   rivalAtk: 0.85, rivalAtkPerFall: 0.1, rivalAtkPerDefense: 0.15, rivalAtkMax: 1.7,
-  healBetween: 0.35, healFloor: 0.75, momCarry: 40, // between falls: +35% of max health, at least 75%; momentum carried over is capped
+  healBetween: 0.35, healFloor: 0.75, momCarry: 20, // between falls: +35% of max health, at least 75%; momentum carried over is capped
   koWait: 1.5, koRun: 2.0, fallHold: 1.4, betweenPose: 2.2, winHold: 4.5, loseHold: 3.5,
   interferenceAt: [50, 40, 34], interferenceJitter: 12, interferenceLen: 22, interferenceEta: 4,
   scoreFall: 2500, scoreMatch: 10000,
+  stallDist: 48, stallAfter: 6, stallMom: 6, stallSpeed: 1.45, // keeping away: after 6 s beyond 48 u the crowd turns, the rival's meter fills and it closes faster
 };
 const ENT = { rise: 2.2, roar: 2.2, card: 2.4, walk: 3.0, pEnd: 3.6, rivalWalk: 3.4, pose: 0.2, card2: 0.4, rEnd: 1.8, bell: 1.2 };
 const MOVE_NAME = { whip: 'IRISH WHIP', suplex: 'SUPLEX', slam: 'GORILLA PRESS', swing: 'GIANT SWING' };
@@ -55,6 +56,7 @@ const LINES = {
   military: ['The military is storming the ring!', 'Here comes the cavalry. Nobody invited them!'],
   ko: ['{0} is OUT COLD!', 'Lights out for {0}!'],
   fall: ['One fall to {0}!', '{0} takes the fall!'],
+  stall: ['{0} wants no part of this!', 'The crowd is letting {0} hear it!', 'You cannot win a title running, {0}!'],
 };
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const fmt = (s, a, b) => s.replace('{0}', a || '').replace('{1}', b || '');
@@ -69,6 +71,7 @@ export function createMatch(ctx, W) {
   let seq = '', seqT = 0, entStage = 0, entShort = false, crashed = false;
   let koT = 0, koRunT = -1, picked = false, reported = false, swapping = false, fallT = 0;
   let intAt = 0, intState = 0, intT = 0;
+  let stallT = 0, booT = 0;
   // director
   let heat = 0.25, heatWas = 0.25, heatT = 0, lineT = 0, promptT = 0;
   const prompts = { grab: false, pickup: false, pin: false, kickout: false, escape: false, finisher: false, skip: false, getup: false };
@@ -291,7 +294,7 @@ export function createMatch(ctx, W) {
     p.kickouts = 0; r.kickouts = 0; p._critical = false; r._critical = false;
     freeFighter(p); freeFighter(r);
     tuneRival();
-    fallT = 0; koT = 0; koRunT = -1; seq = '';
+    fallT = 0; koT = 0; koRunT = -1; seq = ''; stallT = 0; booT = 0; r.speedMult = 1;
     intState = 0;
     intAt = (MATCH.interferenceAt[Math.min(2, s.fall - 1)] || 40) + Math.random() * MATCH.interferenceJitter;
     setPhase('fight');
@@ -472,6 +475,19 @@ export function createMatch(ctx, W) {
     bus.emit(EV.INTERFERENCE_END);
   }
 
+  // Running away costs: the crowd boos, the rival's momentum builds and it runs you down
+  function updateStall(dt) {
+    const p = W.player, r = W.rival;
+    const apart = !p.held && !r.held && r.state === 'neutral' && (p.state === 'neutral' || p.state === 'blocking') && p.distTo(r) > MATCH.stallDist;
+    if (!apart) { if (stallT > 0) { stallT = 0; r.speedMult = 1; } return; }
+    stallT += dt;
+    if (stallT < MATCH.stallAfter) return;
+    r.speedMult = MATCH.stallSpeed;
+    r.gainMomentum(MATCH.stallMom * dt);
+    booT -= dt;
+    if (booT <= 0) { booT = 4; pop('boo', 0.6, p.pos.x, p.pos.z); say('stall', 'neutral', nameOf('player'), '', true); }
+  }
+
   // ------------------------------------------------------------------ director: prompts, heat
   function updatePrompts() {
     const p = W.player, g = W.grapple, fight = s.phase === 'fight';
@@ -573,7 +589,7 @@ export function createMatch(ctx, W) {
       if (s.phase === 'entrance') updateEntrance(dt);
       else if (s.phase === 'fight' || s.phase === 'pin' || s.phase === 'finisher') {
         s.time += dt; fallT += dt;
-        if (s.phase === 'fight') updateInterference(dt);
+        if (s.phase === 'fight') { updateInterference(dt); updateStall(dt); }
         updateKO(dt);
       } else if (s.phase === 'between' || s.phase === 'over') updateSeq(dt, dtReal);
       // Prompts and crowd heat a few times a second

@@ -95,11 +95,11 @@ export const POWERS = Object.freeze({
 
 /** Tuning shared by both fighters (see the report for how each was arrived at). */
 export const TUNE = {
-  dmg: 0.88,           // global scale on every move's damage (the fall-length knob)
+  dmg: 0.58,           // global scale on every move's damage (the fall-length knob)
   // stamina
   stamRegen: 11, stamRegenDown: 7, stamDelay: 0.7, stamRecoverAt: 30, sprintDrain: 4, tiredMove: 0.62,
   // block
-  blockDrain: 4, blockMove: 0.35, reversalWindow: 0.20, reblockLock: 0.45, chip: 0.15, powerChip: 0.3,
+  blockDrain: 4, blockMove: 0.35, reversalWindow: 0.20, reblockLock: 0.45, stunReblock: 0.3, chip: 0.15, powerChip: 0.3,
   blockStun: 0.22, guardBreakStun: 1.8, reversalStagger: 1.0, reversalMom: 8,
   // hit reactions
   counterMult: 1.25, tauntHitMult: 1.4, friction: 85, lockMax: 2.4,
@@ -107,11 +107,14 @@ export const TUNE = {
   fallDur: 0.45, downBase: 1.7, downImpact: 1.6, downHurt: 1.4, downMin: 0.9, downMax: 5.2, mashGetup: 0.13, groundHitsMax: 2,
   getupDur: 0.8, getupInvuln: 0.5,
   // momentum
-  momPassive: 0.6, momDrain: 0.2, tauntDur: 2.0, tauntMom: 20, tauntMomDown: 30, tauntStam: 20,
+  momPassive: 0.5, momDrain: 0.2, momHurt: 0.45, // hit while under half health: no drain, the meter FILLS with what it took (the comeback)
+  tauntDur: 2.0, tauntMom: 20, tauntMomDown: 30, tauntStam: 20,
   // what a classic player attack does to a kaiju: fraction of its raw damage (they are tuned to one-shot tanks)
   taken: { melee: 0.12, beam: 0.095, atomic: 0.04, roar: 0.064, charge: 0.06, stomp: 0.048, ult: 0.115, military: 0.25, aoe: 0.05 },
   splashMult: 1.7,
 };
+// Damage kinds that can take the last of a kaiju's health (everything else stops at 1 HP)
+const KO_KINDS = { heavy: 1, clothesline: 1, splash: 1, slam: 1, suplex: 1, toss: 1, swing: 1, building: 1, post: 1, finisher: 1, charge: 1, ult: 1, qa: 1 };
 const POWER_OF = { beam: 'beam', atomic: 'beam', roar: 'roar', charge: 'charge', stomp: 'stomp', ult: 'ult' };
 // How long the player's own (classic) powers commit it, s: the rival's punish window
 const PLAYER_POWER_COMMIT = { beam: 0.85, roar: 0.7, charge: 0.6, stomp: 0.95, ult: 1.3 };
@@ -174,6 +177,7 @@ export class Fighter {
     this._hp = 1; this._maxHp = 1;
     this.stamina = 100; this.maxStamina = 100;
     this._momentum = 0;
+    this._momShadow = 0;              // the player's momentum as the match counts it (see _tick)
     /** Out of stamina: slow, cannot sprint or reverse a grab, a heavy knocks it down. Clears at 30. */
     this.tired = false;
     /** grapple.js / match.js is driving this body (hold, throw, pin, finisher, entrance): the fighter keeps its timers only. */
@@ -198,6 +202,7 @@ export class Fighter {
     this.lastImpact = 0;              // size (0..1) of the move that last put it down (pin strength)
     this.kickouts = 0;                // kick-outs this fall (each one costs resilience)
     this.finished = 0;                // seconds left in which a finisher's victim cannot kick out well
+    this.reboundCd = 0;               // > 0: came back dizzy off the ropes recently (the next rebound only staggers it)
     this.cd = { beam: 0, roar: 0, charge: 0, stomp: 0, ult: 0 };
     this.armor = false;               // light strikes do not interrupt (ultimate wind-up)
     // pose (root-driven): lie 0 upright .. 1 on its back
@@ -226,7 +231,7 @@ export class Fighter {
   set maxHp(v) { if (this.isPlayer) this.ctx.player.maxHp = v; else this._maxHp = v; }
   /** Momentum 0..100 (the player's is the rage meter). */
   get momentum() { return this.isPlayer ? this.ctx.player.rage : this._momentum; }
-  set momentum(v) { v = v < 0 ? 0 : v > 100 ? 100 : v; if (this.isPlayer) this.ctx.player.rage = v; else this._momentum = v; }
+  set momentum(v) { v = v < 0 ? 0 : v > 100 ? 100 : v; if (this.isPlayer) { this.ctx.player.rage = v; this._momShadow = v; } else this._momentum = v; }
   /** root.position: THE gameplay position (y = 0 on the ground). */
   get pos() { return this.root.position; }
   /** Facing (rad): forward = (sin yaw, 0, cos yaw). */
@@ -238,6 +243,8 @@ export class Fighter {
   get dmgMult() { return TUNE.dmg * this.power * this.atkMult * (this.isPlayer ? (this.ctx.player.upgrades ? this.ctx.player.upgrades.dmgMult || 1 : 1) : 1); }
 
   // ---- reads for the AI, the HUD and the camera ----
+  /** Running flat out this frame (sprint held, moving, not tired). */
+  get sprinting() { const it = this.intent; return this.state === 'neutral' && it.sprint && !this.tired && (it.moveX !== 0 || it.moveZ !== 0); }
   /** Free to start an action this frame. */
   get canAct() { return this.state === 'neutral' && !this.held; }
   /** Lying on the mat (downed, pinned, out cold) and not still toppling. */
@@ -272,7 +279,7 @@ export class Fighter {
   can(what) {
     if (!this.canAct || this.W.match.state.phase !== 'fight') return false;
     const foe = this.opponent;
-    const down = foe && foe.state === 'downed' && !foe.held && foe.falling <= 0;
+    const down = foe && foe.state === 'downed' && !foe.held && foe.falling <= 0 && !foe.invuln;
     switch (what) {
       case 'strike': case 'heavy': case 'grab': case 'taunt': return true;
       case 'clothesline': return !this.tired;
@@ -324,7 +331,7 @@ export class Fighter {
     this.move = null; this.moveHit = 0; this.moveEta = 0;
     this.blockT = 0; this.blockStun = 0; this.blockLock = 0; this.reblock = 0;
     this.invulnT = 0; this.lockT = 0; this.lockHits = 0; this.grabChain = 0; this.freeT = 0;
-    this.groundHits = 0; this.falling = 0; this.lastImpact = 0; this.kickouts = 0; this.finished = 0;
+    this.groundHits = 0; this.falling = 0; this.lastImpact = 0; this.kickouts = 0; this.finished = 0; this.reboundCd = 0;
     this.armor = false; this._koPending = false; this._critical = false;
     this.lie = 0; this._lieP = 0; this.lieTarget = 0; this.lieByClip = false; this.lean = 0; this.sink = 0;
     this._buf.strike = 0; this._buf.heavy = 0; this._buf.grab = 0; this._buf.pin = 0; this._buf.finisher = 0;
@@ -342,6 +349,8 @@ export class Fighter {
     const prev = this.state;
     if (prev === 'blocking' && state !== 'blocking') this._emitWho(EV.BLOCK_END);
     if (prev === 'stunned' && state !== 'stunned') this._emitWho(EV.STUN_END);
+    // A guard thrown up on the first free frame after hit-stun is a block, never a reversal (no free reversals inside a string)
+    if (prev === 'staggered' || prev === 'stunned') this.reblock = Math.max(this.reblock, TUNE.stunReblock);
     this.prevState = prev;
     this.state = state; this.stateT = 0; this.stateDur = dur;
     if (state !== 'attacking') { this.move = null; this.armor = false; this.lean = 0; }
@@ -502,6 +511,10 @@ export class Fighter {
     if (this.invuln || this.state === 'ko' || amount <= 0) return 0;
     // Once a kaiju is out, the one standing over it cannot be knocked out as well
     if (this.opponent && this.opponent.state === 'ko') return 0;
+    // Only a big move knocks a kaiju out. Jabs, stomps, chip, beams and stray shells leave it on its last legs
+    // (1 HP): it has to be put away with a slam, a finisher - or pinned, and it may still kick out at 2.9.
+    if (!KO_KINDS[kind] && amount >= this.hp) amount = this.hp - 1;
+    if (amount <= 0) return 0;
     let dealt;
     if (this.isPlayer) {
       _hurt.x = x; _hurt.z = z;
@@ -513,7 +526,10 @@ export class Fighter {
     if (dealt <= 0) return 0;
     this._flinch = 1;
     this._flinchDir = -this._flinchDir;
-    if (!blocked) this.momentum = this.momentum - dealt * TUNE.momDrain;
+    if (!blocked) {
+      if (this.hp < this.maxHp * 0.5) this.gainMomentum(dealt * TUNE.momHurt);
+      else this.momentum = this.momentum - dealt * TUNE.momDrain;
+    }
     const e = this.W.bus.ev(EV.DAMAGE);
     e.who = this.id; e.by = by; e.amount = dealt; e.kind = kind; e.hp = this.hp; e.maxHp = this.maxHp;
     e.blocked = !!blocked; e.x = x; e.y = y; e.z = z;
@@ -884,8 +900,13 @@ export class Fighter {
       P.x = p.x + dx / d * go; P.z = p.z + dz / d * go;
     }
     _onceOpt.duration = name === 'stomp' ? def.windup + def.active + 0.3 : undefined; _onceOpt.commit = def.windup + def.active; _onceOpt.hold = false;
-    for (let i = 0; i < def.clips.length; i++) if (this.glb.playOnce(def.clips[i], 0.12, 1.2, _onceOpt)) break;
-    this.animName = '';
+    // The anim layer's own power clip (wind-up, fire pose at the `fire` mark = our windup, recovery) when it has one, else the mocap cast
+    const pa = 'power_' + name;
+    _animOpt.fade = 0.12; _animOpt.timeScale = 1; _animOpt.duration = def.windup + def.active + def.recover; _animOpt.commit = _animOpt.duration;
+    if (!(ANIMS[pa] && this.W.anims.play(this, pa, _animOpt))) {
+      for (let i = 0; i < def.clips.length; i++) if (this.glb.playOnce(def.clips[i], 0.12, 1.2, _onceOpt)) break;
+      this.animName = '';
+    }
     const e = this.W.bus.ev(EV.POWER_TELEGRAPH);
     e.who = this.id; e.target = foe ? foe.id : ''; e.power = name; e.name = this._powerName(name); e.dur = name === 'stomp' ? def.windup + def.active : def.windup;
     e.radius = def.radius || 0; e.x = P.x; e.z = P.z;
@@ -1065,6 +1086,7 @@ export class Fighter {
     if (this.reblock > 0) this.reblock -= dt;
     if (this.invulnT > 0) this.invulnT -= dt;
     if (this.finished > 0) this.finished -= dt;
+    if (this.reboundCd > 0) this.reboundCd -= dt;
     if (this._kindLock.t > 0) this._kindLock.t -= dt;
     for (const k in this.cd) if (this.cd[k] > 0) this.cd[k] -= dt;
     // Stun-lock guard: time without control since last free
@@ -1083,7 +1105,13 @@ export class Fighter {
       this.stamina = Math.min(this.maxStamina, this.stamina + rate * dt);
     }
     if (this.tired && this.stamina >= TUNE.stamRecoverAt) { this.tired = false; this._emitWho(EV.STAMINA_RECOVERED); }
-    // Momentum
+    // Momentum. The classic game feeds the player's meter for everything it wrecks (+6 a building: a finisher's
+    // blast would refill itself); in a match only a trickle of that counts.
+    if (this.isPlayer) {
+      const r = this.ctx.player.rage;
+      if (r > this._momShadow + 0.01) this.momentum = this._momShadow + Math.min((r - this._momShadow) * 0.01, 0.1);
+      else this._momShadow = r;
+    }
     if (this.W.match.state.phase === 'fight' && s !== 'ko') this.gainMomentum(TUNE.momPassive * dt);
     const full = this.momentum >= 100;
     if (full && !this._momFull) { this._momFull = true; this._emitWho(EV.MOMENTUM_FULL); }
@@ -1267,8 +1295,8 @@ export class Fighter {
       this.lie = up ? this._lieP * this._lieP : smooth(this._lieP);
     }
     if (this._flinch > 0) {
-      this._flinch = Math.max(0, this._flinch - dt * 3.2);
-      this._setGlow(this._flinch * this._flinch * 0.55);
+      this._flinch = Math.max(0, this._flinch - dt * 4.5);
+      this._setGlow(this._flinch * this._flinch * 0.16); // a blink, not a whiteout (the VFX layer owns the real hit flash)
     }
     if (this.held) return;
     const r = this.root.rotation, f = this._flinch;

@@ -250,12 +250,16 @@ export const DEFS = {
     blend(P, R, ramp(t, 0, 0.16) * (1 - ramp(t, 0.24, 0.42)), K.whipWind);
     blend(P, R, ramp(t, 0.26, 0.45) * (1 - ramp(t, 0.58, 0.8)), K.whipThru);
   } },
-  whip_run: { dur: 0.5, loop: true, speed: 60, pose(t, P, R, dur) {        // sent running, out of control
+  whip_run: { dur: 0.5, loop: true, speed: 60, pose(t, P, R, dur) {        // sent running, out of control: stumbling, arms wheeling
     stance(P, R); level(P); K.headlong(P, R);
     const a = t / dur * TAU;
     gait(P, R, t / dur, 0, 1, 10, 0.4, 3.4, RUN);
-    hand(P, 'L', 0.55 + 0.2 * sin(a), 0.25 * cos(a), 0.25 + 0.4 * sin(a)); hand(P, 'R', 0.55 - 0.2 * sin(a), -0.25 * cos(a), 0.25 - 0.4 * sin(a));
-    P.hdp += 0.12 * sin(a * 2);
+    hand(P, 'L', 0.6 + 0.25 * sin(a), 0.1 + 0.45 * cos(a), 0.2 + 0.45 * sin(a)); hand(P, 'R', 0.6 - 0.25 * sin(a), 0.1 - 0.45 * cos(a), 0.2 - 0.45 * sin(a));
+    // every stride nearly goes down: the body pitches over the front foot and is caught again
+    const trip = Math.max(0, sin(a)), trip2 = Math.max(0, -sin(a));
+    P.hy -= 1.3 * trip + 0.5 * trip2; torso(P, 0.22 * trip - 0.1 * trip2, 0.18 * sin(a + 1), 0.16 * cos(a));
+    P.hdp += 0.3 * trip - 0.25 * trip2; P.hdr += 0.2 * cos(a); P.hx += 0.9 * cos(a);
+    tail(P, R, 0.35 * cos(a), 0.1); wings(P, R, 0.4 + 0.3 * sin(a * 2), 0.2);
   } },
   suplex: { dur: 1.45, marks: { lift: 0.25, impact: 0.95 }, pose(t, P, R) {   // clasp, arch back, throw it overhead
     stance(P, R);
@@ -316,6 +320,45 @@ export const DEFS = {
     gait(P, R, t / dur, 0, 1, 7, 0.6, 3.0, MARCH);
   } },
 
+  // ---- the rival's signature powers: anticipation -> `fire` -> the pose held through the active window -> recovery (fighter.js POWERS) ----
+  power_beam: { dur: 2.0, marks: { fire: 0.95 }, pose(t, P, R) {
+    stance(P, R);
+    blend(P, R, ramp(t, 0, 0.6) * (1 - rampIn(t, 0.84, 0.95)), K.inhale);
+    blend(P, R, rampIn(t, 0.84, 0.96) * (1 - ramp(t, 1.35, 1.95)), K.spit);
+    const w = pulse(t, 0.4, 0.8, 0.84, 0.92), f = pulse(t, 0.95, 1.0, 1.3, 1.4);
+    P.s3y += 0.02 * w * sin(t * 62); P.hdr += 0.03 * w * sin(t * 71); P.hz -= 0.5 * f * (0.6 + 0.4 * sin(t * 50)); P.hdy += 0.02 * f * sin(t * 57);
+  } },
+  power_roar: { dur: 1.7, marks: { fire: 0.80 }, pose(t, P, R) {
+    stance(P, R);
+    blend(P, R, ramp(t, 0, 0.5) * (1 - rampIn(t, 0.68, 0.8)), K.gather);
+    blend(P, R, rampIn(t, 0.68, 0.81) * (1 - ramp(t, 1.1, 1.65)), K.bellow);
+    const f = pulse(t, 0.8, 0.85, 1.0, 1.15);
+    P.hdy += 0.07 * f * sin(t * 55); P.s3y += 0.03 * f * sin(t * 47); P.hdr += 0.05 * f * sin(t * 39); P.cLr += 0.06 * f * sin(t * 50); P.cRr -= 0.06 * f * sin(t * 50);
+  } },
+  power_charge: { dur: 2.1, marks: { fire: 0.70, end: 1.25 }, pose(t, P, R) {
+    stance(P, R);
+    blend(P, R, ramp(t, 0, 0.45) * (1 - rampIn(t, 0.6, 0.72)), K.coil);
+    // paws the ground twice while it coils
+    const paw = pulse(t, 0.1, 0.2, 0.2, 0.3) + pulse(t, 0.35, 0.45, 0.45, 0.55); P.fRy += 2.2 * paw; P.fRz -= 1.5 * paw;
+    blend(P, R, rampIn(t, 0.6, 0.72) * (1 - ramp(t, 1.25, 1.5)), K.ram);
+    blend(P, R, pulse(t, 1.25, 1.5, 1.55, 2.05), K.skid);
+  } },
+  power_stomp: { dur: 1.85, marks: { fire: 0.40, land: 1.25 }, pose(t, P, R) {
+    stance(P, R);
+    blend(P, R, ramp(t, 0, 0.3) * (1 - rampIn(t, 0.34, 0.46)), K.crouch);
+    blend(P, R, rampIn(t, 0.36, 0.55) * (1 - rampIn(t, 1.05, 1.24)), K.tuck, null);
+    blend(P, R, rampIn(t, 1.1, 1.25) * (1 - ramp(t, 1.4, 1.8)), K.slamLand);
+    P.hy += 0.8 * wobble(t, 1.25, 24, 7);
+  } },
+  power_ult: { dur: 3.0, marks: { fire: 1.50 }, pose(t, P, R) {
+    stance(P, R);
+    blend(P, R, ramp(t, 0, 1.2) * (1 - rampIn(t, 1.36, 1.5)), K.summon);
+    blend(P, R, rampIn(t, 1.36, 1.52) * (1 - ramp(t, 2.1, 2.95)), K.unleash);
+    const w = ramp(t, 0.3, 1.3) * (1 - ramp(t, 1.36, 1.5)), f = pulse(t, 1.5, 1.55, 1.8, 2.0);   // the build shakes harder and harder
+    P.s3y += 0.035 * w * sin(t * 58); P.hdr += 0.04 * w * sin(t * 67); P.aLx += 0.02 * w * sin(t * 61); P.aRx += 0.02 * w * sin(t * 53); P.hy += 0.25 * w * sin(t * 44);
+    P.hy += 0.9 * wobble(t, 1.5, 22, 6); P.hdy += 0.05 * f * sin(t * 55);
+  } },
+
   // ---- finisher (grapple.js timeline: 0.5 haul in, 0.6 lift, rise to the apex, 0.45 drop, impact) ----
   finisher_windup: { dur: 1.1, hold: true, marks: { grab: 0.5, up: 1.0 }, pose(t, P, R) {
     stance(P, R);
@@ -374,7 +417,7 @@ function limp(P, R) {
   P.nkp = -0.15; P.hdp = -0.3; P.hdy = 0.2;
   hand(P, 'L', 0.72, 0.3, -0.3); elbow(P, 'L', 0.2, -0.4, -1); hand(P, 'R', 0.78, 0.05, -0.34); elbow(P, 'R', 0.2, -0.4, -1);
   P.hLp = 0.4; P.hRp = 0.4;
-  if (R.iTail >= 0) { P.tlp = -0.25; P.kLb = 0.7; }
+  if (R.iTail >= 0) { P.tlp = -1.1; P.kLb = 1.3; }
   wings(P, R, -0.15, 0.25);
   return P;
 }
@@ -388,7 +431,7 @@ function sprawl(P, R) {
   P.hLp = 0.3; P.hRp = 0.3;
   P.hz = LIE_Z[R.key] || 0;
   // Tridon: swing the tail (and the thigh skinned to it) up off the mat so it lies between the legs instead of spearing the ground
-  if (R.iTail >= 0) { P.tlp = -1.25; P.kLb = 1.5; }
+  if (R.iTail >= 0) { P.tly = -1.45; P.tlp = -0.2; P.kLb = 0.5; }
   wings(P, R, -0.35, -0.2);
   return P;
 }
@@ -467,6 +510,49 @@ const K = {
     hand(Q, 'L', 0.85, 0.15, 0.4); hand(Q, 'R', 0.85, 0.15, 0.4); Q.hdp = -0.5; wings(Q, R, 0.2, 0.2);
     if (R.iTail >= 0) { Q.tlp = -0.5; Q.kLb = 0.7; }
   },
+  // -- powers --
+  inhale(Q, R) {
+    Q.hz -= 1.6; Q.hy += 0.6; Q.hyaw = 0; Q.s1y -= 0.12; torso(Q, -0.4, -0.1, 0); Q.nkp = -0.25; Q.hdp = -0.4; Q.fLz = 1.2; Q.fRz = -1.8; Q.fLx = 1.8; Q.fRx = 1.8;
+    hand(Q, 'L', 0.6, -0.5, -0.1); hand(Q, 'R', 0.6, -0.5, -0.1); elbow(Q, 'L', 1, 0.2, -0.5); elbow(Q, 'R', 1, 0.2, -0.5); wings(Q, R, 0.8, -0.2); tail(Q, R, 0, 0.15);
+  },
+  spit(Q, R) {
+    Q.hz += 2.4; Q.hy -= 1.8; Q.hyaw = 0; Q.s1y -= 0.12; torso(Q, 0.34, -0.1, 0); Q.nkp = -0.1; Q.hdp = -0.3; Q.fLz = 3.0; Q.fRz = -2.8; Q.fLx = 2.2; Q.fRx = 2.2; Q.fRpit = 0.3;
+    hand(Q, 'L', 0.7, -0.45, -0.25); hand(Q, 'R', 0.7, -0.45, -0.25); elbow(Q, 'L', 1, 0.2, -0.5); elbow(Q, 'R', 1, 0.2, -0.5); wings(Q, R, 0.3, 0.5); tail(Q, R, 0, 0.25);
+  },
+  gather(Q, R) {
+    Q.hy -= 2.6; Q.hyaw = 0; torso(Q, 0.45, 0, 0); Q.hdp = 0.25; hand(Q, 'L', -0.05, -0.2, 0.42); hand(Q, 'R', -0.05, -0.3, 0.42); Q.fLx = 2; Q.fRx = 2; wings(Q, R, -0.4, 0.4);
+  },
+  bellow(Q, R) {
+    Q.hy -= 0.8; Q.hz += 1.8; Q.hyaw = 0; Q.s1y -= 0.12; torso(Q, 0.1, -0.1, 0); Q.nkp = -0.2; Q.hdp = -0.35; Q.fLz = 2.4; Q.fRz = -2.4; Q.fLx = 2.4; Q.fRx = 2.4;
+    hand(Q, 'L', 0.92, 0.05, -0.1); hand(Q, 'R', 0.92, 0.05, -0.1); elbow(Q, 'L', 0.6, -0.6, -0.6); elbow(Q, 'R', 0.6, -0.6, -0.6); Q.hLp = -0.5; Q.hRp = -0.5; wings(Q, R, 1.1, -0.3); tail(Q, R, 0, 0.2);
+  },
+  coil(Q, R) {
+    Q.hy -= 3.0; Q.hz -= 1.6; Q.hyaw -= 0.2; torso(Q, 0.5, -0.4, 0); Q.hdp = -0.45; Q.fLz = 2.8; Q.fRz = -2.6;
+    hand(Q, 'L', 0.2, -0.35, 0.5); hand(Q, 'R', 0.55, -0.4, -0.3); wings(Q, R, -0.2, 0.5); tail(Q, R, 0.3, 0.1);
+  },
+  ram(Q, R) {
+    Q.hy -= 2.0; Q.hz += 3.0; Q.hyaw = -0.3; torso(Q, 0.62, -0.25, 0); Q.nkp = 0.1; Q.hdp = -0.3; Q.fLz = 3.4; Q.fRz = -3.6; Q.fRpit = 0.7;
+    hand(Q, 'L', 0.1, -0.2, 0.5); hand(Q, 'R', 0.5, -0.5, -0.3); wings(Q, R, 0.2, 0.7); tail(Q, R, 0, 0.3);
+  },
+  // from limp: knees up at the top of the jump
+  tuck(Q, R) {
+    limp(Q, R); resetSpine(Q); torso(Q, 0.2, 0, 0); Q.hdp = 0.1; Q.hdy = 0; Q.nkp = 0;
+    Q.tLp = 1.0; Q.tRp = 0.9; Q.kLb = 1.5; Q.kRb = 1.4; Q.tLr = 0.35; Q.tRr = 0.35; Q.anLp = 0.3; Q.anRp = 0.3;
+    hand(Q, 'L', 0.6, 0.75, 0.1); hand(Q, 'R', 0.6, 0.75, 0.1); wings(Q, R, 1.0, -0.2);
+    if (R.iTail >= 0) { Q.tlp = 0.3; Q.kLb = 1.0; }
+  },
+  slamLand(Q, R) {
+    Q.hy -= 4.4; Q.hz += 0.8; Q.hyaw = 0; torso(Q, 0.6, 0, 0); Q.hdp = -0.45; Q.fLx = 2.8; Q.fRx = 2.8; Q.fLz = 0.8; Q.fRz = -0.8;
+    hand(Q, 'L', 0.55, -0.6, 0.3); hand(Q, 'R', 0.55, -0.6, 0.3); wings(Q, R, -0.4, 0.3);
+  },
+  summon(Q, R) {
+    Q.hy += 1.3; Q.hz -= 0.6; Q.hyaw = 0; Q.s1y -= 0.12; torso(Q, -0.3, -0.1, 0); Q.nkp = -0.2; Q.hdp = -0.4; Q.fLx = 2.2; Q.fRx = 2.2; Q.fLz = 0.5; Q.fRz = -0.5;
+    hand(Q, 'L', 0.45, 0.88, 0.0); hand(Q, 'R', 0.45, 0.88, 0.0); elbow(Q, 'L', 1, -0.2, -0.2); elbow(Q, 'R', 1, -0.2, -0.2); Q.hLp = -0.5; Q.hRp = -0.5; wings(Q, R, 1.2, -0.3); tail(Q, R, 0, 0.3);
+  },
+  unleash(Q, R) {
+    Q.hy -= 3.8; Q.hz += 1.8; Q.hyaw = 0; Q.s1y -= 0.12; torso(Q, 0.55, -0.1, 0); Q.nkp = -0.2; Q.hdp = -0.5; Q.fLx = 3.0; Q.fRx = 3.0; Q.fLz = 2.0; Q.fRz = -1.6;
+    hand(Q, 'L', 0.85, -0.45, 0.15); hand(Q, 'R', 0.85, -0.45, 0.15); elbow(Q, 'L', 1, 0.3, -0.4); elbow(Q, 'R', 1, 0.3, -0.4); Q.aLs = 1.25; Q.aRs = 1.25; wings(Q, R, 1.3, 0.2); tail(Q, R, 0, 0.3);
+  },
   // -- defence --
   guard(Q, R) {
     Q.hy -= 0.9; Q.hyaw = -0.1; torso(Q, 0.2, -0.05, 0); Q.fLx += 0.5; Q.fRx += 0.6;
@@ -498,10 +584,10 @@ const K = {
     hand(Q, 'L', 0.14, 0.2, 0.97); hand(Q, 'R', 0.14, 0.05, 0.97); elbow(Q, 'L', 1, -0.3, 0); elbow(Q, 'R', 1, -0.3, 0); Q.hdp -= 0.35;
   },
   tieUp(Q) {
-    Q.hy -= 2.2; Q.hz += 1.0; Q.hyaw = -0.08; torso(Q, 0.44, 0, 0);
+    Q.hy -= 2.2; Q.hz += 1.0; Q.hx -= 3.2; Q.hyaw = 0.1; torso(Q, 0.44, 0.22, -0.1);
     Q.fLx = 2.2; Q.fLz = 2.4; Q.fRx = 2.4; Q.fRz = -3.4; Q.fRpit = 0.4; Q.fRyaw = 0.45;
     hand(Q, 'L', 0.2, 0.3, 0.9); elbow(Q, 'L', 1, -0.2, -0.2); hand(Q, 'R', 0.3, 0.02, 0.86); elbow(Q, 'R', 1, -0.5, -0.2);
-    Q.hLp = -0.2; Q.hRp = -0.2; Q.nkp = -0.15; Q.hdp = -0.3; Q.hdy = 0.2; Q.hdr = -0.12;
+    Q.hLp = -0.2; Q.hRp = -0.2; Q.nkp = -0.15; Q.hdp = -0.3; Q.hdy = -0.25; Q.hdr = -0.2;
   },
   liftSquat(Q) {
     Q.hy -= 4.4; Q.hz += 1.4; Q.hyaw = 0; torso(Q, 0.5, 0, 0); Q.fLx = 2.2; Q.fRx = 2.2; Q.fLz = 0.8; Q.fRz = -0.8;
@@ -541,8 +627,8 @@ const K = {
     Q.nkp = -0.25; Q.hdp = -0.45; wings(Q, R, 0.3, -0.4);
   },
   swingHold(Q, R) {
-    Q.hy -= 2.0; Q.hz -= 1.6; Q.hyaw = 0; Q.s1y -= 0.12; torso(Q, -0.32, -0.1, 0); Q.fLx = 2.0; Q.fRx = 2.0; Q.fLz = 1.2; Q.fRz = 0.6;
-    hand(Q, 'L', 0.1, -0.22, 0.97); hand(Q, 'R', 0.1, -0.22, 0.97); Q.hdp = 0.2; tail(Q, R, 0, 0.1); wings(Q, R, 0.3, 0.5);
+    Q.hy -= 2.4; Q.hz -= 0.6; Q.hyaw = 0; Q.s1y -= 0.12; torso(Q, -0.1, -0.1, 0); Q.fLx = 2.0; Q.fRx = 2.0; Q.fLz = 1.2; Q.fRz = 0.6;
+    hand(Q, 'L', 0.1, -0.22, 0.97); hand(Q, 'R', 0.1, -0.22, 0.97); Q.aLs = 1.3; Q.aRs = 1.3; Q.hdp = 0.2; tail(Q, R, 0, 0.1); wings(Q, R, 0.3, 0.5);
   },
   // -- ground --
   // from limp: thrown off its feet, grabbing at the air
@@ -604,15 +690,16 @@ const TAUNT_A = {
   godzilla(t, P, R) {
     blend(P, R, ramp(t, 0, 0.28) * (1 - ramp(t, 1.15, 1.3)), (Q) => {
       Q.hy += 1.2; Q.hyaw = 0; Q.hz -= 0.4; torso(Q, -0.3, -0.1, 0); Q.hdp = -0.2; Q.fLz = 0.6; Q.fRz = -0.6; Q.fLx = 2; Q.fRx = 2;
-      hand(Q, 'L', 0.7, 0.05, 0.4); hand(Q, 'R', 0.7, 0.05, 0.4); elbow(Q, 'L', 1, 0.2, -0.3); elbow(Q, 'R', 1, 0.2, -0.3); wings(Q, R, 0.5, 0);
+      hand(Q, 'L', 0.85, 0.15, 0.3); hand(Q, 'R', 0.85, 0.15, 0.3); elbow(Q, 'L', 1, 0.2, -0.3); elbow(Q, 'R', 1, 0.2, -0.3); wings(Q, R, 0.5, 0);
     });
     // four beats, alternating fists
     for (let i = 0; i < 4; i++) {
       const b = pulse(t, 0.3 + i * 0.21, 0.37 + i * 0.21, 0.39 + i * 0.21, 0.5 + i * 0.21);
       if (b <= 0) continue;
       const s = i % 2 ? 'R' : 'L';
-      if (s === 'L') { P.aLx += (-0.1 - P.aLx) * b; P.aLy += (-0.2 - P.aLy) * b; P.aLz += (0.34 - P.aLz) * b; } else { P.aRx += (-0.1 - P.aRx) * b; P.aRy += (-0.2 - P.aRy) * b; P.aRz += (0.34 - P.aRz) * b; }
-      torso(P, 0.05 * b, (i % 2 ? -0.12 : 0.12) * b, 0); P.hy -= 0.3 * b;
+      if (s === 'L') { P.aLx += (-0.12 - P.aLx) * b; P.aLy += (-0.25 - P.aLy) * b; P.aLz += (0.36 - P.aLz) * b; P.aRx += 0.2 * b; P.aRy += 0.35 * b; }
+      else { P.aRx += (-0.12 - P.aRx) * b; P.aRy += (-0.25 - P.aRy) * b; P.aRz += (0.36 - P.aRz) * b; P.aLx += 0.2 * b; P.aLy += 0.35 * b; }
+      torso(P, 0.1 * b, (i % 2 ? -0.3 : 0.3) * b, (i % 2 ? 0.1 : -0.1) * b); P.hy -= 0.7 * b; P.hx += (i % 2 ? -0.8 : 0.8) * b;
     }
     blend(P, R, ramp(t, 1.15, 1.34) * (1 - ramp(t, 1.82, 2.0)), (Q) => {
       Q.hy -= 1.8; Q.hz += 2.2; Q.hyaw = 0; torso(Q, 0.34, -0.1, 0); Q.nkp = -0.2; Q.hdp = -0.4; Q.fLz = 2.6; Q.fRz = -2.6; Q.fRpit = 0.4; Q.fLx = 2.2; Q.fRx = 2.2;
@@ -650,6 +737,7 @@ const TAUNT_A = {
     blend(P, R, ramp(t, 1.82, 2.0), () => {});
   },
 };
+function resetSpine(Q) { Q.s1p = Q.s2p = Q.s3p = 0; Q.s1y = Q.s2y = Q.s3y = 0; Q.s1r = Q.s2r = Q.s3r = 0; }
 function resetTorso(Q) { Q.s1p = Q.s2p = Q.s3p = 0; Q.s1y = Q.s2y = Q.s3y = 0; Q.s1r = Q.s2r = Q.s3r = 0; }
 K.mechT = (Q, R) => { Q.hy += 0.8; Q.hyaw = 0; Q.hz = 0; resetTorso(Q); Q.fLz = 0; Q.fRz = 0; Q.fLx = 1.6; Q.fRx = 1.6; Q.hdp = 0; Q.hdy = 0; Q.nkp = 0; };
 
@@ -673,8 +761,8 @@ const TAUNT_B = {
     const w = ramp(t, 0, 0.2) * (1 - ramp(t, 1.75, 2.0));
     blend(P, R, w, (Q) => { Q.hy -= 1.2; Q.hyaw = 0; torso(Q, 0.2, -0.1, 0); Q.fLx = 2; Q.fRx = 2; hand(Q, 'L', 0.7, -0.2, 0.4); hand(Q, 'R', 0.7, -0.2, 0.4); Q.hdp = -0.15; });
     const a = (t - 0.15) / 0.52 * TAU, beat = sin(a), lead = cos(a);
-    P.cLr += w * (0.35 + 0.55 * beat); P.cRr += w * (0.35 + 0.55 * beat); P.cLy += w * (-0.1 - 0.5 * lead); P.cRy += w * (-0.1 - 0.5 * lead); P.cLp += w * 0.25 * lead; P.cRp += w * 0.25 * lead;
-    P.hy += w * 0.8 * beat; torso(P, -0.12 * w * beat, 0, 0);
+    P.cLr += w * (0.1 + 0.9 * beat); P.cRr += w * (0.1 + 0.9 * beat); P.cLy += w * (-0.15 - 0.75 * lead); P.cRy += w * (-0.15 - 0.75 * lead); P.cLp += w * 0.45 * lead; P.cRp += w * 0.45 * lead;
+    P.hy += w * 1.4 * beat; P.hz += w * 1.2 * lead; torso(P, -0.25 * w * beat, 0, 0);
     P.hdy += w * 0.45 * sin(a * 0.5); P.hdr += w * 0.2 * sin(a * 0.5 + 1); P.hdp += w * 0.12 * lead; P.tly += w * 0.6 * sin(a * 0.5 + 2); P.tlp += w * 0.12 * beat;
   },
   // Mechra: target lock. The arm comes up dead level at the foe, then the fist goes up and drops like a verdict
