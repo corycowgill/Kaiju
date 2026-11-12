@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.11.137', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.11.138', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -1021,7 +1021,7 @@ const world = {
     return e;
   },
   spawnEnergyImpact: function (pos, normal) {
-    audio.beam();
+    audio.energyImpact();
     if(!this._fxRoom())return;
     const e=vfx.spawn('beamImpact',{world:this,pos,normal});if(e)this.effects.push(e);
   },
@@ -1037,7 +1037,7 @@ const world = {
     m.scale.setScalar(profile.size / 0.35); // base geom is r=0.35
     scene.add(m);
     this.shells.push({ mesh: m, vel: dir.clone().multiplyScalar(profile.speed), life: 4.0, damage: profile.damage, type });
-    audio.shoot(type);
+    audio.shoot(type, origin.distanceTo(camera.position));
   },
   showMessage,
 };
@@ -2455,7 +2455,7 @@ async function startDuel(playerKey, loadingStatus) {
     hurtPlayer: (amount, source) => duel.hurtPlayer(amount, source),
     feedback(kind) {
       world.shake(kind === 'slam' ? 1.7 : .42, kind === 'slam' ? .55 : .22);
-      audio.meleeImpact(kind === 'slam' ? 'stomp' : 'punch', 1);
+      audio.meleeImpact(kind);
     },
     prompt(label) {
       grapplePrompt.textContent = label;
