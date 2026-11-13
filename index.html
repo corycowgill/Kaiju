@@ -1102,7 +1102,7 @@
      different set of programs from the ones play uses (measured, devtools/perf: first-use shader builds during
      a 45 s match 3 -> 0, 0.3-1 s each). */
   html body.hud-prewarm :is(#hud, #powers, #mobile-ui > *, #message, #wave-banner, #popups, #upgrade-modal, #pause-menu,
-    #damage-flash, #lowhp-warning, #dmg-indicators, #wr-hud, #wr-skip, #gameover.wr-warm),
+    #damage-flash, #lowhp-warning, #dmg-indicators, #wr-hud, #wr-skip, #gameover.wr-warm, #help),
   html body.hud-prewarm.touch :is(#wr-touch, #wr-touch > *) { opacity: 1 !important; z-index: 150 !important; }
   body.hud-prewarm #loading-screen.visible { opacity: 0.992; }
 
@@ -1635,6 +1635,10 @@
   /* No forced opacity on the inner layers: an !important rule would beat the animations prewarm() runs on them,
      and it is exactly the part-faded states (a group at 0 < opacity < 1 is its own render surface) that must be drawn */
   body.wr-warming #wr-moves { display: block; }
+  /* perf: the prewarm's second pass (_hudPrewarmEnd, body.hud-settle): the match layers at their real strength and
+     stacking, still under the 99.2%-opaque loading screen */
+  html body.hud-settle.wr-warming :is(#wr-hud, #wr-skip), html body.hud-settle.wr-warming.touch :is(#wr-touch, #wr-touch > *) { opacity: 1 !important; z-index: 10 !important; }
+  html body.hud-settle.wr-warming #gameover.wr-warm { opacity: 1 !important; z-index: 150 !important; }
   .wr-pin-warm { position: absolute; top: 14%; left: 30%; }
   @media (prefers-reduced-motion: reduce) {
     .wr-side.crit .wr-hp .fill, .wr-side.full .wr-mom span, #wr-mash.on .t, .wr-tb.cue::after, .wr-ts.cue::after, #wr-belt, #wr-belt .shine { animation: none !important; }

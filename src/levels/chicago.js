@@ -1446,10 +1446,13 @@ export function buildChicago(scene, world, opts, K) {
   // racks, hydrants...) once its nearest one is under ~3 px tall; trees,
   // lamps, the L and the riverwalk carry the far view and stay
   const smallCull = glb && lite ? { px: 3, maxH: 2, keep: /tree|lamp|l_track|l_station|riverwalk/i } : null;
-  const instance = () => K.instanceStaticClones(scene, !glb ? 4000 : lite ? 240 : 120, lite ? 185 : 150, smallCull);
+  // (4000 used to mean one tile, but tiles split at the map's axes: four quadrant draws per part. Infinity is one.)
+  const instance = () => K.instanceStaticClones(scene, !glb ? Infinity : lite ? 240 : 120, lite ? 185 : 150, smallCull);
   // GLB buildings: the generic kit is a dozen tiny (<300 tri) templates, so
   // big batch tiles keep their draws down at almost no triangle cost
-  K.setBuildingTile(!glb ? 600 : lite ? 440 : 400); // phone LOW: one tile per quadrant; desktop 400 since the street-wall split
+  // (perf) phone LOW: one tile for the whole map, one draw per kit part (the quadrants cost ~90 of its 450-draw
+  // budget; every generic building is drawn when any is in view, a few hundred thousand tris at most)
+  K.setBuildingTile(!glb ? Infinity : lite ? 440 : 400); // desktop 400 since the street-wall split
   const B = L.bounds;
   const animators = [];
   const makeParkTree=createChicagoTrees(K,lite,glb);

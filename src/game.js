@@ -1139,7 +1139,7 @@ const _TOKYO_LOOK = {
 // values here only stand until its first write. What this table still
 // decides: no neon, no Tokyo night-sky dressing.
 const _CHICAGO_LOOK = {
-  bg: 0x91bce0, fog: 0xb4cce0, fogDensity: 0.00095,
+  bg: 0xcdb9ac, fog: 0xcdb9ac, fogDensity: 0.00095, // look.js's golden-hour haze
   hemiSky: 0xdcecff, hemiGround: 0x6b6355, hemiI: Q_HIGH ? 0.55 : (Q_MED ? 0.68 : 0.75),
   sun: 0xfff3e2, sunI: 2.35, rim: 0xb4cdf5, rimI: Q_LOW ? 0.30 : 0.40,
   amb: 0x8a9bb0, ambI: Q_HIGH ? 0.18 : (Q_MED ? 0.30 : 0.42), neonI: _neonLights.map(() => 0),
@@ -2435,12 +2435,18 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
     if ((o.isMesh || o.isPoints || o.isLine) && o.frustumCulled) { o.frustumCulled = false; wasCulled.push(o); }
   });
   scene.add(stage); // (after the sweep: the stage's hidden parts are the batched ones, drawn through their batches)
+  const undoCounts = _drawableCounts(scene);
   const camHook = scene.onBeforeRender;
   scene.onBeforeRender = () => {}; // the LOD and band switches would hide half of it again
+  // The shadow pass too: with RP.shadowEvery > 1 it only runs when asked, so
+  // the warm frame skipped it and every caster's depth program met the driver
+  // in play (one tank's first depth draw held the GPU process 6.7 s)
+  renderer.shadowMap.needsUpdate = true;
   try { if (composer) composer.render(); else renderer.render(scene, camera); } catch (e) {
     warnOnce('prewarm|frame', '[prewarm] warm frame failed:', e && e.message);
   }
   scene.onBeforeRender = camHook;
+  undoCounts();
   for (const o of wasHidden) o.visible = false;
   for (const o of wasCulled) o.frustumCulled = true;
   scene.remove(stage);
@@ -2456,6 +2462,119 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
   stage.traverse((n) => { if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose(); });
   if (onProgress) onProgress(renderer.info.programs.length, renderer.info.programs.length);
   console.log(`[prewarm:start] gameplay set linked + uploaded in ${(performance.now() - t0).toFixed(0)} ms (${renderer.info.programs.length} programs)`);
+}
+
+/** For the warm frame: every instanced draw under root with nothing to draw
+ *  yet (count / instanceCount / drawRange 0: crowds, rubble and particle
+ *  pools, effect batches) drawn with one instance, a zero instance matrix
+ *  made identity. An empty draw is skipped by ANGLE, so the D3D shaders
+ *  for its vertex layout were first built when it filled up in play (the
+ *  festival crowd's: a 1.9 s freeze 0.4 s in). Returns the undo. */
+function _drawableCounts(root) {
+  const undo = [];
+  root.traverse((o) => {
+    if (!o.isMesh && !o.isPoints && !o.isLine) return;
+    const g = o.geometry;
+    if (o.isInstancedMesh && o.count === 0 && o.instanceMatrix.count > 0) {
+      const a = o.instanceMatrix.array, m0 = Array.from(a.subarray(0, 16));
+      if (m0.every((v) => v === 0)) { a[0] = a[5] = a[10] = a[15] = 1; o.instanceMatrix.needsUpdate = true; }
+      o.count = 1;
+      undo.push(() => { o.count = 0; a.set(m0, 0); o.instanceMatrix.needsUpdate = true; });
+    }
+    if (g && g.isInstancedBufferGeometry && g.instanceCount === 0) { g.instanceCount = 1; undo.push(() => { g.instanceCount = 0; }); }
+    if (g && g.drawRange && g.drawRange.count === 0) { g.drawRange.count = Infinity; undo.push(() => { g.drawRange.count = 0; }); }
+  });
+  return () => { for (const f of undo) f(); };
+}
+
+/** The last step behind the loading screen: the run's first frames play
+ *  under it (the tick runs as in play while _settling, 4 frames; then the
+ *  view is drawn without advancing the game), with the loading
+ *  screen 99.2% opaque so the compositor rasters and draws the page under it
+ *  exactly as play starts it (HUD and its first updates, the help card, the
+ *  mode's own overlays, the 3D view; extraRoots, added after _prewarmShaders,
+ *  drawn unculled in the first one). Then wait, without blocking, until the
+ *  GPU has executed them and frames come back at a steady rate. Each first
+ *  use is a raster program or D3D shader build, and this machine's driver
+ *  took 0.2-4.5 s for some: as the loading screen went, Kaiju Havoc's powers
+ *  bar and Lone Soldier's HUD froze the first frame for that long. */
+let _settling = false;
+async function _settleGpu(extraRoots = [], timeoutMs = 8000) {
+  const t0 = performance.now();
+  const ls = document.getElementById('loading-screen');
+  if (ls) ls.style.opacity = '0.992';
+  const culled = [];
+  for (const root of extraRoots) {
+    if (!root) continue;
+    root.traverse((o) => { if (o.isMesh && o.frustumCulled) { o.frustumCulled = false; culled.push(o); } });
+  }
+  _settling = true;
+  try {
+    await _settleFrames(t0, timeoutMs, culled);
+  } finally {
+    _settling = false;
+    for (const o of culled) o.frustumCulled = true;
+  }
+  // A match opens on its entrance (letterboxed, HUD away): the page as the
+  // bell leaves it is drawn here too, then put back (letterbox included) while
+  // still covered. Its first raster at the bell cost 0.2-2.5 s.
+  const wrRoot = _mode && _mode.id === 'wrestling' ? document.getElementById('wr-hud') : null;
+  if (wrRoot) {
+    const body = document.body, had = [wrRoot.classList.contains('lbox'), wrRoot.classList.contains('cine'), body.classList.contains('wr-cine')];
+    // (the top band straight to its place, no slide: it is rastered at rest,
+    // at full image quality, which is the program the bell was missing)
+    const top = document.getElementById('wr-top');
+    if (top) top.style.transition = 'none';
+    wrRoot.classList.remove('lbox', 'cine'); body.classList.remove('wr-cine');
+    await _steadyFrames(1500, 3500, true);
+    wrRoot.classList.toggle('lbox', had[0]); wrRoot.classList.toggle('cine', had[1]); body.classList.toggle('wr-cine', had[2]);
+    await _steadyFrames(600, 3000, true); // (the letterbox's 0.4 s slide back)
+    if (top) top.style.transition = '';
+  }
+  if (ls) ls.style.opacity = '';
+  console.log(`[prewarm:gpu] first frames played behind the loading screen in ${(performance.now() - t0).toFixed(0)} ms`);
+}
+async function _settleFrames(t0, timeoutMs, culled) {
+  // (rAF callbacks queued now run after this frame's tick)
+  await new Promise((r) => requestAnimationFrame(() => r()));
+  for (const o of culled) o.frustumCulled = true;
+  culled.length = 0;
+  // Four ticks of play (~70 ms of game time: the HUD's and the mode's first
+  // updates), then the view is only drawn (_steadyFrames below), so the
+  // player doesn't miss the start of an entrance or a wave
+  for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(() => r()));
+  _settling = false;
+  const gl = renderer.getContext();
+  if (gl.fenceSync) {
+    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.flush();
+    await new Promise((resolve) => {
+      const poll = () => {
+        if (gl.getSyncParameter(sync, gl.SYNC_STATUS) === gl.SIGNALED || performance.now() - t0 > timeoutMs) { gl.deleteSync(sync); resolve(); }
+        else setTimeout(poll, 25);
+      };
+      poll();
+    });
+  }
+  // Raster is asynchronous: 6 frames in a row under 50 ms (as _hudPrewarmEnd)
+  await _steadyFrames(0, Math.max(0, timeoutMs - (performance.now() - t0)), true);
+}
+/** Resolves after minMs and 6 frames in a row under 50 ms (raster and the
+ *  GPU process caught up), or after maxMs. draw: the 3D view is drawn every
+ *  frame meanwhile (without it the GPU idled down to its lowest clocks, and
+ *  play's first frames took 40-200 ms each while it clocked back up). */
+function _steadyFrames(minMs, maxMs, draw = false) {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    let last = t0, ok = 0;
+    const step = () => {
+      const now = performance.now();
+      if (draw) { try { if (composer) composer.render(); else renderer.render(scene, camera); } catch (e) { draw = false; } }
+      ok = now - last < 50 ? ok + 1 : 0; last = now;
+      if ((ok >= 6 && now - t0 >= minMs) || now - t0 > maxMs) resolve(); else requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
 }
 
 // Upload every texture the run samples (city, kaiju, staged enemies, and
@@ -2959,6 +3078,7 @@ async function _startGameInner(key) {
     if(renderer.compileAsync)await renderer.compileAsync(scene,camera);
     else renderer.compile(scene,camera);
   }
+  await _settleGpu([duel && duel.glb && duel.glb.root, lone && camera]); // (perf) the first frame's GPU work, behind the loading screen
   loadingScreen.classList.remove('visible');
   // Effects not linked behind the menu: phones queue them all now, desktop
   // links them one at a time after the first frames
@@ -5648,6 +5768,7 @@ function _hudPrewarmBegin() {
     clearInterval(_hudPrewarm && _hudPrewarm.anim);
     try { if (_hudPrewarm && _hudPrewarm.wr) _hudPrewarm.wr(); } catch (e) { /* hud.start() restores it too */ }
     for (const el of extra) el.remove();
+    hud.style.removeProperty('opacity'); powers.style.removeProperty('opacity');
     for (const id of ['hud-toasts', 'mini-toasts']) { const w = $(id); if (w) w.innerHTML = ''; }
     hud.classList.add('hidden');
     powers.classList.add('hidden');
@@ -5655,6 +5776,7 @@ function _hudPrewarmBegin() {
     obj.classList.remove('complete'); obj.style.display = 'none';
     boss.style.display = 'none';
     if (hudRefs.combo) hudRefs.combo.style.opacity = '0';
+    if (hudRefs.comboBar) hudRefs.comboBar.style.transform = 'scaleX(0)';
     $('vitals')?.classList.remove('low');
     hudRefs.lowHp?.classList.remove('active');
     if (hudRefs.damageFlash) hudRefs.damageFlash.style.opacity = '0';
@@ -5663,7 +5785,9 @@ function _hudPrewarmBegin() {
     modal.style.display = 'none'; cards.innerHTML = '';
     _pauseMenu?.classList.add('hidden');
     if (!state.kaiju) minimapCanvas?.classList.add('hidden');
+    $('help')?.classList.add('hidden'); // (startGame shows it again on desktop)
     _hudComboOn = false; _hudLowHp = false; _hudKey = {};
+    if (_hudPrewarm && _hudPrewarm.wrMode) document.body.classList.remove('wr-mode'); // (the match's hud.start() sets it again)
     document.body.classList.remove('hud-prewarm');
   } };
   // The match HUD too (wrestling runs): every state of it, drawn the same
@@ -5673,6 +5797,15 @@ function _hudPrewarmBegin() {
     if (_runModeId(selectedLevel) === 'wrestling') {
       if (!_wr) _wr = createWrestling(ctx);
       _hudPrewarm.wr = _wr.W.hud.prewarm();
+      // ...and the classic HUD and help card in their match look (wr-mode),
+      // which first showed at the bell (a 1.5 s raster build there)
+      document.body.classList.add('wr-mode');
+      _hudPrewarm.wrMode = true;
+      // The fighters' portraits decoded first (_hudPrewarmEnd waits on these):
+      // a background image not yet decoded is rastered around (checker-imaged),
+      // so the skewed, rounded portrait frames' masked-image program was first
+      // built at the bell (0.5-2.4 s)
+      for (const k of ['godzilla', 'ghidorah', 'mecha']) { const im = new Image(); im.src = `assets/${k}.webp`; _hudPrewarm.imgs.push(im); }
     }
   } catch (e) {
     warnOnce('prewarm|wrhud', '[prewarm] match HUD prewarm failed:', e && e.message);
@@ -5682,6 +5815,17 @@ function _hudPrewarmBegin() {
     hud.classList.remove('hidden');
     powers.classList.remove('hidden');
     if (touchUI) for (const id of touchIds) $(id)?.classList.remove('hidden');
+    // The controls card (desktop) and its dimmed copy: a blurred, rounded
+    // backdrop over the game, shown as play starts (a 0.4-0.8 s raster
+    // program build there on a cold cache, Kaiju Havoc)
+    const help = $('help');
+    if (help && !touchUI) {
+      help.classList.remove('hidden', 'dim');
+      const dim = help.cloneNode(true);
+      dim.classList.add('dim'); // (same id, after the real one: getElementById still finds that)
+      dim.style.cssText = 'right:40%!important;opacity:0.28!important;pointer-events:none';
+      help.parentElement.appendChild(dim); extra.push(dim);
+    }
     // Every power state: ready, cooling (sweep + badge), short of rage, ult charging / ready
     buildPowersBar();
     const st = { beam: 'is-ready', roar: 'is-cd', charge: 'is-low', stomp: 'is-ready', ult: 'is-ready' };
@@ -5719,6 +5863,12 @@ function _hudPrewarmBegin() {
       if (u) _ring(u, (tick % 20) / 20);
       // the callouts' fade transitions (ultimate / wave banner)
       if (tick % 16 === 0) { msg.classList.toggle('show'); banner.classList.toggle('show'); }
+      // match runs: the classic HUD and powers fade in at each bell (wr-mode's
+      // opacity transition): run that fade, part-faded states and all
+      if (_hudPrewarm && _hudPrewarm.wrMode && tick % 10 === 0) {
+        const o = (tick / 10) % 2 ? '0.2' : '1';
+        for (const n of [hud, powers]) n.style.setProperty('opacity', o, 'important');
+      }
     }, 50);
     for (const v of [0, 0.25, 0.75, 1]) variant(hudRefs.pw.ult, 'is-low', _ring, v);
     _prewarmMinimap();
@@ -5729,6 +5879,9 @@ function _hudPrewarmBegin() {
     obj.classList.add('complete');
     boss.style.display = 'block';
     if (hudRefs.combo) hudRefs.combo.style.opacity = '1';
+    // (its bar is a layer of its own clipped by the rounded track: drawn empty,
+    // the compositor's rounded-clip program was first built at the first combo)
+    if (hudRefs.comboBar) hudRefs.comboBar.style.transform = 'scaleX(0.6)';
     $('vitals')?.classList.add('low');
     hudRefs.lowHp?.classList.add('active');
     if (hudRefs.damageFlash) hudRefs.damageFlash.style.opacity = '0.85';
@@ -5792,7 +5945,28 @@ async function _hudPrewarmEnd() {
       };
       requestAnimationFrame(step);
     });
+    // Then the same states under the page's real styles (body.hud-settle in
+    // place of the hud-prewarm overrides), the loading screen 99.2% opaque.
+    // Chrome keys raster and compositor programs on the stacking and opacity
+    // a layer is drawn with: after the forced-opacity pass alone a match still
+    // built 0.6-2.5 s of them at its bell and first pin.
+    const ls = document.getElementById('loading-screen');
+    if (ls) ls.style.opacity = '0.992';
+    document.body.classList.add('hud-settle');
+    document.body.classList.remove('hud-prewarm');
+    await new Promise((resolve) => {
+      const t0 = performance.now(); let last = t0, ok = 0;
+      const step = (now) => {
+        ok = now - last < 50 ? ok + 1 : 0; last = now;
+        // (1.2 s at least: the looping prewarm animations go through their states)
+        if ((ok >= 6 && now - t0 > 1200) || now - t0 > 4000) resolve(); else requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
   } finally {
+    document.body.classList.remove('hud-settle');
+    const ls = document.getElementById('loading-screen');
+    if (ls) ls.style.opacity = '';
     pw.restore();
     _hudPrewarm = null;
   }
@@ -6435,7 +6609,7 @@ function tick(now) {
   if(state.paused&&state.kaiju&&!state.gameOver&&!state.upgradePending){
     readGamepad();if(padInput.pressed.pause)togglePause(false);
   }
-  const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible');
+  const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible') && !_settling; // (_settleGpu: the first frames play under it)
   if (!state.paused && !state.gameOver && !loadingUp) {
     state.elapsedTime += dtRaw;
     world.time += dt;

@@ -339,7 +339,7 @@ export function createMatch(ctx, W) {
     if (winner === 'player') {
       ctx.addScore(Math.round(MATCH.scoreMatch * (1 + 0.5 * s.defense)));
       callout(s.defense > 0 ? 'AND STILL...' : 'AND NEW...', 'result', 'player', `${W.player.name} · CHICAGO HEAVYWEIGHT CHAMPION`);
-    } else callout(`${W.rival.name} WINS`, 'result', 'rival', s.defense > 0 ? 'AND NEW CHAMPION' : 'THE TITLE STAYS VACANT');
+    } else callout(s.defense > 0 ? 'AND NEW...' : 'AND STILL...', 'result', 'rival', `${W.rival.name} · CHICAGO HEAVYWEIGHT CHAMPION`);
     W.slowMo(0.3, 0.9);
     seq = 'overHold'; seqT = 0;
   }
@@ -638,7 +638,7 @@ export function createMatch(ctx, W) {
       const def = s.defense > 0 ? ` · ${s.defense} TITLE DEFENSE${s.defense > 1 ? 'S' : ''}` : '';
       return victory
         ? { title: s.defense > 0 ? 'AND STILL...' : 'AND NEW...', subtitle: `${W.player.name} · CHICAGO HEAVYWEIGHT CHAMPION${def}`, waveLabel: 'Falls Won', waveValue: falls, keepPose: true }
-        : { title: `${W.rival.name} WINS`, subtitle: s.defense > 0 ? `The title changes hands after ${s.defense} defense${s.defense > 1 ? 's' : ''}` : 'Counted out in Grant Park...', waveLabel: 'Falls Won', waveValue: falls, keepPose: true };
+        : { title: `${W.rival.name} WINS`, subtitle: s.defense > 0 ? `The title changes hands after ${s.defense} defense${s.defense > 1 ? 's' : ''}` : `${W.rival.name} retains the Chicago Heavyweight title`, waveLabel: 'Falls Won', waveValue: falls, keepPose: true };
     },
     /** QA: end the current fall now as a win for 'player' or 'rival' (through the normal fall path). */
     end(winner) {

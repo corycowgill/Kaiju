@@ -409,7 +409,8 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST, sm
     c.traverse((m) => {
       if (!m.isMesh) return;
       const e = m.matrixWorld.elements;
-      const key = `${m.geometry.uuid}|${m.material.uuid}|${t}:${Math.floor(e[12] / t)},${Math.floor(e[14] / t)}`;
+      // (t Infinity: one tile for the whole map; a finite one splits at the origin's axes at least)
+      const key = `${m.geometry.uuid}|${m.material.uuid}|${t}:${t === Infinity ? 'all' : Math.floor(e[12] / t) + ',' + Math.floor(e[14] / t)}`;
       let b = buckets.get(key);
       if (!b) buckets.set(key, b = { geometry: m.geometry, material: m.material, recv: m.receiveShadow, lodDistance:c.userData.instanceLodDistance, matrices: [] });
       b.matrices.push(m.matrixWorld.clone());
@@ -420,7 +421,7 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST, sm
   for (const b of buckets.values()) {
     const cull2 = smallCull ? _smallCullDist2(b, smallCull) : 0;
     const ims = [b.geometry, _lod1ByGeom.get(b.geometry)].filter(Boolean).map((geom) => {
-      const im = new THREE.InstancedMesh(geom, b.material, b.matrices.length);
+      const im = new THREE.InstancedMesh(_ownVAO(geom), b.material, b.matrices.length);
       b.matrices.forEach((mat, i) => im.setMatrixAt(i, mat));
       // Small static props (trees, parked cars, street props) don't cast: the
       // tiles inside the shadow frustum were redrawing ~millions of triangles
@@ -441,6 +442,37 @@ function _instanceStaticClones(scene, tile = BATCH_TILE, lodDist = LOD1_DIST, sm
     }
   }
   if (lodPairs.length) _makeLodController(scene, lodPairs, lodDist);
+}
+
+/** A geometry of its own over the same buffers (index, attributes, groups,
+ *  bounds and userData shared, so nothing is uploaded twice). three keys a
+ *  vertex-array object by geometry and program, not by mesh: the tile
+ *  batches of one template, each with its own instanceMatrix, rebuilt that
+ *  VAO (a vertexAttribPointer per attribute) on every draw of every frame.
+ *  Teardown leaves a template's copies alone like the template itself, so
+ *  the next buildCity disposes them (_releaseVAOCopies): three then deletes
+ *  the shared buffers too and uploads them again on their next draw. */
+const _vaoCopies = new Set();
+function _releaseVAOCopies() {
+  for (const g of _vaoCopies) g.dispose();
+  _vaoCopies.clear();
+}
+function _ownVAO(geom) {
+  const g = new THREE.BufferGeometry();
+  _vaoCopies.add(g);
+  g.name = geom.name;
+  g.index = geom.index;
+  for (const k in geom.attributes) g.attributes[k] = geom.attributes[k];
+  g.morphAttributes = geom.morphAttributes;
+  g.morphTargetsRelative = geom.morphTargetsRelative;
+  g.groups = geom.groups;
+  g.drawRange = geom.drawRange;
+  if (!geom.boundingBox) geom.computeBoundingBox();
+  if (!geom.boundingSphere) geom.computeBoundingSphere();
+  g.boundingBox = geom.boundingBox;
+  g.boundingSphere = geom.boundingSphere;
+  g.userData = geom.userData;
+  return g;
 }
 
 // Squared distance past which a bucket's props are under smallCull.px tall
@@ -3023,7 +3055,8 @@ function _bucketGLBNodes(nodes, url, building) {
     if (!m.isMesh) continue;
     const e = matrix.elements;
     // building.glbBucket: a compact group (a festival) batches as one tile
-    const tile = building.glbBucket || `${Math.floor(e[12] / _bldgTile)},${Math.floor(e[14] / _bldgTile)}`;
+    // (_bldgTile Infinity: the whole map is one tile; a finite one splits at the origin's axes at least)
+    const tile = building.glbBucket || (_bldgTile === Infinity ? 'all' : `${Math.floor(e[12] / _bldgTile)},${Math.floor(e[14] / _bldgTile)}`);
     const key = `${m.geometry.uuid}|${m.material.uuid}|${tile}`;
     let b = _glbBuckets.get(key);
     if (!b) _glbBuckets.set(key, b = { geometry: m.geometry, material: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [], lod1Only: !!building.lod1Only });
@@ -3153,7 +3186,7 @@ function _buildGLBBuildingInstances(scene) {
     const lod1 = _lod1ByGeom.get(b.geometry);
     const geoms = b.lod1Only && lod1 ? [lod1] : [b.geometry, lod1].filter(Boolean);
     const ims = geoms.map((geom) => {
-      const im = new THREE.InstancedMesh(geom, b.material, b.items.length);
+      const im = new THREE.InstancedMesh(_ownVAO(geom), b.material, b.items.length);
       b.items.forEach((it, i) => {
         im.setMatrixAt(i, it.building.destroyed ? _zeroMatrix : it.matrix);
         it.building._glbSlots.push({ im, idx: i });
@@ -3252,6 +3285,7 @@ export function buildCity(scene, world, opts = {}) {
   // ...nor its camera hooks (LOD flips, harbour bands) on the reused scene
   if (scene.userData.camHooks) scene.userData.camHooks.length = 0;
   _glbBuckets.clear();
+  _releaseVAOCopies();
   _windowQueue = [];
   _pedCfg = null;
   _carNet = null;

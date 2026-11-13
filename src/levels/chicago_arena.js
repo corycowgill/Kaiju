@@ -328,6 +328,18 @@ function _makeLed(T) {
     cx.restore();
     tex.needsUpdate = true;
   };
+  // (perf) Every mode drawn once while the level builds behind the loading
+  // screen, each snapshotted so its drawing reaches the GPU: the first count
+  // (250 px stroked text) and callout each cost a canvas raster program
+  // build in play, 0.5-6.6 s with a cold driver cache, mid-match.
+  if (typeof createImageBitmap === 'function') {
+    for (const [mode, text, sub] of [['count', '3', ''], ['callout', 'FIGHT!', 'CHICAGO'], ['name', 'GORRAK', 'CHAMPION'], ['winner', 'GORRAK', '']]) {
+      S.mode = mode; S.text = text; S.sub = sub; S.flash = 0.5; S.heat = 0.7;
+      draw(1.3);
+      createImageBitmap(cv).then((b) => b.close(), () => {});
+    }
+    S.mode = 'idle'; S.text = S.sub = ''; S.flash = 0; S.heat = 0;
+  }
   draw(0);
   return {
     tex, state: S,
@@ -1480,7 +1492,7 @@ export function createArena(ctx, W) {
     on(EV.MATCH_OVER, (e) => {
       const f = e.winner && W[e.winner];
       const dfn = (e.defense | 0) > 0;
-      show('winner', f ? f.name : 'WINNER', e.winner === 'player' ? (dfn ? 'AND STILL... CHAMPION' : 'AND NEW... CHAMPION') : dfn ? 'AND NEW CHAMPION' : 'WINNER', 0);
+      show('winner', f ? f.name : 'WINNER', e.winner === 'player' ? (dfn ? 'AND STILL... CHAMPION' : 'AND NEW... CHAMPION') : dfn ? 'AND NEW... CHAMPION' : 'AND STILL... CHAMPION', 0);
       cr.celebrate = 30; pop(1, 1);
     });
     on(EV.INTERFERENCE_ARRIVE, () => { shock(info().cx, info().cz, 0.5); });

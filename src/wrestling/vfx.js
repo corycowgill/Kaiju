@@ -798,15 +798,20 @@ export function createVfx(ctx, W) {
   // ---- state and meter effects (per frame) ----
   function igniteAura(f) {
     const p = f.pos, col = colOf(f.id);
+    const elec = f.key === 'ghidorah', alt = (pal[f.id] || pal.player).alt; // Tridon: storm energy (arcs, a glint), never flame
     gring(p.x, p.z, 6, 46, 0.5, col, 1.3);
-    gring(p.x, p.z, 4, 30, 0.4, WHITE, 0.8, T_RING, 0.06);
-    column(p.x, 0.3, p.z, 70, 16, 30, 0.6, col, 0.7, 1, 6, 1);
-    for (let i = 0; i < cnt(22); i++) {
+    gring(p.x, p.z, 4, 30, 0.4, elec ? alt : WHITE, 0.8, T_RING, 0.06);
+    column(p.x, 0.3, p.z, 70, 16, 30, 0.6, elec ? alt : col, elec ? 0.3 : 0.7, 1, 6, 1);
+    if (elec) for (let i = 0; i < cnt(8); i++) {
+      const a = rnd() * TAU, r = rr(6, 12), x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+      bolt(x, 0.6, z, x + rr(-4, 4), rr(10, 22), z + rr(-4, 4), 3, 2.5, 1.6, i % 2 ? alt : col, 1.2, 0.16, rr(0, 0.25));
+    } else for (let i = 0; i < cnt(22); i++) {
       const a = rnd() * TAU, r = rr(6, 14);
       P(T_FLAME, M_BILL, p.x + Math.cos(a) * r, rr(1, 14), p.z + Math.sin(a) * r, 0, rr(20, 40), 0, rr(0.4, 0.7), rr(5, 8), 2, col, 1, 1, 1, 0, rr(-0.2, 0.2), 0, 0.7, 0.1, 0.1, 1);
     }
     chest(f, _a);
-    P(T_BURST, M_BILL, _a.x, _a.y, _a.z, 0, 0, 0, 0.25, 20, 60, col, 0.9, 1, 0, 0, rnd() * TAU);
+    if (elec) P(T_GLINT, M_BILL, _a.x, _a.y, _a.z, 0, 0, 0, 0.3, 34, 8, alt, 1.1, 1, 0, 0, 0.4, 2);
+    else P(T_BURST, M_BILL, _a.x, _a.y, _a.z, 0, 0, 0, 0.25, 20, 60, col, 0.9, 1, 0, 0, rnd() * TAU);
     flashLight(_a.x, _a.y, _a.z, col, 8, 0.4);
   }
   function tickFighter(f, s, dt) {
@@ -823,11 +828,15 @@ export function createVfx(ctx, W) {
         LV(T_GLOW, M_FLAT, p.x, 0.35, p.z, 62, col, 0.3 * pulse, 1);
         LV(T_RETICLE, M_FLAT, p.x, 0.45, p.z, (f.radius + 9) * 2.5, col, 0.7, 1, -T * 0.8);
       }
-      s.auraAcc += dt * (full ? 70 : 24 * k) * (FULL ? 1 : 0.4);
+      const elec = f.key === 'ghidorah'; // Tridon: short arcs jumping off the body instead of flame wisps
+      s.auraAcc += dt * (full ? 70 : 24 * k) * (FULL ? 1 : 0.4) * (elec ? 0.35 : 1);
       while (s.auraAcc >= 1) {
         s.auraAcc -= 1;
         const a = rnd() * TAU, r = rr(f.radius * 0.6, f.radius * 1.05);
-        P(T_FLAME, M_BILL, p.x + Math.cos(a) * r, p.y + rr(0.5, full ? 20 : 10), p.z + Math.sin(a) * r, rr(-2, 2), rr(9, 16) * (full ? 1.3 : 1), rr(-2, 2), rr(0.45, 0.75),
+        if (elec) {
+          const x = p.x + Math.cos(a) * r, y = p.y + rr(1, full ? 22 : 12), z = p.z + Math.sin(a) * r, l = rr(3, 7);
+          bolt(x, y, z, x + Math.cos(a) * l, y + rr(2, 8), z + Math.sin(a) * l, 2, 1.6, full ? 1.3 : 1, rnd() < 0.5 ? (pal[f.id] || pal.player).alt : col, full ? 1.2 : 0.8, 0.12);
+        } else P(T_FLAME, M_BILL, p.x + Math.cos(a) * r, p.y + rr(0.5, full ? 20 : 10), p.z + Math.sin(a) * r, rr(-2, 2), rr(9, 16) * (full ? 1.3 : 1), rr(-2, 2), rr(0.45, 0.75),
           rr(3.2, 5.5) * (full ? 1.25 : 1), 1.5, col, full ? 1.0 : 0.6, 1, 0.5, 0, rr(-0.25, 0.25), 0, 0.7, 0.15, 0.1, 1);
       }
     }
@@ -881,8 +890,8 @@ export function createVfx(ctx, W) {
     }
     tickTrail(f, s, dt);
     // -- the body itself: look.js's rim glow in the kaiju's colour (a uniform write)
-    // look.js adds col * k * (0.18 + 1.5 * rim^2): past ~0.4 the flat term fills the body and the model's form is
-    // lost in one colour, so these stay low and the read lives on the silhouette edge
+    // look.js adds col * k * (0.05 + 2.2 * rim^4): kept low all the same, so the model's form is never lost in
+    // one colour and the read lives on the silhouette edge
     let g = full ? 0.2 + 0.06 * Math.sin(T * 9) : m > 0.4 ? 0.14 * (m - 0.4) / 0.6 : 0;
     if (te.on && te.heavy) g = Math.max(g, 0.28 * te.t / te.dur);
     if (fin.on && !fin.hit && fin.who === f.id) g = Math.max(g, Math.min(0.36, 0.2 + fin.t * 0.1));
@@ -980,20 +989,21 @@ export function createVfx(ctx, W) {
       if (e.t >= e.dur) { e.on = false; continue; }
       const k = e.t / e.dur;
       if (e.kind === E_PYRO) {
+        const lift = e.r || 1; // pyro() passes a lift scale in r
         if (!e.started) {
           e.started = true;
           // the gerb lights: a flash, a flame column, a shock of smoke
           P(T_GLINT, M_BILL, e.x, e.y + 2, e.z, 0, 0, 0, 0.25, 30, 8, WHITE, 1.4, 1, 0, 0, 0.3, 2);
-          column(e.x, e.y, e.z, 52, 5, 9, e.dur * 0.9, e.col, 0.9, 1, 7, 1);
-          column(e.x, e.y, e.z, 34, 2.5, 4, e.dur * 0.8, WHITE, 0.8, 1, 8, 1);
+          column(e.x, e.y, e.z, 52 * lift, 5, 9, e.dur * 0.9, e.col, 0.9, 1, 7, 1);
+          column(e.x, e.y, e.z, 34 * lift, 2.5, 4, e.dur * 0.8, WHITE, 0.8, 1, 8, 1);
         }
         e.acc += dt * (FULL ? 55 : 22) * (1 - k * 0.6);
         while (e.acc >= 1) {
           e.acc -= 1;
           const white = rnd() < 0.18;
-          P(T_STREAK, M_VEL, e.x, e.y + 1, e.z, rr(-9, 9), rr(55, 95), rr(-9, 9), rr(0.7, 1.2), white ? 0.9 : 1.3, 0.3, white ? WHITE : e.col, 1.5, 1, 0.5, 60, 0, 0, rr(5, 8));
+          P(T_STREAK, M_VEL, e.x, e.y + 1, e.z, rr(-9, 9), rr(55, 95) * lift, rr(-9, 9), rr(0.7, 1.2), white ? 0.9 : 1.3, 0.3, white ? WHITE : e.col, 1.5, 1, 0.5, 60, 0, 0, rr(5, 8));
         }
-        if (FULL && rnd() < dt * 8) P(T_PUFF, M_BILL, e.x + rr(-2, 2), e.y + rr(8, 30), e.z + rr(-2, 2), rr(-3, 3), rr(6, 12), rr(-3, 3), 1.8, 4, 12, STEAM, 0.25, 0, 0.5, 0, rnd() * TAU, 0, 1, 0.2, 0.2, 1);
+        if (FULL && rnd() < dt * 8) P(T_PUFF, M_BILL, e.x + rr(-2, 2), e.y + rr(8, 30) * lift, e.z + rr(-2, 2), rr(-3, 3), rr(6, 12), rr(-3, 3), 1.8, 4, 12, STEAM, 0.25, 0, 0.5, 0, rnd() * TAU, 0, 1, 0.2, 0.2, 1);
       } else if (e.kind === E_CONFETTI) {
         e.acc += dt * (FULL ? 50 : 20) * (k < 0.75 ? 1 : (1 - k) * 4);
         _long = true;
@@ -1055,7 +1065,10 @@ export function createVfx(ctx, W) {
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
       if (p.kind && p.kind !== 'post' && p.kind !== 'gate' && !(big && p.kind === 'stand')) continue;
-      emitter(E_PYRO, p.x, p.y !== undefined ? p.y : A.postH + 2.6, p.z, dur, col, 0, delay + (i % 2) * 0.08);
+      // Ring posts fire from the top turnbuckle with lower arcs (r: lift scale), not from the floodlight
+      // tops: from there the gerbs burst above the fight camera's framing
+      const post = !p.kind || p.kind === 'post';
+      emitter(E_PYRO, p.x, post || p.y === undefined ? A.postH + 2.6 : p.y, p.z, dur, col, post ? 0.62 : 1, delay + (i % 2) * 0.08);
     }
   }
 
@@ -1092,18 +1105,22 @@ export function createVfx(ctx, W) {
     dip = Math.min(0.45, dip + dt * 0.35);
     const col = pal[fin.who].main, alt = pal[fin.who].alt, p = A.pos;
     chest(A, _a);
+    const elec = fin.key === 'ghidorah';
     // charge: power drawn in to the chest from all around, the ground ring spinning up
-    fin.acc += dt * (FULL ? 60 : 22);
+    // (Tridon: fewer, cooler streaks; they converge on the chest and stack into a blown patch at golden hour otherwise)
+    fin.acc += dt * (FULL ? 60 : 22) * (elec ? 0.6 : 1);
     while (fin.acc >= 1) {
       fin.acc -= 1;
       const a = rnd() * TAU, el = rr(-0.2, 1.1), R = rr(26, 44), life = rr(0.35, 0.55);
       const ox = Math.cos(a) * Math.cos(el) * R, oy = Math.sin(el) * R, oz = Math.sin(a) * Math.cos(el) * R;
-      P(T_STREAK, M_VEL, _a.x + ox, _a.y + oy, _a.z + oz, -ox / life, -oy / life, -oz / life, life, 1.4, 0.5, rnd() < 0.3 ? WHITE : col, 1.4, 1, 0, 0, 0, 0, 7, 0.3);
+      const c = elec ? (rnd() < 0.5 ? alt : col) : rnd() < 0.3 ? WHITE : col;
+      P(T_STREAK, M_VEL, _a.x + ox, _a.y + oy, _a.z + oz, -ox / life, -oy / life, -oz / life, life, elec ? 1 : 1.4, 0.5, c, elec ? 1.1 : 1.4, 1, 0, 0, 0, 0, 7, elec ? 0.45 : 0.3);
     }
     const pulse = 0.7 + 0.3 * Math.sin(T * 14);
     LV(T_RETICLE, M_FLAT, p.x, 0.5, p.z, 70, col, 0.9 * pulse, 1, T * 2.2);
     LV(T_RING, M_FLAT, p.x, 0.5, p.z, 82, alt, 0.8, 1, -T);
-    LV(T_GLOW, M_BILL, _a.x, _a.y, _a.z, 26 + 5 * pulse, pal[fin.who].glow, 0.4, 1); // saturated: a pale signature washes the close-up
+    if (elec) LV(T_GLINT, M_BILL, _a.x, _a.y, _a.z, 16 + 6 * pulse, alt, 0.55, 1, T * 3); // a crackling point, not a sphere of light
+    else LV(T_GLOW, M_BILL, _a.x, _a.y, _a.z, 26 + 5 * pulse, pal[fin.who].glow, 0.4, 1); // saturated: a pale signature washes the close-up
     fin.acc2 += dt * (FULL ? 16 : 7);
     while (fin.acc2 >= 1) {
       fin.acc2 -= 1;
@@ -1131,8 +1148,10 @@ export function createVfx(ctx, W) {
     if (e.beat === 'grab') {
       chest(A, _a);
       const x = (_a.x + _b.x) / 2, y = (_a.y + _b.y) / 2, z = (_a.z + _b.z) / 2;
-      P(T_GLINT, M_BILL, x, y, z, 0, 0, 0, 0.3, 44, 10, col, 1.5, 1, 0, 0, 0.4, 2);
-      P(T_RING, M_BILL, x, y, z, 0, 0, 0, 0.3, 6, 44, col, 1, 1, 0, 0, 0, 0, 1, 0, 0.2);
+      // (Tridon: a smaller, cooler flash; its pale gold over a golden-hour sky blows out the middle of the close-up)
+      const elec = A.key === 'ghidorah';
+      P(T_GLINT, M_BILL, x, y, z, 0, 0, 0, 0.3, elec ? 28 : 44, 10, elec ? alt : col, elec ? 0.9 : 1.5, 1, 0, 0, 0.4, 2);
+      P(T_RING, M_BILL, x, y, z, 0, 0, 0, 0.3, 6, 44, elec ? alt : col, elec ? 0.55 : 1, 1, 0, 0, 0, 0, 1, 0, 0.2);
       lock = false;
       return;
     }

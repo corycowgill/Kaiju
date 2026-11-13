@@ -326,7 +326,9 @@ if ( lkCls > 3.5 ) {
   float lkFres = pow( lkNV, lkRimC.w );
   float lkSide = clamp( dot( lkRn, uLook[0].xyz ) * 0.6 + 0.5, 0.0, 1.0 );
   outgoingLight += mix( uLook[23].rgb, lkRimC.rgb, lkSide ) * ( lkFres * uLook[23].w * ( 0.45 + 0.55 * clamp( lkRn.y + 0.75, 0.0, 1.0 ) ) );
-  outgoingLight += lkGlow.rgb * ( lkGlow.w * ( 0.18 + 1.5 * lkNV * lkNV ) );
+  // (steep: wings and tails are full of grazing angles, a soft falloff tints the whole body)
+  float lkNV2 = lkNV * lkNV;
+  outgoingLight += lkGlow.rgb * ( lkGlow.w * ( 0.05 + 2.2 * lkNV2 * lkNV2 ) );
 }
 #endif
 #if defined( LOOK_UNLIT ) && defined( USE_FOG )
@@ -452,22 +454,22 @@ export function makeLookSky(octaves = 4) {
 const _c = new THREE.Color();
 const lin = (hex, k = 1) => { _c.setHex(hex); return [_c.r * k, _c.g * k, _c.b * k]; };
 const KEYS = [
-  { // golden hour
-    discElev: 16, lightElev: 23,
-    sun: lin(0xffd0a0), sunI: 3.3,
-    fill: lin(0xc2d2ee), fillI: 0.55,
-    hemiSky: lin(0xb4c6e6), hemiGround: lin(0x6e5c4c), hemiI: 0.46,
-    amb: lin(0x5c7090), ambI: 0.06,
-    haze: lin(0xa8b6c8), hazeSun: lin(0xffc48a), hazeExp: 2.2, fogD: 0.00125, fogK: 0.011, fogMax: 0.93,
-    zen: lin(0x3f6fb2), mid: lin(0x86abd6), glow: lin(0xffb066), disc: 9,
-    env: [0.72, 0.72, 0.74], fillW: lin(0xffb47a), fillWI: 0.28,
+  { // golden hour: low warm sun, a peach horizon all round, deep clear blue overhead, gold-lit clouds
+    discElev: 11, lightElev: 19,
+    sun: lin(0xffc488), sunI: 3.1,
+    fill: lin(0xbfcaea), fillI: 0.55,
+    hemiSky: lin(0xb2bee0), hemiGround: lin(0x7a5e48), hemiI: 0.46,
+    amb: lin(0x5c6c90), ambI: 0.06,
+    haze: lin(0xcdb9ac), hazeSun: lin(0xffac6a), hazeExp: 1.5, fogD: 0.00125, fogK: 0.011, fogMax: 0.93,
+    zen: lin(0x3460ae), mid: lin(0x7c9ed6), glow: lin(0xffa050), disc: 9,
+    env: [0.75, 0.71, 0.68], fillW: lin(0xffa868), fillWI: 0.3,
     win: lin(0xffc37a), winI: 0.45, winFrac: 0.13, glass: 0.55,
     sat: 0.86, val: 0.8, ao: 0.62, shadow: 0.9, groundVar: 0.34,
-    unlit: [0.62, 0.56, 0.52],
-    cloud: lin(0xfff0dc), cloudShade: lin(0x9a98b4), cover: 0.50, stars: 0,
-    rimSun: lin(0xffc890, 1.5), rimSky: lin(0x9dc4ff, 0.75), rimI: 1.0, hero: 0.22, flood: 0.35,
+    unlit: [0.64, 0.56, 0.50],
+    cloud: lin(0xffd6a4), cloudShade: lin(0x9a8ca6), cover: 0.50, stars: 0,
+    rimSun: lin(0xffc088, 1.5), rimSky: lin(0x9dc4ff, 0.75), rimI: 1.0, hero: 0.22, flood: 0.35,
     exposure: 1.02, bloomT: 0.95, bloomS: 0.38,
-    gradeMix: 0.5, gradeShadow: [0.88, 0.94, 1.08], gradeHigh: [1.07, 1.0, 0.90],
+    gradeMix: 0.52, gradeShadow: [0.88, 0.93, 1.08], gradeHigh: [1.09, 1.0, 0.86],
   },
   { // sunset
     discElev: 6, lightElev: 17,

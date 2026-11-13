@@ -672,12 +672,23 @@ export function createHud(ctx, W) {
     loop(el.top, [{ opacity: 0, transform: 'translateY(-130%)' }, { opacity: 1, transform: 'translateY(0)' }], 900);
     for (const lb of el.root.querySelectorAll('.wr-lb')) loop(lb, [{ transform: `translateY(${lb.classList.contains('t') ? -101 : 101}%)` }, { transform: 'translateY(0)' }], 900);
     for (const sd of [el.p1, el.p2]) {
-      loop(sd.fill, [{ transform: 'scaleX(0.25)' }, { transform: 'scaleX(0.7)' }], 900);
-      loop(sd.ghost, [{ transform: 'scaleX(0.5)' }, { transform: 'scaleX(0.9)' }], 1300);
-      loop(sd.sta, [{ transform: 'scaleX(0.1)' }, { transform: 'scaleX(0.9)' }], 900);
+      // (fill and stamina to full too: a full bar meets both rounded ends, the bell's first raster: 0.5-2.2 s build)
+      loop(sd.fill, [{ transform: 'scaleX(0.25)' }, { transform: 'scaleX(1)' }], 900);
+      // (to full: the first hit's ghost sliver runs into the bar's rounded end, a clip the 0.9 never drew: 0.4-4.4 s build at the first hit)
+      loop(sd.ghost, [{ transform: 'scaleX(0.5)' }, { transform: 'scaleX(1)' }], 1300);
+      loop(sd.sta, [{ transform: 'scaleX(0.1)' }, { transform: 'scaleX(1)' }], 900);
       loop(sd.mom, [{ transform: 'scaleX(0.2)' }, { transform: 'scaleX(1)' }], 900);
     }
     loop(el.mashFill, [{ transform: 'scaleX(0.1)' }, { transform: 'scaleX(1)' }], 600);
+    // (perf) ...and each health / stamina bar standing full, a copy beside it: a bar at rest is rastered inside its
+    // rounded, clipped track (the animated ones above are composited instead), the bell's first raster (0.5-2.2 s)
+    for (const s of [el.p1, el.p2]) for (const bar of [s.fill, s.sta]) {
+      const track = bar && bar.parentElement;
+      if (!track || !track.parentElement) continue;
+      const c = track.cloneNode(true);
+      for (const n of c.children) { n.style.transform = 'scaleX(1)'; n.style.transition = 'none'; }
+      track.parentElement.appendChild(c); temps.push(c);
+    }
     unwarm = () => {
       unwarm = null;
       for (const a of anims) a.cancel();
