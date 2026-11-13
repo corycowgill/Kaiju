@@ -1105,6 +1105,10 @@
     position: relative; width: 100%; height: var(--wr-hp); transform: skewX(var(--sk)); overflow: hidden;
     background: rgba(8, 0, 3, 0.66); border: 1px solid rgba(255, 230, 200, 0.45); border-radius: 2px;
   }
+  /* (perf) The skewed portrait frames and bar tracks each on a layer of their own: the skew becomes the layer's
+     transform and their clip is rastered straight. Drawn inside the band's layer, a skewed rounded clip went through
+     a slow path the first time the band appeared: a 0.5-0.9 s freeze at the bell in about half of cold runs. */
+  .wr-port, .wr-hp, .wr-sta, .wr-mom .track { will-change: transform; }
   .wr-hp i { position: absolute; inset: 0; transform-origin: var(--o) 50%; will-change: transform; }
   /* Ghost chunk: holds for half a second after the last hit, then drains to the real value */
   .wr-hp .ghost { background: var(--c-cream); transition: transform 0.5s cubic-bezier(0.5, 0, 0.8, 0.4) 0.55s; }
