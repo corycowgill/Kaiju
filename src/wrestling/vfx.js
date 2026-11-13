@@ -973,12 +973,14 @@ export function createVfx(ctx, W) {
   // ---- emitters (pyro, confetti, aftermath) ----
   const E_PYRO = 1, E_CONFETTI = 2, E_EMBERS = 3, E_SMOLDER = 4, E_ARCS = 5, E_STORM = 6;
   const ems = [];
-  for (let i = 0; i < 48; i++) ems.push({ on: false, kind: 0, t: 0, dur: 0, x: 0, y: 0, z: 0, r: 0, acc: 0, col: C(1, 1, 1), started: false });
-  function emitter(kind, x, y, z, dur, col, r = 0, delay = 0) {
+  for (let i = 0; i < 48; i++) ems.push({ on: false, kind: 0, t: 0, dur: 0, x: 0, y: 0, z: 0, r: 0, acc: 0, acc2: 0, col: C(1, 1, 1), col2: C(1, 1, 1), mix: false, started: false });
+  /** col2: a second colour the emitter mixes in instead of white (pyro: the championship burst). */
+  function emitter(kind, x, y, z, dur, col, r = 0, delay = 0, col2 = null) {
     let e = null;
     for (let i = 0; i < ems.length; i++) if (!ems[i].on) { e = ems[i]; break; }
     if (!e) return;
-    e.on = true; e.kind = kind; e.t = -delay; e.dur = dur; e.x = x; e.y = y; e.z = z; e.r = r; e.acc = 0; e.col.copy(col); e.started = false;
+    e.on = true; e.kind = kind; e.t = -delay; e.dur = dur; e.x = x; e.y = y; e.z = z; e.r = r; e.acc = 0; e.acc2 = 0; e.col.copy(col); e.started = false;
+    e.mix = !!col2; e.col2.copy(col2 || col);
   }
   function tickEmitters(dt) {
     for (let i = 0; i < ems.length; i++) {
@@ -995,13 +997,24 @@ export function createVfx(ctx, W) {
           // the gerb lights: a flash, a flame column, a shock of smoke
           P(T_GLINT, M_BILL, e.x, e.y + 2, e.z, 0, 0, 0, 0.25, 30, 8, WHITE, 1.4, 1, 0, 0, 0.3, 2);
           column(e.x, e.y, e.z, 52 * lift, 5, 9, e.dur * 0.9, e.col, 0.9, 1, 7, 1);
-          column(e.x, e.y, e.z, 34 * lift, 2.5, 4, e.dur * 0.8, WHITE, 0.8, 1, 8, 1);
+          column(e.x, e.y, e.z, 34 * lift, 2.5, 4, e.dur * 0.8, e.mix ? e.col2 : WHITE, 0.8, 1, 8, 1);
+          if (e.mix) P(T_BURST, M_BILL, e.x, e.y + 4, e.z, 0, 0, 0, 0.3, 10, 34, e.col2, 1.2, 1, 0, 0, rnd() * TAU);
         }
         e.acc += dt * (FULL ? 55 : 22) * (1 - k * 0.6);
         while (e.acc >= 1) {
           e.acc -= 1;
-          const white = rnd() < 0.18;
-          P(T_STREAK, M_VEL, e.x, e.y + 1, e.z, rr(-9, 9), rr(55, 95) * lift, rr(-9, 9), rr(0.7, 1.2), white ? 0.9 : 1.3, 0.3, white ? WHITE : e.col, 1.5, 1, 0.5, 60, 0, 0, rr(5, 8));
+          // (mixed: two saturated colours and only a pinch of white, so it reads as colour against a bright sky)
+          const white = rnd() < (e.mix ? 0.05 : 0.18);
+          P(T_STREAK, M_VEL, e.x, e.y + 1, e.z, rr(-9, 9) * (e.mix ? 1.6 : 1), rr(55, 95) * lift, rr(-9, 9) * (e.mix ? 1.6 : 1), rr(0.7, 1.2) * (e.mix ? 1.3 : 1), white ? 0.9 : e.mix ? 2.1 : 1.3, 0.3, white ? WHITE : e.mix && rnd() < 0.5 ? e.col2 : e.col, e.mix ? 1.8 : 1.5, 1, 0.5, 60, 0, 0, rr(5, 8));
+        }
+        if (e.mix) {
+          // crackle: glitter popping around the top of the arcs, and the column re-lit on a beat
+          e.acc2 += dt * (FULL ? 16 : 6) * (1 - k * 0.5);
+          while (e.acc2 >= 1) {
+            e.acc2 -= 1;
+            P(T_GLINT, M_BILL, e.x + rr(-12, 12), e.y + rr(14, 40) * lift, e.z + rr(-12, 12), 0, -4, 0, rr(0.2, 0.35), rr(10, 16), 1, rnd() < 0.5 ? e.col2 : e.col, 1.4, 1, 0, 0, rnd() * TAU, 3);
+          }
+          if (k < 0.7 && ((e.t - dt) * 1.25 | 0) !== (e.t * 1.25 | 0)) column(e.x, e.y, e.z, 46 * lift, 4, 8, 0.7, e.col2, 0.8, 1, 7, 1);
         }
         if (FULL && rnd() < dt * 8) P(T_PUFF, M_BILL, e.x + rr(-2, 2), e.y + rr(8, 30) * lift, e.z + rr(-2, 2), rr(-3, 3), rr(6, 12), rr(-3, 3), 1.8, 4, 12, STEAM, 0.25, 0, 0.5, 0, rnd() * TAU, 0, 1, 0.2, 0.2, 1);
       } else if (e.kind === E_CONFETTI) {
@@ -1058,17 +1071,22 @@ export function createVfx(ctx, W) {
       P(T_STREAK, M_VEL, x, 1.5, z, Math.cos(a) * rr(20, 50), rr(20, 50), Math.sin(a) * rr(20, 50), 0.4, 1, 0.3, col, 1.4, 1, 1.5, 60, 0, 0, 5, 0, 0, 0, delay);
     }
   }
-  function pyro(col, delay = 0, dur = 1.5, big = false) {
+  /** col2: mix a second colour in instead of white. ringOnly: the ring posts alone (a three-count, not the venue). */
+  function pyro(col, delay = 0, dur = 1.5, big = false, col2 = null, ringOnly = false) {
     const A = W.arena && W.arena.info;
     if (!A) return;
     const pts = A.pyro || A.posts;
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
-      if (p.kind && p.kind !== 'post' && p.kind !== 'gate' && !(big && p.kind === 'stand')) continue;
-      // Ring posts fire from the top turnbuckle with lower arcs (r: lift scale), not from the floodlight
-      // tops: from there the gerbs burst above the fight camera's framing
       const post = !p.kind || p.kind === 'post';
-      emitter(E_PYRO, p.x, post || p.y === undefined ? A.postH + 2.6 : p.y, p.z, dur, col, post ? 0.62 : 1, delay + (i % 2) * 0.08);
+      if (ringOnly ? !post : p.kind && p.kind !== 'post' && p.kind !== 'gate' && !(big && p.kind === 'stand')) continue;
+      // Ring posts fire from the top turnbuckle and the entrance gate from its pillar feet, with lower arcs
+      // (r: lift scale): from the floodlight / arch tops the gerbs burst above the fight and entrance framing
+      // (gate: on the pylon plinth's ring-side lip, just clear of the pylon)
+      // (post: on its ring-side corner, outside the lattice tower that would otherwise swallow the column)
+      const gate = p.kind === 'gate';
+      const gx = Math.sign(A.cx - p.x) * (gate ? 3.4 : post ? 4 : 0), gz = Math.sign(A.cz - p.z) * (gate ? 2 : post ? 4 : 0);
+      emitter(E_PYRO, p.x + gx, post || p.y === undefined ? A.postH + 2.6 : gate ? 3.2 : p.y, p.z + gz, dur, col, post ? 0.62 : gate ? 0.85 : 1, delay + (i % 2) * 0.08, col2);
     }
   }
 
@@ -1334,10 +1352,10 @@ export function createVfx(ctx, W) {
     } else if (e.beat === 'arrive') {
       lastSlamT = -9;
       fxSlam(x, z, 0.9, col);
-      pyro(col, 0.1);
+      pyro((pal[e.who] || pal.player).glow, 0.1);
     } else if (e.beat === 'pose') {
       if (f) igniteAura(f);
-      pyro(col, 0.1);
+      pyro((pal[e.who] || pal.player).glow, 0.1);
     }
   }
   function fxWin(winner) {
@@ -1384,7 +1402,14 @@ export function createVfx(ctx, W) {
     const p = V.pos, k = e.count, col = k >= 3 ? GOLD : WHITE;
     gring(p.x, p.z, 6, 30 + 14 * k, 0.4, col, 0.8 + 0.2 * k);
     dustRing(p.x, p.z, cnt(6 + 3 * k), 14, 16, 30, 4, 10, 0.9, DUST, 0.45);
-    if (k >= 3) { P(T_GLINT, M_BILL, p.x, 16, p.z, 0, 0, 0, 0.4, 60, 14, GOLD, 1.5, 1, 0, 0, 0.4, 1.5); pyro(GOLD, 0, 0.8); }
+    if (k >= 3) {
+      // the three: a championship burst from the ring posts in the pinner's colour and gold (no white wash), ~2.6 s
+      const sat = (pal[e.who] || pal.player).glow;
+      P(T_GLINT, M_BILL, p.x, 16, p.z, 0, 0, 0, 0.4, 60, 14, GOLD, 1.5, 1, 0, 0, 0.4, 1.5);
+      gring(p.x, p.z, 8, 70, 0.7, sat, 1, T_RING, 0.1);
+      pyro(sat, 0, 2.6, false, GOLD, true);
+      if (FULL) pyro(GOLD, 0.9, 1.6, false, sat, true); // a second wave (phones: the first alone)
+    }
   }
   function fxPower(e) {
     const f = fighter(e.who);
