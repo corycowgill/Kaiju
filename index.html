@@ -910,7 +910,7 @@
      different set of programs from the ones play uses (measured, devtools/perf: first-use shader builds during
      a 45 s match 3 -> 0, 0.3-1 s each). */
   html body.hud-prewarm :is(#hud, #powers, #mobile-ui > *, #message, #wave-banner, #popups, #upgrade-modal, #pause-menu,
-    #damage-flash, #lowhp-warning, #dmg-indicators, #wr-hud, #wr-skip, #gameover.wr-warm, #help),
+    #damage-flash, #lowhp-warning, #dmg-indicators, #wr-hud, #hv-calls, #wr-skip, #gameover.wr-warm, #help),
   html body.hud-prewarm.touch :is(#wr-touch, #wr-touch > *) { opacity: 1 !important; z-index: 150 !important; }
   body.hud-prewarm #loading-screen.visible { opacity: 0.992; }
 
@@ -1060,6 +1060,8 @@
   body.wr-cine #mobile-ui > *, body.wr-cine #wr-touch > .wr-tb, body.wr-cine #wr-touch > .wr-ts { opacity: 0 !important; }
 
   #wr-hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; overflow: hidden; text-shadow: var(--txt-outline); }
+  #hv-calls { position: fixed; inset: 0; z-index: 10; pointer-events: none; overflow: hidden; text-shadow: var(--txt-outline); }
+  body.hud-prewarm #hv-calls .wr-call { opacity: 1; }
   .wr-lb { position: absolute; left: 0; right: 0; height: 9vh; background: #000; transition: transform 0.4s ease; will-change: transform; }
   .wr-lb.t { top: 0; transform: translateY(-101%); }
   .wr-lb.b { bottom: 0; transform: translateY(101%); }
@@ -2294,6 +2296,12 @@
 
 <!-- Title match HUD (Chicago wrestling mode; driven by src/wrestling/hud.js). The text in here is
      placeholder so the START prewarm rasters every layer; hud.js writes the real strings. -->
+<!-- Havoc callouts (wave mode; game.js havocCallout): the title match's callout style for a landmark brought down
+     and a run of buildings. The text in here is what the START prewarm draws. -->
+<div id="hv-calls" aria-hidden="true">
+  <div class="wr-call"><span class="pre"></span><b>5 BUILDINGS!</b><small>RAMPAGE</small></div>
+  <div class="wr-call t-landmark"><span class="pre">DOWN GOES</span><b>WILLIS TOWER!</b><small>LANDMARK DESTROYED</small></div>
+</div>
 <div id="wr-hud" class="hidden" aria-hidden="true">
   <div class="wr-lb t"></div><div class="wr-lb b"></div>
   <div id="wr-top">
@@ -2529,66 +2537,70 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.12.0",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.12.0",
-    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.12.0",
-    "./src/audio.js": "./src/audio.js?v=1.12.0",
-    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.12.0",
-    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.12.0",
-    "./src/carBatch.js": "./src/carBatch.js?v=1.12.0",
-    "./src/city.js": "./src/city.js?v=1.12.0",
-    "./src/effects.js": "./src/effects.js?v=1.12.0",
-    "./src/enemies.js": "./src/enemies.js?v=1.12.0",
-    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.12.0",
-    "./src/game.js": "./src/game.js?v=1.12.0",
-    "./src/intro.js": "./src/intro.js?v=1.12.0",
-    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.12.0",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.12.0",
-    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.12.0",
-    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.12.0",
-    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.12.0",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.12.0",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.12.0",
-    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.12.0",
-    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.12.0",
-    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.12.0",
-    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.12.0",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.12.0",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.12.0",
-    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.12.0",
-    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.12.0",
-    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.12.0",
-    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.12.0",
-    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.12.0",
-    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.12.0",
-    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.12.0",
-    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.12.0",
-    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.12.0",
-    "./src/look.js": "./src/look.js?v=1.12.0",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.12.0",
-    "./src/modelGallery.js": "./src/modelGallery.js?v=1.12.0",
-    "./src/monsters.js": "./src/monsters.js?v=1.12.0",
-    "./src/pickups.js": "./src/pickups.js?v=1.12.0",
-    "./src/powerVfx.js": "./src/powerVfx.js?v=1.12.0",
-    "./src/quality.js": "./src/quality.js?v=1.12.0",
-    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.12.0",
-    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.12.0",
-    "./src/vfx.js": "./src/vfx.js?v=1.12.0",
-    "./src/waterPlay.js": "./src/waterPlay.js?v=1.12.0",
-    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.12.0",
-    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.12.0",
-    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.12.0",
-    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.12.0",
-    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.12.0",
-    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.12.0",
-    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.12.0",
-    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.12.0",
-    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.12.0",
-    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.12.0",
-    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.12.0",
-    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.12.0",
-    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.12.0",
-    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.12.0"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.12.1",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.12.1",
+    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.12.1",
+    "./src/audio.js": "./src/audio.js?v=1.12.1",
+    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.12.1",
+    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.12.1",
+    "./src/carBatch.js": "./src/carBatch.js?v=1.12.1",
+    "./src/city.js": "./src/city.js?v=1.12.1",
+    "./src/effects.js": "./src/effects.js?v=1.12.1",
+    "./src/enemies.js": "./src/enemies.js?v=1.12.1",
+    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.12.1",
+    "./src/game.js": "./src/game.js?v=1.12.1",
+    "./src/intro.js": "./src/intro.js?v=1.12.1",
+    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.12.1",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.12.1",
+    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.12.1",
+    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.12.1",
+    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.12.1",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.12.1",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.12.1",
+    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.12.1",
+    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.12.1",
+    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.12.1",
+    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.12.1",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.12.1",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.12.1",
+    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.12.1",
+    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.12.1",
+    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.12.1",
+    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.12.1",
+    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.12.1",
+    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.12.1",
+    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.12.1",
+    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.12.1",
+    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.12.1",
+    "./src/look.js": "./src/look.js?v=1.12.1",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.12.1",
+    "./src/modelGallery.js": "./src/modelGallery.js?v=1.12.1",
+    "./src/monsters.js": "./src/monsters.js?v=1.12.1",
+    "./src/pickups.js": "./src/pickups.js?v=1.12.1",
+    "./src/powerVfx.js": "./src/powerVfx.js?v=1.12.1",
+    "./src/quality.js": "./src/quality.js?v=1.12.1",
+    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.12.1",
+    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.12.1",
+    "./src/vfx.js": "./src/vfx.js?v=1.12.1",
+    "./src/waterPlay.js": "./src/waterPlay.js?v=1.12.1",
+    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.12.1",
+    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.12.1",
+    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.12.1",
+    "./src/wrestling/carve.js": "./src/wrestling/carve.js?v=1.12.1",
+    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.12.1",
+    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.12.1",
+    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.12.1",
+    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.12.1",
+    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.12.1",
+    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.12.1",
+    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.12.1",
+    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.12.1",
+    "./src/wrestling/props.js": "./src/wrestling/props.js?v=1.12.1",
+    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.12.1",
+    "./src/wrestling/signatures.js": "./src/wrestling/signatures.js?v=1.12.1",
+    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.12.1",
+    "./src/wrestling/spots.js": "./src/wrestling/spots.js?v=1.12.1",
+    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.12.1"
   }
 }
 </script>
@@ -2602,7 +2614,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.12.0"></script>
-<script type="module" async src="./src/intro.js?v=1.12.0"></script>
+<script type="module" src="./src/game.js?v=1.12.1"></script>
+<script type="module" async src="./src/intro.js?v=1.12.1"></script>
 </body>
 </html>

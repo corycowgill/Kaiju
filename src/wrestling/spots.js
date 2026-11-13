@@ -408,6 +408,8 @@ export function createSpots(ctx, W) {
     });
     on(EV.BUILDING_DESTROYED, (e) => {
       if (carve) carve.onDestroyed(e.building);
+      // A landmark brought down by either kaiju: the same call wave mode makes (game.js havocBuildingCall)
+      if (e.name && (e.by === 'player' || e.by === 'rival') && e.h >= 4) landmarkCall(`DOWN GOES ${e.name.toUpperCase()}!`, 'LANDMARK DESTROYED', e.by);
       // A tower down near the fight leaves a girder in the rubble
       if (spawnCd > 0 || e.h < 10 || !e.building || e.building.fest || e.building.isFence) return;
       const A = W.arena && W.arena.info;

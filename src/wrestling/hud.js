@@ -33,7 +33,7 @@ const COUNT_WORD = ['', 'ONE!', 'TWO!', 'THREE!'];
 const WHEEL_LABEL = { whip: 'WHIP', suplex: 'SUPLEX', swing: 'SWING' };
 const BAR_SHOTS = { entrance: true, finisher: true, ko: true, win: true, lose: true };
 const CALL_DUR = { move: 1.25, defend: 1.25, landmark: 1.9, finisher: 2.3, result: 2.4 };
-const PRE_RE = /^(THROUGH THE|INTO THE|OFF THE|ONTO THE|AND NEW\.\.\.|AND STILL\.\.\.)\s+(.+)$/;
+const PRE_RE = /^(THROUGH THE|INTO THE|OFF THE|ONTO THE|DOWN GOES|AND NEW\.\.\.|AND STILL\.\.\.)\s+(.+)$/;
 const TUT_KEY = 'kaijuWrTut';
 const TUT_NEED = { strike: 2, block: 1, grab: 1, ground: 1, taunt: 1, finisher: 1 };
 

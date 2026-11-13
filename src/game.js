@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.12.0', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.12.1', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -3650,6 +3650,46 @@ function toastMini(text, kind = '') {
   wrap.appendChild(el);
   setTimeout(() => el.remove(), 2200);
 }
+// Havoc callouts: the title match's callout (index.html .wr-call, src/wrestling/hud.js) for wave mode.
+// tier 'move' | 'landmark'; pre: the small line above ("DOWN GOES"); sub: the small line below.
+const HV_CALL_DUR = { move: 1.25, landmark: 1.9 };
+let _hvCalls = null;
+function havocCallout(text, sub = '', tier = 'move', pre = '') {
+  if (!_hvCalls) { const w = document.getElementById('hv-calls'); _hvCalls = w && w.children ? Array.from(w.children) : []; }
+  if (!_hvCalls.length || !text) return;
+  const now = performance.now();
+  // a landmark owns the screen while it is up
+  if (tier !== 'landmark' && _hvCalls.some((c) => c._tier === 'landmark' && c._until > now + 250)) return;
+  const node = _hvCalls[tier === 'landmark' ? 1 : 0] || _hvCalls[0];
+  const ms = (HV_CALL_DUR[tier] || HV_CALL_DUR.move) * 1000;
+  node._tier = tier; node._until = now + ms;
+  node.className = 'wr-call' + (tier === 'landmark' ? ' t-landmark' : '');
+  node.children[0].textContent = pre; node.children[1].textContent = text; node.children[2].textContent = sub;
+  if (node._anim) node._anim.cancel();
+  if (!node.animate) return;
+  node._anim = node.animate(_reducedMotion() ? [{ opacity: 1 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }] : [
+    { opacity: 0, transform: 'scale(1.8)' },
+    { opacity: 1, transform: 'scale(0.95)', offset: 110 / ms },
+    { opacity: 1, transform: 'scale(1.03)', offset: 190 / ms },
+    { opacity: 1, transform: 'scale(1)', offset: 260 / ms },
+    { opacity: 1, transform: 'scale(1.02)', offset: 1 - 220 / ms },
+    { opacity: 0, transform: 'translateY(-10px) scale(1.02)' },
+  ], { duration: ms, easing: 'linear', fill: 'none' });
+}
+const _reducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+// What the kaiju brings down in wave mode: a landmark by name, a tower, and a run of buildings one after another
+const HV_RUN = { gap: 1.7, steps: [3, 5, 8, 12, 18, 25, 40], words: ['', '', 'RAMPAGE', 'DEMOLITION', 'CITY BLOCK GONE', 'UNSTOPPABLE', 'TOTAL HAVOC'] };
+const _hvRun = { n: 0, t: -99 };
+function havocBuildingCall(b) {
+  const name = landmarkName(b);
+  const t = world.time || 0;
+  _hvRun.n = t - _hvRun.t <= HV_RUN.gap && t >= _hvRun.t ? _hvRun.n + 1 : 1;
+  _hvRun.t = t;
+  if (name) { havocCallout(name.toUpperCase() + '!', 'LANDMARK DESTROYED', 'landmark', 'DOWN GOES'); return; }
+  const i = HV_RUN.steps.indexOf(_hvRun.n);
+  if (i >= 0) havocCallout(`${_hvRun.n} BUILDINGS!`, HV_RUN.words[i]);
+  else if (_hvRun.n === 1 && b.h >= 40 && !b.fest) havocCallout('TOWER DOWN!');
+}
 function showWaveBanner(text, sub) {
   const el = document.getElementById('wave-banner');
   el.innerHTML = text + (sub ? `<small>${sub}</small>` : '');
@@ -4027,6 +4067,7 @@ world.onBuildingDestroyed = (b) => {
   // Brought down by someone else (the rival kaiju): no score, rage, combo, objective or pickup
   if (_dmgSrc) { audio.collapse(); return; }
   state.buildingsDestroyed++;
+  if (_mode.id !== 'wrestling') havocBuildingCall(b); // (the title match calls its own: spots.js, match.js)
   audio.collapse();
   progressObjective('buildings');
   const base = Math.floor(b.maxHp * 1.5);
