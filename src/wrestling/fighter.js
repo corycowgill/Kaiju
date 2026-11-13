@@ -118,7 +118,7 @@ export const TUNE = {
   reversalWindowPlayer: 0.28, cueLead: 0.14, cueMinStartup: 0.4, counterDmg: 8, counterRec: 0.5,
   // comeback ("firing up"): hurt (< cbHp of max), behind on health by cbBehind, beaten (cbBeaten of max taken
   // over the last ~cbMemory s), cbCost momentum in the meter; once a fall, cbPerMatch a match. Taunt fires it.
-  cbHp: 0.32, cbBehind: 0.18, cbBeaten: 0.12, cbMemory: 10, cbCost: 35, cbPerMatch: 1,
+  cbHp: 0.32, cbBehind: 0.18, cbBeaten: 0.12, cbMemory: 10, cbCost: 35, cbPerMatch: 1, cbRivalGrace: 1,
   cbFire: 1.3, cbFlurry: 3.5, cbNoSell: 0.4, cbHaste: 1.25, cbAtk: 1.15, cbMom: 1, cbAfterStam: 30,
 };
 const STRIKE_KINDS = { light: 1, heavy: 1, clothesline: 1 };
@@ -289,7 +289,9 @@ export class Fighter {
     const s = this.state;
     if (s !== 'neutral' && s !== 'blocking' && s !== 'staggered' && s !== 'stunned' && !(s === 'downed' && this.falling <= 0)) return false;
     const mine = this.hp / this.maxHp;
-    return mine > 0 && mine < T.cbHp && foe.hp / foe.maxHp - mine >= T.cbBehind && this._beat >= T.cbBeaten * this.maxHp;
+    // (the first title match is forgiving: the rival's comeback asks for a deeper hole there)
+    const grace = !this.isPlayer && !(this.W.match.state.defense > 0) ? TUNE.cbRivalGrace : 0;
+    return mine > 0 && mine < T.cbHp - grace && foe.hp / foe.maxHp - mine >= T.cbBehind + grace && this._beat >= T.cbBeaten * this.maxHp;
   }
   /** 0..1 progress of this fighter's kick-out (pinned) or escape (held); 0 when neither. For the HUD's mash meter. */
   get struggle() {

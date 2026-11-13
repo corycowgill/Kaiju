@@ -20,7 +20,8 @@ export const MATCH = {
   hpBase: 150, hpStat: 0.45, // match health = hpBase + hpStat x the kaiju's stats.hp (226 / 249 / 267: character, not a mismatch)
   rivalHp: 1.1,           // x that for the rival (the player has its powers on tap and a human's reads)
   rivalHpPerDefense: 0.2,
-  rivalAtk: 0.85, rivalAtkPerFall: 0.1, rivalAtkPerDefense: 0.15, rivalAtkMax: 1.7,
+  rivalAtk: 0.85, rivalAtkPerFall: 0.1,
+  firstAtk: 0.78, firstRamp: 0.5, // the first title match (defense 0): a softer rival and half the fall-to-fall ramp rivalAtkPerDefense: 0.15, rivalAtkMax: 1.7,
   healBetween: 0.35, healFloor: 0.75, momCarry: 20, // between falls: +35% of max health, at least 75%; momentum carried over is capped
   loserMom: 35,           // ...and the one who just lost a fall comes out of the corner fired up (lead changes, a live third fall)
   decHeal: 0.2, decFloor: 0.6, // before the deciding fall both are running on fumes: less back, so it is short, close and every pin could be it
@@ -168,13 +169,17 @@ export function createMatch(ctx, W) {
     const need = Math.floor(s.bestOf / 2) + 1, decider = s.playerFalls === need - 1 && s.rivalFalls === need - 1;
     if (healed) for (const f of [p, r]) {
       f.hp = Math.min(f.maxHp, Math.max(f.hp + f.maxHp * (decider ? MATCH.decHeal : MATCH.healBetween), f.maxHp * (decider ? MATCH.decFloor : MATCH.healFloor)));
-      f.momentum = f.id === s.winner ? Math.min(f.momentum, MATCH.momCarry) : Math.max(Math.min(f.momentum, MATCH.momCarry), MATCH.loserMom);
+      // (in the first title match only the player gets the fall loser's fire: the rival does not rally back on a new player)
+      const fire = f.id !== s.winner && (f.isPlayer || s.defense > 0);
+      f.momentum = fire ? Math.max(Math.min(f.momentum, MATCH.momCarry), MATCH.loserMom) : Math.min(f.momentum, MATCH.momCarry);
     }
   }
   function tuneRival() {
     const r = W.rival;
-    s.difficulty = 0.25 * s.defense + 0.12 * Math.max(0, s.fall - 1);
-    r.atkMult = Math.min(MATCH.rivalAtkMax, MATCH.rivalAtk + MATCH.rivalAtkPerFall * Math.max(0, s.fall - 1) + MATCH.rivalAtkPerDefense * s.defense);
+    // (the first title match ramps more gently fall to fall: it is where a new player learns the game)
+    const first = s.defense === 0, k = first ? MATCH.firstRamp : 1;
+    s.difficulty = 0.25 * s.defense + 0.12 * k * Math.max(0, s.fall - 1);
+    r.atkMult = Math.min(MATCH.rivalAtkMax, (first ? MATCH.firstAtk : MATCH.rivalAtk) + MATCH.rivalAtkPerFall * k * Math.max(0, s.fall - 1) + MATCH.rivalAtkPerDefense * s.defense);
   }
 
   // ------------------------------------------------------------------ match / fall

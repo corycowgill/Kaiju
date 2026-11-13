@@ -122,6 +122,15 @@ export function createSpots(ctx, W) {
   const phase = () => (W.match && W.match.state ? W.match.state.phase : '');
   const fighters = () => (W.player && W.rival ? [W.player, W.rival] : null);
 
+  // Landmark callouts one at a time: a second set piece within CALL_GAP waits its turn (Michigan Ave -> the third rail)
+  const CALL_GAP = 1.1;
+  let callT = 0;
+  const callQ = { on: false, text: '', sub: '', tier: '', who: '' };
+  function landmarkCall(text, sub, who) {
+    if (callT > 0) { callQ.on = true; callQ.text = text; callQ.sub = sub; callQ.tier = 'landmark'; callQ.who = who; return; }
+    callT = CALL_GAP;
+    emitCallout(text, sub, 'landmark', who);
+  }
   function emitCallout(text, sub, tier, who) {
     const e = bus.ev(EV.CALLOUT);
     e.text = text; e.sub = sub || ''; e.tier = tier; e.who = who || '';
@@ -170,11 +179,11 @@ export function createSpots(ctx, W) {
     bus.emit(EV.SPOT_HIT);
     // The callout, the crowd, a beat of slow motion
     const sub = by ? by.name : '';
-    if (id === 'fountain') emitCallout('INTO BUCKINGHAM FOUNTAIN!', sub, 'landmark', by ? by.id : '');
-    else if (id === 'lake') emitCallout('INTO LAKE MICHIGAN!', out[V.id] || !inVenue(x, z) ? 'THE REFEREE IS COUNTING' : sub, 'landmark', by ? by.id : '');
-    else if (id === 'ltracks') emitCallout('ONTO THE THIRD RAIL!', 'THE L · 600 VOLTS', 'landmark', by ? by.id : '');
-    else if (id === 'michigan') emitCallout(name === NAMES.michigan ? 'THROUGH MICHIGAN AVENUE!' : `THROUGH THE ${name}!`, name === NAMES.michigan ? sub : 'MICHIGAN AVENUE', 'landmark', by ? by.id : '');
-    else if (id === 'bean') emitCallout('OFF THE BEAN!', 'CLOUD GATE', 'landmark', by ? by.id : '');
+    if (id === 'fountain') landmarkCall('INTO BUCKINGHAM FOUNTAIN!', sub, by ? by.id : '');
+    else if (id === 'lake') landmarkCall('INTO LAKE MICHIGAN!', out[V.id] || !inVenue(x, z) ? 'THE REFEREE IS COUNTING' : sub, by ? by.id : '');
+    else if (id === 'ltracks') landmarkCall('ONTO THE THIRD RAIL!', 'THE L · 600 VOLTS', by ? by.id : '');
+    else if (id === 'michigan') landmarkCall(name === NAMES.michigan ? 'THROUGH MICHIGAN AVENUE!' : `THROUGH THE ${name}!`, name === NAMES.michigan ? sub : 'MICHIGAN AVENUE', by ? by.id : '');
+    else if (id === 'bean') landmarkCall('OFF THE BEAN!', 'CLOUD GATE', by ? by.id : '');
     say(pick(LINES[id]), 'shock');
     pop('pop', 1, x, z);
     W.slowMo(0.4, 0.45, 1);
@@ -568,6 +577,7 @@ export function createSpots(ctx, W) {
       // The fountain is a set piece for the whole match: granite that every landing next to it would otherwise flatten
       if (fountainB && !fountainB.destroyed) { fountainHp = fountainB.hp; fountainB.maxHp = fountainB.hp = 1e9; }
       for (const k in spotCd) spotCd[k] = 0;
+      callT = 0; callQ.on = false;
       for (const q of sched) q.t = -1;
       count.who = ''; count.n = 0; count.t = 0; count.held = false;
       out.player = out.rival = false; firstCount = true;
@@ -580,6 +590,7 @@ export function createSpots(ctx, W) {
     update(dt, dtReal) {
       if (!live || !W.player) return;
       for (const k in spotCd) if (spotCd[k] > 0) spotCd[k] -= dt;
+      if (callT > 0) { callT -= dtReal; if (callT <= 0 && callQ.on) { callQ.on = false; landmarkCall(callQ.text, callQ.sub, callQ.who); } }
       runSched(dt);
       updateCount(dt);
       updateWeapons(dt);

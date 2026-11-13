@@ -60,7 +60,8 @@ export const GRAPPLE = {
   // pin
   countAt: [1.0, 2.0, 3.0], forcedAt: [0.8, 1.6, 2.4], nearFall: 2.55,
   pinGain: 0.07, pinGainS: 0.22, pinDecay: 0.22, pinLate: 2.7,
-  pinLateS: 0.4,                        // the player's kick-out cannot come before pinLate while its strength is under this (then earlier, to ~1 s when fresh)
+  pinFirstMatch: 1.3,                   // x the player's kick-out mashing in the first title match (defense 0)
+  pinLateS: 0.4,                       // the player's kick-out cannot come before pinLate while its strength is under this (then earlier, to ~1 s when fresh)
   kickSpan: 0.78,                       // the rival's kick-out curve: strength 0.13 .. 0.13 + span maps 2.95 s .. 0.45 s (wider = more 2.9s)
   nearSlow: 2.45, nearSlowScale: 0.4,   // the referee's hand coming down for three: the last of the count in slow motion
   wearPerFall: 0.05,                    // kick-outs get harder fall by fall (a long match wears both down)
@@ -762,7 +763,8 @@ export function createGrapple(ctx, W) {
     const hp = Math.max(0, V.hp) / Math.max(1, V.maxHp), st = V.stamina / V.maxStamina;
     return 0.2 + 0.6 * hp + 0.15 * st - 0.28 * V.lastImpact - 0.07 * V.kickouts - (V.finished > 0 ? 0.3 : 0)
       - 0.04 * (V.worked || 0) // (a back Mechra has worked over: signatures.js)
-      - GRAPPLE.wearPerFall * Math.max(0, (W.match.state.fall || 1) - 1); // (the third fall: everyone is running on fumes)
+      // (the third fall: everyone is running on fumes; in the first title match the player is spared it)
+      - (V.isPlayer && !(W.match.state.defense > 0) ? 0 : GRAPPLE.wearPerFall * Math.max(0, (W.match.state.fall || 1) - 1));
   }
   /** A covers the downed V. forced: a knockout cover that cannot be kicked out of. */
   function startPin(A, V, forced) {
@@ -869,7 +871,9 @@ export function createGrapple(ctx, W) {
     if (V.isPlayer) {
       const S = clamp01(pin.strength);
       // (presses come in real time: in the slow motion each one is worth its share of a real second, not more)
-      if (V.intent.mash > 0) pin.meter += V.intent.mash * (G.pinGain + G.pinGainS * S) * Math.min(1, W.match.timeScale || 1);
+      // (the first title match is forgiving: a new player's mashing counts for more)
+      const first = W.match.state.defense > 0 ? 1 : G.pinFirstMatch;
+      if (V.intent.mash > 0) pin.meter += V.intent.mash * (G.pinGain + G.pinGainS * S) * first * Math.min(1, W.match.timeScale || 1);
       pin.meter = Math.max(0, pin.meter - G.pinDecay * dt);
       // The more beaten it is, the later even perfect mashing can get the shoulder up: a hurt kaiju's kick-outs are near falls
       // (off a finisher: only when the roll allows it at all, and only at the death)

@@ -214,6 +214,8 @@ export function createHud(ctx, W) {
   function callout(text, sub, tier, who, pre, sec) {
     if (!live || !text) return;
     tier = CALL_DUR[tier] ? tier : 'move';
+    // A landmark set piece owns the screen while it is up: a move name under it would be drawn over it
+    if (tier === 'move') for (const c of el.calls) if (c._on > 0.25 && c._tier === 'landmark') return;
     const m = !pre && PRE_RE.exec(text);
     if (m) { pre = m[1]; text = m[2]; }
     const centre = tier !== 'move' && tier !== 'defend' || (who !== 'player' && who !== 'rival');
@@ -224,7 +226,7 @@ export function createHud(ctx, W) {
     if (!node) for (const c of el.calls) if (!(c._on > 0)) { node = c; break; }
     if (!node) node = el.calls[callI = (callI + 1) % el.calls.length];
     const dur = sec || CALL_DUR[tier];
-    node._pos = pos; node._on = dur;
+    node._pos = pos; node._on = dur; node._tier = tier;
     node.className = `wr-call t-${tier}${pos ? ' ' + pos : ''}`;
     node.children[0].textContent = pre || '';
     node.children[1].textContent = text;
@@ -379,7 +381,7 @@ export function createHud(ctx, W) {
     const P = W.player, R = W.rival;
     if (phase !== 'fight' || typeof P.gapTo !== 'function') { stallT = 0; return; }
     // Keeping away: the same test match.js runs (stallDist 48 u, penalties from 6 s); warn a second early
-    const apart = R.state === 'neutral' && (P.state === 'neutral' || P.state === 'blocking') && P.distTo(R) > 48;
+    const apart = R.state === 'neutral' && (P.state === 'neutral' || P.state === 'blocking') && P.distTo(R) > 48 && !(W.spots && W.spots.count.who); // (not while the referee counts: match.js skips it too)
     stallT = apart ? stallT + 0.1 : 0;
     if (!tutOn) return;
     const gap = P.gapTo(R), up = R.state !== 'downed' && R.state !== 'ko';

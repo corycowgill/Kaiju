@@ -5582,8 +5582,11 @@ function updateCamera(dt=1/60) {
 }
 
 // ------------------------- World tick -------------------------
-const MAX_EFFECTS = isMobile ? 90 : 180;
-const MAX_DEBRIS  = isMobile ? 60 : 140;
+// (perf) phones: each live effect is 1-6 draws, and in a brawl or a rampage
+// they were ~500 of a phone frame's ~750 draws (21-28 ms at 4x CPU); the
+// oldest give way first (smoke and dust tails), the newest always show
+const MAX_EFFECTS = isMobile ? (Q_LOW ? 45 : 60) : 180;
+const MAX_DEBRIS  = isMobile ? (Q_LOW ? 30 : 40) : 140;
 
 // Debris cleanup: only dispose geometries / materials that the mesh owns.
 // GLB-cloned debris shares geom + material with the template (Three.js
