@@ -2414,6 +2414,14 @@ export class Building {
 
     // remove building from scene
     this.group.parent && this.group.parent.remove(this.group);
+    // ...and free its own geometry (procedural bodies, landmark parts: the
+    // fountain's jets, basins, rims), as _teardownScene would have. Removed
+    // here, teardown never saw them: ~10-30 geometries leaked per restart
+    // after a finisher's collapses. Template / shared geometry stays.
+    this.group.traverse((n) => {
+      const g = n.geometry;
+      if (g && !g.userData.template && !g.userData.shared) g.dispose();
+    });
   }
 }
 
