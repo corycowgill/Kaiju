@@ -63,7 +63,7 @@ export const PERSONAS = Object.freeze({
     pw: { beam: 0.9, roar: 1.4, charge: 0.6, stomp: 0.7 }, saveAt: 70, saver: 0.5, punish: 0.8, punishAct: { string: 0.2, heavy: 0.5, grab: 0.3 },
     // persona beats: walk pace, P(no-sells a big hit), signature weights [toward, away], rope runs, top-rope dives, heel tricks, lazy covers when ahead, back work
     walk: 0.8, noSell: 0.4, sig: [3.0, 3.5], ropeRun: 0, dive: 0, cheap: 0.08, cockyPin: 0.2, workBack: 0, bldgTaunt: 1.5,
-    fireUp: 0.95, vsFire: 'trade', weapon: 1.3, spotLove: 1.4, countBack: 5, countStay: 0, outDive: 0,
+    fireUp: 0.95, vsFire: 'trade', weapon: 1.3, spotLove: 1.4,
     tells: 'jab-jab-HEAVY (guard after the second jab; raise it late and the heavy is reversed); rarely guards, so strike first; loves the press slam and holds you up there (mash); roars in your face (a jab stops it); stomps or gloats over you when you are down; big hits do not always rock it (it no-sells and swings right back: block); RUN-grabs into the CHOKESLAM, or onto its shoulder and through the nearest building (LOOP BULLDOZER)',
   },
   // Tridon: the fast, showy storm dragon. In and out, running clotheslines, whips, dives, and far too much taunting.
@@ -78,7 +78,7 @@ export const PERSONAS = Object.freeze({
     taunt: 1.5, tauntDown: 2.0, catchRebound: 0.95,
     pw: { beam: 0.6, roar: 0.5, charge: 1.3, stomp: 0.4 }, saveAt: 80, // (the jump is saved for the top-rope dive) saver: 0.65, punish: 0.7, punishAct: { string: 0.6, heavy: 0.1, grab: 0.3 },
     walk: 1, noSell: 0, sig: [2.6, 2.6], ropeRun: 2.0, dive: 5, cheap: 0.15, cockyPin: 1.2, workBack: 0, bldgTaunt: 1,
-    fireUp: 0.75, vsFire: 'flee', weapon: 0.25, spotLove: 1, countBack: 5, countStay: 0, outDive: 1,
+    fireUp: 0.75, vsFire: 'flee', weapon: 0.25, spotLove: 1,
     tells: 'backs out after an exchange and comes back with a running clothesline (block it, or step aside and punish the miss); whips you at the ropes to cut you down on the rebound; taunts after knockdowns (get up and hit him: a taunting kaiju takes x1.4); dives on you when you are down (mash up and he crashes on the mat); sprints himself tired; runs the ropes for a clothesline (block it as he comes back); climbs a corner post to fly at you when you are down (get up, he lands on nothing); covers lazily when ahead (kick out early)',
   },
   // Mechra: the methodical war machine. Holds its range, zones with the cannon, guards, and punishes what you miss.
@@ -93,7 +93,7 @@ export const PERSONAS = Object.freeze({
     taunt: 0.12, tauntDown: 0.3, catchRebound: 0.7,
     pw: { beam: 1.5, roar: 1.0, charge: 0.8, stomp: 0.5 }, saveAt: 55, saver: 0.4, punish: 1.0, punishAct: { string: 0.25, heavy: 0.45, grab: 0.3 },
     walk: 0.92, noSell: 0, sig: [3.0, 2.6], ropeRun: 0, dive: 0, cheap: 1, cockyPin: 0.1, workBack: 1, bldgTaunt: 0.5,
-    fireUp: 0.5, vsFire: 'guard', weapon: 1.0, spotLove: 0.8, countBack: 6, countStay: 1, outDive: 0,
+    fireUp: 0.5, vsFire: 'guard', weapon: 1.0, spotLove: 0.8,
     tells: 'guards strings, so grab it; answers a blocked string with a counter-heavy (stop after the third hit and block: reversal); steps back and fires the cannon when you stand off (sidestep late, punish the recovery); punishes what you miss; slow on its feet, it cannot run you down; a heel: it waits by you as you get up and jumps you (block on the way up), stomps you while you are down, and works your back with the CIRCUIT BREAKER and SYSTEM CRASH (each makes your kick-outs harder this fall)',
   },
 });
@@ -137,7 +137,6 @@ const VOICE = Object.freeze({
   ghidorah: {
     ropes: ['{0} hits the ropes!', 'Off the ropes, here comes {0}!', '{0} using the cables like a slingshot!'],
     dive: ['{0} is going up top!', '{0} is climbing the corner post!', 'Up on the tower! {0} is going to fly!'],
-    outDive: ['{0} flies over the ropes onto the floor!', 'A dive to the outside by {0}!'],
     lazy: ['A lazy cover! {0} is getting cocky!', 'One foot on the chest? Disrespectful, {0}!', '{0} thinks this is already over!'],
     taunt: ['{0} is soaking it up!', 'Look at {0} showboating!', '{0} cannot stop posing!'],
   },
@@ -146,7 +145,6 @@ const VOICE = Object.freeze({
     stomp: ['{0} keeps putting the boots in!', 'The crowd is letting {0} hear it!', 'Kicking a kaiju while it is down, {0}?'],
     work: ['{0} is working on the back!', '{0} is targeting that spine!', 'Methodical. {0} is taking you apart piece by piece.'],
     reversal: ['{0} saw that coming a mile away!', 'Calculated. {0} reads everything.', 'Countered by the machine!'],
-    countStay: ['{0} wants to win this by count-out!', '{0} is just standing in the ring, waiting!', 'Coward! {0} will not go out there!'],
     guardFire: ['{0} covers up and waits it out!', 'Cold as steel: {0} weathers the storm.'],
   },
 });
@@ -191,7 +189,7 @@ export function createRivalAI(ctx, W) {
     // persona beats
     noSell: false, noSellT: 0, noSellCd: 0, voiceAt: 0, shoutAt: 0, cheapGo: false, lazyPin: false, dozerYaw: 0, dozerOn: false,
     ropeSide: '', rx: 0, rz: 0, ropeCalled: false, postX: 0, postZ: 0, bldgT: -99, sigCd: 0,
-    coBack: -1, coSlow: 1, fireTry: 0, foeFireUntil: 0, wx: 0, wz: 0, countSaid: false, outDiveCd: 0,
+    fireTry: 0, foeFireUntil: 0, wx: 0, wz: 0,
   };
   const T = AI_TUNE;
   const sk = (pair) => lerp(pair[0], pair[1], S.k);
@@ -258,7 +256,7 @@ export function createRivalAI(ctx, W) {
     S.fvx = 0; S.fvz = 0; S.milOn = false; S.milHurt = 0; S.swat = null; S.swatCd = 0; S.beamEye = 0;
     S.noSell = false; S.noSellCd = 0; S.voiceAt = 0; S.shoutAt = 0; S.cheapGo = false; S.lazyPin = false; S.dozerOn = false;
     S.ropeSide = ''; S.ropeCalled = false; S.bldgT = -99; S.sigCd = 0;
-    S.coBack = -1; S.coSlow = 1; S.fireTry = 0; S.foeFireUntil = 0; S.countSaid = false; S.outDiveCd = 0;
+    S.fireTry = 0; S.foeFireUntil = 0;
     if (W.player) { S.fpx = W.player.pos.x; S.fpz = W.player.pos.z; }
     S.strafe = rnd() < 0.5 ? 1 : -1;
   }
@@ -585,53 +583,6 @@ export function createRivalAI(ctx, W) {
     if (!w) return false;
     S.wx = w.x; S.wz = w.z;
     return true;
-  }
-  const countUrgent = () => !!(W.spots && W.spots.count && W.spots.count.who === 'rival' && W.spots.count.n >= 7);
-  // The count-out (spots.js): back in before ten, or (the heel) stay in and let the referee count the foe out;
-  // Tridon flies over the ropes onto a foe on the floor. True when it took this frame.
-  function countOut(me, foe, it, gap) {
-    const sp = W.spots;
-    if (!sp || !sp.outside || !sp.count) return false;
-    const c = sp.count;
-    if (c.who === 'rival' && sp.outside(me) && !sp.outside(foe)) {
-      // Counted on the floor: it sells it (stays out, shakes it off), starts back late, and a hurt one may not make it
-      if (S.coBack < 0) {
-        const hurt = hpF(me) < 0.3;
-        S.coBack = hurt ? 6.0 + rnd() * 0.8 : P.countBack + rnd() * 0.8;
-        S.coSlow = hurt ? 0.7 / P.walk : 1; // (hurt: a slow walk, the same pace for all three)
-        if (hurt && rnd() < 0.45) { S.coBack = 7.6; S.coSlow = 0.5 / P.walk; } // (caught dawdling)
-      }
-      if (me.gapTo(foe) < 20) return false; // the foe came to it: fight
-      sp.homeTo(me, _m);
-      it.faceYaw = Math.atan2(_m.x - me.pos.x, _m.z - me.pos.z);
-      if (c.n < S.coBack) return true;
-      toward(me, it, _m.x, _m.z, S.coSlow, S.coSlow >= 1 && c.n >= 8);
-      return true;
-    }
-    if (c.who !== 'rival') S.coBack = -1;
-    if (c.who === 'player' && sp.outside(foe) && !sp.outside(me)) {
-      if (P.outDive && now >= S.outDiveCd && gap > 20 && gap < 70 && me.can('pstomp') && me.momentum >= POWERS.stomp.cost && foe.state !== 'downed' && rnd() < 0.02 * P.outDive) {
-        S.outDiveCd = now + 12;
-        it.power = 'stomp'; shout('DIVE TO THE OUTSIDE!'); voice('outDive'); crowd('pop', 0.9);
-        return true;
-      }
-      if (!P.countStay && c.n >= 1) {
-        // Everyone else waits at the edge of the venue nearest the foe (stepping out would stop the count)
-        if (gap < 16) return false;
-        sp.homeTo(foe, _m);
-        if (Math.hypot(_m.x - me.pos.x, _m.z - me.pos.z) > 8) toward(me, it, _m.x, _m.z, 0.8, false);
-        return true;
-      }
-      if (P.countStay && c.n >= 1) {
-        // The heel stays in the ring and lets the count run (it still answers a foe that comes to it)
-        if (gap < 16) return false;
-        if (!S.countSaid) { S.countSaid = true; voice('countStay', 'shock'); crowd('boo', 0.7); }
-        if (S.tauntCd <= 0 && c.n >= 4 && gap > 40) { it.taunt = true; S.tauntCd = 8; }
-        return true;
-      }
-    }
-    if (!c.who) S.countSaid = false;
-    return false;
   }
   // Gorrak's run with the foe on its shoulder: the best building within reach of the charge (sets S.dozerYaw)
   function dozerAim(me) {
@@ -1097,8 +1048,6 @@ else {
       if (gap < 70) { toward(me, it, foe.pos.x, foe.pos.z, 1, true); return; }
     } else S.finT = 0;
 
-    // Late in its own count-out it stops defending and goes back in, whatever is coming
-    if (countUrgent() && countOut(me, foe, it, gap)) return;
     // A strike it saw coming
     if (S.thr) {
       if (now > S.thrHitAt + 0.06) S.thr = false;
@@ -1118,7 +1067,6 @@ else {
     }
     if (down) { ground(dt, me, foe, it); return; }
     S.gPlan = '';
-    if (countOut(me, foe, it, gap)) return;
     // The foe has fired up: Gorrak trades, Tridon wants no part of it, Mechra covers up and waits it out
     if (now < S.foeFireUntil && foe.comebackPhase) {
       if (P.vsFire === 'flee' && gap < 34) { away(me, foe, it, 1, true); return; }
@@ -1195,7 +1143,7 @@ else {
     else if (S.ender) { it.heavy = true; S.ender = false; }
   }
   function guarding(me, foe, it) {
-    let keep = now < S.guardUntil && !countUrgent();
+    let keep = now < S.guardUntil;
     if (S.thr && now <= S.thrHitAt + 0.06) keep = true;
     if (S.gthr && now >= S.gthrSeen) keep = false;           // a guard is no use against a grab
     if (me.stamina < 14 || (me.gapTo(foe) > 26 && !S.thr && !(S.plan === 'guard' && S.stage === 1))) keep = false;
@@ -1426,7 +1374,7 @@ else {
         case 'blocking': guarding(me, foe, it); break;
         case 'downed':
           // Mashing gets it up sooner; a hurt one stays down longer (and sells it)
-          if (!me.held && me.falling <= 0) mash(dt, it, sk(T.mash) * (0.35 + 0.65 * hpF(me)) * (W.spots && W.spots.count && W.spots.count.who === 'rival' ? 0.35 : 1));
+          if (!me.held && me.falling <= 0) mash(dt, it, sk(T.mash) * (0.35 + 0.65 * hpF(me)));
           break;
         default: break;
       }

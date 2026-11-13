@@ -160,15 +160,6 @@ export const EVENTS = Object.freeze({
   'weapon:drop':        P({ who: '', id: 0, kind: '', x: 0, z: 0 }),
   // It broke over target on its last hit (or snapped on a building); x/y/z = where.
   'weapon:break':       P({ who: '', target: '', id: 0, kind: '', x: 0, y: 0, z: 0 }),
-  // Count-out (spots.js counts, match.js scores the fall). who = the fighter outside the arena (venue) square.
-  // start: the referee starts counting (first: the first count of this match, show the rule card).
-  'countout:start':     P({ who: '', first: false, x: 0, z: 0 }),
-  // The count reached `count` (1..10); held: paused (both outside, or the counted one is held by its foe).
-  'countout:count':     P({ who: '', count: 0, held: false }),
-  // The count was stopped. reason: 'in' (back inside in time: count = where it stopped) | 'fall' (the fall ended) | 'reset'.
-  'countout:stop':      P({ who: '', reason: '', count: 0 }),
-  // Ten: who is counted out (match.js gives the fall to the other fighter, by 'countout').
-  'countout:out':       P({ who: '', x: 0, z: 0 }),
 
   // ---- ground game ----
   // who hits the mat. cause: 'strike' | 'throw' | 'power' | 'finisher' | 'ko'.

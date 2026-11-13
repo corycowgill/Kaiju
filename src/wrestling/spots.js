@@ -3,32 +3,22 @@
 //     its own payoff (spot:hit, a callout, the crowd, a slow-mo beat, an effect
 //     and a small gameplay twist):
 //       fountain  Buckingham Fountain, ringside: the basin, the jets surge
-//       lake      Lake Michigan, past the runway: the wave (and the count-out)
+//       lake      Lake Michigan, past the runway: the wave
 //       ltracks   the L on Wabash: the third rail (extra damage, slow to rise)
 //       michigan  the Michigan Avenue street wall: through the towers, glass
 //       bean      Cloud Gate (far north): bounces off it (grapple.js)
 //   - Foreign objects: steel girders lying ringside and in the rubble of a
 //     tower that came down. Grab next to one to rip it up, strike to swing it;
 //     it breaks on its third hit. Dropped when its holder is knocked about.
-//   - The count-out. Outside the ropes (the ring's square) the referee counts
-//     to ten, one number every TUNE.step s; ten loses the fall (match.js scores
-//     it from countout:out). Both outside: the count waits. Back inside: reset.
-//     The referee (referee.js) walks to the ropes and counts it with his arm,
-//     and drops beside every pin to slap the mat.
+// No referee, no count-out: an all-out match, falls count anywhere in the city.
 // It reads both fighters and the grapple; it starts moves on a fighter only
 // through the fighter's own entry points (_startMove, recover).
 // OWNER: spots.
 import * as THREE from 'three';
 import { EV } from './events.js';
-import { createReferee } from './referee.js';
 
 /** Tuning (exported for the AI and the balance sims). */
 export const SPOTS_TUNE = {
-  // count-out
-  step: 1.15, max: 10,
-  // the ring: out once the root is this far past the ropes (the apron is not out), back in this far inside them
-  outBand: 4, inBand: 2, home: 10,
-  exchangeGap: 20, helplessGap: 25, // the count waits while the foe is this close (helpless: staggered, stunned, downed)
   // set pieces
   spotCd: 3, fountainR: 15, lakeX: 70, railR: 7.5, railY: 3.2,
   bonus: { fountain: 5, lake: 0, ltracks: 9, michigan: 0, bean: 6 },
@@ -50,21 +40,16 @@ const RAIL = [
 const NAMES = { fountain: 'BUCKINGHAM FOUNTAIN', lake: 'LAKE MICHIGAN', ltracks: 'THE L', michigan: 'MICHIGAN AVENUE', bean: 'CLOUD GATE' };
 const LINES = {
   fountain: ['Into Buckingham Fountain! Somebody check the warranty!', 'Making a splash in Grant Park!', 'The fountain show is OVER, folks!'],
-  lake: ['Into Lake Michigan! That wave will reach Indiana!', 'Splashdown! Lake Shore Drive is under water!', 'And the referee has started counting!'],
+  lake: ['Into Lake Michigan! That wave will reach Indiana!', 'Splashdown! Lake Shore Drive is under water!', 'Falls count anywhere: even in the lake!'],
   ltracks: ['Onto the L tracks! Six hundred volts!', 'The third rail! You can smell the ozone from here!', 'The Green Line is not running tonight!'],
   michigan: ['The Magnificent Mile, not so magnificent now!', 'Glass raining down on Michigan Avenue!', 'There goes the Michigan Avenue skyline!'],
   bean: ['Off the Bean! Not a dent in it!', 'Bounced off Cloud Gate! It saw its own reflection!'],
-  weapon: ['{0} has a steel girder! Where is the referee?', 'A foreign object! {0} ripped it right out of the rubble!', 'That is not legal in any state!'],
-  weaponHit: ['Steel on hide! What a shot!', 'That girder is bent now!', 'The referee saw NOTHING!'],
+  weapon: ['{0} has a steel girder! No rules in Chicago tonight!', 'A foreign object! {0} ripped it right out of the rubble!', 'That is not legal in any state!'],
+  weaponHit: ['Steel on hide! What a shot!', 'That girder is bent now!', 'No disqualifications, folks!'],
   weaponBreak: ['It snapped in half over {0}!', 'The girder is in pieces!'],
-  countStart: ['The referee is counting!', '{0} is out on the streets of Chicago!'],
-  countLate: ['{0} had better hurry!', 'Seven! Eight! Get back in there, {0}!'],
-  countBeat: ['{0} beats the count!', 'Just in time! {0} is back!'],
-  countOut: ['{0} has been COUNTED OUT!', 'Ten! {0} did not make it back!'],
 };
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const fmt = (s, a) => s.replace('{0}', a || '');
-const HELPLESS_OUT = { staggered: 1, stunned: 1, downed: 1, grappled: 1, airborne: 1, gettingUp: 1 };
 const DROP = { staggered: 1, stunned: 1, grappled: 1, grappling: 1, airborne: 1, downed: 1, pinned: 1, pinning: 1, ko: 1, cinematic: 1 };
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _a = new THREE.Vector3();
@@ -96,11 +81,6 @@ export function createSpots(ctx, W) {
   const bus = W.bus;
   let offs = [];
   let live = false;
-  // ---- count-out ----
-  /** The referee's count (read-only): who is being counted, n = the last number called, held = paused. */
-  const count = { who: '', n: 0, t: 0, held: false };
-  const out = { player: false, rival: false };
-  let firstCount = true;
   // ---- set pieces ----
   const spotCd = { fountain: 0, lake: 0, ltracks: 0, michigan: 0, bean: 0 };
   let fountainB = null, jets = null, surge = 0, fountainHp = 0;
@@ -118,21 +98,6 @@ export function createSpots(ctx, W) {
   const wRes = { id: 0, kind: '', x: 0, z: 0, dist: 0 };
   const armedRes = { id: 0, kind: '', hits: 0 };
 
-  /** The ring's square (ropes): { cx, cz, half } (ARENA's numbers without an arena, e.g. the smoke test's stub). */
-  const venue = { cx: 4, cz: 62, half: 42 };
-  function ring() {
-    const a = W.arena && W.arena.info;
-    if (a) { venue.cx = a.cx; venue.cz = a.cz; venue.half = a.half; }
-    return venue;
-  }
-  /** Inside the ropes, grown by band (negative = shrunk)? */
-  function inRing(x, z, band = 0) {
-    const r = ring(), h = r.half + band;
-    return Math.abs(x - r.cx) <= h && Math.abs(z - r.cz) <= h;
-  }
-  /** Inside the ropes after its hysteresis (what the count asks). */
-  const inVenue = (x, z) => inRing(x, z, T.outBand);
-  let ref = null; // the referee (referee.js), made in start(): the arena exists by then
   const phase = () => (W.match && W.match.state ? W.match.state.phase : '');
   const fighters = () => (W.player && W.rival ? [W.player, W.rival] : null);
 
@@ -196,7 +161,7 @@ export function createSpots(ctx, W) {
     // The callout, the crowd, a beat of slow motion
     const sub = by ? by.name : '';
     if (id === 'fountain') landmarkCall('INTO BUCKINGHAM FOUNTAIN!', sub, by ? by.id : '');
-    else if (id === 'lake') landmarkCall('INTO LAKE MICHIGAN!', out[V.id] || !inVenue(x, z) ? 'THE REFEREE IS COUNTING' : sub, by ? by.id : '');
+    else if (id === 'lake') landmarkCall('INTO LAKE MICHIGAN!', sub, by ? by.id : '');
     else if (id === 'ltracks') landmarkCall('ONTO THE THIRD RAIL!', 'THE L · 600 VOLTS', by ? by.id : '');
     else if (id === 'michigan') landmarkCall(name === NAMES.michigan ? 'THROUGH MICHIGAN AVENUE!' : `THROUGH THE ${name}!`, name === NAMES.michigan ? sub : 'MICHIGAN AVENUE', by ? by.id : '');
     else if (id === 'bean') landmarkCall('OFF THE BEAN!', 'CLOUD GATE', by ? by.id : '');
@@ -252,74 +217,6 @@ export function createSpots(ctx, W) {
     f.impact = Math.min(1, f.impact + 0.3);
     fire('bean', V, by, f.type, 0.8, f.x, Math.max(6, f.y), f.z, b);
     return 1;
-  }
-
-  // ------------------------------------------------------------------ count-out
-  function countStop(reason) {
-    if (!count.who) return;
-    const e = bus.ev(EV.COUNTOUT_STOP);
-    e.who = count.who; e.reason = reason; e.count = count.n;
-    bus.emit(EV.COUNTOUT_STOP);
-    if (reason === 'in' && count.n >= 6) {
-      const f = W[count.who];
-      say(fmt(pick(LINES.countBeat), f ? f.name : ''), 'hype');
-      if (f) pop('pop', 0.9, f.pos.x, f.pos.z);
-    }
-    count.who = ''; count.n = 0; count.t = 0; count.held = false;
-  }
-  function countStart(f) {
-    count.who = f.id; count.n = 0; count.t = 0; count.held = false;
-    const e = bus.ev(EV.COUNTOUT_START);
-    e.who = f.id; e.first = firstCount; e.x = f.pos.x; e.z = f.pos.z;
-    bus.emit(EV.COUNTOUT_START);
-    firstCount = false;
-    say(fmt(pick(LINES.countStart), f.name), 'neutral');
-  }
-  function updateCount(dt) {
-    const F = fighters();
-    if (!F) return;
-    const ph = phase();
-    if (ph !== 'fight' && ph !== 'pin' && ph !== 'finisher') { if (count.who) countStop('fall'); out.player = out.rival = false; return; }
-    for (const f of F) {
-      const p = f.pos;
-      if (!out[f.id]) { if (!inRing(p.x, p.z, T.outBand)) out[f.id] = true; }
-      else if (inRing(p.x, p.z, -T.inBand)) out[f.id] = false;
-    }
-    if (count.who && !out[count.who]) countStop('in');
-    if (!count.who) {
-      if (out.player && !out.rival) countStart(W.player);
-      else if (out.rival && !out.player) countStart(W.rival);
-      if (!count.who) return;
-    }
-    const both = out.player && out.rival;
-    // Held: both outside, a hold or throw in progress, or the counted one is still in the exchange at the ropes
-    // (its foe right on it: a string that keeps it staggered or down out there must not count it out)
-    const cf = W[count.who], foe = cf.opponent, gap = foe ? cf.gapTo(foe) : 1e9;
-    const pinned = HELPLESS_OUT[cf.state] === 1;
-    const held = both || ph !== 'fight' || W.grapple.active || cf.held || gap <= T.exchangeGap || (pinned && gap <= T.helplessGap);
-    if (held !== count.held) {
-      count.held = held;
-      const e = bus.ev(EV.COUNTOUT_COUNT);
-      e.who = count.who; e.count = count.n; e.held = held;
-      bus.emit(EV.COUNTOUT_COUNT);
-    }
-    if (held) return;
-    count.t += dt;
-    const n = Math.min(T.max, Math.floor(count.t / T.step));
-    if (n <= count.n) return;
-    count.n = n;
-    const e = bus.ev(EV.COUNTOUT_COUNT);
-    e.who = count.who; e.count = n; e.held = false;
-    bus.emit(EV.COUNTOUT_COUNT);
-    const f = W[count.who];
-    if (n === 7) say(fmt(pick(LINES.countLate), f.name), 'shock');
-    if (n >= T.max) {
-      const o = bus.ev(EV.COUNTOUT_OUT);
-      o.who = f.id; o.x = f.pos.x; o.z = f.pos.z;
-      say(fmt(pick(LINES.countOut), f.name), 'shock');
-      count.who = ''; count.n = 0; count.t = 0; count.held = false;
-      bus.emit(EV.COUNTOUT_OUT); // match.js ends the fall
-    }
   }
 
   // ------------------------------------------------------------------ foreign objects
@@ -477,9 +374,8 @@ export function createSpots(ctx, W) {
   // ------------------------------------------------------------------ events
   function subscribe() {
     const on = (n, fn) => offs.push(bus.on(n, fn));
-    on(EV.MATCH_START, () => { firstCount = true; placeInitial(); countStop('reset'); out.player = out.rival = false; });
-    on(EV.FALL_START, () => { countStop('reset'); out.player = out.rival = false; zap.player = zap.rival = 0; zapDown.player = zapDown.rival = 0; for (const w of weapons) if (w.state === 'held') { w.owner = null; w.state = 'off'; w.dirty = true; } });
-    on(EV.FALL_END, () => countStop('fall'));
+    on(EV.MATCH_START, () => { placeInitial(); });
+    on(EV.FALL_START, () => { zap.player = zap.rival = 0; zapDown.player = zapDown.rival = 0; for (const w of weapons) if (w.state === 'held') { w.owner = null; w.state = 'off'; w.dirty = true; } });
     on(EV.BUILDING_IMPACT, (e) => {
       const id = spotOf(e.building);
       if (id === 'michigan') fire(id, W[e.who], W[e.by], e.type, 0.9, e.x, e.y, e.z, e.building);
@@ -525,19 +421,8 @@ export function createSpots(ctx, W) {
 
   const api = {
     TUNE: T,
-    count,
     /** The foreign objects (read-only): { id, kind, state 'off' | 'ground' | 'held', x, z, owner, hits }. */
     weapons,
-    venue,
-    /** Is f outside the ropes (its count runs, or would)? */
-    outside(f) { return !!f && !!out[f.id]; },
-    /** Nearest point TUNE.home u inside the ropes from f (where to go to beat the count). */
-    homeTo(f, o) {
-      const r = ring(), h = r.half - T.home, p = f.pos;
-      o.x = Math.min(r.cx + h, Math.max(r.cx - h, p.x));
-      o.z = Math.min(r.cz + h, Math.max(r.cz - h, p.z));
-      return o;
-    },
     /** The landmark set piece f could throw its foe into from here, or null (scratch result). */
     bestSpot(f, maxDist = 110) {
       const p = f.pos;
@@ -599,14 +484,10 @@ export function createSpots(ctx, W) {
       for (const k in spotCd) spotCd[k] = 0;
       callT = 0; callQ.on = false;
       for (const q of sched) q.t = -1;
-      count.who = ''; count.n = 0; count.t = 0; count.held = false;
-      out.player = out.rival = false; firstCount = true;
       zap.player = zap.rival = 0; zapDown.player = zapDown.rival = 0;
       pick2.player = pick2.rival = null; spawnCd = 0;
       placeInitial();
       subscribe();
-      if (!ref) ref = createReferee(ctx, W, A && A.referee ? A.referee : null);
-      ref.start();
       drawWeapons();
     },
     update(dt, dtReal) {
@@ -615,7 +496,6 @@ export function createSpots(ctx, W) {
       if (last.t > 0) last.t -= dtReal;
       if (callT > 0) { callT -= dtReal; if (callT <= 0 && callQ.on) { callQ.on = false; landmarkCall(callQ.text, callQ.sub, callQ.who); } }
       runSched(dt);
-      updateCount(dt);
       updateWeapons(dt);
       // The third rail: slow to rise (vfx.js draws the arcs)
       for (const id of ['player', 'rival']) {
@@ -629,7 +509,6 @@ export function createSpots(ctx, W) {
         if (jets.scale.y !== k) jets.scale.y = k;
       }
       drawWeapons();
-      if (ref) ref.update(dt);
       void dtReal;
     },
     updateIdle() { drawWeapons(); },
@@ -637,7 +516,6 @@ export function createSpots(ctx, W) {
       live = false;
       for (const off of offs) off();
       offs = [];
-      if (ref) ref.dispose();
       if (jets) jets.scale.y = 1;
       if (fountainB && fountainHp > 0) { fountainB.maxHp = fountainHp; fountainB.hp = Math.min(fountainB.hp, fountainHp); }
       jets = null; fountainB = null; fountainHp = 0;
@@ -646,7 +524,6 @@ export function createSpots(ctx, W) {
       placeInitial();
       drawWeapons();
       pick2.player = pick2.rival = null;
-      count.who = ''; count.n = 0;
     },
   };
   return api;

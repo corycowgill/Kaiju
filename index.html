@@ -1189,27 +1189,6 @@
   .wr-count.on { opacity: 1; }
   .wr-count i { width: clamp(22px, 5vmin, 46px); height: clamp(5px, 1vmin, 9px); transform: skewX(-14deg); background: rgba(8, 0, 3, 0.7); border: 1px solid rgba(255, 230, 200, 0.5); }
   .wr-count i.on { background: var(--c-score); border-color: #fff; }
-  /* ---- count-out (spots.js counts): under the band on the counted fighter's side, and the rule card the first time ---- */
-  #wr-co { position: absolute; top: calc(var(--safe-t, 0px) + 96px + 3vmin); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; white-space: nowrap; opacity: 0; transition: opacity 0.15s; }
-  #wr-co.p1 { left: calc(var(--safe-l, 0px) + 3vw); align-items: flex-start; }
-  #wr-co.p2 { right: calc(var(--safe-r, 0px) + 3vw + 112px); align-items: flex-end; } /* (clear of the minimap) */
-  #wr-rule.p1 { left: calc(var(--safe-l, 0px) + 3vw); text-align: left; transform-origin: 0 0; }
-  #wr-rule.p2 { right: calc(var(--safe-r, 0px) + 3vw + 112px); text-align: right; transform-origin: 100% 0; }
-  #wr-co.on { opacity: 1; }
-  #wr-co .wr-pill b { font-size: clamp(44px, 10vmin, 96px); line-height: 0.9; font-weight: 400; color: var(--c-cream); min-width: 1.1em; text-align: center; text-shadow: 0 0 22px #ff2244, 0.05em 0.05em 0 #1a0006; }
-  #wr-co .wr-pill .of { color: var(--c-muted); }
-  #wr-co.late .wr-pill b { color: var(--c-score); }
-  #wr-co.held .wr-pill b { color: var(--c-muted); }
-  #wr-co .pips { display: flex; gap: 4px; }
-  #wr-co .pips i { width: clamp(10px, 2.2vmin, 20px); height: clamp(5px, 1vmin, 8px); transform: skewX(-14deg); background: rgba(8, 0, 3, 0.7); border: 1px solid rgba(255, 230, 200, 0.5); }
-  #wr-co .pips i.on { background: var(--c-score); border-color: #fff; }
-  #wr-co .note { display: none; }
-  #wr-co.mine .note { display: flex; }
-  #wr-rule { position: absolute; top: calc(var(--safe-t, 0px) + 166px + 13vmin); padding: 10px 18px; border-radius: 6px; background: var(--glass-strong); border: var(--stroke); border-color: var(--c-gold);
-    font-family: var(--f-display); letter-spacing: 1.5px; color: var(--c-cream); text-align: center; white-space: nowrap; opacity: 0; }
-  #wr-rule .h { font-size: clamp(18px, 4px + 3vmin, 34px); color: var(--c-score); margin-bottom: 4px; }
-  #wr-rule .l { font-size: var(--fs-body); line-height: 1.35; }
-  #wr-rule b { font-weight: 400; color: var(--c-score); }
 
   /* ---- kick-out / escape mash meter ---- */
   #wr-mash { position: absolute; left: 50%; bottom: 23%; width: 0; display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); white-space: nowrap; opacity: 0; transition: opacity 0.12s; }
@@ -2348,8 +2327,6 @@
   <div class="wr-call t-defend p2"><span class="pre"></span><b>REVERSAL!</b><small></small></div>
   <div id="wr-pin"><b>ONE!</b></div>
   <div class="wr-count"><i></i><i></i><i></i></div>
-  <div id="wr-co" class="p2"><div class="wr-pill hot"><em>COUNT-OUT</em><b>0</b><span class="of">/ 10</span></div><div class="pips"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="wr-pill note">GET BACK TO THE RING!</div></div>
-  <div id="wr-rule"><div class="h">RING-OUT COUNT <span class="jp-sub">場外</span></div><div class="l">Leave the arena and the referee counts to <b>10</b>.</div><div class="l">Not back inside by 10: <b>you lose the fall.</b></div><div class="l">Both outside: the count waits.</div></div>
   <div id="wr-mash"><div class="t">KICK OUT!</div><div class="row"><span class="g"></span><div class="track"><i></i></div></div></div>
   <div id="wr-prompt"><div class="wr-pill"><span class="wr-k">E</span>GRAB</div></div>
   <div id="wr-wheel"><div class="u"></div><div class="l"></div><div class="c">SLAM</div><div class="r"></div><div class="d"></div></div>

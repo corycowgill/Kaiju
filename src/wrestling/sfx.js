@@ -393,28 +393,6 @@ export function createSfx(ctx, W) {
       crowd('gasp', 0.9); crowd('pop', 0.9, 0.4);
     },
 
-    // ---- count-out: the referee's hand on every number, the arena counting along
-    [EV.COUNTOUT_COUNT](e) {
-      const c = Math.max(1, Math.min(10, e.count | 0));
-      if (e.held) return;
-      _pan = 0;
-      audio.wr('wr_tick', 0.75 + 0.025 * c, 0.98 + 0.012 * c, 0, 0, 0, 2);
-      // ONE .. THREE are the pin-count shouts; FOUR .. TEN their own; louder as it climbs
-      const g = 0.45 + 0.055 * c;
-      if (c <= 3) audio.wr('wr_crowd_count', g, 1, 0.04, 0, 0, 1, c - 1);
-      else audio.wr('wr_crowd_num', g, 1, 0.04, 0, 0, 1, c - 4);
-      if (c >= 7) { sub(0, 0.35 + 0.08 * (c - 7)); S.coT = 1.5; S.heat = Math.max(S.heat, 0.55 + 0.1 * (c - 6)); }
-    },
-    [EV.COUNTOUT_STOP](e) {
-      S.coT = 0;
-      if (e.reason === 'in' && e.count >= 7) { _pan = 0; crowd('gasp', 0.7); crowd('pop', 1, 0.2); S.heat = 1; }
-    },
-    [EV.COUNTOUT_OUT](e) {
-      S.coT = 0; _pan = 0;
-      if (e.who === 'rival') crowd('pop', 1, 0.15); else { crowd('boo', 1, 0.2); crowd('ooh', 0.8); }
-      if (S.bellAgo > 0.3) S.coBellT = 0.35; // match.js rings the fall bell; if it does not, we do
-    },
-
     [EV.KNOCKDOWN](e) {
       place(e.x, e.z);
       // a thrown body already slammed through throw:land (the pack's cooldown would merge them anyway)

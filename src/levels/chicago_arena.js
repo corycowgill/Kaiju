@@ -25,7 +25,6 @@
 import * as THREE from 'three';
 import { festCrowdMaterial, festCrowdUniforms, FEST_RING_GAPS } from './chicago_fest.js';
 import { EV } from '../wrestling/events.js';
-import { buildRefereeMesh } from '../wrestling/referee.js';
 import * as LOOK from '../look.js';
 
 /** Ring layout (world units). The ring is the axis-aligned square of half-size
@@ -118,9 +117,8 @@ const CELLS = [
   ['#2a2f38', 0], ['#4a515c', 0], ['#8c8a84', 0], ['#b8262b', 0], ['#2b62c0', 0], ['#cfcfc8', 0], ['#16181c', 0], ['#d8a81e', 0],
   ['#30343a', 0], ['#e9e4d2', '#fff6e0'], ['#7a1418', '#ff2a22'], ['#16307a', '#2a7cff'], ['#c9c9c2', 0], ['#5d6168', 0], ['#23508f', 0], ['#8f2a2a', 0],
   ['#7d7460', '#ffd9a0'], ['#5a1010', '#ff1a10'], ['#16213f', 0], ['#6a2a24', 0], ['#3a3f48', 0], ['#101216', 0], ['#9a9fa6', 0], ['#44706a', 0],
-  ['#c8906c', 0], ['#2a1a12', 0], ['#f2f0ea', 0], // skin, hair, shirt white (the referee)
 ];
-const C = { STEEL: 0, STEEL2: 1, CONC: 2, RED: 3, BLUE: 4, WHITE: 5, BLACK: 6, YELLOW: 7, HOUSING: 8, LAMP: 9, LEDR: 10, LEDB: 11, TRIM: 12, TREAD: 13, SEATB: 14, SEATR: 15, STUD: 16, AVRED: 17, NAVY: 18, OXIDE: 19, STEEL3: 20, DARK: 21, ALU: 22, TEAL: 23, SKIN: 24, HAIR: 25, SHIRT: 26 };
+const C = { STEEL: 0, STEEL2: 1, CONC: 2, RED: 3, BLUE: 4, WHITE: 5, BLACK: 6, YELLOW: 7, HOUSING: 8, LAMP: 9, LEDR: 10, LEDB: 11, TRIM: 12, TREAD: 13, SEATB: 14, SEATR: 15, STUD: 16, AVRED: 17, NAVY: 18, OXIDE: 19, STEEL3: 20, DARK: 21, ALU: 22, TEAL: 23 };
 const cellUV = (i) => [((i % 16) * 64 + 32) / 1024, 1 - (Math.floor(i / 16) * 64 + 32) / 1024];
 const rectUV = (r, inset = 2) => ({ u0: (r.x + inset) / 1024, u1: (r.x + r.w - inset) / 1024, v0: 1 - (r.y + r.h - inset) / 1024, v1: 1 - (r.y + inset) / 1024 });
 
@@ -1327,10 +1325,6 @@ export function buildArena(scene, world, o) {
     scene.add(im);
     weapons = { mesh: im, length: L };
   }
-  // ---- the referee (posed by src/wrestling/referee.js; one instanced draw on every tier) ----
-  const referee = buildRefereeMesh(AS.mStruct, { white: cellUV(C.SHIRT), black: cellUV(C.DARK), skin: cellUV(C.SKIN), hair: cellUV(C.HAIR) });
-  referee.castShadow = !!tier;
-  scene.add(referee);
 
   _resetUniforms(rt, posts);
   world.arena = {
@@ -1341,7 +1335,7 @@ export function buildArena(scene, world, o) {
     ramp: { x0: RAMP.x0, x1: RAMP.x1, z: RAMP.z, halfWidth: RAMP.hw },
     gate: { x: GATE.x, z: GATE.z, halfWidth: GATE.hw - 2.5, clearance: GATE.h, top: GATE.top },
     gaps: FEST_RING_GAPS,
-    screens, pyro, casters, weapons, referee,
+    screens, pyro, casters, weapons,
     /** True where spectators stand or sit (for throw:land surface 'crowd'). */
     crowdAt(x, z) {
       if (seatY(x, z) > 0) return true;
@@ -1507,9 +1501,6 @@ export function createArena(ctx, W) {
     on(EV.PIN_COUNT, (e) => { show('count', String(e.count), '', 1.1); pop(0.35 + 0.2 * e.count, 0.6 + 0.2 * e.count); });
     on(EV.PIN_KICKOUT, (e) => { show('callout', e.near ? '2.9!' : 'KICK OUT!', '', 1.6); shock(info().cx, info().cz, e.near ? 0.9 : 0.4); pop(e.near ? 1 : 0.5, 1); });
     on(EV.PIN_FALL, () => { pop(1, 1); cr.celebrate = Math.max(cr.celebrate, 4); });
-    // The count-out on the big screens; the crowd counts along, louder as it climbs
-    on(EV.COUNTOUT_COUNT, (e) => { if (e.count > 0 && !e.held) { show('count', String(e.count), 'COUNT-OUT', 1.1); pop(0.2 + 0.07 * e.count, 0.3 + 0.07 * e.count); } });
-    on(EV.COUNTOUT_OUT, () => { show('callout', 'COUNTED OUT!', '', 3); pop(1, 1); });
     on(EV.SPOT_HIT, (e) => { shock(e.x, e.z, 0.8); pop(1, 1); });
     on(EV.TAUNT_START, () => { cr.flash = Math.max(cr.flash, 0.7); });
     on(EV.TAUNT_COMPLETE, () => { pop(0.8, 1); cr.waveCd = 0; });

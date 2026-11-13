@@ -86,7 +86,7 @@ export function createWrestling(ctx) {
   W.vfx = createVfx(ctx, W);
   W.sfx = createSfx(ctx, W);
   W.arena = createArena(ctx, W);
-  W.spots = createSpots(ctx, W); // landmark set pieces, foreign objects, the count-out (spots)
+  W.spots = createSpots(ctx, W); // landmark set pieces, foreign objects (spots)
   // Update order. Presentation modules come after the core so they see this frame's events.
   const core = [W.anims, W.match];
   const show = [W.cam, W.hud, W.vfx, W.sfx, W.arena, W.spots];

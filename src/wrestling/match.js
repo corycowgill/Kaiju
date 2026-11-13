@@ -501,9 +501,7 @@ export function createMatch(ctx, W) {
   // Running away costs: the crowd boos, the rival's momentum builds and it runs you down
   function updateStall(dt) {
     const p = W.player, r = W.rival;
-    // (no stalling while the referee counts somebody out: waiting in the ring is the point then)
-    const counting = !!(W.spots && W.spots.count && W.spots.count.who);
-    const apart = !counting && !p.held && !r.held && r.state === 'neutral' && (p.state === 'neutral' || p.state === 'blocking') && p.distTo(r) > MATCH.stallDist;
+    const apart = !p.held && !r.held && r.state === 'neutral' && (p.state === 'neutral' || p.state === 'blocking') && p.distTo(r) > MATCH.stallDist;
     if (!apart) { if (stallT > 0) { stallT = 0; r.speedMult = 1; } return; }
     stallT += dt;
     if (stallT < MATCH.stallAfter) return;
@@ -577,14 +575,6 @@ export function createMatch(ctx, W) {
     });
     on(EV.PIN_BROKEN, () => { if (s.phase === 'pin') setPhase('fight'); });
     on(EV.PIN_FALL, (e) => onFall(e.who, e.forced ? 'ko' : 'pin'));
-    // Ten: counted out (spots.js runs the count); the fall goes to the other one
-    if (EV.COUNTOUT_OUT) on(EV.COUNTOUT_OUT, (e) => {
-      if (s.phase !== 'fight') return;
-      const winner = e.who === 'player' ? 'rival' : 'player';
-      W.grapple.clear();
-      callout('COUNTED OUT!', 'result', winner);
-      onFall(winner, 'countout');
-    });
     on(EV.FINISHER_START, (e) => {
       setPhase('finisher');
       callout(e.name, 'finisher', e.who, nameOf(e.who));
