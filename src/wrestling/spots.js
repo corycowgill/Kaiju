@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { EV } from './events.js';
 import { createProps } from './props.js';
+import { createCarver } from './carve.js';
 
 /** Tuning (exported for the AI and the balance sims). */
 export const SPOTS_TUNE = {
@@ -99,6 +100,8 @@ export function createSpots(ctx, W) {
   const wRes = { id: 0, kind: '', x: 0, z: 0, dist: 0 };
   const armedRes = { id: 0, kind: '', hits: 0 };
 
+  // Torn buildings (carve.js): pieces out of the ones too big to lift. Needs the real scene (the headless labs go without)
+  const carve = ctx.scene && ctx.scene.isScene && ctx.collapseBuilding ? createCarver(ctx, W) : null;
   // Thrown buildings (props.js)
   const props = createProps(ctx, W, { callout: emitCallout2, say: (t, tone) => say(t, tone), pop: (k, i, x, z) => pop(k, i, x, z) });
   function emitCallout2(text, sub, tier, who) { if (tier === 'landmark') landmarkCall(text, sub, who); else emitCallout(text, sub, tier, who); }
@@ -404,6 +407,7 @@ export function createSpots(ctx, W) {
       if (id && (e.impact || 0) >= 0.4) fire(id, W[e.who], W[e.by] || null, '', e.impact, e.x, 4, e.z, null);
     });
     on(EV.BUILDING_DESTROYED, (e) => {
+      if (carve) carve.onDestroyed(e.building);
       // A tower down near the fight leaves a girder in the rubble
       if (spawnCd > 0 || e.h < 10 || !e.building || e.building.fest || e.building.isFence) return;
       const A = W.arena && W.arena.info;
@@ -433,6 +437,8 @@ export function createSpots(ctx, W) {
 
   const api = {
     TUNE: T,
+    /** Torn buildings (carve.js), or null without a real scene: kind(b, limits), tear(b, f), wounds(). */
+    carve,
     /** Thrown buildings (props.js): the nearest building f could rip up (gap from its body's edge <= maxGap) { x, z, h, dist } or null. */
     buildingNear(f, maxGap = 40) { return props.buildingNear(f, maxGap); },
     /** f's building in hand { phase 'rip' | 'carry' | 'windup', t } or null. */
@@ -518,6 +524,7 @@ export function createSpots(ctx, W) {
       runSched(dt);
       updateWeapons(dt);
       props.update(dt);
+      if (carve) carve.update(dt);
       // The third rail: slow to rise (vfx.js draws the arcs)
       for (const id of ['player', 'rival']) {
         const f = W[id];
@@ -538,6 +545,7 @@ export function createSpots(ctx, W) {
       for (const off of offs) off();
       offs = [];
       props.clear(); resetThrowables();
+      if (carve) carve.dispose();
       if (jets) jets.scale.y = 1;
       if (fountainB && fountainHp > 0) { fountainB.maxHp = fountainHp; fountainB.hp = Math.min(fountainB.hp, fountainHp); }
       jets = null; fountainB = null; fountainHp = 0;

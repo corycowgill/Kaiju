@@ -583,12 +583,12 @@ export function createRivalAI(ctx, W) {
     const sp = W.spots;
     if (!sp || !sp.buildingNear || !P.bldg || now < S.bldgCd || sp.buildingCooldown(me) > 0 || armedNow(me)) return 0;
     // Gorrak wants one whenever the foe is at throwing range; Mechra mostly when the foe stands off or it is behind
-    const want = gap > P.bldgGap && gap < 140 ? 1 : 0;
-    if (!want) return 0;
+    // ...and any of them with one right at its elbow and the foe a step away (out in the city there always is one)
+    if (gap <= 16 || gap >= 140) return 0;
     const b = sp.buildingNear(me, reach);
-    if (!b) return 0;
+    if (!b || !(gap > P.bldgGap || b.dist < 20)) return 0;
     S.bx = b.x; S.bz = b.z;
-    return P.bldg * lerp(0.6, 1.2, S.k) * (1 + (S.key === 'mecha' ? 1.5 : 0.5) * S.desperate) * (W.match.state.defense ? 1 : 0.5); // (the title match: half as often)
+    return P.bldg * lerp(0.6, 1.2, S.k) * (1 + (S.key === 'mecha' ? 1.5 : 0.5) * S.desperate) * (W.match.state.defense ? 1 : 0.75); // (the title match: a little less often)
   }
   // Carrying one: back off / close in to 40-90 u, show it off (Gorrak), then the throw (its wind-up is the tell)
   function carryDrive(dt, me, foe, it) {
@@ -732,7 +732,12 @@ else {
   }
 
   function think(me, foe, gap) {
-    if (gap > T.farGap) { setPlan('pursue', 0.8 + rnd() * 0.8); return; }
+    if (gap > T.farGap) {
+      // The foe keeps away: sooner than chase it, the bruiser reaches for the nearest building (a tower piece, a whole block)
+      const bw = bldgReady(me, foe, gap);
+      if (bw > 0 && rnd() < Math.min(0.6, 0.3 * bw)) { setPlan('bldg', 7); note('bldg', 'far', ''); return; }
+      setPlan('pursue', 0.8 + rnd() * 0.8); return;
+    }
     if (S.chase && !me.tired) { S.mode = 'engage'; S.budget = Math.max(S.budget, 2); }
     else if ((me.tired || me.stamina < 16) && S.mode === 'engage') enterLull(1.4 + rnd());
     if (S.mode === 'engage') {

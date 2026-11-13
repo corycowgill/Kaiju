@@ -341,15 +341,17 @@ export function createHud(ctx, W) {
       if (needs('taunt')) { key += 't'; html += pill(B.taunt, 'TAUNT'); }
     } else if (fight && R.state === 'stunned' && P.canAct !== false || evPrompt.grab) { key = 'grab'; html = pill(B.grab, 'GRAB'); }
     else if (fight && W.spots && W.spots.flying && W.spots.flying(P)) { key = 'incoming'; html = '<div class="wr-pill hot">INCOMING BUILDING!</div>' + note('MOVE OR BLOCK'); }
-    else if (fight && W.spots && W.spots.carrying && W.spots.carrying(P)) { const c = W.spots.carrying(P); key = 'carry' + c.phase; html = c.phase === 'carry' ? pill(B.strike, 'THROW BUILDING', '', 'hot') + note('AT YOUR RIVAL') : '<div class="wr-pill hot">HEAVE!</div>'; }
+    else if (fight && W.spots && W.spots.carrying && W.spots.carrying(P)) { const c = W.spots.carrying(P), it = c.chunk ? (c.name ? `PIECE OF ${c.name.toUpperCase()}` : 'CHUNK') : (c.name ? c.name.toUpperCase() : 'BUILDING'); key = 'carry' + c.phase + (c.smash ? 's' : '') + it; html = c.phase !== 'carry' ? `<div class="wr-pill hot">${c.smash ? 'SMASH!' : 'HEAVE!'}</div>` : c.smash ? pill(B.strike, 'SMASH IT OVER THEIR HEAD', '', 'hot') + note(it) : pill(B.strike, `THROW ${c.chunk || c.name ? 'IT' : 'BUILDING'}`, '', 'hot') + note(c.chunk || c.name ? it : 'OR SMASH IT UP CLOSE'); }
     else if (fight && W.spots && W.spots.armed(P)) { const h = W.spots.armed(P).hits; key = 'armed' + h; html = pill(B.strike, 'SWING GIRDER', '', 'hot') + note(`${h} HIT${h > 1 ? 'S' : ''} LEFT`); }
     else if (fight && W.spots && P.canAct && W.spots.nearestWeapon(P, 12) && !(P.gapTo(R) <= 9 && P.facing(R, 1.0))) { key = 'girder'; html = pill(B.grab, 'RIP UP GIRDER', '', 'hot'); }
     else if (fight && W.spots && W.spots.buildingNear && P.canAct && !(P.gapTo(R) <= 9 && P.facing(R, 1.0)) && W.spots.buildingCooldown(P) <= 0 && W.spots.buildingNear(P, tipId && tipT > 0 ? 12 : 40)) {
       // in reach: the verb; close by: point it out so the player knows the building can be thrown
       const bn = W.spots.buildingNear(P, 40);
-      const what = bn.kind === 'semi' ? 'TOUR SEMI' : bn.kind === 'tower' ? 'LIGHTING TOWER' : 'BUILDING';
-      if (bn.dist <= 12) { key = 'bldg' + what; html = pill(B.grab, bn.kind === 'building' ? 'RIP UP BUILDING' : `PICK UP ${what}`, '', 'hot'); }
-      else { key = 'bldgnear' + what; html = note(`${what} NEARBY`) + pill(B.grab, 'WALK UP AND THROW IT'); }
+      const what = bn.kind === 'semi' ? 'TOUR SEMI' : bn.kind === 'tower' ? 'LIGHTING TOWER' : bn.name ? bn.name.toUpperCase() : 'BUILDING';
+      // a building too big to lift gives up a piece (props.js / carve.js: mode 'snap' | 'bite')
+      const torn = bn.mode === 'snap' || bn.mode === 'bite';
+      if (bn.dist <= 12) { key = 'bldg' + what + bn.mode; html = pill(B.grab, torn ? (bn.name ? `TEAR A PIECE OFF ${what}` : 'TEAR OFF A CHUNK') : bn.kind === 'building' ? (bn.name ? `RIP UP ${what}` : 'RIP UP BUILDING') : `PICK UP ${what}`, '', 'hot'); }
+      else { key = 'bldgnear' + what + bn.mode; html = note(`${what} NEARBY`) + pill(B.grab, torn ? 'WALK UP AND TEAR A PIECE OFF' : 'WALK UP AND THROW IT'); }
     }
     else if (fight && stallT >= 5) {
       key = stallT >= 6 ? 'stall2' : 'stall1';
@@ -474,7 +476,7 @@ export function createHud(ctx, W) {
         + mv(sg ? `${sg[0].name} · ${sg[1].name}` : 'SIGNATURE MOVES', `<em>THEN HOLD</em>${glyph(B.sprint)}<em>+ TOWARD · AWAY</em>`)
         + `<h4>ON A DOWNED RIVAL</h4>${mv('PIN', `<em>HOLD</em>${glyph(B.grab)}`)}${mv('PICK UP', `<em>TAP</em>${glyph(B.grab)}`)}${mv('STOMP · SPLASH', `${glyph(B.strike)}<em>· HOLD</em>${glyph(B.strike)}`)}`
         + `<h4>SHOWMANSHIP</h4>${mv('TAUNT (BUILDS MOMENTUM)', glyph(B.taunt))}${mv('FIRE UP (HURT AND BEHIND)', `<em>WHEN PROMPTED</em>${glyph(B.taunt)}`)}${mv(fin, `<em>FULL MOMENTUM</em>${glyph(B.finisher)}`)}${mv('LOCK-ON / FREE CAMERA', glyph(B.lock))}`
-        + `<h4>FIGHTING INTO CHICAGO</h4>${mv('THROW A BUILDING', `<em>NEXT TO ONE</em>${glyph(B.grab)}<em>· THROW</em>${glyph(B.strike)}`)}${mv('FOREIGN OBJECT (GIRDER)', `<em>NEXT TO ONE</em>${glyph(B.grab)}<em>· SWING</em>${glyph(B.strike)}<em>· 3 HITS</em>`)}${mv('LANDMARKS', '<em>THROW THEM INTO THE FOUNTAIN, THE LAKE, THE L</em>')}${mv('NO RULES', '<em>NO COUNT-OUTS, NO DQ: FALLS COUNT ANYWHERE</em>')}`
+        + `<h4>FIGHTING INTO CHICAGO</h4>${mv('THROW A BUILDING', `<em>NEXT TO ONE</em>${glyph(B.grab)}<em>· THROW</em>${glyph(B.strike)}`)}${mv('TEAR A PIECE OFF A TOWER', `<em>NEXT TO A BIG ONE</em>${glyph(B.grab)}`)}${mv('SMASH IT OVER THEIR HEAD', `<em>CARRYING, UP CLOSE</em>${glyph(B.strike)}`)}${mv('FOREIGN OBJECT (GIRDER)', `<em>NEXT TO ONE</em>${glyph(B.grab)}<em>· SWING</em>${glyph(B.strike)}<em>· 3 HITS</em>`)}${mv('LANDMARKS', '<em>THROW THEM INTO THE FOUNTAIN, THE LAKE, THE L</em>')}${mv('NO RULES', '<em>NO COUNT-OUTS, NO DQ: FALLS COUNT ANYWHERE</em>')}`
         + (d === 'touch' ? '' : `<h4>POWERS</h4>${mv('BEAM · ROAR · CHARGE · STOMP', glyph(B.beam) + glyph(B.roar) + glyph(B.charge) + glyph(B.stomp))}`);
     }
     if (el.help && d !== 'touch') {

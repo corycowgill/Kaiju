@@ -3208,6 +3208,7 @@ function _buildGLBBuildingInstances(scene) {
     });
     if (ims.length === 2) {
       ims[1].visible = false;
+      ims[1].userData.lodFar = true; // (wrestling/carve.js: a building's far twins are skipped when it is redrawn in pieces)
       lodPairs.push({ near: ims[0], far: ims[1], center: ims[0].boundingSphere.center });
     }
   }
