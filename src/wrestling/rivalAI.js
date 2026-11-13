@@ -586,7 +586,7 @@ export function createRivalAI(ctx, W) {
     S.wx = w.x; S.wz = w.z;
     return true;
   }
-  const countUrgent = () => !!(W.spots && W.spots.count && W.spots.count.who === 'rival' && W.spots.count.n >= 5);
+  const countUrgent = () => !!(W.spots && W.spots.count && W.spots.count.who === 'rival' && W.spots.count.n >= 7);
   // The count-out (spots.js): back in before ten, or (the heel) stay in and let the referee count the foe out;
   // Tridon flies over the ropes onto a foe on the floor. True when it took this frame.
   function countOut(me, foe, it, gap) {

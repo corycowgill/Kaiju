@@ -28,6 +28,7 @@ export const SPOTS_TUNE = {
   step: 1.15, max: 10,
   // the ring: out once the root is this far past the ropes (the apron is not out), back in this far inside them
   outBand: 4, inBand: 2, home: 10,
+  exchangeGap: 20, helplessGap: 25, // the count waits while the foe is this close (helpless: staggered, stunned, downed)
   // set pieces
   spotCd: 3, fountainR: 15, lakeX: 70, railR: 7.5, railY: 3.2,
   bonus: { fountain: 5, lake: 0, ltracks: 9, michigan: 0, bean: 6 },
@@ -63,6 +64,7 @@ const LINES = {
 };
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const fmt = (s, a) => s.replace('{0}', a || '');
+const HELPLESS_OUT = { staggered: 1, stunned: 1, downed: 1, grappled: 1, airborne: 1, gettingUp: 1 };
 const DROP = { staggered: 1, stunned: 1, grappled: 1, grappling: 1, airborne: 1, downed: 1, pinned: 1, pinning: 1, ko: 1, cinematic: 1 };
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _a = new THREE.Vector3();
@@ -290,7 +292,11 @@ export function createSpots(ctx, W) {
       if (!count.who) return;
     }
     const both = out.player && out.rival;
-    const held = both || ph !== 'fight' || W.grapple.active || W[count.who].held;
+    // Held: both outside, a hold or throw in progress, or the counted one is still in the exchange at the ropes
+    // (its foe right on it: a string that keeps it staggered or down out there must not count it out)
+    const cf = W[count.who], foe = cf.opponent, gap = foe ? cf.gapTo(foe) : 1e9;
+    const pinned = HELPLESS_OUT[cf.state] === 1;
+    const held = both || ph !== 'fight' || W.grapple.active || cf.held || gap <= T.exchangeGap || (pinned && gap <= T.helplessGap);
     if (held !== count.held) {
       count.held = held;
       const e = bus.ev(EV.COUNTOUT_COUNT);

@@ -485,7 +485,7 @@ export function createHud(ctx, W) {
     for (let i = 0; i < el.coPips.length; i++) el.coPips[i].classList.toggle('on', i < n);
     el.co.classList.toggle('late', n >= 7 && !held);
     el.co.classList.toggle('held', !!held);
-    el.co.lastElementChild.textContent = held ? 'COUNT HELD · BOTH OUTSIDE' : 'GET BACK TO THE RING!';
+    el.co.lastElementChild.textContent = held ? 'COUNT HELD' : 'GET BACK TO THE RING!';
   }
   function coHide() {
     coWho = '';
