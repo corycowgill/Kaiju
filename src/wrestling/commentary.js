@@ -94,7 +94,8 @@ export function createCommentary(ctx, W) {
     bus.emit(EV.COMMENTARY);
     if (dur > 0 && voiceOn && audio && audio.voLoad) {
       const mine = cur, at = clock, i = cur.i;
-      audio.voLoad(id).then((buf) => {
+      const p = audio.voLoad(id);
+      if (p && p.then) p.then((buf) => {
         if (!buf || cur !== mine || cur.i !== i) return;
         if (clock - at > T.lateAudio) { stats.late++; return; }
         mine.src = audio.voPlay(buf, sp === 'V' ? 0.95 : 1);
