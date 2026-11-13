@@ -16,6 +16,7 @@
 // OWNER: spots.
 import * as THREE from 'three';
 import { EV } from './events.js';
+import { createProps } from './props.js';
 
 /** Tuning (exported for the AI and the balance sims). */
 export const SPOTS_TUNE = {
@@ -98,6 +99,9 @@ export function createSpots(ctx, W) {
   const wRes = { id: 0, kind: '', x: 0, z: 0, dist: 0 };
   const armedRes = { id: 0, kind: '', hits: 0 };
 
+  // Thrown buildings (props.js)
+  const props = createProps(ctx, W, { callout: emitCallout2, say: (t, tone) => say(t, tone), pop: (k, i, x, z) => pop(k, i, x, z) });
+  function emitCallout2(text, sub, tier, who) { if (tier === 'landmark') landmarkCall(text, sub, who); else emitCallout(text, sub, tier, who); }
   const phase = () => (W.match && W.match.state ? W.match.state.phase : '');
   const fighters = () => (W.player && W.rival ? [W.player, W.rival] : null);
 
@@ -298,7 +302,10 @@ export function createSpots(ctx, W) {
       }
       return;
     }
-    if (!f.canAct || phase() !== 'fight') return;
+    if (phase() !== 'fight') return;
+    // A building in its hands (props.js) takes every button; next to one, a grab rips it up (a girder in reach wins)
+    if (props.pre(f, dt, !!heldBy(f) || !!nearestGround(f, T.pickGap))) return;
+    if (!f.canAct) return;
     const foe = f.opponent, w = heldBy(f);
     const foeDown = foe && foe.state === 'downed' && !foe.held;
     if (w) {
@@ -375,7 +382,7 @@ export function createSpots(ctx, W) {
   function subscribe() {
     const on = (n, fn) => offs.push(bus.on(n, fn));
     on(EV.MATCH_START, () => { placeInitial(); });
-    on(EV.FALL_START, () => { zap.player = zap.rival = 0; zapDown.player = zapDown.rival = 0; for (const w of weapons) if (w.state === 'held') { w.owner = null; w.state = 'off'; w.dirty = true; } });
+    on(EV.FALL_START, () => { props.clear(); zap.player = zap.rival = 0; zapDown.player = zapDown.rival = 0; for (const w of weapons) if (w.state === 'held') { w.owner = null; w.state = 'off'; w.dirty = true; } });
     on(EV.BUILDING_IMPACT, (e) => {
       const id = spotOf(e.building);
       if (id === 'michigan') fire(id, W[e.who], W[e.by], e.type, 0.9, e.x, e.y, e.z, e.building);
@@ -407,6 +414,8 @@ export function createSpots(ctx, W) {
       setGround(slot, x, z, Math.random() * Math.PI);
       emitW(EV.WEAPON_SPAWN, slot, '', x, 0, z);
     });
+    on(EV.DAMAGE, (e) => props.onDamage(e.who, e.amount));
+    on(EV.FALL_END, () => props.clear());
     const hit = (e) => {
       if (e.kind !== 'weapon') return;
       const w = heldBy(W[e.who]);
@@ -421,6 +430,14 @@ export function createSpots(ctx, W) {
 
   const api = {
     TUNE: T,
+    /** Thrown buildings (props.js): the nearest building f could rip up (gap from its body's edge <= maxGap) { x, z, h, dist } or null. */
+    buildingNear(f, maxGap = 40) { return props.buildingNear(f, maxGap); },
+    /** f's building in hand { phase 'rip' | 'carry' | 'windup', t } or null. */
+    carrying(f) { return props.carrying(f); },
+    /** A building in the air thrown at `at` (or any, without it): { x, y, z, vx, vz, tx, tz, eta, by, r } or null. */
+    flying(at) { return props.flying(at); },
+    /** Seconds before f may rip up another building. */
+    buildingCooldown(f) { return props.cooldown(f); },
     /** The foreign objects (read-only): { id, kind, state 'off' | 'ground' | 'held', x, z, owner, hits }. */
     weapons,
     /** The landmark set piece f could throw its foe into from here, or null (scratch result). */
@@ -497,6 +514,7 @@ export function createSpots(ctx, W) {
       if (callT > 0) { callT -= dtReal; if (callT <= 0 && callQ.on) { callQ.on = false; landmarkCall(callQ.text, callQ.sub, callQ.who); } }
       runSched(dt);
       updateWeapons(dt);
+      props.update(dt);
       // The third rail: slow to rise (vfx.js draws the arcs)
       for (const id of ['player', 'rival']) {
         const f = W[id];
@@ -516,6 +534,7 @@ export function createSpots(ctx, W) {
       live = false;
       for (const off of offs) off();
       offs = [];
+      props.clear();
       if (jets) jets.scale.y = 1;
       if (fountainB && fountainHp > 0) { fountainB.maxHp = fountainHp; fountainB.hp = Math.min(fountainB.hp, fountainHp); }
       jets = null; fountainB = null; fountainHp = 0;

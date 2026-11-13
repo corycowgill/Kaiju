@@ -340,8 +340,11 @@ export function createHud(ctx, W) {
       key = 'ground'; html = pill(B.grab, 'PIN', 'HOLD', 'hot') + pill(B.grab, 'PICK UP', 'TAP');
       if (needs('taunt')) { key += 't'; html += pill(B.taunt, 'TAUNT'); }
     } else if (fight && R.state === 'stunned' && P.canAct !== false || evPrompt.grab) { key = 'grab'; html = pill(B.grab, 'GRAB'); }
+    else if (fight && W.spots && W.spots.flying && W.spots.flying(P)) { key = 'incoming'; html = '<div class="wr-pill hot">INCOMING BUILDING!</div>' + note('MOVE OR BLOCK'); }
+    else if (fight && W.spots && W.spots.carrying && W.spots.carrying(P)) { const c = W.spots.carrying(P); key = 'carry' + c.phase; html = c.phase === 'carry' ? pill(B.strike, 'THROW BUILDING', '', 'hot') + note('AT YOUR RIVAL') : '<div class="wr-pill hot">HEAVE!</div>'; }
     else if (fight && W.spots && W.spots.armed(P)) { const h = W.spots.armed(P).hits; key = 'armed' + h; html = pill(B.strike, 'SWING GIRDER', '', 'hot') + note(`${h} HIT${h > 1 ? 'S' : ''} LEFT`); }
     else if (fight && W.spots && P.canAct && W.spots.nearestWeapon(P, 12) && !(P.gapTo(R) <= 9 && P.facing(R, 1.0))) { key = 'girder'; html = pill(B.grab, 'RIP UP GIRDER', '', 'hot'); }
+    else if (fight && W.spots && W.spots.buildingNear && P.canAct && !(P.gapTo(R) <= 9 && P.facing(R, 1.0)) && W.spots.buildingCooldown(P) <= 0 && W.spots.buildingNear(P, 9)) { key = 'bldg'; html = pill(B.grab, 'RIP UP BUILDING', '', 'hot'); }
     else if (fight && stallT >= 5) {
       key = stallT >= 6 ? 'stall2' : 'stall1';
       html = `<div class="wr-pill hot">${stallT >= 6 ? 'STALLING!' : 'GET BACK IN THERE'}</div>` + note(stallT >= 6 ? `${R.name} IS GAINING MOMENTUM` : 'THE CROWD IS TURNING');
@@ -465,7 +468,7 @@ export function createHud(ctx, W) {
         + mv(sg ? `${sg[0].name} · ${sg[1].name}` : 'SIGNATURE MOVES', `<em>THEN HOLD</em>${glyph(B.sprint)}<em>+ TOWARD · AWAY</em>`)
         + `<h4>ON A DOWNED RIVAL</h4>${mv('PIN', `<em>HOLD</em>${glyph(B.grab)}`)}${mv('PICK UP', `<em>TAP</em>${glyph(B.grab)}`)}${mv('STOMP · SPLASH', `${glyph(B.strike)}<em>· HOLD</em>${glyph(B.strike)}`)}`
         + `<h4>SHOWMANSHIP</h4>${mv('TAUNT (BUILDS MOMENTUM)', glyph(B.taunt))}${mv('FIRE UP (HURT AND BEHIND)', `<em>WHEN PROMPTED</em>${glyph(B.taunt)}`)}${mv(fin, `<em>FULL MOMENTUM</em>${glyph(B.finisher)}`)}${mv('LOCK-ON / FREE CAMERA', glyph(B.lock))}`
-        + `<h4>FIGHTING INTO CHICAGO</h4>${mv('FOREIGN OBJECT (GIRDER)', `<em>NEXT TO ONE</em>${glyph(B.grab)}<em>· SWING</em>${glyph(B.strike)}<em>· 3 HITS</em>`)}${mv('LANDMARKS', '<em>THROW THEM INTO THE FOUNTAIN, THE LAKE, THE L</em>')}${mv('NO RULES', '<em>NO COUNT-OUTS, NO DQ: FALLS COUNT ANYWHERE</em>')}`
+        + `<h4>FIGHTING INTO CHICAGO</h4>${mv('THROW A BUILDING', `<em>NEXT TO ONE</em>${glyph(B.grab)}<em>· THROW</em>${glyph(B.strike)}`)}${mv('FOREIGN OBJECT (GIRDER)', `<em>NEXT TO ONE</em>${glyph(B.grab)}<em>· SWING</em>${glyph(B.strike)}<em>· 3 HITS</em>`)}${mv('LANDMARKS', '<em>THROW THEM INTO THE FOUNTAIN, THE LAKE, THE L</em>')}${mv('NO RULES', '<em>NO COUNT-OUTS, NO DQ: FALLS COUNT ANYWHERE</em>')}`
         + (d === 'touch' ? '' : `<h4>POWERS</h4>${mv('BEAM · ROAR · CHARGE · STOMP', glyph(B.beam) + glyph(B.roar) + glyph(B.charge) + glyph(B.stomp))}`);
     }
     if (el.help && d !== 'touch') {

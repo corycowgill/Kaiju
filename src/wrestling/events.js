@@ -160,6 +160,12 @@ export const EVENTS = Object.freeze({
   'weapon:drop':        P({ who: '', id: 0, kind: '', x: 0, z: 0 }),
   // It broke over target on its last hit (or snapped on a building); x/y/z = where.
   'weapon:break':       P({ who: '', target: '', id: 0, kind: '', x: 0, y: 0, z: 0 }),
+  // Thrown buildings (spots.js). who rips a real city building out of the ground (lift), hurls it at target (throw: lands near
+  // tx/tz in eta s), and it either hits the foe (hit: damage, blocked = chip through a guard) or crashes into the city (crash).
+  'prop:lift':          P({ who: '', x: 0, z: 0, h: 0 }),
+  'prop:throw':         P({ who: '', target: '', x: 0, y: 0, z: 0, tx: 0, tz: 0, eta: 0 }),
+  'prop:hit':           P({ who: '', target: '', damage: 0, blocked: false, x: 0, y: 0, z: 0 }),
+  'prop:crash':         P({ who: '', x: 0, y: 0, z: 0, h: 0 }),
 
   // ---- ground game ----
   // who hits the mat. cause: 'strike' | 'throw' | 'power' | 'finisher' | 'ko'.
