@@ -20,8 +20,8 @@ export const MATCH = {
   hpBase: 150, hpStat: 0.45, // match health = hpBase + hpStat x the kaiju's stats.hp (226 / 249 / 267: character, not a mismatch)
   rivalHp: 1.1,           // x that for the rival (the player has its powers on tap and a human's reads)
   rivalHpPerDefense: 0.2,
-  rivalAtk: 0.85, rivalAtkPerFall: 0.1,
-  firstAtk: 0.78, firstRamp: 0.5, // the first title match (defense 0): a softer rival and half the fall-to-fall ramp rivalAtkPerDefense: 0.15, rivalAtkMax: 1.7,
+  rivalAtk: 0.85, rivalAtkPerFall: 0.1, rivalAtkPerDefense: 0.15, rivalAtkMax: 1.7,
+  firstAtk: 0.78, firstRamp: 0.5, // the first title match (defense 0): a softer rival and half the fall-to-fall ramp
   healBetween: 0.35, healFloor: 0.75, momCarry: 20, // between falls: +35% of max health, at least 75%; momentum carried over is capped
   loserMom: 35,           // ...and the one who just lost a fall comes out of the corner fired up (lead changes, a live third fall)
   decHeal: 0.2, decFloor: 0.6, // before the deciding fall both are running on fumes: less back, so it is short, close and every pin could be it
