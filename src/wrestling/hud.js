@@ -611,7 +611,8 @@ export function createHud(ctx, W) {
       play(el.co, reduced ? [{ opacity: 1 }, { opacity: 1 }] : [{ opacity: 0, transform: `translateX(${e.who === 'player' ? -40 : 40}px)` }, { opacity: 1, transform: 'translateX(0)' }], 220);
       if (e.first && el.rule) {
         ruleT = 5.5;
-        play(el.rule, reduced ? [{ opacity: 1 }, { opacity: 1 }] : [{ opacity: 0, transform: 'translateX(-50%) scale(1.3)' }, { opacity: 1, transform: 'translateX(-50%) scale(0.97)', offset: 0.6 }, { opacity: 1, transform: 'translateX(-50%) scale(1)' }], 320);
+        el.rule.className = cls(e.who); // under the count, on the same side: the middle of the screen is the fight's
+        play(el.rule, reduced ? [{ opacity: 1 }, { opacity: 1 }] : [{ opacity: 0, transform: 'scale(1.25)' }, { opacity: 1, transform: 'scale(0.97)', offset: 0.6 }, { opacity: 1, transform: 'scale(1)' }], 320);
       }
     });
     on(EV.COUNTOUT_COUNT, (e) => {
@@ -711,7 +712,7 @@ export function createHud(ctx, W) {
       for (let i = 0; i < el.coPips.length; i++) el.coPips[i].classList.toggle('on', i < 8);
       loop(el.co, [{ opacity: 0, transform: 'translateX(-40px)' }, { opacity: 1, transform: 'translateX(0)' }], 500);
       loop(el.coN, [{ transform: 'scale(1.9)', opacity: 0.4 }, { transform: 'scale(1)', opacity: 1 }], 400);
-      loop(el.rule, [{ opacity: 0, transform: 'translateX(-50%) scale(1.3)' }, { opacity: 1, transform: 'translateX(-50%) scale(1)' }], 500);
+      el.rule.className = 'p1'; loop(el.rule, [{ opacity: 0, transform: 'scale(1.25)' }, { opacity: 1, transform: 'scale(1)' }], 500);
     }
     // cards, fall band, letterbox, skip, touch cues
     for (const id of ['player', 'rival']) {

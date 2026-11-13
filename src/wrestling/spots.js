@@ -125,6 +125,7 @@ export function createSpots(ctx, W) {
   // Landmark callouts one at a time: a second set piece within CALL_GAP waits its turn (Michigan Ave -> the third rail)
   const CALL_GAP = 1.1;
   let callT = 0;
+  const last = { id: '', x: 0, z: 0, t: 0 }; // the set piece that just fired: its landing's other callouts are its own
   const callQ = { on: false, text: '', sub: '', tier: '', who: '' };
   function landmarkCall(text, sub, who) {
     if (callT > 0) { callQ.on = true; callQ.text = text; callQ.sub = sub; callQ.tier = 'landmark'; callQ.who = who; return; }
@@ -173,6 +174,7 @@ export function createSpots(ctx, W) {
   function fire(id, V, by, type, impact, x, y, z, b) {
     if (!id || !V || spotCd[id] > 0 || phase() === 'over' || phase() === 'between') return false;
     spotCd[id] = T.spotCd;
+    last.id = id; last.x = x; last.z = z; last.t = 0.4;
     const name = id === 'michigan' && b && ctx.landmarkName(b) ? ctx.landmarkName(b).toUpperCase() : NAMES[id];
     const e = bus.ev(EV.SPOT_HIT);
     e.who = V.id; e.by = by ? by.id : ''; e.spot = id; e.name = name; e.type = type || ''; e.impact = impact; e.x = x; e.y = y; e.z = z;
@@ -556,7 +558,7 @@ export function createSpots(ctx, W) {
       return armedRes;
     },
     /** The set piece a ground point belongs to ('' = none): match.js leaves those callouts to spots. */
-    claims(x, z) { return spotAt(x, z); },
+    claims(x, z) { return spotAt(x, z) || (last.t > 0 && Math.hypot(x - last.x, z - last.z) < 32 ? last.id : ''); },
     /** The set piece a building is part of ('' = none). */
     building(b) { return spotOf(b); },
     bounce,
@@ -590,6 +592,7 @@ export function createSpots(ctx, W) {
     update(dt, dtReal) {
       if (!live || !W.player) return;
       for (const k in spotCd) if (spotCd[k] > 0) spotCd[k] -= dt;
+      if (last.t > 0) last.t -= dtReal;
       if (callT > 0) { callT -= dtReal; if (callT <= 0 && callQ.on) { callQ.on = false; landmarkCall(callQ.text, callQ.sub, callQ.who); } }
       runSched(dt);
       updateCount(dt);
