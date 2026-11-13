@@ -162,10 +162,10 @@ export const EVENTS = Object.freeze({
   'weapon:break':       P({ who: '', target: '', id: 0, kind: '', x: 0, y: 0, z: 0 }),
   // Thrown buildings (spots.js). who rips a real city building out of the ground (lift), hurls it at target (throw: lands near
   // tx/tz in eta s), and it either hits the foe (hit: damage, blocked = chip through a guard) or crashes into the city (crash).
-  'prop:lift':          P({ who: '', x: 0, z: 0, h: 0 }),
+  'prop:lift':          P({ who: '', x: 0, z: 0, h: 0, kind: '', lm: '' }), // kind: 'building' | 'chunk' (a piece torn off) | 'semi' | 'tower'; lm: its landmark id or ''
   'prop:throw':         P({ who: '', target: '', x: 0, y: 0, z: 0, tx: 0, tz: 0, eta: 0 }),
-  'prop:hit':           P({ who: '', target: '', damage: 0, blocked: false, x: 0, y: 0, z: 0 }),
-  'prop:crash':         P({ who: '', x: 0, y: 0, z: 0, h: 0 }),
+  'prop:hit':           P({ who: '', target: '', damage: 0, blocked: false, smash: false, x: 0, y: 0, z: 0 }), // smash: brought down over the head, not thrown
+  'prop:crash':         P({ who: '', x: 0, y: 0, z: 0, h: 0, cause: '' }), // cause: 'hit' | 'miss' | 'drop' | 'clear' (the fall ended)
 
   // ---- ground game ----
   // who hits the mat. cause: 'strike' | 'throw' | 'power' | 'finisher' | 'ko'.
@@ -222,7 +222,9 @@ export const EVENTS = Object.freeze({
   // 'defend' (after a win: confirm to start a title defense); show false hides it.
   'prompt':             P({ id: '', show: true }),
   // One commentary-ticker line. tone: 'neutral' | 'hype' | 'shock'.
-  'commentary':         P({ text: '', tone: 'neutral' }),
+  // vo: a line from the booth (commentary.js) with its speaker 'M' | 'V' and seconds on screen: what the HUD captions.
+  // Without vo it is a cue for the booth from the match director / the rival's persona: key (and who it is about).
+  'commentary':         P({ text: '', tone: 'neutral', vo: false, speaker: '', dur: 0, key: '', who: '' }),
   // The match asks for a named camera shot: 'entrance' | 'bell' | 'pin' | 'finisher' | 'ko' | 'win' | 'lose' | 'between' | '' (back to the fight cam).
   'cam:cue':            P({ shot: '', who: '', dur: 0 }),
   // Lock-on toggled (fight cam framing both kaiju vs free chase cam).

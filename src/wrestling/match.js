@@ -128,6 +128,8 @@ export function createMatch(ctx, W) {
     lineT = 2.6;
     const e = bus.ev(EV.COMMENTARY);
     e.text = fmt(pick(LINES[key]), a, b); e.tone = tone || 'neutral';
+    // (the booth, commentary.js, calls the match from the events themselves; these two have no event of their own)
+    if (key === 'rally' || key === 'stall') { e.key = key; e.who = a && W.rival && a === W.rival.name && !(W.player && a === W.player.name) ? 'rival' : 'player'; }
     bus.emit(EV.COMMENTARY);
   }
   function prompt(id, show) {

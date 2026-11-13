@@ -7,6 +7,7 @@
 import { cachedFetch } from './assetCache.js';
 
 const SFX_DIR = 'assets/sfx/';
+const VO_DIR = 'assets/vo/', VO_GAIN = 2.4; // (the master runs at 0.45: the booth is the loudest thing that is not an explosion)
 
 // name: [variations, gain, maxVoices, cooldown (s), rate jitter (+/-)]
 // variations > 1 load as name_1..name_N, otherwise just name.
@@ -1005,6 +1006,48 @@ class Audio {
     }
   }
 
+
+  // ============ Commentary voice-over (wrestling/commentary.js) ============
+  // One mp3 per line under assets/vo/, fetched the first time the booth wants it and kept decoded.
+  // voLoad(id) -> Promise<AudioBuffer | null>; voPlay(buffer, gain) -> a handle for voStop().
+  voLoad(id) {
+    if (!this.ctx) return Promise.resolve(null);
+    const M = this._vo || (this._vo = new Map());
+    let p = M.get(id);
+    if (!p) {
+      p = cachedFetch(VO_DIR + id + '.mp3')
+        .then((arr) => new Promise((resolve, reject) => { this.ctx.decodeAudioData(arr, resolve, reject); }))
+        .catch(() => null);
+      M.set(id, p);
+      // (a long match's worth of lines stays small: ~80 KB decoded per second of mono speech; old ones go first)
+      if (M.size > 160) M.delete(M.keys().next().value);
+    }
+    return p;
+  }
+  voPlay(buf, gain = 1) {
+    if (!this.ctx || !buf || this.muted) return null;
+    const c = this.ctx, mm = this._mm;
+    if (!this._voOut) {
+      // presence and a little squeeze so the booth sits on top of the crowd and the collapses
+      const g = c.createGain(), comp = c.createDynamicsCompressor();
+      comp.threshold.value = -18; comp.knee.value = 10; comp.ratio.value = 3; comp.attack.value = 0.004; comp.release.value = 0.2;
+      g.gain.value = VO_GAIN; g.connect(comp);
+      this._voOut = g; this._voComp = comp;
+    }
+    // (into the match mix's limiter when there is one, else straight to the master)
+    const dest = mm && mm.on ? mm.pre : this.master;
+    if (this._voDest !== dest) { try { this._voComp.disconnect(); } catch (e) { /* first time */ } this._voComp.connect(dest); this._voDest = dest; }
+    const s = c.createBufferSource(), g = c.createGain();
+    s.buffer = buf; g.gain.value = gain;
+    s.connect(g); g.connect(this._voOut);
+    s.start();
+    return { s, g };
+  }
+  voStop(h) {
+    if (!h || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    try { h.g.gain.setTargetAtTime(0, t, 0.03); h.s.stop(t + 0.15); } catch (e) { /* already ended */ }
+  }
 
   // ============ Wrestling match mix (Chicago title match) ============
   // Nothing here exists until matchBegin(); matchEnd() puts the graph back exactly as

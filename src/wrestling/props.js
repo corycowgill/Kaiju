@@ -232,6 +232,7 @@ export function createProps(ctx, W, hooks) {
     if (ctx.shake) ctx.shake(0.8, 0.5);
     const e = bus.ev(EV.PROP_LIFT);
     e.who = f.id; e.x = b.x; e.z = b.z; e.h = b.h;
+    e.kind = ch ? 'chunk' : b.isProp ? b.kind : 'building'; e.lm = b.landmarkId || '';
     bus.emit(EV.PROP_LIFT);
     const up = lm.toUpperCase();
     if (ch) hooks.callout(lm ? `A PIECE OF ${up}!` : 'TORE A CHUNK OUT OF IT!', lm ? 'TORN RIGHT OFF' : 'A PIECE OF A TOWER', lm ? 'landmark' : 'move', f.id);
@@ -248,7 +249,7 @@ export function createProps(ctx, W, hooks) {
     const f = P.f;
     carryFrame(P, _c);
     _v.setFromMatrixPosition(_c);
-    crash(P, f.pos.x + Math.sin(f.yaw) * (f.radius + 8), 3, f.pos.z + Math.cos(f.yaw) * (f.radius + 8), false);
+    crash(P, f.pos.x + Math.sin(f.yaw) * (f.radius + 8), 3, f.pos.z + Math.cos(f.yaw) * (f.radius + 8), false, 'drop');
     if (f.state === 'attacking' && f.move === P.move) f.setState('neutral');
     f.armor = false;
     if (f.isPlayer) f._syncGate();
@@ -302,7 +303,7 @@ export function createProps(ctx, W, hooks) {
     const ok = foe && !foe.invuln && foe.invulnT <= 0 && foe.state !== 'ko' && !foe.held
       && Math.hypot(foe.pos.x - P.tx, foe.pos.z - P.tz) <= foe.radius + 6 && Math.hypot(foe.pos.x - f.pos.x, foe.pos.z - f.pos.z) <= f.radius + foe.radius + T.smashReach;
     if (ok) hitFoe(P, foe, true);
-    else crash(P, P.tx, 3, P.tz, false);
+    else crash(P, P.tx, 3, P.tz, false, 'miss');
   }
   function startThrow(P) {
     const f = P.f, foe = f.opponent;
@@ -343,7 +344,7 @@ export function createProps(ctx, W, hooks) {
     hooks.callout(P.chunk && P.name ? `${P.name.toUpperCase()} THROW!` : 'BUILDING THROW!', '', 'move', f.id);
   }
   /** It came down / hit something at (x, y, z): shatter. */
-  function crash(P, x, y, z, hitFoe) {
+  function crash(P, x, y, z, hitFoe, cause = hitFoe ? 'hit' : 'miss') {
     const f = P.f, lite = !!(ctx.quality && !ctx.quality.full);
     hide(P);
     P.on = false; P.phase = '';
@@ -362,7 +363,7 @@ export function createProps(ctx, W, hooks) {
     W.rival.targetable = tw;
     smashProps(x, z, 16, f);
     const e = bus.ev(EV.PROP_CRASH);
-    e.who = f.id; e.x = x; e.y = y; e.z = z; e.h = P.h;
+    e.who = f.id; e.x = x; e.y = y; e.z = z; e.h = P.h; e.cause = cause;
     bus.emit(EV.PROP_CRASH);
     if (!hitFoe) { hooks.say(pick(LINES.miss), 'hype'); hooks.pop('ooh', 0.7, x, z); }
   }
@@ -403,7 +404,7 @@ export function createProps(ctx, W, hooks) {
     f.gainMomentum(blocked ? 4 : 12);
     hooks.pop(blocked ? 'ooh' : 'pop', 1, P.x, P.z);
     const e = bus.ev(EV.PROP_HIT);
-    e.who = f.id; e.target = foe.id; e.damage = dealt; e.blocked = blocked; e.x = P.x; e.y = P.y; e.z = P.z;
+    e.who = f.id; e.target = foe.id; e.damage = dealt; e.blocked = blocked; e.smash = smash; e.x = P.x; e.y = P.y; e.z = P.z;
     bus.emit(EV.PROP_HIT);
     crash(P, P.x, P.y, P.z, true);
   }
@@ -502,7 +503,7 @@ export function createProps(ctx, W, hooks) {
     /** A fighter took a big hit (fighter damage event): drop what it carries. */
     onDamage(who, amount) { const P = props[who]; if (P.on && P.phase !== 'fly' && amount >= T.dropDmg) drop(P); },
     /** End of a fall / dispose: everything in the air or in hands shatters now. */
-    clear() { for (const id in props) { const P = props[id]; if (P.on) { if (P.f && P.f.state === 'attacking' && P.f.move === P.move) P.f.setState('neutral'); if (P.f) P.f.armor = false; crash(P, P.phase === 'fly' ? P.x : P.f.pos.x, 2, P.phase === 'fly' ? P.z : P.f.pos.z, false); } cd[id] = 0; } },
+    clear() { for (const id in props) { const P = props[id]; if (P.on) { if (P.f && P.f.state === 'attacking' && P.f.move === P.move) P.f.setState('neutral'); if (P.f) P.f.armor = false; crash(P, P.phase === 'fly' ? P.x : P.f.pos.x, 2, P.phase === 'fly' ? P.z : P.f.pos.z, false, 'clear'); } cd[id] = 0; } },
     /** Nearest building f could rip up (within maxGap of its body's edge), or null (scratch result). */
     buildingNear(f, maxGap = 40) {
       const b = f ? nearest(f, maxGap) : null;

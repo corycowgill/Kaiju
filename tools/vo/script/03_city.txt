@@ -1,0 +1,521 @@
+# Part 3: Chicago as a weapon. Buildings, landmarks, the lake, the crowd, the army.
+
+@ bldg.through
+M: Right through the building!
+
+M: There goes the property value!
+
+M: Call the insurance company!
+
+M: That one was load-bearing!
+
+M: He put him through an office block!
+
+V: I hope nobody was working late.
+
+M: Through the wall, through the lobby, and out the other side!
+
+M: He's using the city like a turnbuckle!
+
+@ bldg.through aa:heel
+V: Urban renewal, Brannigan. He's doing them a favour.
+M: Tell that to the people who worked there!
+
+@ bldg.through aa:face
+M: He threw him through a building! This is for the title, folks!
+V: Vandal! Hooligan! Somebody arrest that lizard!
+
+@ bldg.many
+M: Through one! Through two! He's going through the whole block!
+
+M: He just took out an entire street!
+V: That's three buildings. I believe that's a turkey.
+
+M: Building after building after building!
+
+V: There goes the neighbourhood. Literally.
+
+@ bldg.down
+M: Another one comes down!
+
+M: There goes another building!
+
+V: That's coming out of somebody's deposit.
+
+M: The skyline is getting shorter by the minute.
+
+@ lm.any
+M: NOT THE LANDMARK! Is nothing sacred?
+
+M: They will be rebuilding that for years!
+
+V: I never liked that building anyway.
+
+M: That's a piece of Chicago history, gone!
+V: History's overrated. Look forward, Brannigan.
+
+M: Great Chicago Fire! They've wrecked another landmark!
+
+@ lm.any lm:willis_tower
+M: NOT THE WILLIS TOWER! Not the tallest building in the city!
+V: It was blocking my view anyway.
+
+M: The Willis Tower! A hundred and ten storeys!
+V: A hundred and nine now. Maybe a hundred and eight.
+
+M: He's got his hands on the Willis Tower! Great Chicago Fire!
+
+V: Call it the Sears Tower one more time, Brannigan. While there's still a tower.
+
+@ lm.any lm:aon_center
+M: The Aon Center! That's eighty storeys of white granite!
+V: Was. That WAS eighty storeys.
+
+M: Not the Aon Center!
+V: I had an office in there once. They asked me to leave.
+
+@ lm.any lm:soldier_field
+M: SOLDIER FIELD! He's tearing up Soldier Field!
+V: Finally, somebody doing some damage in that stadium.
+
+M: Not Soldier Field! There's a home game on Sunday!
+V: Not any more there isn't.
+
+M: A piece of the grandstand at Soldier Field, gone!
+V: Section one forty-two. Good riddance. Terrible sightlines.
+
+@ lm.any lm:field_museum
+M: The Field Museum! There are dinosaur bones in there!
+V: Relatives of yours, Gorrak?
+
+M: Not the Field Museum! That's priceless!
+V: Everything has a price, Brannigan. That one's just very high.
+
+@ lm.any lm:shedd_aquarium
+M: The Shedd Aquarium! Somebody save the fish!
+V: The fish are fine. They're in a lake now. It's an upgrade.
+
+M: He just put him through the aquarium!
+
+@ lm.any lm:adler_planetarium
+M: The Adler Planetarium! That's where the stars are!
+V: He's seeing plenty of stars already.
+
+@ lm.any lm:art_institute
+M: The Art Institute! Not the paintings! NOT THE LIONS!
+V: I always said modern art needed more destruction.
+
+M: That's two hundred years of art, Vance!
+V: And now it's abstract.
+
+@ lm.any lm:navy_pier_wheel
+M: The Ferris wheel! He's got the Navy Pier Ferris wheel!
+V: I hope everybody kept their arms inside the ride.
+
+M: Not the Ferris wheel! That's a family attraction!
+V: It still is. It's just airborne.
+
+@ lm.any lm:tribune_tower
+M: The Tribune Tower! That's the newspaper!
+V: Good. They gave me a bad review once.
+
+@ lm.any lm:wrigley_building
+M: The Wrigley Building! That gleaming white tower on the river!
+V: Gum money. Easy come, easy go.
+
+@ lm.any lm:marina_city
+M: Marina City! The corncob towers!
+V: He just shucked one.
+
+@ lm.any lm:merchandise_mart
+M: The Merchandise Mart! That building has its own zip code!
+V: Had. It had its own zip code.
+
+@ lm.any lm:chicago_theatre
+M: Not the Chicago Theatre! Look at that sign come down!
+V: The show's over, Brannigan. Everybody out.
+
+@ lm.any lm:union_station
+M: Union Station! All trains are cancelled, folks!
+V: They were going to be late anyway.
+
+@ lm.any lm:pritzker_pavilion
+M: The Pritzker Pavilion! That's where the symphony plays!
+V: Tonight's performance is percussion only.
+
+@ lm.any lm:board_of_trade
+M: The Board of Trade! The markets are going to feel that!
+V: Sell! Sell everything!
+
+@ lm.any lm:lake_point_tower
+M: Lake Point Tower! People live in there!
+V: With a view like tonight's? They got their money's worth.
+
+@ lm.any lm:harold_washington_library
+M: Not the library! Not the Harold Washington Library!
+V: Quiet, please. He's destroying a library.
+
+@ lm.down
+M: It's coming down! The whole thing is coming down!
+
+M: Down it goes, and the skyline will never look the same!
+
+M: A Chicago landmark, reduced to rubble!
+V: They can put up a plaque. A big one.
+
+@ lm.down lm:willis_tower
+M: The Willis Tower is DOWN! I never thought I'd say those words!
+V: Tallest building in Chicago. Now it's the widest.
+
+@ lm.down lm:soldier_field
+M: Soldier Field is gone! The whole stadium!
+V: Somebody tell the season ticket holders. Gently.
+
+@ prop.rip
+M: He just ripped a building out of the ground!
+
+M: That is somebody's office! He's holding an office!
+
+M: He's got a whole city block over his head!
+
+M: Is he going to THROW that?
+
+V: Somebody call the zoning board.
+
+M: He pulled it up like a weed! A whole building!
+
+@ prop.rip aa:face
+M: He's got a building! Our guy's got a building! Look out!
+V: That's theft! That is grand theft, real estate!
+
+@ prop.rip aa:heel
+V: Now THAT is thinking. Why use your fists when you can use an apartment complex?
+M: Put that down! People live there!
+
+M: He's ripped up a building, and he is looking right at our hero.
+V: Run, hero. I'd run.
+
+@ prop.rip a:gorrak
+M: Gorrak just uprooted a building like a turnip! Look at the strength!
+V: That had a parking garage. Where are those people supposed to park?
+
+@ prop.rip a:mechra
+V: Mechra has acquired a projectile. Target locked.
+M: The machine's got a building! Heads up!
+
+@ prop.rip a:tridon
+M: Tridon's got a building in his claws, and all three heads are grinning!
+V: Wouldn't you? Look at the size of that thing.
+
+@ prop.tear
+M: He tore a piece right off the tower!
+
+M: He snapped that skyscraper like a breadstick!
+
+M: He's carrying thirty storeys over his head!
+
+M: Look at the top of that tower come down! It's half the size it was!
+
+V: He left the lobby. That's considerate.
+
+M: He broke off a chunk of that building like a candy bar!
+
+@ prop.tear aa:face
+M: He tore the tower in two! And he is coming with it!
+V: That's a weapon! He's got a weapon! Where's the outrage?
+
+@ prop.tear aa:heel
+V: Why lift the whole thing? Take what you need. That's efficiency.
+M: He's holding thirty floors of somebody's workplace!
+
+@ prop.tear lm:willis_tower
+M: A PIECE OF THE WILLIS TOWER! He tore off a piece of the Willis Tower!
+V: Ninety-ninth floor, going down.
+
+M: He's swinging a chunk of the tallest building in Chicago!
+V: Well, it's not the tallest any more.
+
+@ prop.tear lm:aon_center
+M: He ripped a section out of the Aon Center! Look at it lean!
+V: It's got character now. Like that tower in Italy.
+
+@ prop.tear lm:soldier_field
+M: He tore the grandstand right out of Soldier Field!
+V: Those are good seats! Club level!
+
+M: He's holding a piece of the stadium! The seats are still in it!
+V: Now that's what I call a nosebleed section.
+
+@ prop.semi
+M: He's picked up a tour truck! One of the big rigs!
+
+M: He's got a semi in his hand like a rolling pin!
+V: There's a band's entire sound system in that. Was.
+
+M: He grabbed a lighting tower from the festival!
+
+V: The roadies are going to be furious.
+
+@ prop.throw
+M: He throws it! LOOK OUT!
+
+M: Here it comes! Incoming!
+
+M: He heaves it across the park!
+
+M: Building, airborne! Building, airborne!
+
+V: Heads up, everybody. All of the heads.
+
+@ prop.hit
+M: DIRECT HIT! Right in the face with a building!
+
+M: He threw the WHOLE building, and he did not miss!
+
+M: That was zoned commercial!
+
+M: He just got hit with real estate!
+
+M: OH! It shattered right across his chest!
+
+@ prop.hit aa:face
+M: Bullseye! He nailed him! Chicago goes wild!
+V: He threw a building at a living creature! Where is the humanity?
+
+M: Right on the money! What an arm on that monster!
+V: That's assault with a deadly condominium!
+
+@ prop.hit aa:heel
+V: Strike! Right down the middle! Did you see the spin on that?
+M: He flattened him with an office tower. I can't watch.
+
+V: Special delivery! Ha ha ha!
+M: Our hero just got buried under forty floors of concrete!
+
+@ prop.blocked
+M: He BLOCKED a building! Unbelievable!
+
+M: Took it on the forearms! It broke around him!
+
+V: You can't block a building. That's cheating. Somehow.
+
+M: He stood there and took a skyscraper to the arms!
+
+@ prop.miss
+M: Missed! And that block is gone too!
+
+M: Wide! There goes another street!
+
+M: He ducked it! The building sails right past!
+
+V: He missed the monster. He did not miss the bank.
+
+M: Off target, and there goes somebody's neighbourhood!
+
+@ prop.miss aa:heel
+M: He missed! Ha! All that work for nothing!
+V: He was aiming for that building. He hated that building.
+
+@ prop.smash
+M: OVER THE HEAD! He broke a building over his skull!
+
+M: He smashed it right over his head! Great Chicago Fire!
+
+M: Like a chair shot! With a SKYSCRAPER!
+
+M: He brought the whole thing down on top of him!
+
+V: That is one way to bring the house down.
+
+@ prop.smash aa:face
+M: He crowned him with it! Right between the eyes! What a shot!
+V: That's a weapon! Disqualify him! Oh, for the love of... no rules. I forgot.
+
+M: He broke it over his head, and this crowd has lost its mind!
+
+@ prop.smash aa:heel
+V: Bonk! Ha ha ha! Right on the noggin!
+M: He just broke thirty floors of steel over our hero's head!
+
+V: Now that's using your head. Well. Using HIS head.
+M: That's sickening, Vance.
+
+@ prop.smash a:gorrak v:mechra
+M: Gorrak just dented that tin can with a skyscraper!
+V: Do you know what that paint job costs?
+
+@ prop.smash a:gorrak v:tridon
+M: Gorrak smashed it over the middle head! The middle one!
+V: That's the smart one! Not the smart one!
+
+@ prop.drop
+M: He dropped it! The building slips out of his hands!
+
+M: Knocked it right out of his grip!
+
+V: Butterfingers.
+
+@ water
+M: Into Lake Michigan!
+
+M: Splashdown! That wave will reach Indiana!
+
+M: He threw him in the lake!
+
+V: I hope he can swim. Actually, no I don't.
+
+M: A tidal wave just hit Lake Shore Drive!
+
+@ water v:gorrak
+V: He lives in there! You just sent him home! That's a mistake!
+M: Gorrak hits the water, and that's HIS lake!
+
+@ water v:mechra
+M: Mechra is in the lake! Can that thing even float?
+V: It's waterproof. Mostly. Get it out. GET IT OUT!
+
+@ water v:tridon
+M: Tridon goes into the drink, and all three heads come up spitting!
+V: Do you know how long it takes to dry wings that size?
+
+@ crowd
+M: Into the crowd! Look out!
+
+M: The front row is running for their lives!
+
+M: He landed on the cheap seats!
+V: There are no cheap seats. I checked. I tried to get them comped.
+
+V: They wanted to be close to the action. Congratulations.
+
+M: The fans are scattering! Get out of there!
+
+@ ropes
+M: The ropes are straining!
+
+M: Slingshot off the cables!
+
+M: Those are steel cables, folks, and they're stretching like rubber bands!
+
+@ ropesnap
+M: The ropes are gone! Snapped like thread!
+
+M: Steel cable, popped like a guitar string!
+V: There goes the ring. Now it's just a park with a fight in it.
+
+M: The ropes have snapped! This fight is going into the city!
+
+@ post
+M: Right into the corner tower!
+
+M: He hit the post, and the post lost!
+
+V: Those posts are the size of grain silos. He bent it.
+
+@ ringout
+M: They've left the ring! This fight is spilling into the city!
+
+M: Falls count anywhere, folks, and anywhere just got bigger!
+
+M: They're out of the park and into the streets!
+V: Lock your doors. Not that it'll help.
+
+M: They're brawling down Michigan Avenue!
+
+V: I told the city not to build the ring next to the city.
+
+@ spot.fountain
+M: Into Buckingham Fountain! What a splash!
+
+M: He dunked him in the fountain!
+V: That fountain's been there since nineteen twenty-seven. So has your jacket, Brannigan.
+
+M: Buckingham Fountain! He's using it as a bathtub!
+
+@ spot.ltracks
+M: Onto the L tracks! The third rail! THE THIRD RAIL!
+
+M: He threw him on the elevated tracks! Look at the sparks!
+V: Six hundred volts. That'll clear the sinuses.
+
+M: The L train is not coming, folks. He's lying on it!
+
+@ spot.ltracks v:mechra
+M: Mechra's on the third rail! Look at that thing light up!
+V: Free charging! That's a gift! That's a gift, you fool!
+
+@ spot.michigan
+M: Right down Michigan Avenue! He's bowling with buildings!
+
+M: The Magnificent Mile is a little less magnificent tonight!
+V: I had a tailor on that street.
+
+M: He threw him the length of Michigan Avenue!
+
+@ spot.bean
+M: THE BEAN! He threw him into the Bean!
+
+M: Not the Bean! Look at the dent in it!
+V: Finally. Now it looks like a bean.
+
+M: He bounced him off Cloud Gate! Chicago's own Bean!
+V: You can see the whole fight in the reflection. Twice the show.
+
+@ spot.lake
+M: Off the lakefront and into the harbour!
+
+M: He threw him through the marina! Boats everywhere!
+V: There go the yachts. Now I'm upset.
+
+@ weapon.pickup
+M: He's got a steel girder! He ripped a beam out of the wreckage!
+
+M: A girder! He's armed, folks!
+
+M: He's picked up an I-beam like a baseball bat!
+V: Batter up.
+
+@ weapon.pickup aa:heel
+V: A foreign object! Marvellous! Use it, use it!
+M: He's got a steel beam, and there's nobody to stop him!
+
+@ weapon.pickup aa:face
+M: Our guy's got the girder now! Turnabout is fair play!
+V: That's a weapon! Somebody take that away from him!
+M: Now you care about weapons?
+
+@ weapon.hit
+M: Across the back with the girder!
+
+M: Steel on scales! What a sound!
+
+M: He swung that beam like he was going for the fences at Wrigley!
+
+V: That's structural steel. It's rated for buildings, not faces.
+
+@ weapon.break
+M: The girder snapped in half!
+
+M: He broke a steel beam over him! It just folded!
+
+V: They don't make girders like they used to.
+
+@ military.warn
+M: Uh oh. We're getting word the military is on its way.
+V: Who invited them?
+
+M: I'm hearing helicopters, Vance.
+V: Wonderful. The amateurs are here.
+
+@ military.arrive
+M: The army is storming the ring! Tanks in Grant Park!
+
+M: Here comes the cavalry! Nobody invited them!
+V: Run-in! It's a run-in! Somebody do something! Oh. Right. No referee.
+
+M: Tanks, helicopters, the works! It's a three-way dance now!
+
+V: You're shooting at the main event! Have some respect for the business!
+
+M: The military is firing on both of them!
+V: Equal opportunity. I'll allow it.

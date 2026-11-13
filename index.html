@@ -1245,7 +1245,7 @@
 
   /* ---- commentary ticker (broadcast lower third; under the clock on phones) ---- */
   #wr-ticker {
-    position: absolute; left: var(--safe-l); bottom: calc(var(--safe-b) + var(--sp-3)); max-width: min(36vw, 560px);
+    position: absolute; left: var(--safe-l); bottom: calc(var(--safe-b) + var(--sp-3)); max-width: min(40vw, 640px);
     display: flex; align-items: center; gap: var(--sp-2); padding: 3px var(--sp-5) 3px 0;
     background: linear-gradient(90deg, rgba(16, 3, 7, 0.8), rgba(16, 3, 7, 0.55) 70%, rgba(16, 3, 7, 0));
     opacity: 0; transform: translateX(-14px); transition: opacity 0.3s, transform 0.3s;
@@ -1255,7 +1255,11 @@
   }
   #wr-ticker.on { opacity: 1; transform: none; }
   #wr-ticker .tag { flex: none; padding: 3px 8px 2px; background: var(--c-red); color: #fff; font-family: var(--f-display); font-size: var(--fs-cap); letter-spacing: 3px; text-shadow: none; }
-  #wr-ticker .line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--f-jp); font-weight: 700; font-style: italic; font-size: var(--fs-body); color: var(--c-cream); }
+  #wr-ticker .line { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.18; font-family: var(--f-jp); font-weight: 700; font-style: italic; font-size: var(--fs-body); color: var(--c-cream); }
+  /* the booth: Mike Brannigan (play-by-play, blue) and Sterling Vance (the heel's man, purple) */
+  #wr-ticker.mike .tag { background: #1d5fd0; }
+  #wr-ticker.vance .tag { background: #8a2bd6; }
+  #wr-ticker.vance .line { color: #f0d8ff; }
   #wr-ticker.hype .line { color: var(--c-score); }
   #wr-ticker.shock .line { color: #ff8866; }
   body.touch #wr-ticker {
@@ -2338,7 +2342,7 @@
   <div id="wr-mash"><div class="t">KICK OUT!</div><div class="row"><span class="g"></span><div class="track"><i></i></div></div></div>
   <div id="wr-prompt"><div class="wr-pill"><span class="wr-k">E</span>GRAB</div></div>
   <div id="wr-wheel"><div class="u"></div><div class="l"></div><div class="c">SLAM</div><div class="r"></div><div class="d"></div></div>
-  <div id="wr-ticker"><span class="tag">RINGSIDE <span class="jp-sub" style="color:#ffd9c0">実況</span></span><span class="line">Welcome to Grant Park.</span></div>
+  <div id="wr-ticker"><span class="tag">BRANNIGAN</span><span class="line">Welcome to Grant Park.</span></div>
   <div class="wr-card p1"><div class="pic"><i></i></div><div><div class="role">CHALLENGER</div><div class="nm">GORRAK</div><div class="ep">THE ATOMIC TYRANT</div><div class="st"></div></div></div>
   <div class="wr-card p2"><div class="pic"><i></i></div><div><div class="role">CHAMPION</div><div class="nm">TRIDON</div><div class="ep">THE THREE-HEADED STORM</div><div class="st"></div></div></div>
   <div id="wr-inter"><div class="t1">FALL 1</div><div class="t2">PINFALL</div><div class="t3"><span>GORRAK</span><b>1 - 0</b><span>TRIDON</span></div></div>
@@ -2537,70 +2541,73 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.12.2",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.12.2",
-    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.12.2",
-    "./src/audio.js": "./src/audio.js?v=1.12.2",
-    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.12.2",
-    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.12.2",
-    "./src/carBatch.js": "./src/carBatch.js?v=1.12.2",
-    "./src/city.js": "./src/city.js?v=1.12.2",
-    "./src/effects.js": "./src/effects.js?v=1.12.2",
-    "./src/enemies.js": "./src/enemies.js?v=1.12.2",
-    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.12.2",
-    "./src/game.js": "./src/game.js?v=1.12.2",
-    "./src/intro.js": "./src/intro.js?v=1.12.2",
-    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.12.2",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.12.2",
-    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.12.2",
-    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.12.2",
-    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.12.2",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.12.2",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.12.2",
-    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.12.2",
-    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.12.2",
-    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.12.2",
-    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.12.2",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.12.2",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.12.2",
-    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.12.2",
-    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.12.2",
-    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.12.2",
-    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.12.2",
-    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.12.2",
-    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.12.2",
-    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.12.2",
-    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.12.2",
-    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.12.2",
-    "./src/look.js": "./src/look.js?v=1.12.2",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.12.2",
-    "./src/modelGallery.js": "./src/modelGallery.js?v=1.12.2",
-    "./src/monsters.js": "./src/monsters.js?v=1.12.2",
-    "./src/pickups.js": "./src/pickups.js?v=1.12.2",
-    "./src/powerVfx.js": "./src/powerVfx.js?v=1.12.2",
-    "./src/quality.js": "./src/quality.js?v=1.12.2",
-    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.12.2",
-    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.12.2",
-    "./src/vfx.js": "./src/vfx.js?v=1.12.2",
-    "./src/waterPlay.js": "./src/waterPlay.js?v=1.12.2",
-    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.12.2",
-    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.12.2",
-    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.12.2",
-    "./src/wrestling/carve.js": "./src/wrestling/carve.js?v=1.12.2",
-    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.12.2",
-    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.12.2",
-    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.12.2",
-    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.12.2",
-    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.12.2",
-    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.12.2",
-    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.12.2",
-    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.12.2",
-    "./src/wrestling/props.js": "./src/wrestling/props.js?v=1.12.2",
-    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.12.2",
-    "./src/wrestling/signatures.js": "./src/wrestling/signatures.js?v=1.12.2",
-    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.12.2",
-    "./src/wrestling/spots.js": "./src/wrestling/spots.js?v=1.12.2",
-    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.12.2"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.13.0",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.13.0",
+    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.13.0",
+    "./src/audio.js": "./src/audio.js?v=1.13.0",
+    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.13.0",
+    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.13.0",
+    "./src/carBatch.js": "./src/carBatch.js?v=1.13.0",
+    "./src/city.js": "./src/city.js?v=1.13.0",
+    "./src/effects.js": "./src/effects.js?v=1.13.0",
+    "./src/enemies.js": "./src/enemies.js?v=1.13.0",
+    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.13.0",
+    "./src/game.js": "./src/game.js?v=1.13.0",
+    "./src/intro.js": "./src/intro.js?v=1.13.0",
+    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.13.0",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.13.0",
+    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.13.0",
+    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.13.0",
+    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.13.0",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.13.0",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.13.0",
+    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.13.0",
+    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.13.0",
+    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.13.0",
+    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.13.0",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.13.0",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.13.0",
+    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.13.0",
+    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.13.0",
+    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.13.0",
+    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.13.0",
+    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.13.0",
+    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.13.0",
+    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.13.0",
+    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.13.0",
+    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.13.0",
+    "./src/look.js": "./src/look.js?v=1.13.0",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.13.0",
+    "./src/modelGallery.js": "./src/modelGallery.js?v=1.13.0",
+    "./src/monsters.js": "./src/monsters.js?v=1.13.0",
+    "./src/pickups.js": "./src/pickups.js?v=1.13.0",
+    "./src/powerVfx.js": "./src/powerVfx.js?v=1.13.0",
+    "./src/quality.js": "./src/quality.js?v=1.13.0",
+    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.13.0",
+    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.13.0",
+    "./src/vfx.js": "./src/vfx.js?v=1.13.0",
+    "./src/waterPlay.js": "./src/waterPlay.js?v=1.13.0",
+    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.13.0",
+    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.13.0",
+    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.13.0",
+    "./src/wrestling/carve.js": "./src/wrestling/carve.js?v=1.13.0",
+    "./src/wrestling/commentary.js": "./src/wrestling/commentary.js?v=1.13.0",
+    "./src/wrestling/commentaryLines.js": "./src/wrestling/commentaryLines.js?v=1.13.0",
+    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.13.0",
+    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.13.0",
+    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.13.0",
+    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.13.0",
+    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.13.0",
+    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.13.0",
+    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.13.0",
+    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.13.0",
+    "./src/wrestling/props.js": "./src/wrestling/props.js?v=1.13.0",
+    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.13.0",
+    "./src/wrestling/roster.js": "./src/wrestling/roster.js?v=1.13.0",
+    "./src/wrestling/signatures.js": "./src/wrestling/signatures.js?v=1.13.0",
+    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.13.0",
+    "./src/wrestling/spots.js": "./src/wrestling/spots.js?v=1.13.0",
+    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.13.0"
   }
 }
 </script>
@@ -2614,7 +2621,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.12.2"></script>
-<script type="module" async src="./src/intro.js?v=1.12.2"></script>
+<script type="module" src="./src/game.js?v=1.13.0"></script>
+<script type="module" async src="./src/intro.js?v=1.13.0"></script>
 </body>
 </html>

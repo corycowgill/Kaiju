@@ -22,6 +22,7 @@ import { createVfx } from './vfx.js';
 import { createSfx } from './sfx.js';
 import { createArena } from '../levels/chicago_arena.js';
 import { createSpots } from './spots.js';
+import { createCommentary } from './commentary.js';
 
 /**
  * @param ctx  the context game.js builds (see notes/wrestling_api.md)
@@ -89,7 +90,8 @@ export function createWrestling(ctx) {
   W.spots = createSpots(ctx, W); // landmark set pieces, foreign objects (spots)
   // Update order. Presentation modules come after the core so they see this frame's events.
   const core = [W.anims, W.match];
-  const show = [W.cam, W.hud, W.vfx, W.sfx, W.arena, W.spots];
+  W.booth = createCommentary(ctx, W); // the two announcers: captions + voice (commentary)
+  const show = [W.cam, W.hud, W.vfx, W.sfx, W.arena, W.spots, W.booth];
 
   // ---- QA: event log + state forcing (window.__qa.wr under ?debug) ----
   const log = { on: false, events: [], counts: {}, max: 4000 };

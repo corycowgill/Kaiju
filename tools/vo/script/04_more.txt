@@ -1,0 +1,489 @@
+# Part 4: depth. More of what is heard most (strikes, knockdowns, covers), the kaiju one against another, and the booth at each other's throats.
+
+@ strike a:gorrak
+M: Gorrak with a big right hand!
+
+M: Gorrak hammers him! Chicago loves it!
+V: Chicago loves anything loud.
+
+M: A clubbing blow from Gorrak!
+
+V: Gorrak punches like he's mad at the air.
+M: He's mad at your guy, Vance.
+
+M: Gorrak lands another one! He's a brawler, folks, plain and simple!
+
+@ strike a:mechra
+M: Mechra with a steel fist to the jaw!
+
+V: Beep, boop, bang. Ha!
+M: That's not funny, Vance.
+
+M: Mechra jabs him! Cold and mechanical!
+
+V: Every punch Mechra throws is measured to the millimetre.
+M: And every one of them is a cheap shot.
+
+M: A piston shot from Mechra!
+
+@ strike a:tridon
+M: Tridon snaps a head forward! What a shot!
+
+M: Left head! Right head! Tridon's got him guessing!
+V: Three heads. It's a combination with only one move.
+
+V: The middle head did that. I can always tell.
+
+M: Tridon whips that tail around and catches him!
+
+M: A bite and a shot from Tridon!
+
+@ strike v:gorrak aa:heel
+V: Right in the snout! Ha! How do you like that, Chicago?
+M: Gorrak's taking some punishment here.
+
+M: Gorrak gets rocked! Come on, big fella!
+V: He can't hear you. His ears are ringing.
+
+@ strike v:mechra a:gorrak
+M: Gorrak just put a dent in that chest plate!
+V: Do you have any idea what that costs to buff out?
+
+M: Sparks are flying off Mechra! Gorrak's pounding on that thing!
+V: That's a warranty violation!
+
+M: Gorrak punches the machine, and the machine felt it!
+
+@ strike v:tridon a:gorrak
+M: Gorrak pops the left head! Then the right!
+V: Leave the left one alone! It's sensitive!
+
+M: Gorrak's got three targets, and he's hitting all of them!
+
+M: Tridon's heads are spinning. All of them!
+V: Royalty does not get dizzy. It gets contemplative.
+
+@ strike pair:mechra+tridon
+M: They're beating the tar out of each other, and I don't mind one bit.
+V: Stop it! Both of you! You're on the same side! My side!
+
+V: Easy! Easy! Don't hurt each other, there's a hero somewhere you could be hurting instead!
+M: There's no hero in this one, Vance. Just your two favourite crooks.
+
+@ strike.big v:gorrak
+M: Gorrak gets blasted! He's reeling! Hang on, big fella!
+V: Down he goes. Any second now. Wait for it.
+
+V: He rang that lizard's bell! You could hear it in Evanston!
+M: Gorrak's on wobbly legs!
+
+@ strike.big v:mechra
+M: He caved in the side of that machine! Mechra is leaking oil!
+V: That's not oil. That's premium synthetic. Do you know what that costs?
+
+M: Mechra's head just spun all the way around!
+V: It's supposed to do that. It's a feature.
+
+@ strike.big v:tridon
+M: He nearly knocked the middle head clean off!
+V: Not the face! Any of the faces!
+
+M: All three heads snapped back at once! What a shot!
+
+@ knockdown a:gorrak
+M: Gorrak puts him down! Listen to this city roar!
+V: I can't hear myself think. Which, for you, Brannigan, must be normal.
+
+M: Gorrak floored him! What a shot from the people's champion!
+
+@ knockdown a:mechra
+V: Target neutralised. Ha! I love it when it does that.
+M: Mechra puts him on his back, and stands over him like a tombstone.
+
+@ knockdown a:tridon
+V: Bow, peasant! On your back, where you belong!
+M: Tridon knocks him flat and all three heads are laughing.
+
+@ knockdown v:gorrak a:mechra
+V: The lizard goes down, and the machine didn't even break a sweat. It can't. No glands.
+M: Gorrak's down, but he is not out!
+
+@ knockdown v:gorrak a:tridon
+V: Timber! Down goes the hedgehog! Somebody plant a flag on him!
+M: Get up, Gorrak! Don't give them the satisfaction!
+
+@ block a:gorrak
+M: Gorrak takes it on those big forearms!
+
+@ block a:mechra
+M: Right off the armour plating! Mechra didn't feel a thing!
+V: Reinforced titanium. I told you. I TOLD you.
+
+@ block a:tridon
+M: Tridon folds those wings up like a shield!
+V: Built-in umbrella. Very practical.
+
+@ reversal a:gorrak
+M: Gorrak reversed it! He turned the tables!
+V: He stumbled into that. He stumbles into everything.
+
+M: Gorrak saw it coming! What a counter!
+
+@ reversal a:tridon
+V: Three heads means three sets of eyes. You can't sneak up on that.
+M: Tridon counters! I hate to say it, that was slick.
+
+@ grab a:gorrak
+M: Gorrak gets those big claws on him!
+
+@ grab a:mechra
+M: Mechra clamps on! Those are hydraulic grips!
+V: Four thousand pounds of grip strength. Per finger.
+
+@ grab a:tridon
+M: Tridon wraps him up, heads and all!
+
+@ whip a:gorrak
+M: Gorrak sends him for the ride! Look out, Loop!
+
+@ suplex a:gorrak
+M: Gorrak takes him up and over! What strength!
+V: Lift with your legs, you oaf! You'll throw your back out!
+
+@ suplex a:mechra
+V: A suplex with mathematically perfect form. Ten out of ten.
+M: Mechra drops him on his head!
+
+@ suplex a:tridon
+M: Tridon suplexes him, and flaps the wings for extra height!
+V: When you've got it, flaunt it.
+
+@ slam a:gorrak
+M: Gorrak presses him overhead! He's showing off for Chicago!
+V: Put him down, show-off!
+
+@ swing a:gorrak
+M: Gorrak's got him by the tail! Around and around!
+V: He's going to hit a building! He's going to hit MY building!
+
+@ swing a:tridon
+V: Wheeee! Ha ha! Spin him, Your Majesty!
+M: Tridon is swinging him around like a set of keys!
+
+@ pin.start a:gorrak
+M: Gorrak covers him! Count it, Chicago! Count it with me!
+V: Get that wet lizard off of him!
+
+@ pin.start a:mechra
+V: Initiating pin sequence. One. Two. Come on. Three!
+M: Mechra drops all that weight on him! Kick out!
+
+@ pin.start a:tridon
+V: A royal cover! Count it, somebody! Anybody!
+M: Tridon's got him down, with a head looking at every camera.
+
+@ pin.start v:gorrak
+M: Gorrak's shoulders are down! Kick out, big fella! Kick out!
+V: Shhh. He's sleeping. Let him sleep.
+
+@ pin.kick v:gorrak
+M: Gorrak kicks out! You cannot keep that monster down!
+V: Somebody check him for springs.
+
+@ pin.kick v:mechra
+V: Ha! You can't pin forty thousand tons, you fool!
+M: Mechra powers out. That thing just will not shut off.
+
+@ pin.kick v:tridon
+V: The king does not lie down for commoners!
+M: Tridon kicks out. All three heads are shaking it off.
+
+@ pin.near v:gorrak
+M: Gorrak got the shoulder up! By a whisker! Listen to this place!
+V: That was three! I've got it on my stopwatch! I'm holding up my stopwatch!
+
+@ pin.near v:mechra
+V: See? Emergency power. Never worried. Not for a second.
+M: Mechra kicked out at the last instant! I thought we had a new champion!
+
+@ pin.near v:tridon
+V: The left head kicked out! Good old lefty! I take back everything I said!
+M: Tridon survives by the skin of his teeth. All of his teeth.
+
+@ critical va:face a:mechra
+V: Diagnostics complete. Your hero's finished.
+M: He's hurt bad, and Mechra is closing in like a machine. Because it is one.
+
+@ critical va:face a:tridon
+V: Look at all three heads smiling. They know.
+M: He's hurt, and Tridon is circling like a vulture.
+
+@ comeback va:heel a:gorrak
+M: Gorrak's shaking his head! He's pounding the ground! HE IS FIRING UP!
+V: Hit him! Hit him now! Why is nobody hitting him?
+
+@ prop.hit v:gorrak
+V: Bullseye! Right on the spines! Ha ha ha!
+M: Gorrak just took a whole building to the chest!
+
+@ prop.hit v:mechra
+M: He crushed that tin can with a tower! Look at the sparks!
+V: That is delicate equipment! You brute!
+
+@ prop.hit v:tridon
+M: Three heads, and none of them ducked!
+V: It's hard to coordinate! You try it!
+
+@ prop.rip va:face a:mechra
+V: Mechra's picked out a building. I believe that one's for you, hero.
+M: Look out! That machine's got a city block in its claws!
+
+@ prop.rip va:face a:tridon
+V: Six eyes on one target. Run, hedgehog.
+M: Tridon's got a building, and he's showing it to the crowd first!
+
+@ bldg.through a:gorrak
+M: Gorrak just put him through a high-rise! That's Chicago hospitality!
+V: That's vandalism with a fan club.
+
+@ bldg.through a:mechra
+V: Mechra calculated the weakest point in that structure. Then it used your hero to find it.
+M: Right through the building! Mechra threw him like a rag doll!
+
+@ bldg.through a:tridon
+M: Tridon hurls him through a tower and takes a bow!
+V: And why not? Did you see the distance on that?
+
+@ finisher.start v:gorrak
+M: No! Not this! Gorrak, fight out of it!
+V: Too late. Say good night to the nice people, lizard.
+
+@ finisher.hit v:gorrak
+M: Gorrak's been driven straight through the ring! Is he moving? I can't see him moving!
+V: Leave him there. It's a nice hole. He can live in it.
+
+@ finisher.hit v:mechra
+M: He planted the machine! There are parts everywhere!
+V: Nobody touch anything! Those parts are numbered!
+
+@ finisher.hit v:tridon
+M: He spiked Tridon like a tent peg! All three heads are out!
+V: They're meditating. All three. It's very advanced.
+
+@ fall.end a:gorrak v:mechra
+M: Gorrak pins the machine! One fall for flesh and blood!
+V: It let him win that one. It's gathering data.
+
+@ fall.end a:gorrak v:tridon
+M: Gorrak takes a fall from Tridon! Three heads, zero answers!
+V: The middle one had an answer. Nobody listened to him.
+
+@ fall.end a:mechra v:gorrak
+V: Efficient. Clinical. One fall to Mechra, and it's not even warmed up.
+M: Mechra takes the fall, and Chicago has gone quiet.
+
+@ fall.end a:tridon v:gorrak
+V: Royalty one, hedgehog nothing! Ha ha!
+M: Tridon takes the fall. Gorrak has work to do.
+
+@ banter
+V: Brannigan, did you see what they're charging for parking?
+M: There's no parking left, Vance. It's all rubble.
+V: Then the price is outrageous.
+
+M: The Chicago Fire Department is standing by.
+V: Standing by what? There's nothing left to stand by.
+
+V: I've been to matches in Tokyo, in Osaka, in Monte Carlo.
+M: You were thrown out of Monte Carlo.
+V: I was asked to leave. There's a difference.
+
+M: The weatherman said light winds tonight.
+V: The weatherman didn't account for a tail the size of a train.
+
+V: You know who I'd like to see in there? Me.
+M: I would pay good money for that, Vance.
+
+M: Somebody just handed me a note. The Bean is fine, folks. For now.
+V: Give it five minutes.
+
+V: This desk is shaking. Why is the desk shaking?
+M: Because the ground is shaking, Vance. That's how desks work.
+
+M: I'm told the crowd tonight is the largest in the history of Grant Park.
+V: And getting smaller by the minute. Look at them run.
+
+V: I should have been a kaiju. I've got the temperament.
+M: You've got the breath for it, too.
+
+M: Let's take a look at the tale of the tape.
+V: They don't make a tape that long.
+
+V: Do you smell smoke?
+M: Half the Loop is on fire, Vance.
+V: Ah. That would be it.
+
+M: Thirty years in this booth, and you still surprise me.
+V: With my insight?
+M: With how wrong one man can be.
+
+V: Write this down, Brannigan. Sterling Vance called it.
+M: Called what?
+V: Whatever happens. I called it.
+
+M: Our thanks to the city of Chicago for hosting tonight.
+V: And our condolences.
+
+V: I bet a small fortune on this match.
+M: On who?
+V: That's between me and a gentleman named Louie.
+
+M: You've been awfully quiet, Vance.
+V: I'm thinking. You should try it. It doesn't hurt after the first time.
+
+@ banter mu:fh
+V: Your hero's problem is he fights fair. Where has that ever gotten anybody?
+M: It's gotten him a hundred thousand fans, Vance.
+V: Fans don't count to three.
+
+M: Why do you always take the bad guy's side?
+V: Because the bad guy's side has better catering.
+
+V: Mark my words. Before this is over, your hero will be begging for mercy.
+M: You said that last time.
+V: And I'll say it next time, too.
+
+M: Right is right, Vance, and wrong is wrong.
+V: And winning is winning. Guess which one pays.
+
+V: Nobody likes a goody two-shoes, Brannigan.
+M: A hundred thousand people do.
+V: Nobody who matters.
+
+@ banter pair:gorrak+mechra
+V: Mechra never sleeps, never eats, never complains.
+M: It never smiles, either.
+V: What's there to smile about? It's fighting a lizard in Illinois.
+
+M: Gorrak's been in that lake since before this city had a name.
+V: Then it's about time somebody evicted him.
+
+V: You know what Mechra and I have in common, Brannigan?
+M: No heart?
+V: Excellence. I was going to say excellence.
+
+M: They say Mechra was built to protect cities.
+V: It is protecting this one. From bad taste.
+
+@ banter pair:gorrak+tridon
+V: Tridon has never lost an argument.
+M: He argues with himself all day long, Vance.
+V: And wins every time.
+
+M: Gorrak doesn't have three heads. He's got one, and a whole city behind it.
+V: Wonderful. A committee. That always works.
+
+V: Did you know each of Tridon's heads has its own agent?
+M: That explains the pay dispute.
+
+M: Tridon flew over Wrigley Field this afternoon and blocked out the sun.
+V: Best thing to happen at that ballpark in years.
+
+@ banter pair:mechra+tridon
+V: If these two ever teamed up, Brannigan, they could rule the world.
+M: Heaven forbid.
+V: I'd manage them for free. Well. Fifteen percent.
+
+M: I can't tell which one of these two I like less.
+V: That's because you've got no eye for talent.
+
+V: Steel against scales. Circuits against crowns. It's like poetry.
+M: It's like a car crash, and I can't look away.
+
+@ prop.throw aa:heel
+V: Fire in the hole! Ha ha!
+M: He's thrown it! Get down, big fella!
+
+@ prop.throw aa:face
+M: He lets it fly! Go, go, go!
+V: That is littering! On a massive scale!
+
+@ prop.miss aa:face
+V: Ha! Missed! Couldn't hit the broad side of a robot!
+M: He missed him, and I think he just flattened a parking structure.
+
+@ prop.smash a:mechra
+V: Percussive maintenance! Ha! Mechra broke a building over his head!
+M: That's the dirtiest thing I've seen all night, and it's been a long night.
+
+@ prop.smash a:tridon
+V: Coronation! Ha ha! Crowned with a skyscraper!
+M: Tridon smashed a tower right over his skull!
+
+@ weapon.hit aa:heel
+V: Swing, batter! Ha! Right across the kisser!
+M: With the steel beam! That's a weapon!
+V: It's a building material. Perfectly legal.
+
+@ weapon.hit aa:face
+M: Now he's got the equaliser, and he's using it!
+V: Disgraceful! A weapon! In a wrestling match! I'm appalled!
+
+@ water aa:heel
+V: Bath time! Ha ha ha!
+M: He threw our guy in the lake!
+
+@ crowd aa:heel
+V: He's giving the fans a closer look. That's called fan service.
+M: He threw him into the crowd! People are running for their lives!
+
+@ ropesnap aa:heel
+V: Who needs ropes? Ropes are for people with boundaries.
+M: The ropes are gone, and so is any chance of keeping this in the park.
+
+@ taunt.hit va:face
+V: Ha! That's what you get for waving at the cheap seats!
+M: He got caught playing to the crowd. Lesson learned.
+
+@ stall aa:heel
+M: He's running! Look at him run!
+V: He's leading him into a trap. Watch and learn.
+
+@ stall aa:face
+V: Ha! Look at the hero now! Running like the rent's due!
+M: He's catching his breath, Vance. Give him a second.
+
+@ tired va:face
+M: Our guy's running on empty. Dig deep, big fella!
+V: The tank's empty and the nearest gas station is rubble.
+
+@ momentum a:gorrak
+M: Gorrak's glowing! Those spines are lighting up! He's ready!
+V: Somebody get a bucket of water. A big one. Lake-sized.
+
+@ momentum a:mechra
+V: All systems green. Finisher protocol armed. This is my favourite part.
+M: Mechra's powered all the way up, and that is bad news for somebody.
+
+@ momentum a:tridon
+V: Listen to that thunder. The storm is here, Brannigan.
+M: Tridon's crackling with lightning. He's ready to end it.
+
+@ military.arrive aa:heel
+V: Shoo! Go on! Take your little tanks home!
+M: The army just rolled into Grant Park!
+
+@ lm.any a:mechra
+V: Mechra just did sixty years of urban planning in one throw.
+M: That was a landmark! People travel from all over the world to see that!
+V: Well, now they've seen it.
+
+@ lm.any a:tridon
+V: Tridon never liked the architecture here. Too many right angles.
+M: He just demolished a piece of Chicago history!
+
+@ lm.any a:gorrak
+M: Gorrak, no! That's one of OURS!
+V: Ha! Your hero just wrecked a landmark! Where's the outrage now, Brannigan?
+M: He'll help rebuild it.
+V: With what? His tail?

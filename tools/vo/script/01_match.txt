@@ -1,0 +1,340 @@
+# KAIJU HAVOC title match commentary, part 1: the show around the fight.
+# Format: "@ topic cond..." opens a block; each paragraph is one entry (one line, or an exchange).
+# M = Mike Brannigan (play-by-play, the straight man). V = Sterling Vance (colour, the heel's best friend).
+# Conds: a: / v: actor and victim kaiju (gorrak, mechra, tridon), aa: / va: their alignment (face, heel),
+#        mu: the match-up (fh face v heel, hh, ff), pair:x+y the two in the ring, lm: a landmark id, m: a move id.
+
+@ intro
+M: Welcome to Grant Park, Chicago! I'm Mike Brannigan, and this is the Kaiju Heavyweight Title!
+V: And I'm Sterling Vance, the smartest man within three hundred miles. You're welcome, Chicago.
+
+M: A hundred thousand people in Grant Park, and every one of them is standing too close.
+V: They paid for the splash zone, Brannigan. Let them enjoy it.
+
+M: No referee. No count-out. No rules. Falls count anywhere in the city of Chicago!
+V: Finally, a fair fight. Rules only ever helped the crybabies.
+
+M: Folks, the mayor asked us to say this: the city is not responsible for your parked car.
+V: Or your office. Or your block.
+
+M: Best two out of three falls, and the whole city is the ring!
+V: I hope you renters have insurance.
+
+@ intro pair:gorrak+mechra
+M: Gorrak, the pride of Lake Michigan, against the Iron Executioner, Mechra!
+V: Flesh against the future, Brannigan. And the future has a plasma cannon.
+
+M: Gorrak grew up in that lake. Mechra was bolted together in a lab!
+V: Exactly. One of them was built on purpose.
+
+M: This city loves Gorrak, Vance.
+V: This city also loves ketchup-free hot dogs. Their judgment is suspect. Mechra in two straight.
+
+@ intro pair:gorrak+tridon
+M: The hometown hero, Gorrak, against the Three-Headed Storm, Tridon!
+V: Three heads, Brannigan. That is three times the brains of that overgrown hedgehog.
+
+M: Tridon flew in this morning and has already insulted the pizza.
+V: All three heads agreed it was a casserole. Royalty is never wrong.
+
+M: Gorrak fights for Chicago tonight!
+V: And Tridon fights for somebody that matters. Three somebodies, actually.
+
+@ intro pair:mechra+tridon
+M: Mechra against Tridon. Folks, I do not know who to root for.
+V: I do! Both of them! This is the greatest night of my life!
+
+M: The Iron Executioner against the Three-Headed Storm. Somebody has to lose.
+V: Not if they destroy the city first. Then everybody wins.
+
+M: Two of the most despicable creatures in this sport, in one ring.
+V: Two visionaries, Brannigan. Finally, a main event with some class.
+
+@ intro mu:ff
+M: Two crowd favourites tonight. Chicago is going to cheer itself hoarse.
+V: Disgusting. Not one decent villain in the building.
+
+@ entrance a:gorrak
+M: Here he comes, out of Lake Michigan! Listen to this city! Gorrak!
+V: He tracks lake water everywhere he goes. Somebody get a mop.
+
+M: The Atomic Tyrant! Chicago's own! Gorrak is here!
+V: Tyrant. They cheer a thing called the tyrant. I rest my case about these people.
+
+M: Look at the size of him! Look at those spines catch the sunset!
+V: He looks like a cactus that lost a bar fight.
+
+@ entrance a:mechra
+M: And here comes the Iron Executioner. Listen to these boos, Vance.
+V: That's not booing. That's the sound of a city in awe. Mechra!
+
+V: Feast your eyes, Brannigan. Forty thousand tons of pure engineering. Mechra!
+M: Forty thousand tons of bad attitude, you mean.
+
+M: Mechra, stomping straight through what used to be the Loop.
+V: It took the shortest route. That's efficiency. You could learn something.
+
+@ entrance a:tridon
+V: All rise! All rise for the Three-Headed Storm! Tridon!
+M: Nobody is rising, Vance.
+
+M: Here comes Tridon, and all three heads are arguing about who goes first.
+V: That's called a board meeting, Brannigan. Leadership.
+
+M: Tridon, soaking in the boos like it's a standing ovation.
+V: Three crowns, one body. You are looking at royalty, you peasant.
+
+@ bell
+M: There's the bell! Here we go!
+
+M: The bell rings in Grant Park, and we are underway!
+
+M: Chicago, are you ready? Here we go!
+V: Somebody move the food trucks.
+
+M: And there's the bell! Hold on to something, Chicago!
+
+V: Ring the bell and get out of the way. Quickly.
+M: For once, Vance, good advice.
+
+M: We are underway for the Kaiju Heavyweight Title!
+
+@ fall.two
+M: Second fall, here we go!
+
+M: One fall in the books. The second is underway!
+V: Pace yourself, Brannigan. There's a lot of city left.
+
+M: Back to it! Fall number two!
+
+@ fall.three
+M: It all comes down to this! The deciding fall for the title!
+V: Winner takes the belt. Loser pays for the city.
+
+M: One fall apiece! This next one is for everything!
+
+M: Third and deciding fall! Chicago is on its feet!
+V: What's left of Chicago, anyway.
+
+@ fall.end aa:face
+M: He got him! One fall to the good guys!
+V: Fluke. Total fluke. I want that noted for the record.
+
+M: That's the fall! Listen to Grant Park!
+V: Listen to them. A hundred thousand people, all wrong.
+
+M: One, two, three! He takes the fall!
+V: The count was fast. I don't care that there's no referee. It was fast.
+
+@ fall.end aa:heel
+V: Ha ha! That's the fall! Write it down, Brannigan, in ink!
+M: He stole one. But he got it.
+
+M: I hate to say it, folks. That's the fall.
+V: You love to say it. Say it again. Slower.
+
+V: One fall for intelligence! One fall for class!
+M: One fall for cheating, Vance.
+
+@ fall.end a:gorrak
+M: Gorrak takes the fall! Chicago's own takes the fall!
+V: One. He needs two. Can he even count that high?
+
+@ fall.end a:mechra
+V: Calculated. Executed. Mechra takes the fall, exactly as I predicted.
+M: You predicted two minutes, Vance. It's been a lot longer than that.
+
+@ fall.end a:tridon
+V: Three heads, one fall! Bow down, Chicago!
+M: Tridon takes the fall, and now we have to listen to this.
+
+@ ko
+M: He's out! He is OUT COLD!
+
+M: Lights out! He is not getting up!
+
+M: Good night! Somebody check on him!
+V: Somebody check on the street he landed on.
+
+M: Out cold in the middle of Chicago!
+
+@ ko va:face
+M: No! No! Get up! Somebody help him!
+V: Leave him. He looks comfortable.
+
+V: Timber! Ha ha! Good night, hero!
+M: Have some decency, Vance.
+
+@ ko va:heel
+M: Knocked out! Knocked all the way out!
+V: He's resting! He's just resting his eyes! All of them!
+
+V: Get up! GET UP! I have money on this!
+M: He can't hear you, Vance. Nobody's home.
+
+@ match.over aa:face
+M: He did it! HE DID IT! The good guys win the big one!
+V: This is the worst day of my life. And I was married four times.
+
+M: Chicago has its champion! Listen to this city!
+V: I'm filing a protest. I'm filing six of them.
+
+M: What a fight! What a night! The title stays with the people!
+V: The people. Ugh. I need a shower.
+
+@ match.over aa:heel
+V: YES! YES! Brains beats brawn! I have been telling you people for years!
+M: A dark, dark night in Chicago, folks.
+
+V: Champion! Champion of the world! And he did it his way!
+M: His way was the low road, Vance. But the belt is his.
+
+M: I don't believe it. I do not believe it.
+V: Believe it, Brannigan! Somebody get me a cigar and a parade route!
+
+@ match.over a:gorrak
+M: Gorrak! GORRAK! The pride of Lake Michigan is the heavyweight champion!
+V: Fine. FINE. Enjoy it, lizard. Rent's due on the first.
+
+M: Sweet home Chicago! Gorrak has done it!
+V: I'm going to be sick. Right here on the desk.
+
+@ match.over a:mechra
+V: The machine wins! The future is here, and it has a belt around its waist!
+M: Mechra is the champion. Heaven help this city.
+
+V: Mechra! Flawless! Efficient! Somebody polish the champion!
+M: Somebody hide the champion's off switch, before I find it.
+
+@ match.over a:tridon
+V: Three heads! One crown! Long live the king! Kings! Long live all of them!
+M: Tridon is the champion, and we will never hear the end of it.
+
+V: Tridon! I knew it! All three of me knew it!
+M: There's one of you, Vance. One is plenty.
+
+@ match.over a:gorrak v:mechra
+M: Gorrak sends that bucket of bolts to the scrapyard! What a win!
+V: It was a software update. Mechra was mid-update! It doesn't count!
+
+@ match.over a:gorrak v:tridon
+M: Gorrak clips the wings of the Three-Headed Storm! He's the champion!
+V: Two of the heads weren't even trying. Recount!
+
+@ match.over a:mechra v:gorrak
+V: Scrap metal? That scrap metal just flattened your hero, Brannigan!
+M: Gorrak gave everything he had. Tonight, it wasn't enough.
+
+@ match.over a:tridon v:gorrak
+V: Down goes the hedgehog! Royalty reigns in the Windy City!
+M: Chicago is stunned. Gorrak is down, and Tridon has the title.
+
+@ banter
+V: You know, Brannigan, I used to manage champions.
+M: You used to manage a car wash, Vance.
+
+M: The damage estimate is already in the billions, folks.
+V: Billions? In this neighbourhood? Please.
+
+V: I gave the pilot of that news helicopter twenty dollars to fly lower.
+M: Why would you do that?
+V: Better seats.
+
+M: A reminder: the Red Line is suspended until further notice.
+V: Because it's wrapped around a kaiju. Read the room, Brannigan.
+
+V: Is my hair all right? We're on camera.
+M: There's a monster fight behind you, Vance. Nobody is looking at your hair.
+
+M: I've called fights for thirty years. I have never worked a ring this size.
+V: Thirty years, and still no neck tie that matches.
+
+V: I said it at the weigh-in and I'll say it again.
+M: The scale broke at the weigh-in.
+V: Exactly my point.
+
+M: They are selling deep dish in the stands tonight.
+V: That's not pizza. That's a casserole with a publicist.
+
+V: Who's paying for all this, anyway?
+M: The taxpayers, Vance.
+V: Ha! Suckers.
+
+M: If you're just joining us, you picked a good time.
+V: If you just parked nearby, you picked a bad one.
+
+V: I could do this, you know. Wrestle. I have the build.
+M: You pulled a muscle opening your microphone, Vance.
+
+M: The National Weather Service has classified this match as a weather event.
+V: That's the first accurate forecast they've had all year.
+
+V: Brannigan, when this is over, you're buying dinner.
+M: With what restaurant, Vance? Look around.
+
+M: Both of these monsters are breathing hard now.
+V: I'd be breathing hard too if I had to listen to you for three falls.
+
+V: I love this city. The wind. The lake. The breakable buildings.
+M: That's the nicest thing you've said all night, and it's still terrible.
+
+M: We'd like to thank our broadcast crew, who are very brave, and very far away.
+V: Cowards. I'm right here. Behind you.
+
+@ banter mu:fh
+V: You know what your hero's problem is, Brannigan? No vision.
+M: He's got heart, Vance.
+V: Heart doesn't have a cannon.
+
+M: The people are behind the good guy tonight!
+V: The people are behind a fence, and it's not going to help them.
+
+V: I'm not saying he cheats. I'm saying he wins creatively.
+M: That is exactly what cheating is, Vance.
+
+M: You could try being fair for one night.
+V: I'm always fair. I'm fair to the side that's right.
+
+V: Heroes. Always with the heart, and the courage, and the losing.
+M: He's not losing, Vance.
+V: Give it time.
+
+@ banter mu:hh
+V: I can't lose tonight, Brannigan. Whoever wins, I was right.
+M: And whoever wins, Chicago was wrong to sell tickets.
+
+M: No good guys in this one, folks. Just pick the one you dislike less.
+V: I'll take both. In fact, I'll take them to dinner.
+
+V: Look at that. Professionals, going about their business.
+M: Their business is wrecking my city!
+V: And business is good.
+
+@ banter pair:gorrak+mechra
+V: Mechra runs on a fusion core. Your boy runs on lake water and applause.
+M: And he's still standing, isn't he?
+
+M: Mechra hasn't blinked once in this fight.
+V: It doesn't have eyelids. It has a visor. That's called an upgrade.
+
+V: Mechra calculated four hundred ways to win this match.
+M: Has it calculated what happens when Gorrak gets angry?
+V: That's a rounding error.
+
+@ banter pair:gorrak+tridon
+V: Tridon has three heads. That's a head for offence, a head for defence, and a head for looking good.
+M: And not one of them saw that last shot coming.
+
+M: Gorrak is fighting three heads at once, and he's holding his own!
+V: That's because the left one is lazy. Always has been.
+
+V: You ever try to argue with royalty, Brannigan?
+M: I'm doing it right now, apparently.
+
+@ banter pair:mechra+tridon
+V: This is like watching two of my favourite children fight. Beautiful.
+M: You don't have children, Vance.
+V: That you know of.
+
+M: A robot against a dragon, and I've got you next to me. Some night.
+V: You're welcome.

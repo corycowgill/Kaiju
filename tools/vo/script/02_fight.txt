@@ -1,0 +1,864 @@
+# Part 2: the fight itself. a: is whoever is doing it, v: whoever it is done to.
+
+@ strike
+M: Big right hand!
+
+M: What a shot!
+
+M: That rattled the skyline!
+
+M: Right on the jaw!
+
+M: Oh, that one landed flush!
+
+M: A stiff shot, right down the middle!
+
+V: I felt that one in my fillings.
+
+M: Big shot! You could hear that in Milwaukee!
+
+M: Trading blows in the middle of the park!
+
+@ strike aa:face
+M: Give it to him! Give it to him!
+
+M: He's taking the fight right to him!
+V: Assault! That's assault, Brannigan!
+
+V: Oh, come on. He wasn't ready.
+M: He's been ready all night!
+
+M: There's another one! He's fighting for this whole city!
+
+V: A lucky punch. Even a blind kaiju finds a jaw now and then.
+
+@ strike aa:heel
+V: Beautiful! Textbook! Hang that one in a museum!
+
+M: A cheap shot, right in the ribs!
+V: Cheap? That was top dollar, Brannigan.
+
+V: Ha! Right on the button!
+M: You don't have to enjoy it so much.
+
+V: Precise. Surgical. That's how a professional does it.
+
+M: He's hammering away, and I don't like it.
+V: Nobody asked what you like.
+
+@ strike.big
+M: Great Chicago Fire, what a shot!
+
+M: Holy Lake Michigan! He nearly took his head off!
+
+M: A haymaker! That shook the Loop!
+
+M: OH! He got ALL of that one!
+
+M: What a blast! Windows are breaking in Indiana!
+
+V: Somebody get a broom. He just knocked the taste out of his mouth.
+
+M: A thunderous shot! He's rocked!
+
+@ strike.big aa:face
+M: He's rocked him! He's got him wobbling! Chicago is on its feet!
+V: He slipped! The ground is uneven! It's a park!
+
+M: What a shot by the hero! He's got him reeling!
+V: A fluke. A statistical accident.
+
+@ strike.big aa:heel
+V: Lights out! Did you see that? Tell me you saw that!
+M: I saw it, Vance. I wish I hadn't.
+
+V: THAT is power. THAT is what a champion hits like!
+M: He's hurt! The hometown hero is hurt!
+
+@ strike.big a:gorrak
+M: Gorrak with a sledgehammer of a right hand! Holy Lake Michigan!
+V: He hits like a truck. A dumb truck.
+
+M: Gorrak unloads! That's lake-water strength, folks!
+
+@ strike.big a:mechra
+V: Hydraulic! Eight thousand pounds per square inch, right in the mouth!
+M: A piston of a punch from Mechra!
+
+M: Mechra's arm comes down like a wrecking crane!
+V: It IS a wrecking crane. I've seen the blueprints.
+
+@ strike.big a:tridon
+V: Which head hit him? Trick question! All of them!
+M: Tridon with a wicked shot!
+
+M: A wing shot from Tridon, and it nearly took his head off!
+V: Imagine having wings, Brannigan. Imagine having anything.
+
+@ strike.combo
+M: Left! Right! Another one! He's unloading!
+
+M: A combination! He's teeing off!
+
+M: Three, four, five shots in a row!
+V: Somebody stop counting. It's embarrassing.
+
+M: He's got him against the ropes and he's firing away!
+
+@ strike.combo aa:face
+M: He's pouring it on! Listen to this crowd!
+V: I can't. I've got my fingers in my ears.
+
+@ strike.combo aa:heel
+V: Look at this! It's a clinic! Take notes, Chicago!
+M: Somebody slow him down!
+
+@ strike.counter
+M: Counter shot! He walked right into it!
+
+M: Caught him coming in! What timing!
+
+V: Ooh. He ran into that one face first.
+
+@ whiff
+M: Swing and a miss!
+
+M: Nothing but air!
+
+V: He just punched the wind. In Chicago, the wind punches back.
+
+M: He missed by a city block!
+
+@ whiff aa:face
+V: Ha! He couldn't hit the lake from a boat!
+M: Give him a second, Vance.
+
+@ whiff aa:heel
+M: A wild swing, and he comes up empty!
+V: That was a warning shot. He meant to do that.
+
+@ block
+M: Blocked! Good defence!
+
+M: He covered up just in time!
+
+M: Right into the guard!
+
+V: He's hiding behind those arms like they owe him money.
+
+@ block aa:heel
+V: Defence! The thinking kaiju's game!
+M: He's just hiding, Vance.
+
+@ guardbreak
+M: He smashed right through the guard!
+
+M: The guard is broken! He's wide open!
+
+V: So much for defence.
+
+M: He's been battered clean out of his stance!
+
+@ reversal
+M: Reversal! Beautifully timed!
+
+M: Countered! He read it all the way!
+
+M: He turned it around! What instincts!
+
+M: Reversed! How did he do that?
+
+@ reversal aa:face
+M: He reversed it! The crowd comes unglued!
+V: He got lucky! Nobody plans that!
+
+M: A reversal by the good guy! What a fighter!
+V: He tripped into it, Brannigan.
+
+@ reversal aa:heel
+V: Genius! Three moves ahead! I told you!
+M: He countered it, and I hate that he's this good.
+
+V: You can't out-think him, Brannigan. I've tried.
+
+@ reversal a:mechra
+V: Calculated. Mechra saw that coming last Tuesday.
+M: Countered by the machine!
+
+@ grab
+M: Collar and elbow! They lock up!
+
+M: He's got a hold of him!
+
+M: Locked up in the middle of the ring!
+
+V: Now we'll see who's really strong.
+
+@ grab.escape
+M: He fights out of it!
+
+M: He slipped the hold!
+
+V: Slippery. I respect that.
+
+@ whip
+M: Irish whip! Sent for the ride!
+
+M: Off the ropes he goes!
+
+M: Whipped across the ring!
+
+M: He sends him flying toward the city!
+
+V: Have a nice trip. See you next fall.
+
+@ suplex
+M: Up and over! Suplex!
+
+M: Suplex! The whole Loop felt that!
+
+M: Dropped right on the back of the head!
+
+M: A hundred thousand tons, up and OVER!
+
+V: That registered on a seismograph in Ohio.
+
+@ suplex aa:heel
+V: Perfect arch. Perfect bridge. I taught him that.
+M: You've never taught anybody anything, Vance.
+
+@ slam
+M: Up overhead... and DOWN!
+
+M: Gorilla press! He's holding him up there!
+
+M: Military press, and he drops him like a sack of bricks!
+
+V: He lifted a skyscraper's worth of monster. Fine. I'm a little impressed.
+
+@ slam aa:face
+M: Look at the strength! He's got him up over his head!
+V: Put him down! That's a neck injury waiting to happen!
+
+@ swing
+M: Around and around! The giant swing!
+
+M: The giant swing! How many turns?
+
+M: Somebody stop the ride!
+
+V: I'm getting dizzy just watching. Make him stop.
+
+M: He's swinging him like a wrecking ball!
+
+@ sig m:chokeslam
+M: By the throat! TYRANT CHOKESLAM!
+
+M: Gorrak's got him by the neck! Up he goes! CHOKESLAM!
+V: That's a choke! He's choking him! It's in the name!
+
+M: The Tyrant Chokeslam! Right through the mat!
+
+@ sig m:bulldozer
+M: He's got him up! Here comes the LOOP BULLDOZER!
+
+M: The Loop Bulldozer! Gorrak is running right through the buildings!
+V: Those were offices, you maniac!
+
+M: Bulldozer! Through one, through two, and DOWN!
+
+@ sig m:rana
+M: Tridon leaps! STORM HURRICANRANA!
+
+V: The Storm Hurricanrana! Poetry! With wings!
+M: I'll give him that one. That was something.
+
+M: Hurricanrana! He spun him like a top!
+
+@ sig m:ddt
+M: Tridon's got the head! SKYFALL D.D.T.!
+
+V: Skyfall! Straight down, from the top of the sky!
+M: Planted him! Planted him like a flag!
+
+M: The Skyfall D.D.T.! Right on top of his head!
+
+@ sig m:breaker
+M: Mechra's got him up... CIRCUIT BREAKER!
+
+V: The Circuit Breaker! Right across the knee! Ha!
+M: He bent him in half!
+
+M: Circuit Breaker! That is a back that will never be the same!
+
+@ sig m:piledriver
+M: Oh no. No! SYSTEM CRASH!
+
+V: System Crash! Control, alt, delete, good night!
+M: A piledriver from a machine. That ought to be illegal.
+
+M: Mechra spikes him! The System Crash!
+
+@ power.beam a:gorrak
+M: Gorrak's spines are glowing! ATOMIC BREATH!
+
+M: Atomic Breath! Look at that beam!
+V: That's a fire hazard! Somebody write him a ticket!
+
+M: Here it comes! Gorrak lights up the skyline!
+
+@ power.beam a:mechra
+V: Plasma Cannon, charging! Cover your eyes, Brannigan!
+M: PLASMA CANNON! Good grief!
+
+M: Mechra fires the cannon! Right across the park!
+V: Precision engineering. That's what tax-free research gets you.
+
+M: The Plasma Cannon! Get down!
+
+@ power.beam a:tridon
+M: VOLT BEAM! Tridon lights him up!
+
+V: Volt Beam! From the smart head! I always liked that one!
+M: Lightning from the mouth! Look out!
+
+M: Tridon spits lightning across Grant Park!
+
+@ power.roar a:gorrak
+M: PRIMAL ROAR! Feel that, Chicago!
+
+M: Gorrak roars, and the whole park shakes!
+V: Use your inside voice, you animal!
+
+@ power.roar a:mechra
+M: MISSILE BARRAGE! Mechra opens up!
+
+V: Missile Barrage! Sixteen of them! I counted on the invoice!
+M: Missiles! In a wrestling match!
+
+M: Missiles everywhere! Take cover!
+
+@ power.roar a:tridon
+M: STORM CRY! All three heads at once!
+
+V: The Storm Cry! Three-part harmony, Brannigan!
+M: My ears! That's the worst choir I ever heard!
+
+@ power.charge a:gorrak
+M: TAIL SWEEP! Gorrak clears the ring!
+
+M: Gorrak swings that tail like a freight train!
+V: The tail! He's using the tail! Is that legal?
+M: Everything's legal, Vance!
+
+@ power.charge a:mechra
+M: ROCKET DASH! Mechra goes through him like a missile!
+
+V: Rocket Dash! Zero to sixty in, well, zero!
+M: He never saw it coming!
+
+@ power.charge a:tridon
+M: WING SLAM! Tridon flattens him!
+
+V: Wing Slam! That's what a forty-storey wingspan buys you!
+M: Swatted like a fly!
+
+@ power.stomp
+M: He stomps the ground, and half the park jumps!
+
+M: A shockwave! The ring is bouncing!
+
+V: There go the food trucks.
+
+M: The earth shakes under Grant Park!
+
+@ power.ult a:gorrak
+M: Gorrak is glowing from tail to teeth! He is going nuclear!
+V: Not near the desk! NOT NEAR THE DESK!
+
+M: Everything he has! Gorrak unleashes it all!
+
+@ power.ult a:mechra
+V: Full power! All systems! This is what I've been waiting for!
+M: Mechra's emptying the whole arsenal! Get down!
+
+M: Every weapon Mechra's got, all at once! Heaven help us!
+
+@ power.ult a:tridon
+V: All three heads, full power! Behold! BEHOLD!
+M: Tridon's calling down the whole storm!
+
+M: The sky just turned white over Chicago! Tridon's ultimate!
+
+@ power.hit
+M: Direct hit!
+
+M: He caught every bit of that!
+
+V: That left a mark. And a crater.
+
+M: He's smoking! He is literally smoking!
+
+@ knockdown
+M: Down he goes!
+
+M: He's down! Right in the middle of the ring!
+
+M: Knocked off his feet!
+
+M: He hits the mat, and Chicago shakes!
+
+M: Timber!
+
+@ knockdown va:face
+M: He's down! Get up! Come on, get up!
+V: Stay down. Take a nap. You've earned it.
+
+V: Down goes the hero! Ha! Somebody call his mother!
+M: He's not finished, Vance.
+
+M: The hometown boy is down, and this crowd is begging him to get up!
+
+@ knockdown va:heel
+M: Down goes the bully! How do you like it?
+V: He slipped! There's lake water all over this ring!
+
+V: Get up! Get up, you magnificent brute!
+M: He's flat on his back, Vance. Enjoy the view.
+
+M: He put him down! Listen to this place!
+V: I'm lodging a complaint. Somebody find me a referee. Oh. Right.
+
+@ knockdown v:gorrak
+M: Gorrak is down! The pride of Lake Michigan is down!
+V: Somebody hose him off and send him home.
+
+@ knockdown v:mechra
+M: Mechra's down! Forty thousand tons of scrap, flat on the canvas!
+V: It's rebooting! Give it a minute!
+
+@ knockdown v:tridon
+M: Tridon's down, and all three heads are seeing stars!
+V: That's nine sets of stars. Have a heart, Brannigan.
+
+@ pin.start
+M: Cover! Is this it?
+
+M: Shoulders down! Count it!
+
+M: Into the cover!
+
+M: He's pinning him! In the middle of Chicago!
+
+M: Hooks the leg! Could this be it?
+
+@ pin.start aa:face
+M: He's got him down! Count with me, Chicago!
+V: Don't you dare count. Nobody count!
+
+M: Cover! This could be it for the good guys!
+
+@ pin.start aa:heel
+V: Count it! One, two, three! How hard is that?
+M: Kick out! Come on, kick out!
+
+V: Stay down, hero. It'll be over in a moment.
+
+@ pin.lazy
+M: A lazy cover! One foot on the chest! How disrespectful!
+V: It's called confidence, Brannigan.
+
+M: He's barely covering him! He thinks it's already over!
+V: Because it IS over. Count faster.
+
+V: Look at that. A cover with style. With flair.
+M: With arrogance, you mean.
+
+@ pin.kick
+M: Kick out!
+
+M: Not yet! Shoulder up!
+
+M: He kicks out!
+
+M: No! He's still in this!
+
+@ pin.kick va:face
+M: He kicks out! He will not stay down!
+V: Oh, for crying out loud.
+
+M: Shoulder up! Chicago roars!
+V: That was three! That was at least a two and a half!
+
+@ pin.kick va:heel
+V: Ha! Not even close! Nice try, hero!
+M: He kicked out, but he's hurting.
+
+M: He kicked out, and I can't believe it.
+V: Believe it. Greatness doesn't stay down.
+
+@ pin.near
+M: SO close! Two and nine tenths!
+
+M: I thought that was three! I thought that was three!
+
+M: How did he kick out of THAT?
+
+M: A hair from three! One more blink and it's over!
+
+M: The hand was coming down! He survives!
+
+@ pin.near va:face
+M: He kicked out! By a whisker! Great Chicago Fire!
+V: NO! That was three! I counted three! Twice!
+
+M: He's alive! He is still alive! Listen to these people!
+V: My heart. Brannigan, I think that was my heart.
+
+@ pin.near va:heel
+V: HA! He's fine! He's fine! I was never worried!
+M: You were under the desk, Vance.
+
+M: So close! This city wanted that one so bad!
+V: Well, this city can't have it.
+
+@ pin.finkick
+M: HE KICKED OUT! Nobody kicks out of that! NOBODY!
+
+M: That was the finisher! He kicked out of the FINISHER!
+V: That's impossible. That's actually impossible. Check him for a second heart.
+
+M: I have never seen that! Thirty years, I have never seen that!
+
+M: Grant Park has come unglued! He survived it!
+
+@ pin.finkick va:face
+M: He will NOT stay down! The heart of this monster! He kicked out!
+V: I quit. I'm quitting. Find a new partner.
+
+@ pin.finkick va:heel
+V: You can't kill what's already perfect! HA HA HA!
+M: He kicked out, and the hero cannot believe it. Neither can I.
+
+@ comeback
+M: He's firing up! Look at him! He's FIRING UP!
+
+M: He's feeding off this crowd!
+
+M: Here he comes! The fire is back!
+
+M: Something just woke up in him! Look out!
+
+@ comeback aa:face
+M: Listen to Chicago! Their hero is FIRING UP!
+V: Oh no. Oh no, no, no. Somebody put that out!
+
+M: He's shaking it off! He feels this city behind him!
+V: That's not fair. He can't just decide not to be hurt!
+
+@ comeback aa:heel
+V: Now you've done it! Now you've made him mad!
+M: He's got a second wind, and this crowd wants no part of it.
+
+V: You don't hurt a genius. You only focus him.
+
+@ comeback a:gorrak
+M: Gorrak's spines are lit up like State Street at Christmas! He's firing up!
+V: He's glowing. Brannigan, why is he glowing? Make him stop glowing.
+
+@ comeback a:mechra
+V: Overdrive! Mechra just switched to overdrive!
+M: The machine is running red hot!
+
+@ comeback a:tridon
+V: All three heads are awake now. You're in trouble, hero.
+M: Tridon is fired up, and all three of them are angry!
+
+@ nosell
+M: No effect! He's not even feeling it!
+
+M: He shrugs it off!
+
+M: He wants more! He's asking for more!
+
+V: He hit him with everything, and he just got angrier.
+
+@ nosell aa:face
+M: He's walking right through it! You can't hurt him now!
+V: Then hit him harder! Hit him with a bus!
+
+@ comeback.done
+M: What a comeback! He's turned this whole thing around!
+
+M: Down goes the other guy! He's done it!
+
+M: From the brink of defeat! What a rally!
+
+@ comeback.done aa:face
+M: He's back! He's all the way back! Chicago, your hero is alive!
+V: I liked him better when he was losing.
+
+@ comeback.done aa:heel
+V: And THAT, Brannigan, is why you never count out a professional.
+M: He turned it around, and he did it the hard way.
+
+@ comeback.cut
+M: Cut off! The fire is out!
+
+M: He saw it coming! The comeback is over before it started!
+
+M: Snuffed out! Just like that!
+
+@ comeback.cut va:face
+V: Ha! Sit down, hero. Story time is over.
+M: He cut him off, and he took the heart right out of this crowd.
+
+@ comeback.cut va:heel
+M: He stopped him cold! Back to earth, big fella!
+V: He was pacing himself!
+
+@ rally
+M: The crowd is trying to rally him!
+
+M: Listen to Chicago! They want him back in this!
+
+M: A hundred thousand people, stomping their feet!
+
+V: Chanting. Wonderful. That always fixes a concussion.
+
+@ rally a:gorrak
+M: Gor-rak! Gor-rak! Listen to it, Vance! Listen to this city!
+V: I'm trying very hard not to.
+
+@ critical
+M: He's in real trouble now!
+
+M: He is running on fumes!
+
+M: He can barely stand, folks!
+
+M: One more big shot could end this!
+
+@ critical va:face
+M: Our hero is in serious trouble. I don't like the look of this.
+V: I love the look of this. Frame it.
+
+V: Stick a fork in him, Brannigan. He's done.
+M: Don't you count him out. Not in this town.
+
+@ critical va:heel
+M: He's on wobbly legs! One more shot, big fella, one more shot!
+V: He's fine! He's conserving energy!
+
+V: It's a strategy. It's called rope-a-dope. Look it up.
+M: The ropes snapped ten minutes ago, Vance.
+
+@ critical v:mechra
+M: Mechra is sparking! There's smoke pouring out of that thing!
+V: That's steam. It's supposed to do that.
+
+@ critical v:tridon
+M: Tridon is fading! Two of those heads are barely up!
+V: The middle one's still thinking. That's the one that counts.
+
+@ critical v:gorrak
+M: Gorrak is hurt bad. Come on, big fella. Chicago needs you.
+V: Chicago needs a new mascot.
+
+@ tired
+M: He's gassed! Nothing left in the tank!
+
+M: He's breathing hard, folks!
+
+V: Out of breath already? Cardio, people. Cardio.
+
+M: He emptied the tank, and now he's paying for it!
+
+@ tired va:heel
+M: The bully is out of gas!
+V: He's idling. There's a difference.
+
+@ momentum
+M: He's fired up! The momentum is all his!
+
+M: He's got a full head of steam!
+
+M: He's ready! You can feel it!
+
+@ momentum aa:face
+M: He's ready, Chicago! He's got that look in his eye!
+V: What look? He always looks like that. Like a confused iguana.
+
+@ momentum aa:heel
+V: He's ready. This is where champions end things.
+M: He's loaded up, and I've got a bad feeling.
+
+@ finisher.start
+M: This could be it! Here it comes!
+
+M: He's calling for it! He's calling for the end!
+
+M: He's got him up! This is the finisher!
+
+@ finisher.start a:gorrak
+M: Gorrak hoists him up! Here it comes! ATOMIC DRIVER!
+
+M: He's taking him to the sky! Gorrak wants the Atomic Driver!
+V: Somebody stop him! There's no referee! Somebody hire one!
+
+M: Up, up, UP! The Atomic Driver is coming!
+
+@ finisher.start a:mechra
+V: Ignition! Here it comes, Brannigan! ROCKET BUSTER!
+M: Mechra's thrusters are lit! Oh no!
+
+M: Mechra takes him up on a pillar of fire! This is the Rocket Buster!
+
+V: Say good night, hero. Rocket Buster!
+
+@ finisher.start a:tridon
+V: Up they go! Up into the storm! THUNDERFALL!
+M: Tridon's carrying him into the clouds!
+
+M: Tridon takes flight with him! The Thunderfall is coming!
+
+V: Wave goodbye, Brannigan. Thunderfall!
+
+@ finisher.hit
+M: IT'S OVER! That has to be it!
+
+M: He drove him straight into the ground! Good night!
+
+M: The whole city jumped a foot! What an impact!
+
+@ finisher.hit a:gorrak
+M: ATOMIC DRIVER! Right through the mat! Holy Lake Michigan!
+V: He broke the park. He actually broke the park.
+
+M: The Atomic Driver! They felt that one in Canada!
+
+@ finisher.hit a:mechra
+V: ROCKET BUSTER! Flawless! Ten out of ten!
+M: He drove him through the ring like a nail!
+
+M: The Rocket Buster connects, and I think the crater has a crater!
+
+@ finisher.hit a:tridon
+V: THUNDERFALL! From the heavens! Bow down! BOW DOWN!
+M: He dropped him from the clouds! Good grief!
+
+M: Thunderfall! He fell out of the sky like a meteor!
+
+@ taunt aa:face
+M: He's playing to the crowd, and they love him for it!
+V: Showboat. Pathetic.
+
+M: He wants to hear it, Chicago! Let him hear it!
+
+M: Listen to this place! He's got them in the palm of his hand!
+V: His claw. He has claws, Brannigan.
+
+@ taunt aa:heel
+M: Now he's showboating. Turn around and fight!
+V: Let the man take a bow! He's earned it!
+
+V: Soak it in, Chicago! This is what greatness looks like!
+M: This is what a target looks like, Vance.
+
+M: He's posing for the cameras, and this crowd is letting him have it.
+V: That's the sound of love. Angry, jealous love.
+
+@ taunt a:gorrak
+M: Gorrak beats his chest, and the ground is shaking!
+V: Yes, yes, very loud. We're all very impressed.
+
+@ taunt a:tridon
+M: Tridon is posing. All three heads. In three different directions.
+V: Give the people every angle. That's show business.
+
+@ taunt a:mechra
+V: Look at that. Mechra just ran a victory animation. Mid-match.
+M: A little early for that, isn't it?
+
+@ taunt.hit
+M: Showboating will cost you!
+
+M: Never turn your back on a kaiju!
+
+M: He got caught posing!
+
+V: Well. That's what the pose is for. Draws them in.
+
+@ taunt.hit va:heel
+M: Ha! That's what you get! That's what you get for showing off!
+V: That was a sneak attack on a performing artist!
+
+@ stall
+M: He wants no part of this fight!
+
+M: You cannot win a title by running!
+
+M: The crowd is letting him hear it!
+
+V: It's called a tactical retreat, Brannigan. Generals do it all the time.
+
+M: Come on, get back in there and fight!
+V: He's sightseeing. It's a lovely city. What's left of it.
+
+@ ai.cheap
+M: A cheap shot! He jumped the gun!
+V: The early bird gets the worm, Brannigan.
+
+M: Despicable! He hit him before he was ready!
+V: Then he should have been ready.
+
+M: No honour! None whatsoever!
+V: Honour doesn't win belts. Mechra wins belts.
+
+@ ai.stomp
+M: He keeps putting the boots to him while he's down!
+V: Where else would you stomp him? He's on the ground.
+
+M: Kicking a kaiju while he's down. Disgraceful.
+V: It's called follow-through.
+
+M: Somebody get him off of him!
+V: Who? Who's coming? There is no referee. I love this match.
+
+@ ai.work
+M: Mechra is working on that back, piece by piece.
+V: Methodical. Like taking apart a watch. A very loud watch.
+
+M: He's targeting the spine! He's taking him apart!
+V: That's called a game plan. Your boy should try one.
+
+M: Mechra goes right back to the same spot.
+V: Find a weakness, hit the weakness. I love a professional.
+
+@ ai.dive
+M: Tridon is climbing the corner tower! He's going to fly!
+V: Look at that wingspan! Go on, Your Majesty!
+
+M: Up on the tower! Tridon's going up top!
+V: The high-rent district! Where he belongs!
+
+M: He's on top of the corner post! Look out below!
+
+@ ai.ropes
+M: Tridon hits the ropes!
+
+M: Off the cables, here he comes!
+V: Like a slingshot. A beautiful, three-headed slingshot.
+
+@ ai.guard
+M: He's covering up, waiting out the storm.
+V: Cold as steel. Let the hero punch himself out.
+
+M: He just stands there and takes it, behind that guard!
+V: You can't dent that armour. I've tried. With a wrench.
+
+@ ai.nosell
+M: He walked right through that! Did not even slow him down!
+
+M: That only made Gorrak angry!
+V: Everything makes him angry. He's a very simple animal.

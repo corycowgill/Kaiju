@@ -106,7 +106,7 @@ export function createHud(ctx, W) {
       calls: Array.from(root.querySelectorAll('.wr-call')),
       pin: $('wr-pin'), pinB: $('wr-pin').firstElementChild, count: root.querySelector('.wr-count'),
       mash: $('wr-mash'), mashT: root.querySelector('#wr-mash .t'), mashG: root.querySelector('#wr-mash .g'), mashFill: root.querySelector('#wr-mash .track i'),
-      prompt: $('wr-prompt'), wheel: $('wr-wheel'), ticker: $('wr-ticker'), tickerLine: root.querySelector('#wr-ticker .line'),
+      prompt: $('wr-prompt'), wheel: $('wr-wheel'), ticker: $('wr-ticker'), tickerLine: root.querySelector('#wr-ticker .line'), tickerTag: root.querySelector('#wr-ticker .tag'),
       cards: { player: cards[0], rival: cards[1] }, inter: $('wr-inter'),
       skip: $('wr-skip'), touch: $('wr-touch'), mashZone: $('wr-mash-zone'),
       btnGrab: $('wr-btn-grab'), btnBlock: $('wr-btn-block'), btnTaunt: $('wr-btn-taunt'), btnLock: $('wr-btn-lock'),
@@ -401,11 +401,13 @@ export function createHud(ctx, W) {
   }
 
   // ---- ticker -----------------------------------------------------------------
-  function say(text, tone = 'neutral', force = false) {
-    if (!live || !text || (!force && tickGap > 0)) return;
+  // The booth's line (commentary.js): who is speaking and what they say, up for as long as they take to say it
+  function say(text, tone = 'neutral', speaker = 'M', dur = 3) {
+    if (!live || !text) return;
     el.tickerLine.textContent = text;
-    el.ticker.className = 'on' + (tone !== 'neutral' ? ' ' + tone : '');
-    tickT = 4.2; tickGap = 2.2;
+    el.tickerTag.textContent = speaker === 'V' ? 'VANCE' : 'BRANNIGAN';
+    el.ticker.className = 'on ' + (speaker === 'V' ? 'vance' : 'mike') + (tone !== 'neutral' ? ' ' + tone : '');
+    tickT = Math.max(1.4, dur) + 0.5;
   }
 
   // ---- name cards, fall band, cinematic bars ----------------------------------
@@ -599,7 +601,7 @@ export function createHud(ctx, W) {
     on(EV.KO, () => { pinEnd(false); setMash(''); callout('K.O.!', '', 'result', ''); });
     // The match director's words
     on(EV.CALLOUT, (e) => callout(e.text, e.sub, e.tier, e.who));
-    on(EV.COMMENTARY, (e) => say(e.text, e.tone, e.tone !== 'neutral'));
+    on(EV.COMMENTARY, (e) => { if (e.vo) say(e.text, e.tone, e.speaker, e.dur); });
     on(EV.PROMPT, (e) => { if (e.id in evPrompt) { evPrompt[e.id] = !!e.show; slowT = 1; } });
     on(EV.LOCKON, (e) => {
       if (el.btnLock) el.btnLock.classList.toggle('on', !!e.on);
@@ -676,7 +678,7 @@ export function createHud(ctx, W) {
     el.wheel.classList.add('on');
     ['u', 'r', 'd', 'l'].forEach((sl, i) => { const n = el.wheel.querySelector('.' + sl); n.className = sl + (i ? '' : ' sel'); n.innerHTML = `${glyph('W')}<span class="ar">▲</span>WHIP`; });
     el.wheel.querySelector('.c').innerHTML = `${glyph('E')}SLAM`;
-    el.ticker.className = 'on hype'; el.tickerLine.textContent = 'There is the bell! We are under way in Chicago!';
+    el.ticker.className = 'on mike hype'; el.tickerLine.textContent = 'There is the bell! We are under way in Chicago! And what a night it is going to be.';
     // cards, fall band, letterbox, skip, touch cues
     for (const id of ['player', 'rival']) {
       const c = el.cards[id];

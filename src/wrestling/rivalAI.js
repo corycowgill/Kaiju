@@ -205,6 +205,7 @@ export function createRivalAI(ctx, W) {
     S.voiceAt = now + 4;
     const e = W.bus.ev(EV.COMMENTARY);
     e.text = L[Math.floor(rnd() * L.length) % L.length].replace('{0}', W.rival.name); e.tone = tone || 'hype';
+    e.key = key; e.who = 'rival'; // (commentary.js: the booth's own line for this beat)
     W.bus.emit(EV.COMMENTARY);
     note('voice', key, '');
   }
