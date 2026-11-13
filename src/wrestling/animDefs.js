@@ -929,8 +929,8 @@ const SIG_A = {
       K.mechT(Q, R); Q.hy -= 0.6; torso(Q, 0.15, 0, 0); hand(Q, 'L', 0.35, 0.05, 0.85); hand(Q, 'R', 0.35, 0.0, 0.85); elbow(Q, 'L', 1, -0.5, -0.3); elbow(Q, 'R', 1, -0.5, -0.3);
     });
     blend(P, R, rampIn(s, T.scoop + 0.02, T.knee) * (1 - ramp(s, T.roll, D - 0.1)), (Q) => {
-      K.mechT(Q, R); Q.hy -= 6.2; Q.hz -= 0.5; torso(Q, 0.25, 0, 0); Q.reach = 0;
-      Q.fLz = 3.4; Q.fLx = 1.6; Q.fRz = -4.6; Q.fRy = 0; Q.fRx = 1.6; Q.fRpit = 1.0; Q.kLo = 0.1;
+      K.mechT(Q, R); Q.hy -= 8.6; Q.hz -= 0.3; torso(Q, 0.25, 0, 0); Q.reach = 0;
+      Q.fLz = 4.4; Q.fLx = 1.6; Q.fRz = -5.4; Q.fRy = 0; Q.fRx = 1.6; Q.fRpit = 1.25; Q.kLo = 0.1; Q.kRo = 0.15;
       hand(Q, 'L', 0.35, -0.3, 0.8); hand(Q, 'R', 0.3, -0.45, 0.85); elbow(Q, 'L', 1, -0.3, -0.3); elbow(Q, 'R', 1, -0.3, -0.3); Q.hdp = 0.35; wings(Q, R, 0.6, 0);
     });
     P.hy += 0.7 * wobble(s, T.knee, 30, 9); P.hz -= 0.4 * wobble(s, T.knee, 40, 12);

@@ -1557,36 +1557,53 @@ function _setFocus(items, idx) {
     items[i].classList.toggle('pad-focus', i === idx);
   }
 }
-// Title menu rows, top to bottom: level cards, monster cards, START and extras.
+// Title menu rows for the step on screen (see _setMenuStep), top to bottom.
+// Mode select: the four mode cards, then the extras (trailer, gallery).
+// Fighter select: fighters, the cities this mode offers, its option list
+// (VS rival / soldier role) and START. The attract step has none.
 function _menuRows() {
-  return [
-    Array.from(document.querySelectorAll('#levelCards .level-card')),
+  const step = document.getElementById('menu').dataset.step;
+  const shown = (el) => el.getClientRects().length > 0;
+  const rows = step === 'mode' ? [
+    Array.from(document.querySelectorAll('#modeCards .mode-card')),
+    Array.from(document.querySelectorAll('.menu-extras button')).filter(shown),
+  ] : step === 'fighter' ? [
     Array.from(document.querySelectorAll('#monsterCards .monster-card')),
+    Array.from(document.querySelectorAll('#levelCards .level-card')).filter(shown),
+    Array.from(document.querySelectorAll('#menu .deployment-options select')).filter(shown),
     [document.getElementById('startBtn')],
-    Array.from(document.querySelectorAll('.menu-extras button')).filter(button => button.getClientRects().length),
-  ].filter((r) => r.length && r[0]);
+  ] : [];
+  return rows.filter((r) => r.length && r[0]);
 }
 function _menuTargets() {
   if (_upgradeVisible()) return Array.from(document.querySelectorAll('#upgrade-cards .ucard'));
   if (_menuVisible()) return _menuRows().flat();
   return [];
 }
-/** Jump the menu focus one row down (+1) or up (-1): first item of that row,
- *  or the selected card if the row has one. */
-function navigateMenuRow(dir) {
+/** Title menu cursor: dx steps along the focused row (or through an option
+ *  list), dy jumps rows, landing on the row's selected card when it has one.
+ *  With nothing focused yet, the first press shows the cursor where it starts. */
+function _menuNav(dx, dy) {
   const rows = _menuRows();
-  const flat = rows.flat();
-  let r = 0;
-  for (let acc = 0; r < rows.length; r++) {
-    if (_menuPad.focused < acc + rows[r].length) break;
-    acc += rows[r].length;
+  if (!rows.length) return;
+  const cur = rows.flat()[_menuPad.focused];
+  let r = cur ? rows.findIndex((row) => row.includes(cur)) : -1;
+  if (r < 0) { _menuFocus(_menuDefaultFocus(rows)); return; }
+  let c = rows[r].indexOf(cur);
+  if (dx && cur.tagName === 'SELECT') {
+    const n = cur.options.length;
+    cur.selectedIndex = (cur.selectedIndex + dx + n) % n;
+    cur.dispatchEvent(new Event('change'));
+    audio.ui?.('move');
+    return;
   }
-  if (_menuPad.focused < 0) r = dir > 0 ? -1 : rows.length;
-  const nr = Math.max(0, Math.min(rows.length - 1, r + dir));
-  const row = rows[nr];
-  const sel = row.find((el) => el.classList.contains('selected'));
-  _menuPad.focused = flat.indexOf(sel || row[0]);
-  _setFocus(flat, _menuPad.focused);
+  if (dx) c = Math.max(0, Math.min(rows[r].length - 1, c + dx));
+  if (dy) {
+    r = Math.max(0, Math.min(rows.length - 1, r + dy));
+    const sel = rows[r].findIndex((el) => el.classList.contains('selected'));
+    c = sel >= 0 ? sel : Math.min(c, rows[r].length - 1);
+  }
+  _menuFocus(rows[r][c]);
 }
 function navigateMenu(dir) {
   const items = _menuTargets();
@@ -1606,7 +1623,10 @@ function confirmMenu() {
   // The startBtn is disabled until a monster is picked; calling click()
   // on a disabled button does nothing, which is the right behaviour.
   if (target.disabled) return;
+  if (target.tagName === 'SELECT') { _menuNav(1, 0); return; } // A / Enter on a list steps through it
   target.click();
+  // Fighter picked from the keys / pad: the cursor goes on to GO
+  if (target.classList.contains('monster-card') && _menuVisible()) _menuFocus(document.getElementById('startBtn'));
 }
 function pollMenuGamepad(dt) {
   if (!_menuVisible() && !_upgradeVisible()) return;
@@ -1634,33 +1654,43 @@ function pollMenuGamepad(dt) {
   const dpadU = !!(pad.buttons[12] && pad.buttons[12].pressed);
   const dpadD = !!(pad.buttons[13] && pad.buttons[13].pressed);
   const aPressed = !!(pad.buttons[0] && pad.buttons[0].pressed) && !_menuPad.prevDown[0];
+  const bPressed = !!(pad.buttons[1] && pad.buttons[1].pressed) && !_menuPad.prevDown[1];
   const startPressed = !!(pad.buttons[9] && pad.buttons[9].pressed) && !_menuPad.prevDown[9];
+  const titleMenu = _menuVisible() && !_upgradeVisible();
+  const step = titleMenu ? _menuStepNow() : '';
+  if (titleMenu && (aPressed || bPressed || startPressed || dpadL || dpadR || dpadU || dpadD)) _menuInputFrom('pad');
 
   // Horizontal nav (left-stick + D-pad). Cooldown so a held direction
   // doesn't sprint through items.
   const wantLeft  = (ax < -0.55 || dpadL);
   const wantRight = (ax > 0.55 || dpadR);
-  if (_menuPad.cool === 0) {
-    if (wantLeft)  { navigateMenu(-1); _menuPad.cool = 0.20; }
-    else if (wantRight) { navigateMenu(+1); _menuPad.cool = 0.20; }
-  }
-  // On the title menu only, vertical jump between rows (levels, monsters, start)
-  if (_menuVisible() && !_upgradeVisible()) {
+  if (step === 'title') {
+    // Attract screen: any face button or Start moves on to the mode select
+    if (aPressed || bPressed || startPressed) _menuAdvance();
+  } else if (titleMenu) {
     const ay = pad.axes[1] || 0;
-    if (_menuPad.cool === 0 && (dpadD || ay > 0.6)) {
-      navigateMenuRow(+1); _menuPad.cool = 0.20;
-    } else if (_menuPad.cool === 0 && (dpadU || ay < -0.6)) {
-      navigateMenuRow(-1); _menuPad.cool = 0.20;
+    if (_menuPad.cool === 0) {
+      const dx = wantLeft ? -1 : wantRight ? 1 : 0;
+      const dy = (dpadD || ay > 0.6) ? 1 : (dpadU || ay < -0.6) ? -1 : 0;
+      if (dx || dy) { _menuNav(dx, dx ? 0 : dy); _menuPad.cool = 0.20; }
     }
-  }
-  if (aPressed) confirmMenu();
-  if (startPressed) {
-    // Start button shortcut: if a monster is picked, jump straight in.
-    const start = document.getElementById('startBtn');
-    if (start && !start.disabled) start.click();
+    if (bPressed) _menuBack();
+    else if (aPressed) confirmMenu();
+    else if (startPressed) {
+      // Start: on the mode select, takes the focused mode; on the fighter
+      // select, jumps straight in once a monster is picked.
+      if (step === 'mode') confirmMenu();
+      else { const start = document.getElementById('startBtn'); if (start && !start.disabled) start.click(); }
+    }
+  } else {
+    if (_menuPad.cool === 0) {
+      if (wantLeft)  { navigateMenu(-1); _menuPad.cool = 0.20; }
+      else if (wantRight) { navigateMenu(+1); _menuPad.cool = 0.20; }
+    }
+    if (aPressed) confirmMenu();
   }
   // Cache button state for next frame's edge detection
-  for (const i of [0, 9, 12, 13, 14, 15]) {
+  for (const i of [0, 1, 9, 12, 13, 14, 15]) {
     _menuPad.prevDown[i] = !!(pad.buttons[i] && pad.buttons[i].pressed);
   }
 }
@@ -1669,6 +1699,22 @@ function pollMenuGamepad(dt) {
 window.addEventListener('keydown', (e) => {
   if (galleryDialog.open || (!_menuVisible() && !_upgradeVisible())) return;
   if (e.target?.closest?.('.menu-extras') && (e.key === 'Enter' || e.key === ' ')) return;
+  if (_menuVisible() && !_upgradeVisible()) {
+    // Title menu: steps (attract -> mode -> fighter), rows, Esc / Backspace back
+    if (e.ctrlKey || e.metaKey || e.altKey || /^F\d/.test(e.key) || e.key === 'Tab') return;
+    if (e.target?.tagName === 'SELECT' && e.key !== 'Escape') return; // an open native list keeps its keys
+    _menuInputFrom('key');
+    const step = _menuStepNow();
+    if (step === 'title') {
+      if (e.key !== 'Escape' && !e.repeat) { e.preventDefault(); _menuAdvance(); }
+      return;
+    }
+    const nav = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (nav) { e.preventDefault(); _menuNav(nav[0], nav[1]); }
+    else if (e.key === 'Escape' || e.key === 'Backspace') { e.preventDefault(); _menuBack(); }
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); confirmMenu(); }
+    return;
+  }
   if (e.key === 'ArrowLeft')  { e.preventDefault(); navigateMenu(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); navigateMenu(+1); }
   else if (e.key === 'ArrowDown' && _menuVisible() && !_upgradeVisible()) {
@@ -1943,17 +1989,18 @@ function _syncDeployment() {
   document.getElementById('lone-menu-help').hidden = !active;
   document.getElementById('startBtn').textContent = active ? 'DEPLOY · LONE SOLDIER' : vs ? 'FIGHT · VS' : title ? 'RING THE BELL · TITLE MATCH' : 'UNLEASH HAVOC';
   document.getElementById('menu').classList.toggle('soldier-deployment',active);
-  document.querySelector('#menu .starring').textContent=active?'CHOOSE YOUR OPPONENT':vs||title?'CHOOSE YOUR FIGHTER':'STARRING · 出演';
+  document.querySelector('#menu .starring').textContent=active?'CHOOSE YOUR OPPONENT':vs||title?'CHOOSE YOUR FIGHTER':'CHOOSE YOUR KAIJU';
   document.querySelector('#rotate-hint .rh-sub').textContent=active?'Move with your left thumb · Look and fire with your right':'Kaiju Havoc plays sideways: one thumb moves, the other smashes';
   const hints={infantry:'SPACE / A JUMP · RMB / LT AIM · R / X RELOAD',tank:'MOUSE AIM · LMB / RT CANNON · SHIFT MOVE FASTER',helicopter:'E / SPACE ASCEND · Q / C DESCEND · LMB / RT FIRE'};
   document.querySelector('#menu .menu-hint').innerHTML=active
     ? `WASD MOVE · MOUSE LOOK · LMB / RT FIRE<br>${hints[document.getElementById('lone-role').value]}`
-    : 'WASD MOVE · MOUSE LOOK · LMB ATTACK · 1-3 POWERS · SPACE STOMP<br>← → / D-PAD to navigate · ENTER / A to confirm · START to launch';
+    : 'WASD MOVE · MOUSE LOOK · LMB ATTACK<br>1-3 POWERS · SPACE STOMP · ESC PAUSE';
   const monster=MONSTERS[state.monsterKey],role=document.getElementById('lone-role').selectedOptions[0]?.textContent.split(' · ')[0];
   const matchup = vs && monster ? `${monster.name} vs ${MONSTERS[rivalKey(state.monsterKey)].name}` : null;
   document.getElementById('deployment-selection').textContent=monster
     ? `${matchup || `${active?`${role} vs `:''}${monster.name}`} · ${LEVELS[selectedLevel].name}${title ? ' · TITLE MATCH' : ''}`
     : active?'CHOOSE YOUR OPPONENT':'CHOOSE YOUR KAIJU';
+  _menuSyncMode();
 }
 if (/[?&]mode=wrestling\b/.test(location.search)) modePicker.value = 'title';
 modePicker.addEventListener('change',_syncDeployment);
@@ -2081,6 +2128,237 @@ document.getElementById('startBtn').addEventListener('click', () => {
   const el = document.getElementById('highscore-display');
   if (el) el.textContent = hs > 0 ? `BEST · ${hs.toLocaleString()}` : 'NEW CITY · NO RECORDS YET';
 }
+
+// ------------------------- Title screen flow -------------------------
+// #menu[data-step]: 'title' (attract: logo, PRESS ANY BUTTON) -> 'mode' (four
+// mode cards; picking one sets #game-mode, which stays the source of truth)
+// -> 'fighter' (roster + showcase, stage, mode options, GO). Esc / B / BACK
+// steps back. QA scripts and the capture tool still drive the hidden
+// controls directly (.monster-card / #startBtn clicks, #game-mode change),
+// which works on any step. _menuSyncMode and _menuStepNow run from
+// _syncDeployment at load, so they only touch the DOM.
+function _modeName(id) {
+  return { havoc: 'KAIJU HAVOC', title: 'TITLE MATCH', vs: 'VS DUEL', lone: 'LONE SOLDIER' }[id] || 'KAIJU HAVOC';
+}
+function _menuStepNow() { return document.getElementById('menu').dataset.step; }
+function _menuSyncMode() {
+  const mode = document.getElementById('game-mode').value;
+  document.getElementById('menu').dataset.mode = mode;
+  for (const c of document.querySelectorAll('#modeCards .mode-card')) c.classList.toggle('current', c.dataset.mode === mode);
+  document.getElementById('mn-modechip').textContent = `${_modeName(mode)} · ${LEVELS[selectedLevel].name}`;
+  document.getElementById('fs-role').textContent = mode === 'lone' ? 'YOUR OPPONENT' : 'PLAYER 1';
+}
+const menuEl = document.getElementById('menu');
+let _menuInput = touchUI ? 'touch' : 'mouse'; // what drives the cursor: mouse | touch | key | pad
+function _menuInputFrom(kind) {
+  if (_menuInput === kind) return;
+  _menuInput = kind;
+  _menuLegend();
+}
+/** Button legend in the command bar, for the input in use. */
+function _menuLegend() {
+  const pad = _menuInput === 'pad', step = _menuStepNow();
+  const g = (t, cls = '') => `<span class="g${cls}">${t}</span>`;
+  const back = document.querySelector('#mn-back .g');
+  back.textContent = pad ? 'B' : 'ESC';
+  back.hidden = _menuInput === 'touch';
+  document.getElementById('mn-legend').innerHTML = _menuInput === 'touch'
+    ? `<span>${step === 'mode' ? 'TAP A MODE' : 'TAP A FIGHTER · THEN GO'}</span>`
+    : `<span>${pad ? g('✥', ' pad') : g('←') + g('→')} SELECT</span><span>${pad ? g('A', ' pad') : g('ENTER')} CONFIRM</span>`
+      + (step === 'fighter' ? `<span>${pad ? g('START') + ' FIGHT' : g('↑') + g('↓') + ' ROWS'}</span>` : '');
+}
+function _menuDefaultFocus(rows) {
+  const first = rows[0] || [];
+  return first.find((el) => el.classList.contains('selected') || el.classList.contains('current')) || first[0];
+}
+/** Put the keys / pad cursor on `el` (a title-menu item of the step on screen). */
+function _menuFocus(el, quiet = false) {
+  const flat = _menuRows().flat();
+  const i = el ? flat.indexOf(el) : -1;
+  if (i < 0) return;
+  const moved = i !== _menuPad.focused;
+  _menuPad.focused = i;
+  _setFocus(flat, i);
+  if (moved && !quiet) audio.ui?.('move');
+  if (el.classList.contains('monster-card')) _showFighter(el.dataset.key);
+}
+function _setMenuStep(step, back = false) {
+  if (menuEl.dataset.step === step) return;
+  menuEl.classList.remove('mn-warm'); // (the boot prewarm ends here at the latest)
+  menuEl.dataset.dir = back ? 'back' : 'fwd';
+  menuEl.dataset.step = step;
+  for (const el of menuEl.querySelectorAll('.pad-focus')) el.classList.remove('pad-focus');
+  _menuPad.focused = -1;
+  const wipe = menuEl.querySelector('.mn-wipe');
+  wipe.classList.remove('go');
+  void wipe.offsetWidth; // restart the sweep
+  wipe.classList.add('go');
+  if (step === 'fighter') _showFighter(state.monsterKey || _shownFighter || Object.keys(MONSTERS)[0], true);
+  if (_menuInput === 'key' || _menuInput === 'pad') _menuFocus(_menuDefaultFocus(_menuRows()), true);
+  _menuLegend();
+}
+function _menuAdvance() {
+  if (_menuStepNow() !== 'title') return;
+  audio.ui?.('press');
+  _setMenuStep('mode');
+}
+function _menuBack() {
+  const step = _menuStepNow();
+  if (step === 'title') return;
+  audio.ui?.('back');
+  _setMenuStep(step === 'fighter' ? 'mode' : 'title', true);
+}
+
+// Fighter showcase: the fighter under the cursor (or picked), big
+const _FIGHTER_TAG = { godzilla: ['暴君', 'THE ATOMIC TYRANT'], ghidorah: ['三頭竜', 'THE THREE-HEADED STORM'], mecha: ['機械獣', 'THE IRON EXECUTIONER'] };
+const _statMax = { hp: 0, speed: 0, melee: 0 };
+for (const m of Object.values(MONSTERS)) for (const k in _statMax) _statMax[k] = Math.max(_statMax[k], m.stats[k]);
+const _fsShow = document.getElementById('fs-show');
+const _fsStats = document.getElementById('fs-stats');
+_fsStats.innerHTML = ['HEALTH', 'SPEED', 'POWER'].map((label) => `<span>${label}</span><div class="fs-bar"><i></i></div><b></b>`).join('');
+let _shownFighter = null;
+function _showFighter(key, quiet = false) {
+  const m = MONSTERS[key];
+  if (!m) return;
+  // (the portrait can arrive after the first showing: static image, then the 3D fallback)
+  const pic = _fsShow.querySelector('.fs-pic');
+  const url = _staticCovered.has(key) ? `url("assets/${key}.webp")` : (_cardEls[key]?.querySelector('.preview')?.style.backgroundImage || '');
+  if (url !== pic.style.backgroundImage) pic.style.backgroundImage = url;
+  if (key === _shownFighter) return;
+  _shownFighter = key;
+  const [jp, epithet] = _FIGHTER_TAG[key] || ['怪獣', m.description];
+  _fsShow.dataset.kanji = jp;
+  document.getElementById('fs-name').textContent = m.name;
+  document.getElementById('fs-jp').textContent = jp;
+  document.getElementById('fs-epi').textContent = epithet;
+  const bars = _fsStats.querySelectorAll('i'), nums = _fsStats.querySelectorAll('b');
+  [['hp', m.stats.hp], ['speed', m.stats.speed], ['melee', m.stats.melee]].forEach(([k, v], i) => {
+    bars[i].style.setProperty('--v', (v / _statMax[k]).toFixed(3));
+    nums[i].textContent = v;
+  });
+  document.getElementById('fs-powers').innerHTML = ['beam', 'roar', 'charge']
+    .map((p) => `<span class="${p}"><svg viewBox="0 0 32 32" aria-hidden="true">${POWER_ICONS[p]}</svg>${m[p].name}</span>`).join('');
+  if (quiet) return;
+  _fsShow.classList.remove('swap');
+  void _fsShow.offsetWidth; // restart the slide-in
+  _fsShow.classList.add('swap');
+}
+
+// Mode cards set the MODE list (game.js reads #game-mode), then on to the fighters
+for (const card of document.querySelectorAll('#modeCards .mode-card')) {
+  card.addEventListener('click', () => {
+    if (modePicker.value !== card.dataset.mode) {
+      modePicker.value = card.dataset.mode;
+      modePicker.dispatchEvent(new Event('change'));
+    }
+    audio.ui?.('select');
+    audio.ui?.('step');
+    _setMenuStep('fighter');
+  });
+}
+document.getElementById('mn-back').addEventListener('click', _menuBack);
+menuEl.addEventListener('pointerdown', (e) => _menuInputFrom(e.pointerType === 'touch' ? 'touch' : 'mouse'));
+// Attract screen: a click or tap anywhere (but the quality links) starts
+menuEl.addEventListener('click', (e) => {
+  if (_menuStepNow() === 'title' && !e.target.closest('#quality-picker')) _menuAdvance();
+});
+// Hover ticks, and the showcase follows the mouse over the roster
+menuEl.addEventListener('pointerover', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  const t = e.target.closest('.mode-card, .monster-card, .level-card, .trailer-btn, .mn-back, #startBtn');
+  if (!t || t.contains(e.relatedTarget)) return;
+  if (!t.disabled) audio.ui?.('move');
+  if (t.classList.contains('monster-card')) _showFighter(t.dataset.key);
+});
+cardsDiv.addEventListener('pointerleave', () => { if (state.monsterKey) _showFighter(state.monsterKey); });
+cardsDiv.addEventListener('click', (e) => {
+  const card = e.target.closest('.monster-card');
+  if (!card) return;
+  audio.ui?.('select');
+  _showFighter(card.dataset.key);
+});
+document.getElementById('levelCards').addEventListener('click', (e) => { if (e.target.closest('.level-card')) audio.ui?.('select'); });
+// GO (after the start listener above): sound, and the loading screen shows who and where
+document.getElementById('startBtn').addEventListener('click', () => {
+  const key = state.monsterKey;
+  if (!key) return;
+  audio.ui?.('confirm');
+  const mode = modePicker.value;
+  if (_staticCovered.has(key)) document.getElementById('loading-art').style.backgroundImage = `url(assets/${key}.webp)`;
+  document.getElementById('loading-title').textContent = mode === 'lone' ? 'DEPLOYING' : `SUMMONING ${MONSTERS[key].name.toUpperCase()}`;
+  document.getElementById('loading-mode').textContent = `${_modeName(mode)} · ${LEVELS[selectedLevel].name}${mode === 'lone' ? ` · VS ${MONSTERS[key].name.toUpperCase()}` : ''}`;
+});
+
+// Backdrop reel (desktop): plays only while the menu is up; leaving the
+// menu stops it and drops its decoder. Phones keep the still.
+const _reelOk = !isMobile && !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+let _reel = null;
+function _menuReel(on) {
+  if (!_reelOk) return;
+  // The session's intro trailer plays over the menu first: wait for it
+  if (on && document.getElementById('intro-video')) { setTimeout(() => _menuReel(_menuVisible()), 700); return; }
+  if (on) {
+    if (!_reel) {
+      _reel = document.createElement('video');
+      _reel.muted = true; _reel.loop = true; _reel.playsInline = true; _reel.preload = 'auto';
+      _reel.setAttribute('muted', ''); _reel.setAttribute('playsinline', '');
+      _reel.addEventListener('playing', () => _reel.classList.add('on'));
+      _reel.addEventListener('loadedmetadata', () => { _reel.currentTime = 2.2; }); // open on the first big beam, not the dark fade-in
+      _reel.addEventListener('error', () => { if (_reel.getAttribute('src')) _reel.classList.remove('on'); });
+      menuEl.querySelector('.mn-sun').before(_reel);
+    }
+    if (!_reel.getAttribute('src')) _reel.src = 'assets/video/menu_loop.mp4';
+    _reel.play().catch(() => {});
+  } else if (_reel) {
+    _reel.pause();
+    _reel.classList.remove('on');
+    _reel.removeAttribute('src');
+    _reel.load();
+  }
+}
+// Back from a run (restartInPlace): straight to the fighter select with the
+// last picks (the run reset state.monsterKey, the card is still marked)
+let _menuWasShown = _menuVisible();
+new MutationObserver(() => {
+  const shown = _menuVisible();
+  if (shown === _menuWasShown) return;
+  _menuWasShown = shown;
+  _menuReel(shown);
+  if (!shown) return;
+  const sel = cardsDiv.querySelector('.monster-card.selected');
+  if (sel && !state.monsterKey) state.monsterKey = sel.dataset.key;
+  document.getElementById('startBtn').disabled = !state.monsterKey;
+  _setMenuStep('fighter', true);
+  _syncDeployment();
+}).observe(menuEl, { attributes: true, attributeFilter: ['class'] });
+_menuReel(_menuWasShown);
+_menuLegend();
+// (perf) Nothing of the menu may run under the loading screen: the reel's
+// decoder and the CSS loops would compete with the START prewarm. The menu
+// goes display:none while it is up and comes back if the load fails.
+const _menuLoadingEl = document.getElementById('loading-screen');
+new MutationObserver(() => {
+  const loading = _menuLoadingEl.classList.contains('visible');
+  if (loading === menuEl.classList.contains('mn-loading')) return;
+  menuEl.classList.toggle('mn-loading', loading);
+  _menuReel(!loading && _menuVisible());
+}).observe(_menuLoadingEl, { attributes: true, attributeFilter: ['class'] });
+// Boot prewarm (see .mn-warm in index.html): on until the boot work has
+// settled (30 frames in a row under 50 ms) or the first step change
+_showFighter(Object.keys(MONSTERS)[0], true);
+menuEl.classList.add('mn-warm');
+{
+  let calm = 0, last = performance.now();
+  const watch = () => {
+    const now = performance.now();
+    calm = now - last < 50 ? calm + 1 : 0;
+    last = now;
+    if (calm < 30 && menuEl.classList.contains('mn-warm')) requestAnimationFrame(watch);
+    else menuEl.classList.remove('mn-warm');
+  };
+  requestAnimationFrame(watch);
+}
+if (/[?&]debug\b/.test(location.search)) window.__menuQA = { pad: _menuPad, rows: () => _menuRows().map((r) => r.length), step: (s) => _setMenuStep(s) };
 
 // Resume audio after iOS suspends it on tab background
 window.addEventListener('touchstart', () => audio.resume(), { passive: true, once: false });

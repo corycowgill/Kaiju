@@ -496,7 +496,9 @@ export function createMatch(ctx, W) {
   // Running away costs: the crowd boos, the rival's momentum builds and it runs you down
   function updateStall(dt) {
     const p = W.player, r = W.rival;
-    const apart = !p.held && !r.held && r.state === 'neutral' && (p.state === 'neutral' || p.state === 'blocking') && p.distTo(r) > MATCH.stallDist;
+    // (no stalling while the referee counts somebody out: waiting in the ring is the point then)
+    const counting = !!(W.spots && W.spots.count && W.spots.count.who);
+    const apart = !counting && !p.held && !r.held && r.state === 'neutral' && (p.state === 'neutral' || p.state === 'blocking') && p.distTo(r) > MATCH.stallDist;
     if (!apart) { if (stallT > 0) { stallT = 0; r.speedMult = 1; } return; }
     stallT += dt;
     if (stallT < MATCH.stallAfter) return;
@@ -516,7 +518,7 @@ export function createMatch(ctx, W) {
     prompt('pickup', ground); prompt('pin', ground);
     prompt('grab', fight && !ground && p.canAct && foe.hittable && p.gapTo(foe) <= 9 && p.facing(foe, 1.0));
     prompt('kickout', g.pin.active && g.pin.V === p && !g.pin.forced && !g.pin.done);
-    prompt('escape', g.hold.active && g.hold.V === p && !g.hold.locked);
+    prompt('escape', g.hold.active && g.hold.V === p && !g.hold.locked && g.hold.phase !== 'sig'); // (a signature move cannot be escaped)
     prompt('getup', fight && p.state === 'downed' && !p.held && p.falling <= 0);
     // The comeback is on offer: the crowd tries to rally the player (the rival's, it dreads)
     const ready = fight && p.comebackReady;
@@ -570,6 +572,14 @@ export function createMatch(ctx, W) {
     });
     on(EV.PIN_BROKEN, () => { if (s.phase === 'pin') setPhase('fight'); });
     on(EV.PIN_FALL, (e) => onFall(e.who, e.forced ? 'ko' : 'pin'));
+    // Ten: counted out (spots.js runs the count); the fall goes to the other one
+    if (EV.COUNTOUT_OUT) on(EV.COUNTOUT_OUT, (e) => {
+      if (s.phase !== 'fight') return;
+      const winner = e.who === 'player' ? 'rival' : 'player';
+      W.grapple.clear();
+      callout('COUNTED OUT!', 'result', winner);
+      onFall(winner, 'countout');
+    });
     on(EV.FINISHER_START, (e) => {
       setPhase('finisher');
       callout(e.name, 'finisher', e.who, nameOf(e.who));
@@ -603,6 +613,7 @@ export function createMatch(ctx, W) {
       heat = Math.min(1, heat + 0.1);
     });
     on(EV.BUILDING_IMPACT, (e) => {
+      if (W.spots && W.spots.building && W.spots.building(e.building)) return; // a set piece (spots.js) calls its own
       if (e.name) {
         callout(`THROUGH THE ${e.name.toUpperCase()}!`, 'landmark', e.by, e.count > 1 ? `${e.count} BUILDINGS` : '');
         pop('pop', 1, e.x, e.z);
@@ -615,6 +626,8 @@ export function createMatch(ctx, W) {
     });
     on(EV.THROW_LAND, (e) => {
       pop(e.impact > 0.6 ? 'pop' : 'ooh', e.impact, e.x, e.z);
+      const V = W[e.target];
+      if (W.spots && W.spots.claims && (W.spots.claims(e.x, e.z) || (V && W.spots.claims(V.pos.x, V.pos.z)))) return; // the set piece calls it
       if (e.surface === 'water') { callout('INTO LAKE MICHIGAN!', 'move', e.who); say('water', 'hype', '', '', true); }
       else if (e.surface === 'crowd') { callout('INTO THE CROWD!', 'move', e.who); say('crowd', 'shock', '', '', true); }
     });

@@ -125,7 +125,7 @@ const STRIKE_KINDS = { light: 1, heavy: 1, clothesline: 1 };
 // The strikes the reversal cue is shown for: slow enough to react to (a heavy), or a run-up (the clothesline)
 const cued = (m) => !!STRIKE_KINDS[m.kind] && !m.ground && (m.startup >= TUNE.cueMinStartup || !!m.dash);
 // Damage kinds that can take the last of a kaiju's health (everything else stops at 1 HP)
-const KO_KINDS = { heavy: 1, clothesline: 1, splash: 1, slam: 1, suplex: 1, toss: 1, swing: 1, building: 1, post: 1, finisher: 1, charge: 1, ult: 1, qa: 1 };
+const KO_KINDS = { heavy: 1, clothesline: 1, splash: 1, slam: 1, suplex: 1, toss: 1, swing: 1, building: 1, post: 1, finisher: 1, charge: 1, ult: 1, qa: 1, weapon: 1 };
 const POWER_OF = { beam: 'beam', atomic: 'beam', roar: 'roar', charge: 'charge', stomp: 'stomp', ult: 'ult' };
 // How long the player's own (classic) powers commit it, s: the rival's punish window
 const PLAYER_POWER_COMMIT = { beam: 0.85, roar: 0.7, charge: 0.6, stomp: 0.95, ult: 1.3 };

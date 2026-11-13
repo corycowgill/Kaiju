@@ -12,6 +12,7 @@ battle clips).
 | `battle_tridon.mp4` / `_480p.mp4` | 10.0 s | Tridon: station evacuation, helicopters and tanks, VOLT BEAM and lightning over Tokyo Tower |
 | `battle_mechra.mp4` / `_480p.mp4` | 10.0 s | Mechra: police-directed evacuation, tanks and jets, MISSILE BARRAGE into PLASMA CANNON |
 | `preview_<kaiju>.mp4` | 6 s, muted | Looping monster-card hover/selected preview (`preload="none"`) |
+| `menu_loop.mp4` | 20.1 s, muted | Title-screen backdrop (desktop only, game.js `_menuReel`): the military + signature-attack shots of the three battle clips (2.9-10 s each, past the title cards), letterbox cropped to 1280x536, 0.6 s crossfades, faded in/out at the loop point; H.264 main CRF 29, no audio, `+faststart`, 2.7 MB |
 | `shots.json` | | Every cloud generation: prompt, model, cost, Kimi review (rejected and test clips included) |
 
 Trailer structure:

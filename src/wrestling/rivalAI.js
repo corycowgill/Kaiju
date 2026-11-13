@@ -76,9 +76,9 @@ export const PERSONAS = Object.freeze({
     lock: { whip: 1.9, suplex: 0.6, slam: 0.5, swing: 1.2 }, showHold: 0.3, swingTurns: 3, rope: 1.4,
     ground: { stomp: 0.5, splash: 1.5, pickup: 0.8, pin: 0.9, taunt: 1.7, wait: 0.4 },
     taunt: 1.5, tauntDown: 2.0, catchRebound: 0.95,
-    pw: { beam: 0.6, roar: 0.5, charge: 1.3, stomp: 1.3 }, saveAt: 80, saver: 0.65, punish: 0.7, punishAct: { string: 0.6, heavy: 0.1, grab: 0.3 },
-    walk: 1, noSell: 0, sig: [2.6, 2.6], ropeRun: 2.0, dive: 3.5, cheap: 0.15, cockyPin: 1.2, workBack: 0, bldgTaunt: 1,
-    fireUp: 0.75, vsFire: 'flee', weapon: 0.25, spotLove: 1, countBack: 4, countStay: 0, outDive: 1,
+    pw: { beam: 0.6, roar: 0.5, charge: 1.3, stomp: 0.4 }, saveAt: 80, // (the jump is saved for the top-rope dive) saver: 0.65, punish: 0.7, punishAct: { string: 0.6, heavy: 0.1, grab: 0.3 },
+    walk: 1, noSell: 0, sig: [2.6, 2.6], ropeRun: 2.0, dive: 5, cheap: 0.15, cockyPin: 1.2, workBack: 0, bldgTaunt: 1,
+    fireUp: 0.75, vsFire: 'flee', weapon: 0.25, spotLove: 1, countBack: 5, countStay: 0, outDive: 1,
     tells: 'backs out after an exchange and comes back with a running clothesline (block it, or step aside and punish the miss); whips you at the ropes to cut you down on the rebound; taunts after knockdowns (get up and hit him: a taunting kaiju takes x1.4); dives on you when you are down (mash up and he crashes on the mat); sprints himself tired; runs the ropes for a clothesline (block it as he comes back); climbs a corner post to fly at you when you are down (get up, he lands on nothing); covers lazily when ahead (kick out early)',
   },
   // Mechra: the methodical war machine. Holds its range, zones with the cannon, guards, and punishes what you miss.
@@ -93,7 +93,7 @@ export const PERSONAS = Object.freeze({
     taunt: 0.12, tauntDown: 0.3, catchRebound: 0.7,
     pw: { beam: 1.5, roar: 1.0, charge: 0.8, stomp: 0.5 }, saveAt: 55, saver: 0.4, punish: 1.0, punishAct: { string: 0.25, heavy: 0.45, grab: 0.3 },
     walk: 0.92, noSell: 0, sig: [3.0, 2.6], ropeRun: 0, dive: 0, cheap: 1, cockyPin: 0.1, workBack: 1, bldgTaunt: 0.5,
-    fireUp: 0.5, vsFire: 'guard', weapon: 1.0, spotLove: 0.8, countBack: 3, countStay: 1, outDive: 0,
+    fireUp: 0.5, vsFire: 'guard', weapon: 1.0, spotLove: 0.8, countBack: 4, countStay: 1, outDive: 0,
     tells: 'guards strings, so grab it; answers a blocked string with a counter-heavy (stop after the third hit and block: reversal); steps back and fires the cannon when you stand off (sidestep late, punish the recovery); punishes what you miss; slow on its feet, it cannot run you down; a heel: it waits by you as you get up and jumps you (block on the way up), stomps you while you are down, and works your back with the CIRCUIT BREAKER and SYSTEM CRASH (each makes your kick-outs harder this fall)',
   },
 });
@@ -101,26 +101,26 @@ export const PERSONAS = Object.freeze({
 /** The difficulty model: skill k = 1 - exp(-curve x difficulty); each pair is [k = 0, k = 1]. */
 export const AI_TUNE = {
   curve: 1.8,
-  react: [0.42, 0.22],        // s to notice something (x persona.react, x1.6 while rocked, +-15 %)
+  react: [0.42, 0.18],        // s to notice something (x persona.react, x1.6 while rocked, +-15 %)
   expect: 0.55,               // x reaction when it is braced for a strike (close, and the foe has been swinging)
-  guardOut: [0.08, 0.80],     // P(raises its guard between the hits of your string): what stops a button-masher (on k^1.5: it comes late)
-  reversal: [0.03, 0.55],     // P(goes for the just-in-time block against a strike it saw coming)
+  guardOut: [0.08, 0.90],     // P(raises its guard between the hits of your string): what stops a button-masher (on k^1.5: it comes late)
+  reversal: [0.03, 0.75],     // P(goes for the just-in-time block against a strike it saw coming)
   revJitter: [0.15, 0.04],    // s of timing error on that attempt
-  block: [0.22, 0.92],        // P(simply blocks a slow strike it saw coming: heavy, clothesline)
-  grabRev: [0.04, 0.72],      // P(turns your grab around in the tie-up)
-  grabDodge: [0.05, 0.50],    // P(steps back out of your reach)
+  block: [0.22, 0.96],        // P(simply blocks a slow strike it saw coming: heavy, clothesline)
+  grabRev: [0.04, 0.85],      // P(turns your grab around in the tie-up)
+  grabDodge: [0.05, 0.60],    // P(steps back out of your reach)
   mash: [2.5, 8.0],           // presses / s when held or down (it also sells: slower when hurt)
   punish: [0.30, 0.95],       // P(goes after a whiff, a taunt, a committed power)
   hitConfirm: [0.25, 0.95],   // P(stops a string that is hitting air)
   misjudge: [0.20, 0.03],     // P(starts a strike from too far out)
   useEnv: [0.35, 0.95],       // P(uses the tower / rope it can see)
-  lull: [1.3, 0.7],           // x lull length
-  burst: [0, 1.4],            // + actions per burst
+  lull: [1.3, 0.55],           // x lull length
+  burst: [0, 2.0],            // + actions per burst
   pause: [0.55, 0.12],        // s between actions inside a burst (+ up to the same again)
   groundDelay: [0.9, 0.2],    // s before it acts on a downed foe
   pinNoise: [0.22, 0.05],     // error on its read of how beaten you are
   lockDelay: [0.5, 0.03],     // s it holds the tie-up before its move (+lockMin): your window to mash out
-  daze: [0.55, 0.12],         // s it stays passive after being hit hard / getting up
+  daze: [0.55, 0.08],         // s it stays passive after being hit hard / getting up
   powerRate: [0.6, 1.25],     // x how often it reaches for a signature power
   mercyChain: 3, mercyLock: 7, // follow-ups / seconds on a foe without control before it backs off
   farGap: 62,                 // further than this it is not a fight but a chase
@@ -604,6 +604,13 @@ export function createRivalAI(ctx, W) {
         it.power = 'stomp'; shout('DIVE TO THE OUTSIDE!'); voice('outDive'); crowd('pop', 0.9);
         return true;
       }
+      if (!P.countStay && c.n >= 1) {
+        // Everyone else waits at the edge of the venue nearest the foe (stepping out would stop the count)
+        if (gap < 16) return false;
+        sp.homeTo(foe, _m);
+        if (Math.hypot(_m.x - me.pos.x, _m.z - me.pos.z) > 8) toward(me, it, _m.x, _m.z, 0.8, false);
+        return true;
+      }
       if (P.countStay && c.n >= 1) {
         // The heel stays in the ring and lets the count run (it still answers a foe that comes to it)
         if (gap < 16) return false;
@@ -700,9 +707,10 @@ export function createRivalAI(ctx, W) {
 else {
       const last = hpF(foe) < 0.04 ? 1 : 0; // only a big move takes the last of its health
       const arm = armedNow(me) ? 1 : 0;     // (with a girder in hand every strike is a swing of it)
-      opt('string', P.w.string * (turtle > 0.6 ? 0.5 : 1) * (last ? 0.15 : 1) * (1 + 1.5 * arm));
-      opt('heavy', P.w.heavy * (foe.tired ? 1.6 : 1) * (turtle > 0.6 ? 0.6 : 1) * (1 + last) * (1 + 2 * arm));
-      opt('grab', P.w.grab * (1 + 2.6 * turtle) * env * (foe.tired ? 1.8 : 1) * fit * (1 + 1.5 * last) * (me.momentum >= 100 ? 3 : 1)); // (a full meter: the finisher comes out of the tie-up)
+      const fl = me.comebackPhase === 'flurry' ? 1 : 0, noGrab = foe.comebackPhase ? 0 : 1; // (its own flurry: strings and heavies; a fired-up foe reverses grabs)
+      opt('string', P.w.string * (turtle > 0.6 ? 0.5 : 1) * (last ? 0.15 : 1) * (1 + 1.5 * arm) * (1 + 2 * fl));
+      opt('heavy', P.w.heavy * (foe.tired ? 1.6 : 1) * (turtle > 0.6 ? 0.6 : 1) * (1 + last) * (1 + 2 * arm) * (1 + 2 * fl));
+      opt('grab', noGrab * (1 - fl) * P.w.grab * (1 + 2.6 * turtle) * env * (foe.tired ? 1.8 : 1) * fit * (1 + 1.5 * last) * (me.momentum >= 100 ? 3 : 1)); // (a full meter: the finisher comes out of the tie-up)
       opt('rush', gap > 13 && gap < 42 && !me.tired ? P.w.rush * fit * (1 + 0.6 * S.desperate) : 0);
       opt('ropes', P.ropeRun && gap < 55 && !me.tired && me.stamina > 30 && ropeTarget(me, foe) ? P.ropeRun * fit * (1 + 0.5 * S.cocky) : 0);
       opt('feint', gap < 34 ? P.w.feint * (1 + turtle) : 0);
@@ -794,6 +802,7 @@ else {
   }
   function fire(me, foe, it, act) {
     S.decided = null; S.hitsLeft = 0; S.ender = false;
+    if (act === 'grab' && foe.comebackPhase) act = 'heavy'; // (a fired-up foe turns every grab around)
     switch (act) {
       case 'string': {
         it.strike = true;
@@ -1115,8 +1124,9 @@ else {
       // ...and jumps it the instant it can be hit (a heavy: the wind-up is the tell, block on the way up)
       S.cheapGo = false;
       if (gap < 13 && foe.hittable && me.stamina > 20) {
-        setAct(rnd() < 0.6 ? 'heavy' : 'string'); S.range = 1;
-        shout('CHEAP SHOT!'); voice('cheap', 'shock'); crowd('boo', 0.8);
+        const low = rnd() < 0.4;
+        setAct(low ? 'string' : 'heavy'); S.range = 1;
+        shout(low ? 'LOW BLOW!' : 'CHEAP SHOT!'); voice('cheap', 'shock'); crowd('boo', 0.8);
         if (S.mode === 'lull') { S.mode = 'engage'; S.budget = Math.max(S.budget, 1); }
         return;
       }
@@ -1183,7 +1193,7 @@ else {
       if (me.gapTo(foe) < (a === 'heavy' ? 13 : 9.5)) {
         S.decided = null; S.hitsLeft = 0; S.ender = false;
         if (a === 'heavy') it.heavy = true;
-        else if (a === 'grab') it.grab = true;
+        else if (a === 'grab' && !foe.comebackPhase) it.grab = true;
         else { it.strike = true; S.hitsLeft = rnd() < 0.6 ? 2 : 1; }
         note('counter', a, '');
         S.plan = 'busy'; S.busyT = 0;
@@ -1388,12 +1398,15 @@ else {
         return;
       }
       // The comeback: hurt and behind, it fires up (Gorrak hulks up at once; the machine is slower to)
+      // (one roll per offer: a yes fires after a short sell, a no waits 6 s; about half the offers at the first match)
       if (me.comebackReady) {
-        if (S.fireTry <= 0) {
-          S.fireTry = 1.5;
-          if (rnd() < P.fireUp * lerp(0.6, 1, S.k)) { it.taunt = true; if (S.key === 'godzilla') voice('fire'); note('fire-up', '', ''); }
-        } else S.fireTry -= dt;
-      } else S.fireTry = 0;
+        if (S.fireTry === 0) S.fireTry = rnd() < P.fireUp * lerp(0.55, 1, S.k) ? 0.3 + rnd() * 0.5 : -6;
+        else if (S.fireTry > 0) {
+          S.fireTry -= dt;
+          if (S.fireTry <= 0) { S.fireTry = -6; it.taunt = true; if (S.key === 'godzilla') voice('fire'); note('fire-up', '', ''); }
+        } else if ((S.fireTry += dt) >= 0) S.fireTry = 0;
+      } else if (S.fireTry > 0) S.fireTry = 0;
+      else if (S.fireTry < 0) S.fireTry = Math.min(0, S.fireTry + dt);
       switch (me.state) {
         case 'neutral': if (!me.held) neutral(dt, me, foe, it); break;
         case 'attacking': attacking(me, it); break;
