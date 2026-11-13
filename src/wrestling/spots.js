@@ -526,7 +526,16 @@ export function createSpots(ctx, W) {
       runSched(dt);
       updateWeapons(dt);
       props.update(dt);
-      if (carve) carve.update(dt);
+      if (carve) {
+        carve.update(dt);
+        // The grab marker: the building the player's grab would take now (the HUD prompt's own conditions)
+        const pl = W.player, rv = W.rival;
+        if (phase() === 'fight' && pl.canAct && !props.carrying(pl) && props.cooldown(pl) <= 0 && !heldBy(pl) && !(pl.gapTo(rv) <= 9 && pl.facing(rv, 1.0))) {
+          const bn = props.buildingNear(pl, 40);
+          if (bn) carve.mark(bn.x, bn.z, bn.b.w, bn.b.d, bn.h, bn.dist <= props.TUNE.reach);
+        }
+        carve.updateMark(dtReal);
+      }
       // The third rail: slow to rise (vfx.js draws the arcs)
       for (const id of ['player', 'rival']) {
         const f = W[id];

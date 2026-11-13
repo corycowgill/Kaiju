@@ -69,7 +69,7 @@ const _dmgOpt = { kind: 'building', src: 'player', aerial: true };
 export function createProps(ctx, W, hooks) {
   const T = PROP_TUNE, bus = W.bus;
   const mk = () => ({ wu: 0.75, k: 1, move: CARRY, on: false, phase: '', f: null, b: null, t: 0, slots: [], m0: [], ox: 0, oz: 0, h: 0, side: 0,
-    chunk: null, flat: false, hp: new THREE.Vector3(), hq: new THREE.Quaternion(), smash: false, name: '',
+    chunk: null, obj: null, objM: new THREE.Matrix4(), flat: false, hp: new THREE.Vector3(), hq: new THREE.Quaternion(), smash: false, name: '',
     x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, tx: 0, tz: 0, yaw: 0, spin: 0, eta: 0, hit: false });
   const props = { player: mk(), rival: mk() };
   const cd = { player: 0, rival: 0 };
@@ -84,10 +84,11 @@ export function createProps(ctx, W, hooks) {
    *  (too big: carve.js tears a piece out of it), or '' (a fence, a bridge, a tent, a set piece that cannot fall). */
   function modeOf(b) {
     if (!b || b.destroyed || b.isFence || b.isBridge || b.crushOnContact || b.maxHp > 1e6) return '';
-    if (b.customMesh && b.customMesh.parent) return ''; // its own scene graph (the wheel), not instance slots
-    if (!((b._glbSlots && b._glbSlots.length) || (b._bodyIM && b._bodyIndex >= 0))) return '';
+    // its own scene graph (the Navy Pier wheel), not instance slots: lifted whole, object and all
+    const own = !!(b.customMesh && b.customMesh.parent && ctx.scene);
+    if (!own && !((b._glbSlots && b._glbSlots.length) || (b._bodyIM && b._bodyIndex >= 0))) return '';
     const C = carve(), big = b._wound || b.h > T.maxH || Math.max(b.w, b.d) > T.maxSide;
-    if (big) return C ? C.kind(b, T) : '';
+    if (big) return C && !own ? C.kind(b, T) : '';
     return b.h >= (b.fest ? T.festMinH : b.landmarkId ? T.lmMinH : T.minH) ? 'whole' : '';
   }
   function visitNear(b) {
@@ -145,6 +146,7 @@ export function createProps(ctx, W, hooks) {
     if (P.chunk) { P.chunk.set(C); return; }
     _o.makeTranslation(-P.ox, 0, -P.oz);
     _r.multiplyMatrices(C, _o);
+    if (P.obj) { P.obj.matrix.multiplyMatrices(_r, P.objM); P.obj.matrixWorldNeedsUpdate = true; }
     for (let i = 0, k = 0; i < P.slots.length; i += 2, k++) {
       const im = P.slots[i];
       _m.multiplyMatrices(_r, P.m0[k]);
@@ -154,6 +156,7 @@ export function createProps(ctx, W, hooks) {
   }
   function hide(P) {
     if (P.chunk) { P.chunk.remove(); P.chunk = null; }
+    if (P.obj) { if (P.obj.parent) P.obj.parent.remove(P.obj); P.obj = null; }
     for (let i = 0; i < P.slots.length; i += 2) {
       const im = P.slots[i];
       im.setMatrixAt(P.slots[i + 1], _zero); im.instanceMatrix.needsUpdate = true;
@@ -209,8 +212,15 @@ export function createProps(ctx, W, hooks) {
       P.k = Math.max(1, Math.sqrt(Math.max(b.h / T.big.h, Math.max(b.w, b.d) / T.big.side)));
       P.move = P.k > 1.1 ? CARRY_HEAVY : CARRY;
       capture(P, b);
+      const own = b.customMesh && b.customMesh.parent ? b.customMesh : null;
       // The city's own collapse: out of the grid, rubble and dust on the lot, the crash, the score and building:destroyed
       ctx.collapseBuilding(b, f.id);
+      if (own) {
+        // (the collapse took its object out of the scene: back in, and from here on posed like the slots)
+        own.updateMatrix(); P.objM.copy(own.matrix);
+        own.matrixAutoUpdate = false;
+        ctx.scene.add(own); P.obj = own;
+      }
     }
     place(P, _c.compose(P.hp, P.hq, _one)); // (and straight back where it stood: it rises from there)
     f.yaw = Math.atan2(b.x - f.pos.x, b.z - f.pos.z);

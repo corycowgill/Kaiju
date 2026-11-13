@@ -586,9 +586,14 @@ export function createRivalAI(ctx, W) {
     // ...and any of them with one right at its elbow and the foe a step away (out in the city there always is one)
     if (gap <= 16 || gap >= 140) return 0;
     const b = sp.buildingNear(me, reach);
-    if (!b || !(gap > P.bldgGap || b.dist < 20)) return 0;
+    // ...or one a short walk off with the foe not on top of it (the ring: the park's semis and towers are 60-100 u out)
+    if (!b) return 0;
+    const mid = !(gap > P.bldgGap || b.dist < 20);
+    if (mid && !(gap > 22 && b.dist < 85)) return 0;
     S.bx = b.x; S.bz = b.z;
-    return P.bldg * lerp(0.6, 1.2, S.k) * (1 + (S.key === 'mecha' ? 1.5 : 0.5) * S.desperate) * (W.match.state.defense ? 1 : 0.75); // (the title match: a little less often)
+    // Overdue: the longer since it could have and did not, the more it wants to (it is the show of this match)
+    const due = 1 + 2 * Math.min(1, Math.max(0, now - S.bldgCd) / 35);
+    return (mid ? 0.6 : 1) * due * P.bldg * lerp(0.6, 1.2, S.k) * (1 + (S.key === 'mecha' ? 1.5 : 0.5) * S.desperate) * (W.match.state.defense ? 1 : 0.75); // (the title match: a little less often)
   }
   // Carrying one: back off / close in to 40-90 u, show it off (Gorrak), then the throw (its wind-up is the tell)
   function carryDrive(dt, me, foe, it) {
@@ -1023,7 +1028,7 @@ else {
           opt('stomp', gg < 30 ? G.stomp * (second ? 0.6 : 1) * (1 + 0.5 * P.workBack * (foe.worked || 0)) : 0);
           // Off to rip up a building while it lies there (it will be up by the time the building comes)
           const bw = gg > (P.bldg >= 2 ? 10 : 24) && foe.stateDur - foe.stateT > 1 ? bldgReady(me, foe, Math.max(gg, P.bldgGap + 1), 110) : 0; // (a building close enough: the foe is up by the time it throws, at range)
-          opt('bldg', bw * 1.5);
+          opt('bldg', bw * 2);
           // Tridon: up on a corner post, and fly
           opt('dive', P.dive && !second && me.can('pstomp') && me.momentum >= POWERS.stomp.cost && foe.stateDur - foe.stateT > 0.6 && pickPost(foe) ? P.dive * (1 + S.cocky) * lerp(0.5, 1, S.k) : 0);
           opt('splash', gg > 12 && gg < MOVES.splash.reach - 2 && me.stamina > 20 ? G.splash * (1 + 0.5 * S.cocky) : 0);

@@ -127,6 +127,15 @@ export function createCarver(ctx, W) {
   const vaos = new Map();    // a building mesh's geometry -> our copy of it (its own vertex array object, the same GPU buffers)
   const shadows = !!(ctx.quality && ctx.quality.shadows && ctx.quality.full);
   let capGeo = null, capMat = null;
+  // The grab marker: a ring round the foot of the building a grab would take and an arrow over it
+  const mark = { ring: null, arrow: null, mat: null, on: 0, t: 0, x: 0, z: 0, r: 10, y: 20, hot: false };
+  function mkMark() {
+    mark.mat = new THREE.MeshBasicMaterial({ color: 0xffcc55, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+    mark.ring = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 48).rotateX(-Math.PI / 2), mark.mat);
+    mark.arrow = new THREE.Mesh(new THREE.ConeGeometry(1, 2.2, 4).rotateX(Math.PI), mark.mat);
+    for (const m of [mark.ring, mark.arrow]) { m.frustumCulled = false; m.renderOrder = 5; scene.add(m); }
+    mark.ring.position.y = -50; mark.arrow.position.y = -50; // (drawn once out of sight: its program links at the bell, not at the first building)
+  }
 
   function vaoOf(geom) {
     let g = vaos.get(geom);
@@ -256,7 +265,7 @@ export function createCarver(ctx, W) {
     const wd = { b, kind, by, slots: readSlots(b), H: b.h, removed: 0, tears: 0,
       stump: null, upper: null, rest: null,
       ax: 0, az: 1, lean: 0, lean0: 0, lean1: 0, drop: 0, drop0: 0, drop1: 0, offX: 0, offZ: 0, dropU: 1, landed: true,
-      smoke: 0, smokeT: 0, sx: b.x, sy: T.stump, sz: b.z, bitesAt: [] };
+      smoke: 0, smokeT: 0, sx: b.x, sy: T.stump, sz: b.z, bitesAt: [], biteHalf: T.bite };
     if (!wd.slots.length) return null;
     // out of the city's shared instanced meshes (near and far twins): from here on it is drawn as its own pieces
     for (const s of b._glbSlots) { s.im.setMatrixAt(s.idx, _zero); s.im.instanceMatrix.needsUpdate = true; }
@@ -426,6 +435,24 @@ export function createCarver(ctx, W) {
       const k = this.kind(b, limits);
       return k === 'bite' ? bite(b, f) : k === 'snap' ? snap(b, f) : null;
     },
+    /** Point the grab marker at a building footprint (x, z, w, d, h); hot: in reach. Call every frame it applies; it fades when the calls stop. */
+    mark(x, z, w, d, h, hot) {
+      mark.x = x; mark.z = z; mark.r = Math.max(w, d) * 0.5 + 4; mark.y = Math.min(h + 7, 50); mark.hot = !!hot; mark.want = 1;
+    },
+    /** dtReal: the marker's fade and pulse. */
+    updateMark(dt) {
+      if (!mark.ring) { if (!scene || !scene.isScene) return; mkMark(); } // (made again after a dispose: the match before this one)
+      mark.on += ((mark.want ? 1 : 0) - mark.on) * Math.min(1, dt * 8);
+      mark.want = 0; mark.t += dt;
+      const vis = mark.on > 0.02;
+      if (!vis) { if (mark.mat.opacity !== 0) { mark.mat.opacity = 0; mark.ring.position.y = mark.arrow.position.y = -50; } return; }
+      const beat = 0.5 + 0.5 * Math.sin(mark.t * (mark.hot ? 9 : 4));
+      mark.mat.opacity = mark.on * (mark.hot ? 0.55 + 0.4 * beat : 0.22 + 0.12 * beat);
+      const r = mark.r * (1 + 0.05 * beat);
+      mark.ring.position.set(mark.x, 0.6, mark.z); mark.ring.scale.set(r, 1, r);
+      const a = mark.hot ? 3.2 : 2.2;
+      mark.arrow.position.set(mark.x, mark.y + 2.5 * beat, mark.z); mark.arrow.scale.set(a, a, a); mark.arrow.rotation.y = mark.t * 1.5;
+    },
     /** The building came down (any cause): its standing pieces go with it. */
     onDestroyed(b) { if (b && b._wound) close(b._wound); },
     update(dt) {
@@ -471,6 +498,7 @@ export function createCarver(ctx, W) {
       for (const g of vaos.values()) { g.index = null; g.attributes = {}; g.dispose(); }
       vaos.clear();
       if (capGeo) { capGeo.dispose(); capMat.dispose(); capGeo = capMat = null; }
+      if (mark.ring) { scene.remove(mark.ring); scene.remove(mark.arrow); mark.ring.geometry.dispose(); mark.arrow.geometry.dispose(); mark.mat.dispose(); mark.ring = mark.arrow = null; }
     },
   };
 }
