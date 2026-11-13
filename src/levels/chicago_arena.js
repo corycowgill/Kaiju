@@ -25,6 +25,7 @@
 import * as THREE from 'three';
 import { festCrowdMaterial, festCrowdUniforms, FEST_RING_GAPS } from './chicago_fest.js';
 import { EV } from '../wrestling/events.js';
+import { buildRefereeMesh } from '../wrestling/referee.js';
 import * as LOOK from '../look.js';
 
 /** Ring layout (world units). The ring is the axis-aligned square of half-size
@@ -117,8 +118,9 @@ const CELLS = [
   ['#2a2f38', 0], ['#4a515c', 0], ['#8c8a84', 0], ['#b8262b', 0], ['#2b62c0', 0], ['#cfcfc8', 0], ['#16181c', 0], ['#d8a81e', 0],
   ['#30343a', 0], ['#e9e4d2', '#fff6e0'], ['#7a1418', '#ff2a22'], ['#16307a', '#2a7cff'], ['#c9c9c2', 0], ['#5d6168', 0], ['#23508f', 0], ['#8f2a2a', 0],
   ['#7d7460', '#ffd9a0'], ['#5a1010', '#ff1a10'], ['#16213f', 0], ['#6a2a24', 0], ['#3a3f48', 0], ['#101216', 0], ['#9a9fa6', 0], ['#44706a', 0],
+  ['#c8906c', 0], ['#2a1a12', 0], ['#f2f0ea', 0], // skin, hair, shirt white (the referee)
 ];
-const C = { STEEL: 0, STEEL2: 1, CONC: 2, RED: 3, BLUE: 4, WHITE: 5, BLACK: 6, YELLOW: 7, HOUSING: 8, LAMP: 9, LEDR: 10, LEDB: 11, TRIM: 12, TREAD: 13, SEATB: 14, SEATR: 15, STUD: 16, AVRED: 17, NAVY: 18, OXIDE: 19, STEEL3: 20, DARK: 21, ALU: 22, TEAL: 23 };
+const C = { STEEL: 0, STEEL2: 1, CONC: 2, RED: 3, BLUE: 4, WHITE: 5, BLACK: 6, YELLOW: 7, HOUSING: 8, LAMP: 9, LEDR: 10, LEDB: 11, TRIM: 12, TREAD: 13, SEATB: 14, SEATR: 15, STUD: 16, AVRED: 17, NAVY: 18, OXIDE: 19, STEEL3: 20, DARK: 21, ALU: 22, TEAL: 23, SKIN: 24, HAIR: 25, SHIRT: 26 };
 const cellUV = (i) => [((i % 16) * 64 + 32) / 1024, 1 - (Math.floor(i / 16) * 64 + 32) / 1024];
 const rectUV = (r, inset = 2) => ({ u0: (r.x + inset) / 1024, u1: (r.x + r.w - inset) / 1024, v0: 1 - (r.y + r.h - inset) / 1024, v1: 1 - (r.y + inset) / 1024 });
 
@@ -1325,6 +1327,10 @@ export function buildArena(scene, world, o) {
     scene.add(im);
     weapons = { mesh: im, length: L };
   }
+  // ---- the referee (posed by src/wrestling/referee.js; one instanced draw on every tier) ----
+  const referee = buildRefereeMesh(AS.mStruct, { white: cellUV(C.SHIRT), black: cellUV(C.DARK), skin: cellUV(C.SKIN), hair: cellUV(C.HAIR) });
+  referee.castShadow = !!tier;
+  scene.add(referee);
 
   _resetUniforms(rt, posts);
   world.arena = {
@@ -1335,7 +1341,7 @@ export function buildArena(scene, world, o) {
     ramp: { x0: RAMP.x0, x1: RAMP.x1, z: RAMP.z, halfWidth: RAMP.hw },
     gate: { x: GATE.x, z: GATE.z, halfWidth: GATE.hw - 2.5, clearance: GATE.h, top: GATE.top },
     gaps: FEST_RING_GAPS,
-    screens, pyro, casters, weapons,
+    screens, pyro, casters, weapons, referee,
     /** True where spectators stand or sit (for throw:land surface 'crowd'). */
     crowdAt(x, z) {
       if (seatY(x, z) > 0) return true;

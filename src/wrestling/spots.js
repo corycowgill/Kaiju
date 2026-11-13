@@ -10,21 +10,24 @@
 //   - Foreign objects: steel girders lying ringside and in the rubble of a
 //     tower that came down. Grab next to one to rip it up, strike to swing it;
 //     it breaks on its third hit. Dropped when its holder is knocked about.
-//   - The count-out. Outside the venue (ring, stands, runway) the referee counts
+//   - The count-out. Outside the ropes (the ring's square) the referee counts
 //     to ten, one number every TUNE.step s; ten loses the fall (match.js scores
 //     it from countout:out). Both outside: the count waits. Back inside: reset.
+//     The referee (referee.js) walks to the ropes and counts it with his arm,
+//     and drops beside every pin to slap the mat.
 // It reads both fighters and the grapple; it starts moves on a fighter only
 // through the fighter's own entry points (_startMove, recover).
 // OWNER: spots.
 import * as THREE from 'three';
 import { EV } from './events.js';
+import { createReferee } from './referee.js';
 
 /** Tuning (exported for the AI and the balance sims). */
 export const SPOTS_TUNE = {
   // count-out
-  step: 1.15, max: 10, inset: 4,
-  // the venue: inside = no count (ring, stands, the standing room; the runway to the seawall)
-  venue: { x0: -62, x1: 60, z0: -24, z1: 148 }, ramp: { x1: 76, cz: 62, hw: 20 },
+  step: 1.15, max: 10,
+  // the ring: out once the root is this far past the ropes (the apron is not out), back in this far inside them
+  outBand: 4, inBand: 2, home: 10,
   // set pieces
   spotCd: 3, fountainR: 15, lakeX: 70, railR: 7.5, railY: 3.2,
   bonus: { fountain: 5, lake: 0, ltracks: 9, michigan: 0, bean: 6 },
@@ -113,12 +116,21 @@ export function createSpots(ctx, W) {
   const wRes = { id: 0, kind: '', x: 0, z: 0, dist: 0 };
   const armedRes = { id: 0, kind: '', hits: 0 };
 
-  const venue = T.venue;
-  /** Inside the venue (shrunk by inset)? */
-  function inVenue(x, z, inset = 0) {
-    if (x >= venue.x0 + inset && x <= venue.x1 - inset && z >= venue.z0 + inset && z <= venue.z1 - inset) return true;
-    return x >= venue.x0 + inset && x <= T.ramp.x1 - inset && Math.abs(z - T.ramp.cz) <= T.ramp.hw - inset;
+  /** The ring's square (ropes): { cx, cz, half } (ARENA's numbers without an arena, e.g. the smoke test's stub). */
+  const venue = { cx: 4, cz: 62, half: 42 };
+  function ring() {
+    const a = W.arena && W.arena.info;
+    if (a) { venue.cx = a.cx; venue.cz = a.cz; venue.half = a.half; }
+    return venue;
   }
+  /** Inside the ropes, grown by band (negative = shrunk)? */
+  function inRing(x, z, band = 0) {
+    const r = ring(), h = r.half + band;
+    return Math.abs(x - r.cx) <= h && Math.abs(z - r.cz) <= h;
+  }
+  /** Inside the ropes after its hysteresis (what the count asks). */
+  const inVenue = (x, z) => inRing(x, z, T.outBand);
+  let ref = null; // the referee (referee.js), made in start(): the arena exists by then
   const phase = () => (W.match && W.match.state ? W.match.state.phase : '');
   const fighters = () => (W.player && W.rival ? [W.player, W.rival] : null);
 
@@ -268,8 +280,8 @@ export function createSpots(ctx, W) {
     if (ph !== 'fight' && ph !== 'pin' && ph !== 'finisher') { if (count.who) countStop('fall'); out.player = out.rival = false; return; }
     for (const f of F) {
       const p = f.pos;
-      if (!out[f.id]) { if (!inVenue(p.x, p.z, 0)) out[f.id] = true; }
-      else if (inVenue(p.x, p.z, T.inset)) out[f.id] = false;
+      if (!out[f.id]) { if (!inRing(p.x, p.z, T.outBand)) out[f.id] = true; }
+      else if (inRing(p.x, p.z, -T.inBand)) out[f.id] = false;
     }
     if (count.who && !out[count.who]) countStop('in');
     if (!count.who) {
@@ -511,13 +523,13 @@ export function createSpots(ctx, W) {
     /** The foreign objects (read-only): { id, kind, state 'off' | 'ground' | 'held', x, z, owner, hits }. */
     weapons,
     venue,
-    /** Is f outside the venue (its count runs, or would)? */
+    /** Is f outside the ropes (its count runs, or would)? */
     outside(f) { return !!f && !!out[f.id]; },
-    /** Nearest point TUNE.inset + 6 u inside the venue from f (where to walk to beat the count). */
+    /** Nearest point TUNE.home u inside the ropes from f (where to go to beat the count). */
     homeTo(f, o) {
-      const i = T.inset + 6, p = f.pos;
-      o.x = Math.min(venue.x1 - i, Math.max(venue.x0 + i, p.x));
-      o.z = Math.min(venue.z1 - i, Math.max(venue.z0 + i, p.z));
+      const r = ring(), h = r.half - T.home, p = f.pos;
+      o.x = Math.min(r.cx + h, Math.max(r.cx - h, p.x));
+      o.z = Math.min(r.cz + h, Math.max(r.cz - h, p.z));
       return o;
     },
     /** The landmark set piece f could throw its foe into from here, or null (scratch result). */
@@ -587,6 +599,8 @@ export function createSpots(ctx, W) {
       pick2.player = pick2.rival = null; spawnCd = 0;
       placeInitial();
       subscribe();
+      if (!ref) ref = createReferee(ctx, W, A && A.referee ? A.referee : null);
+      ref.start();
       drawWeapons();
     },
     update(dt, dtReal) {
@@ -609,6 +623,7 @@ export function createSpots(ctx, W) {
         if (jets.scale.y !== k) jets.scale.y = k;
       }
       drawWeapons();
+      if (ref) ref.update(dt);
       void dtReal;
     },
     updateIdle() { drawWeapons(); },
@@ -616,6 +631,7 @@ export function createSpots(ctx, W) {
       live = false;
       for (const off of offs) off();
       offs = [];
+      if (ref) ref.dispose();
       if (jets) jets.scale.y = 1;
       if (fountainB && fountainHp > 0) { fountainB.maxHp = fountainHp; fountainB.hp = Math.min(fountainB.hp, fountainHp); }
       jets = null; fountainB = null; fountainHp = 0;
