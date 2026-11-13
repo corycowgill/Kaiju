@@ -44,6 +44,8 @@ export function createSfx(ctx, W) {
     painT: { player: 0, rival: 0 },
     dizzyT: { player: -1, rival: -1 },
     calloutT: 0,
+    coT: 0,             // count-out tension (count 7+): holds the score down
+    bellAgo: 9, coBellT: -1, // seconds since the last bell; a count-out bell of our own if match.js rings none
   };
   // Result of place(): where a world point sits relative to the camera
   let _pan = 0, _att = 1;
@@ -100,6 +102,7 @@ export function createSfx(ctx, W) {
     S.phase = 'idle'; S.heat = 0.3; S.dirLevel = 0; S.dirT = 0; S.hush = 0; S.duckT = 0; S.duckAmt = 1; S.stopT = 0;
     S.slowT = 0; S.slowScale = 1; S.slowOut = false; S.chantT = 0; S.themeOn = false; S.themeT = -1; S.themeWait = 0; S.fanfareT = -1; S.roarT = -1;
     S.teleT = -1; S.struggleT = 0; S.painT.player = 0; S.painT.rival = 0; S.dizzyT.player = -1; S.dizzyT.rival = -1; S.calloutT = 0;
+    S.coT = 0; S.bellAgo = 9; S.coBellT = -1;
   }
 
   // ---- handlers ----
@@ -134,7 +137,7 @@ export function createSfx(ctx, W) {
     [EV.BELL](e) {
       const n = Math.max(1, Math.min(5, e.rings | 0));
       for (let i = 0; i < n; i++) if (!audio.wr('wr_bell', i ? 0.85 : 1, 1, i * 0.28, 0, 0, 2)) audio.bellFallback(i * 0.28);
-      _pan = 0;
+      _pan = 0; S.bellAgo = 0; S.coBellT = -1;
       if (e.kind === 'start') crowd('pop', 0.7, 0.15);
       duck(0.5, 0.6 + n * 0.28);
     },
@@ -181,6 +184,10 @@ export function createSfx(ctx, W) {
       if (e.kind === 'splash') {
         // the falling whistle ends on the hit: start it so its last sample is the contact
         if (w >= 1) audio.wr('wr_dive', _att, 1, w - 1, _pan, 3); else audio.wr('wr_dive', _att, 1, 0, _pan, 3, 0, -1, 1 - Math.max(0.15, w));
+      } else if (e.kind === 'weapon') {
+        // a girder coming round: slower and heavier than any limb
+        audio.wr('wr_whoosh', 0.95 * _att, 0.78, Math.max(0, w - 0.5), _pan, 3);
+        vox(e.who, 'effort', 0.85, Math.max(0, w - 0.2));
       } else if (e.kind === 'heavy' || e.kind === 'clothesline') {
         audio.wr('wr_whoosh', 0.8 * _att, e.kind === 'heavy' ? 1 : 0.9, Math.max(0, w - 0.45), _pan, 4);
         vox(e.who, 'effort', 0.7, Math.max(0, w - 0.2));
@@ -189,7 +196,14 @@ export function createSfx(ctx, W) {
     [EV.STRIKE_LANDED](e) {
       place(e.x, e.z);
       const imp = clamp01(e.impact), k = e.kind, c = e.counter ? 1.15 : 1;
-      if (k === 'heavy' || k === 'clothesline') {
+      if (k === 'weapon') {
+        // the chair shot: steel ringing off hide
+        if (!audio.wr('wr_clang', (0.85 + 0.15 * imp) * c * _att, 1, 0, _pan, 1)) audio.wr('wr_post', _att, 1.2, 0, _pan, 1);
+        audio.wr('wr_body', 0.75 * _att, 0.95, 0.004, _pan, 3);
+        sub(0, 0.6 + 0.3 * imp);
+        bump(0.25);
+        crowd('ooh', 0.8 + 0.2 * imp, 0.06);
+      } else if (k === 'heavy' || k === 'clothesline') {
         if (!audio.wr('wr_strike_h', (0.8 + 0.2 * imp) * c * _att, 1, 0, _pan, 1)) audio.hit();
         sub(0, 0.6 + 0.3 * imp);
         if (k === 'clothesline') audio.wr('wr_body', 0.8 * _att, 0.95, 0.01, _pan, 3);
@@ -211,6 +225,7 @@ export function createSfx(ctx, W) {
     },
     [EV.STRIKE_BLOCKED](e) {
       place(e.x, e.z);
+      if (e.kind === 'weapon') audio.wr('wr_clang', 0.7 * _att, 1.08, 0, _pan, 1);
       if (!audio.wr('wr_block', (0.75 + 0.25 * clamp01(e.impact)) * _att, e.kind === 'light' ? 1.06 : 0.94, 0, _pan, 3)) audio.shellHit();
     },
     [EV.STRIKE_REVERSED](e) {
@@ -333,6 +348,73 @@ export function createSfx(ctx, W) {
     },
     [EV.CROWD_CRUSHED](e) { place(e.x, e.z); crowd('panic', 1); },
 
+    // ---- landmark set pieces (spots.js; it also sends the crowd:pop, and game.js the collapse)
+    [EV.SPOT_HIT](e) {
+      place(e.x, e.z);
+      const imp = clamp01(e.impact), s = e.spot;
+      if (s === 'fountain') {
+        audio.splash(1);
+        audio.wr('wr_wave', 0.6 * _att, 1.3, 0.03, _pan, 1);
+        audio.wr('wr_gush', (0.8 + 0.2 * imp) * _att, 1, 0.25, _pan, 3);
+        sub(1, 0.6 + 0.3 * imp);
+      } else if (s === 'lake') {
+        audio.splash(1);
+        audio.wr('wr_wave', _att, 1, 0, _pan, 1);
+        sub(2, 0.7 + 0.3 * imp);
+      } else if (s === 'ltracks') {
+        audio.wr('wr_zap', _att, 1, 0, _pan, 1);
+        audio.wr('wr_screech', 0.9 * _att, 1, 0.2, _pan, 3);
+        audio.wr('wr_body', 0.8 * _att, 0.9, 0, _pan, 3);
+        vox(e.who, 'pain', 1, 0.12, 1);
+        sub(1, 0.6);
+      } else if (s === 'michigan') {
+        audio.wr('wr_crash', (0.8 + 0.2 * imp) * _att, 0.95, 0, _pan, 1);
+        audio.wr('wr_glass', _att, 1, 0.08, _pan, 1);
+        sub(2, 0.6 + 0.3 * imp);
+      } else if (s === 'bean') {
+        audio.wr('wr_bong', _att, 1, 0, _pan, 1);
+        audio.wr('wr_body', 0.8 * _att, 0.9, 0, _pan, 3);
+        sub(1, 0.6);
+      } else audio.wr('wr_crash', _att, 1, 0, _pan, 1);
+      duck(0.4, 1.2);
+      bump(0.35);
+    },
+
+    // ---- foreign objects
+    [EV.WEAPON_PICKUP](e) {
+      place(e.x, e.z);
+      audio.wr('wr_wpn_pickup', _att, e.kind === 'pole' ? 1.12 : 1, 0, _pan, 3);
+      if (e.who === 'player') crowd('pop', 0.55, 0.25); else crowd('boo', 0.6, 0.25);
+    },
+    [EV.WEAPON_DROP](e) { place(e.x, e.z); audio.wr('wr_wpn_drop', 0.9 * _att, e.kind === 'pole' ? 1.12 : 1, 0, _pan, 4); },
+    [EV.WEAPON_BREAK](e) {
+      place(e.x, e.z);
+      audio.wr('wr_wpn_break', _att, e.kind === 'pole' ? 1.1 : 1, 0.01, _pan, 1);
+      crowd('gasp', 0.9); crowd('pop', 0.9, 0.4);
+    },
+
+    // ---- count-out: the referee's hand on every number, the arena counting along
+    [EV.COUNTOUT_COUNT](e) {
+      const c = Math.max(1, Math.min(10, e.count | 0));
+      if (e.held) return;
+      _pan = 0;
+      audio.wr('wr_tick', 0.75 + 0.025 * c, 0.98 + 0.012 * c, 0, 0, 0, 2);
+      // ONE .. THREE are the pin-count shouts; FOUR .. TEN their own; louder as it climbs
+      const g = 0.45 + 0.055 * c;
+      if (c <= 3) audio.wr('wr_crowd_count', g, 1, 0.04, 0, 0, 1, c - 1);
+      else audio.wr('wr_crowd_num', g, 1, 0.04, 0, 0, 1, c - 4);
+      if (c >= 7) { sub(0, 0.35 + 0.08 * (c - 7)); S.coT = 1.5; S.heat = Math.max(S.heat, 0.55 + 0.1 * (c - 6)); }
+    },
+    [EV.COUNTOUT_STOP](e) {
+      S.coT = 0;
+      if (e.reason === 'in' && e.count >= 7) { _pan = 0; crowd('gasp', 0.7); crowd('pop', 1, 0.2); S.heat = 1; }
+    },
+    [EV.COUNTOUT_OUT](e) {
+      S.coT = 0; _pan = 0;
+      if (e.who === 'rival') crowd('pop', 1, 0.15); else { crowd('boo', 1, 0.2); crowd('ooh', 0.8); }
+      if (S.bellAgo > 0.3) S.coBellT = 0.35; // match.js rings the fall bell; if it does not, we do
+    },
+
     [EV.KNOCKDOWN](e) {
       place(e.x, e.z);
       // a thrown body already slammed through throw:land (the pack's cooldown would merge them anyway)
@@ -361,7 +443,21 @@ export function createSfx(ctx, W) {
       vox(e.who, 'effort', 1, 0, 1);
       if (e.near) { crowd('gasp', 1); crowd('ooh', 1, 0.2); crowd('pop', 1, 0.45); S.heat = 1; }
       else crowd('pop', 0.6, 0.1);
+      if (e.finisher) { _pan = 0; crowd('roar', 1, 0.6); crowd('chant', 1); sub(2, 0.8, 0.05); } // (drama) kicked out of a finisher
     },
+    // (drama) the referee's hand coming down for three: the arena holds its breath
+    [EV.PIN_NEAR]() { S.hush = 1; },
+    // (drama) a reversal can be had: a bright ting for the player's own window
+    [EV.REVERSAL_CUE](e) { if (e.who === 'player') audio.wr('wr_ui_prompt', 1, e.kind === 'grab' ? 1.45 : 1.7, 0, 0, 0, 2); },
+    // (drama) the comeback: a roar, the place erupts, the chant starts; no-sold hits land as dull thuds
+    [EV.COMEBACK_START](e) {
+      placeWho(e.who);
+      audio.roar(keyOf(e.who)); sub(1, 0.7);
+      if (e.who === 'player') { crowd('pop', 1, 0.15); crowd('chant', 1); } else crowd('boo', 1, 0.2);
+      S.heat = 1;
+    },
+    [EV.COMEBACK_FLURRY](e) { vox(e.who, 'effort', 1, 0, 1); },
+    [EV.COMEBACK_NOSELL](e) { place(e.x, e.z); audio.wr('wr_body', 0.6 * _att, 0.8, 0, _pan, 3); crowd('ooh', 0.5, 0.12); },
     [EV.PIN_FALL](e) { S.hush = 0; _pan = 0; if (e.who === 'player') crowd('pop', 1, 0.05); else { crowd('boo', 0.9, 0.2); crowd('ooh', 0.8); } },
     [EV.PIN_BROKEN](e) { S.hush = 0; _pan = 0; if (e.reason === 'interference') crowd('boo', 1, 0.1); else crowd('ooh', 0.7); },
 
@@ -448,6 +544,11 @@ export function createSfx(ctx, W) {
     if (S.painT.player > 0) S.painT.player -= dt;
     if (S.painT.rival > 0) S.painT.rival -= dt;
     if (S.dirT > 0) S.dirT -= dt;
+    if (S.coT > 0) S.coT -= dt;
+    S.bellAgo += dt;
+    if (S.coBellT >= 0 && (S.coBellT -= dt) < 0) {
+      for (let i = 0; i < 2; i++) if (!audio.wr('wr_bell', i ? 0.85 : 1, 1, i * 0.28, 0, 0, 2)) audio.bellFallback(i * 0.28);
+    }
     if (S.chantT > 0) S.chantT -= dt;
     if (S.slowT > 0) {
       S.slowT -= dt;
@@ -493,7 +594,7 @@ export function createSfx(ctx, W) {
 
     // -- music / bed ducks, slow-mo colour --
     const base = S.themeOn ? 0.12 : S.phase === 'pin' ? 0.35 : S.phase === 'finisher' ? 0.3 : S.phase === 'between' ? 0.7 : S.phase === 'over' ? 0.3 : S.phase === 'entrance' ? 0.5 : 1;
-    audio.matchDuck(base * (S.duckT > 0 ? S.duckAmt : 1), S.stopT > 0 ? 0.4 : 1);
+    audio.matchDuck(base * (S.duckT > 0 ? S.duckAmt : 1) * (S.coT > 0 ? 0.45 : 1), S.stopT > 0 ? 0.4 : 1);
     audio.matchLowpass(S.stopT > 0 ? 2400 : S.slowT > 0 ? 900 + 6000 * slow * slow : 20000);
   }
 

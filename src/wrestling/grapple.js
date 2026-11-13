@@ -35,12 +35,14 @@
 import * as THREE from 'three';
 import { EV } from './events.js';
 import { MOVES } from './fighter.js';
+import { createSignatures } from './signatures.js';
 
 /** Grapple tuning (exported for the balance simulation and the AI). */
 export const GRAPPLE = {
   lockMin: 0.30,        // s in the lock-up before a move can start
   lockAuto: 0.75,       // s after which a lock-up with no direction becomes the lift
   revWindow: 0.25,      // s after grab:start in which the victim's own grab press reverses it
+  revWindowPlayer: 0.34, // ... for the player (a reaction to the reversal cue fits in it)
   escapeGain: 0.24,     // escape meter per mash at full stamina
   escapeDecay: 0.30,    // meter lost per second
   cost: { whip: 8, suplex: 12, slam: 14, swing: 16, pickup: 6 },
@@ -58,6 +60,12 @@ export const GRAPPLE = {
   // pin
   countAt: [1.0, 2.0, 3.0], forcedAt: [0.8, 1.6, 2.4], nearFall: 2.55,
   pinGain: 0.07, pinGainS: 0.22, pinDecay: 0.22, pinLate: 2.7,
+  pinLateS: 0.4,                        // the player's kick-out cannot come before pinLate while its strength is under this (then earlier, to ~1 s when fresh)
+  kickSpan: 0.78,                       // the rival's kick-out curve: strength 0.13 .. 0.13 + span maps 2.95 s .. 0.45 s (wider = more 2.9s)
+  nearSlow: 2.45, nearSlowScale: 0.4,   // the referee's hand coming down for three: the last of the count in slow motion
+  wearPerFall: 0.05,                    // kick-outs get harder fall by fall (a long match wears both down)
+  // a finisher's cover: kicked out of only if the roll says so (once a match, healthy enough), and then only at the death
+  finKickBase: 0.06, finKickHp: 0.45, finKickMax: 0.22, finKickHpMin: 0.3,
   // finisher
   finDmg: 55, finRadius: 70, finRange: 22,
 };
@@ -90,7 +98,8 @@ export function createGrapple(ctx, W) {
   const hold = { active: false, who: '', target: '', phase: '', type: '', escape: 0, locked: false,
     A: null, V: null, t: 0, yaw: 0, yaw0: 0, d0: 0, noRev: false, aim: 0, ang: 0, omega: 0, spun: 0, turns: 0, want: false, sx: 0, sz: 0, syaw: 0, launched: false, ax: 0, az: 0 };
   /** The pin in progress (read-only). meter: the pinned one's 0..1 kick-out meter; count: slaps so far. */
-  const pin = { active: false, who: '', target: '', t: 0, count: 0, meter: 0, forced: false, done: false, A: null, V: null, kickAt: Infinity, strength: 0 };
+  const pin = { active: false, who: '', target: '', t: 0, count: 0, meter: 0, forced: false, done: false, A: null, V: null, kickAt: Infinity, strength: 0,
+    fin: false, finOk: false, nearSent: false };
   /** The finisher in progress (read-only). */
   const fin = { active: false, who: '', target: '', name: '', t: 0, A: null, V: null, def: null, beat: 0, x: 0, z: 0, yaw: 0, vx: 0, vz: 0, vyaw: 0, vlie: 0, hit: false };
   const flights = [mkFlight(), mkFlight()];
@@ -144,7 +153,8 @@ export function createGrapple(ctx, W) {
     if (!V || hold.active || pin.active || fin.active) return false;
     if (V.held || V.invuln || V.invulnT > 0 || V.state === 'ko' || V.state === 'downed' || V.state === 'gettingUp') return false;
     if (A.gapTo(V) > MOVES.grab.reach || !A.facing(V, 1.0)) return false;
-    lockup(A, V, V.grabLocked, V.state === 'blocking');
+    lockup(A, V, V.grabLocked && !V.comebackPhase, V.state === 'blocking' || !!V.comebackPhase);
+    if (V.comebackPhase) reverse(); // a fired-up kaiju cannot be tied up: it turns every grab around
     return true;
   }
   function lockup(A, V, locked, noRev) {
@@ -160,6 +170,12 @@ export function createGrapple(ctx, W) {
     const e = emit2(EV.GRAB_START, A, V);
     e.x = (A.pos.x + V.pos.x) / 2; e.y = A.hc + 4; e.z = (A.pos.z + V.pos.z) / 2;
     bus.emit(EV.GRAB_START);
+    if (!hold.noRev && hold.A === A) {
+      // The tie-up can be turned around: press grab now
+      const c = emit2(EV.REVERSAL_CUE, V, A);
+      c.kind = 'grab'; c.opens = 0; c.dur = V.isPlayer ? GRAPPLE.revWindowPlayer : GRAPPLE.revWindow;
+      bus.emit(EV.REVERSAL_CUE);
+    }
   }
   function endHold() {
     hold.active = false; hold.phase = ''; hold.type = ''; hold.escape = 0;
@@ -262,7 +278,7 @@ export function createGrapple(ctx, W) {
         hold.escape += iv.mash * g;
       }
       hold.escape = Math.max(0, hold.escape - G.escapeDecay * dt);
-      if (hold.phase === 'lockup' && !hold.noRev && t <= G.revWindow && iv.grab) { reverse(); return; }
+      if (hold.phase === 'lockup' && !hold.noRev && t <= (V.isPlayer ? G.revWindowPlayer : G.revWindow) && iv.grab) { reverse(); return; }
       if (hold.escape >= 1) { escape('mash'); return; }
     }
     switch (hold.phase) {
@@ -276,6 +292,8 @@ export function createGrapple(ctx, W) {
         if (ia.finisher && tryFinisher(A)) return;
         if (t >= G.lockMin) {
           const ax = Math.abs(ia.dirX), az = Math.abs(ia.dirZ);
+          // RUN held + toward / away: the kaiju's own signature move (signatures.js)
+          if (ia.sprint && az > 0.5 && az >= ax && sig.begin(ia.dirZ > 0 ? 1 : 2)) break;
           if (ax > 0.5 && ax >= az) startMove('swing');
           else if (ia.dirZ > 0.5) startMove('whip');
           else if (ia.dirZ < -0.5) startMove('suplex');
@@ -444,6 +462,7 @@ export function createGrapple(ctx, W) {
         }
         break;
       }
+      case 'sig': sig.update(dt); break;
       default: break;
     }
   }
@@ -473,6 +492,10 @@ export function createGrapple(ctx, W) {
   // A travelling body meets a building. Returns the share of its speed it keeps (0 = stopped dead).
   function smash(f, b, speed, forceCollapse) {
     const V = f.V, by = f.by;
+    // Landmark set pieces (spots.js): Buckingham Fountain is a basin to come down in (a whipped body trips into it), Cloud Gate bounces
+    const spot = W.spots ? W.spots.building(b) : '';
+    if (spot === 'fountain') return f.mode === 'run' ? 0 : 1;
+    if (spot === 'bean') return W.spots.bounce(f, b, speed);
     if (b.isFence || b.fest || b.h < 5) { ctx.collapseBuilding(b, by.id); return b.fest ? 0.97 : 1; } // festival tents, stalls and fences are confetti: no damage, no momentum, no callout
     const name = ctx.landmarkName(b), big = !!name;
     const through = forceCollapse || speed >= GRAPPLE.smashMin;
@@ -737,7 +760,9 @@ export function createGrapple(ctx, W) {
   /** How much fight a pinned kaiju has left, about 0 (done) .. 1 (fresh): health, stamina, the size of the move that put it there, kick-outs already spent. */
   function pinStrength(V) {
     const hp = Math.max(0, V.hp) / Math.max(1, V.maxHp), st = V.stamina / V.maxStamina;
-    return 0.2 + 0.6 * hp + 0.15 * st - 0.28 * V.lastImpact - 0.07 * V.kickouts - (V.finished > 0 ? 0.3 : 0);
+    return 0.2 + 0.6 * hp + 0.15 * st - 0.28 * V.lastImpact - 0.07 * V.kickouts - (V.finished > 0 ? 0.3 : 0)
+      - 0.04 * (V.worked || 0) // (a back Mechra has worked over: signatures.js)
+      - GRAPPLE.wearPerFall * Math.max(0, (W.match.state.fall || 1) - 1); // (the third fall: everyone is running on fumes)
   }
   /** A covers the downed V. forced: a knockout cover that cannot be kicked out of. */
   function startPin(A, V, forced) {
@@ -745,14 +770,20 @@ export function createGrapple(ctx, W) {
     if ((V.state !== 'downed' && V.state !== 'ko') || (V.invuln && !forced)) return false;
     take(A, V);
     pin.active = true; pin.done = false; pin.A = A; pin.V = V; pin.who = A.id; pin.target = V.id;
-    pin.t = 0; pin.count = 0; pin.meter = 0; pin.forced = !!forced;
+    pin.t = 0; pin.count = 0; pin.meter = 0; pin.forced = !!forced; pin.nearSent = false;
     const S = pinStrength(V) + (V.isPlayer ? 0 : 0.05 * (W.match.state.difficulty || 0));
     pin.strength = S;
+    // Off a finisher: over, unless the roll gives this kaiju the one kick-out of its match (and then only at 2.9)
+    const hpF = Math.max(0, V.hp) / Math.max(1, V.maxHp);
+    pin.fin = !forced && V.finished > 0;
+    pin.finOk = pin.fin && !V.finKicked && hpF >= GRAPPLE.finKickHpMin
+      && Math.random() < Math.min(GRAPPLE.finKickMax, GRAPPLE.finKickBase + GRAPPLE.finKickHp * (hpF - GRAPPLE.finKickHpMin));
     if (forced || V.isPlayer) pin.kickAt = Infinity;
+    else if (pin.fin) pin.kickAt = pin.finOk ? 2.88 + Math.random() * 0.09 : Infinity;
     else {
       // The rival's kick-out is decided as the cover goes on: fresh = at one, hurt = the last instant, spent = never
       const r = S + (Math.random() * 0.2 - 0.1);
-      pin.kickAt = r < 0.13 ? Infinity : 2.95 - 2.5 * Math.pow(clamp01((r - 0.13) / 0.62), 4);
+      pin.kickAt = r < 0.13 ? Infinity : 2.95 - 2.5 * Math.pow(clamp01((r - 0.13) / GRAPPLE.kickSpan), 4);
     }
     V.mid(_c);
     A.setPose(_c.x, V.lieY + 8, _c.z, V.root.rotation.y + HALF_PI, 1.35, 0);
@@ -773,16 +804,20 @@ export function createGrapple(ctx, W) {
     A.setState('neutral');
   }
   function kickOut() {
-    const A = pin.A, V = pin.V, near = pin.t >= GRAPPLE.nearFall;
+    const A = pin.A, V = pin.V, near = pin.t >= GRAPPLE.nearFall, finK = pin.fin;
     const e = emit2(EV.PIN_KICKOUT, V, A);
-    e.count = pin.count; e.at = pin.t; e.near = near;
+    e.count = pin.count; e.at = pin.t; e.near = near; e.finisher = finK;
     bus.emit(EV.PIN_KICKOUT);
     pin.active = false;
     V.kickouts++;
-    V.gainMomentum(near ? 14 : 7);
+    if (finK) { V.finKicked = true; V.finished = 0; }
+    V.gainMomentum(finK ? 30 : near ? 14 : 7);
     V.stamina = Math.min(V.maxStamina, V.stamina + 12);
-    if (V.isPlayer) ctx.addScore(near ? 800 : 250);
-    W.hitStop(0.06);
+    if (V.isPlayer) ctx.addScore(finK ? 3000 : near ? 800 : 250);
+    // A 2.9 is held for a beat: the shoulder coming up in slow motion (off a finisher, longer still)
+    W.hitStop(finK ? 0.16 : near ? 0.1 : 0.06);
+    if (finK) W.slowMo(0.25, 1.3, 3);
+    else if (near) W.slowMo(0.35, 0.75, 2);
     pinnerOff(A, V);
     A.lockT = 0; A.lockHits = 0;
     A.stagger(0.9, V.id, -Math.sin(A.root.rotation.y), -Math.cos(A.root.rotation.y), 26);
@@ -823,13 +858,24 @@ export function createGrapple(ctx, W) {
       }
     }
     if (pin.forced) return;
+    if (!pin.nearSent && pin.t >= G.nearSlow) {
+      // The hand is coming down for three: the last of the count in slow motion (the kick-out, if it comes, lands in it)
+      pin.nearSent = true;
+      const n = emit2(EV.PIN_NEAR, A, V);
+      n.t = pin.t;
+      bus.emit(EV.PIN_NEAR);
+      W.slowMo(G.nearSlowScale, (G.countAt[2] - pin.t + 0.04) / G.nearSlowScale, 2);
+    }
     if (V.isPlayer) {
       const S = clamp01(pin.strength);
-      if (V.intent.mash > 0) pin.meter += V.intent.mash * (G.pinGain + G.pinGainS * S);
+      // (presses come in real time: in the slow motion each one is worth its share of a real second, not more)
+      if (V.intent.mash > 0) pin.meter += V.intent.mash * (G.pinGain + G.pinGainS * S) * Math.min(1, W.match.timeScale || 1);
       pin.meter = Math.max(0, pin.meter - G.pinDecay * dt);
       // The more beaten it is, the later even perfect mashing can get the shoulder up: a hurt kaiju's kick-outs are near falls
-      const minT = G.pinLate * (1 - clamp01((pin.strength - 0.25) / 0.45));
-      if (pin.t < minT) pin.meter = Math.min(pin.meter, 0.97 * pin.t / minT);
+      // (off a finisher: only when the roll allows it at all, and only at the death)
+      const minT = pin.fin ? 2.82 : G.pinLate * (1 - clamp01((pin.strength - G.pinLateS) / 0.4));
+      if (pin.fin && !pin.finOk) pin.meter = Math.min(pin.meter, 0.97 * Math.min(1, pin.t / 2.82));
+      else if (pin.t < minT) pin.meter = Math.min(pin.meter, 0.97 * pin.t / minT);
       if (pin.meter >= 1) kickOut();
     } else {
       pin.meter = pin.kickAt === Infinity ? Math.min(0.8, pin.t / 3 * 0.6 + Math.sin(pin.t * 9) * 0.05) : clamp01(pin.t / pin.kickAt);
@@ -843,7 +889,10 @@ export function createGrapple(ctx, W) {
     if (fin.active) { fin.active = false; fin.A.held = false; fin.V.held = false; fin.A.invuln = false; fin.V.invuln = false; }
     for (const f of flights) if (f.on) { f.on = false; f.V.held = false; f.V.targetable = true; }
     pin.done = false; pin.A = null; pin.V = null; pin.who = ''; pin.target = ''; pin.meter = 0; pin.count = 0;
+    sig.reset();
   }
+  // The signature grapples run inside the hold (phase 'sig') with these internals
+  const sig = createSignatures(ctx, W, { hold, stand, endHold, impact, releaseThrower, smash, flightOf, emit2, carryH, groundY });
 
   // ------------------------------------------------------------------ finisher
   /** Momentum full, and the foe stunned, held by A, or down and in reach. */

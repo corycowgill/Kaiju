@@ -623,6 +623,167 @@ function chantLoop(r) {
   return loopFilter(out, crowdTone);
 }
 
+// ---------------------------------------------------------------- landmark spots, weapons, count-out
+/** A free steel beam / pole: inharmonic bar modes with beating, scaled by f0. */
+const steel = (r, sec, f0, tau, n = 8) => modal(sec, [1, 2.76, 5.40, 8.93, 13.34, 18.64, 24.8, 31.9].slice(0, n).map((m, i) => ({
+  f: f0 * m * r.range(0.993, 1.007), a: [0.8, 1, 0.95, 0.8, 0.65, 0.5, 0.35, 0.25][i], tau: tau / (1 + i * 0.45), beat: [0, 1.8, 2.7, 3.5, 5, 0, 0, 0][i],
+})), r, 0.0006);
+function clang(r, v) {
+  // the chair shot: a girder (v0) / light pole (v1) across a kaiju's back. Hollow steel ring
+  // with a hard flat crack and the hide thud under it, shorter and brighter than a ring post
+  const sec = 1.4, o = buf(sec), f0 = [205, 290][v];
+  mixInto(o, E(steel(r, 1.2, f0, 0.42), 0), 0);
+  mixInto(o, E(burst(r, 0.07, { f: (t) => 5200 * Math.exp(-t / 0.01) + 1400, q: 0.6, att: 0.0002, tau: 0.008 }), -7), 0);
+  mixInto(o, E(burst(r, 0.18, { f: r.range(300, 380), q: 1, att: 0.002, tau: 0.045 }), -4), 0.002);
+  mixInto(o, E(thump(0.3, 150, 75, 0.025, 0.07, 1.6), -5), 0.002);
+  // the loose rattle of a bolted beam
+  mixInto(o, E(grains(r, 0.5, { rate: (t) => 500 * Math.exp(-t / 0.08), fLo: 1800, fHi: 6500, tauLo: 0.001, tauHi: 0.004, amp: (t) => Math.exp(-t / 0.1) }), -11), 0.01);
+  return space(hp4(o, 85), { wet: 0.18, tail: 1.0, slap: 0.12, bright: 6000, seed: 211 + v });
+}
+function wpnPickup(r) {
+  // a girder dragged off the asphalt and hoisted: scraping stick-slip, then one clank as it settles
+  const sec = 1.0, o = buf(sec), at = 0.5;
+  const sc = svf(noise(at, r), (t) => 1300 + 900 * Math.sin(TAU * 3 * t), 6, 'bp');
+  let ph = 0;
+  env(sc, (t) => { ph += TAU * (14 + 9 * t) / SR; return (0.55 + 0.45 * Math.sin(ph)) * Math.min(1, t / 0.05) * (t > at - 0.05 ? (at - t) / 0.05 : 1); });
+  mixInto(o, E(sc, -2), 0);
+  mixInto(o, E(grains(r, at, { rate: () => 240, fLo: 900, fHi: 4200, tauLo: 0.001, tauHi: 0.003 }), -8), 0);
+  mixInto(o, E(steel(r, 0.5, 340, 0.12, 6), 0), at);
+  mixInto(o, E(burst(r, 0.04, { f: 2600, q: 0.8, att: 0.0003, tau: 0.005 }), -6), at);
+  return fade(hp4(o, 120), 0.005, 0.05);
+}
+function wpnDrop(r) {
+  // dropped: five bounces closing up like a dropped pipe, each a short ring and a thud
+  const sec = 1.4, o = buf(sec);
+  let t = 0, g = 1;
+  for (let k = 0; k < 5; k++) {
+    mixInto(o, steel(r, 0.45, 260 * r.range(0.93, 1.07), 0.09 + 0.02 * g, 6), t, g);
+    mixInto(o, burst(r, 0.05, { f: r.range(2000, 3200), q: 0.8, att: 0.0003, tau: 0.005 }), t, 0.6 * g);
+    mixInto(o, thump(0.12, 180, 110, 0.015, 0.03, 1.2), t, 0.5 * g);
+    t += 0.17 * Math.pow(0.68, k); g *= 0.62;
+  }
+  return fade(space(hp4(o, 110), { wet: 0.12, tail: 0.6, slap: 0.1, bright: 6000, seed: 221 }), 0.002, 0.1);
+}
+function wpnBreak(r) {
+  // the girder gives: a snap, a short tearing groan, fragments ringing off and a rain of bolts
+  const sec = 1.6, o = buf(sec);
+  mixInto(o, E(burst(r, 0.05, { f: 3600, q: 0.5, att: 0.0002, tau: 0.005 }), -6), 0);
+  const g = saw(0.22, (t) => 140 - 90 * t / 0.22);
+  mixInto(o, E(env(bp(g, 900, 3), (t) => Math.exp(-t / 0.08)), -3), 0.005);
+  for (let k = 0; k < 4; k++) mixInto(o, E(steel(r, 0.6, r.range(380, 900), 0.15, 5), -6 - k * 2), 0.01 + k * r.range(0.03, 0.09));
+  mixInto(o, E(grains(r, 1.3, { rate: (t) => 260 * Math.exp(-t / 0.25) + 8, fLo: 1500, fHi: 7000, tauLo: 0.002, tauHi: 0.012, amp: (t) => Math.exp(-t / 0.4) }), -6), 0.05);
+  mixInto(o, E(thump(0.25, 160, 80, 0.02, 0.06, 1.5), -5), 0);
+  return space(hp4(o, 95), { wet: 0.16, tail: 0.9, slap: 0.12, bright: 6000, seed: 231 });
+}
+function zap(r) {
+  // THIRD RAIL: a flash pop, then 1.1 s of arcing - a 120 Hz buzz with sputtering crackle -
+  // breaking up as the contact goes
+  const sec = 1.4, o = buf(sec);
+  const on = (t) => (t < 1.0 ? 1 : Math.max(0, 1 - (t - 1.0) / 0.3)) * (0.6 + 0.4 * (Math.sin(TAU * 7.3 * t) > -0.4 ? 1 : 0.2));
+  const hum = buf(1.3);
+  for (const [h, a] of [[1, 0.6], [2, 1], [3, 0.8], [5, 0.6], [7, 0.45], [9, 0.3], [13, 0.2]]) mixInto(hum, sine(1.3, 120 * h * r.range(0.998, 1.002), a / 1, r() * TAU), 0, 1);
+  mixInto(o, E(env(sat(bp(hum, 1100, 0.6), 3), (t) => on(t) * Math.min(1, t / 0.02)), 0), 0.02);
+  mixInto(o, E(env(grains(r, 1.3, { rate: (t) => (t < 1.0 ? 1600 : 400), fLo: 2500, fHi: 9000, tauLo: 0.0003, tauHi: 0.0012, amp: on }), (t) => 1), -2), 0.02);
+  mixInto(o, E(env(svf(noise(1.3, r), 5200, 0.7, 'bp'), on), -8), 0.02);
+  mixInto(o, E(burst(r, 0.08, { f: 3000, q: 0.4, att: 0.0002, tau: 0.012 }), -1), 0);
+  mixInto(o, E(thump(0.3, 140, 70, 0.02, 0.06, 2), -6), 0);
+  return fade(hp4(o, 110), 0.001, 0.05);
+}
+function screech(r) {
+  // an L train standing on its brakes: steel squeal partials wandering around 2.5-3.8 kHz
+  // over a wheel grind, settling down in pitch as it slows
+  const sec = 1.9, o = buf(sec);
+  for (const [f, a] of [[2650, 1], [3420, 0.7], [5300, 0.25], [1920, 0.4]]) {
+    const w1 = r.range(3, 6), w2 = r.range(9, 15), p1 = r() * TAU, p2 = r() * TAU;
+    const s = sine(sec, (t) => f * (1 - 0.05 * t / sec) * (1 + 0.012 * Math.sin(p1 + TAU * w1 * t) + 0.004 * Math.sin(p2 + TAU * w2 * t)), 1, r() * TAU);
+    env(s, (t) => 0.6 + 0.4 * Math.sin(p2 + TAU * w1 * 1.7 * t));
+    mixInto(o, s, 0, a);
+  }
+  mixInto(o, E(svf(noise(sec, r), 1500, 0.8, 'bp'), -6), 0);
+  mixInto(o, E(lp4(noise(sec, r), 400), -9), 0);
+  env(o, (t) => Math.min(1, t / 0.12) * (t > sec - 0.6 ? Math.pow((sec - t) / 0.6, 1.5) : 1));
+  return fade(hp4(o, 90), 0.01, 0.02);
+}
+function bong(r) {
+  // Cloud Gate: a building-sized polished steel shell. A deep "bong" whose pitch boings down
+  // into place, wobbling as the shell flexes, with a long shimmering tail
+  const sec = 3.8, o = buf(sec);
+  const P = [[1, 1, 1.8, 0.7], [1.52, 0.7, 1.3, 1.1], [2.31, 0.6, 0.9, 1.6], [2.94, 0.45, 0.7, 2.2], [3.83, 0.35, 0.5, 2.9], [5.18, 0.25, 0.35, 3.7], [6.9, 0.15, 0.22, 0]];
+  const f0 = 96;
+  for (const [m, a, tau, beat] of P) {
+    for (const d of beat ? [0, beat] : [0]) {
+      const s = sine(sec, (t) => (f0 * m + d) * (1 + 0.07 * Math.exp(-t / 0.07)) * (1 + 0.006 * Math.sin(TAU * 4.2 * t) * Math.exp(-t / 0.8)), 1, r() * TAU);
+      mixInto(o, env(s, (t) => Math.min(1, t / 0.001) * Math.exp(-t / tau)), 0, a * (d ? 0.7 : 1));
+    }
+  }
+  mixInto(o, E(burst(r, 0.05, { f: 1800, q: 0.7, att: 0.0003, tau: 0.006 }), -16), 0);
+  mixInto(o, E(thump(0.3, 140, 72, 0.02, 0.08, 1.6), -10), 0);
+  return space(hp(o, 72), { wet: 0.22, tail: 1.6, slap: 0.15, bright: 5000, seed: 241 });
+}
+function tick(r) {
+  // the referee's count: a flat hand chopping down on the apron, hard and dry
+  const o = buf(0.35);
+  mixInto(o, E(burst(r, 0.03, { f: 1700, q: 1.1, att: 0.0003, tau: 0.0035 }), 0), 0);
+  mixInto(o, E(burst(r, 0.03, { f: 2600, q: 1.4, att: 0.0003, tau: 0.003 }), -4), 0.004);
+  mixInto(o, E(modal(0.25, [{ f: 620, a: 1, tau: 0.03 }, { f: 1490, a: 0.5, tau: 0.018 }], r, 0.0005), -4), 0);
+  mixInto(o, E(thump(0.15, 190, 110, 0.012, 0.03, 1.4), -11), 0);
+  return fade(hp4(o, 90), 0.0005, 0.05);
+}
+function gush(r) {
+  // a burst water main: a rushing jet with bubbling and spatter, holding, then dropping off
+  const sec = 2.2, o = buf(sec);
+  mixInto(o, E(svf(noise(sec, r), (t) => 1400 + 500 * Math.sin(TAU * 0.9 * t), 0.5, 'bp'), 0), 0);
+  mixInto(o, E(lp4(noise(sec, r), 600), -5), 0);
+  // bubbles: short rising sine chirps
+  const b = buf(sec);
+  let t = 0;
+  while ((t += -Math.log(1 - r()) / 90) < sec - 0.05) {
+    const f = r.range(400, 1600), d = r.range(0.01, 0.03);
+    mixInto(b, env(sine(d * 3, (u) => f * (1 + 2.5 * u / d)), adExp(0.001, d)), t, r.range(0.3, 1));
+  }
+  mixInto(o, E(b, -6), 0);
+  mixInto(o, E(grains(r, sec, { rate: () => 300, fLo: 2500, fHi: 7000, tauLo: 0.001, tauHi: 0.003 }), -10), 0);
+  env(o, (s) => Math.min(1, s / 0.06) * (s > 1.3 ? Math.max(0, 1 - (s - 1.3) / 0.9) : 1));
+  return fade(hp4(o, 120), 0.003, 0.05);
+}
+function wave(r) {
+  // Lake Michigan displaced: the mass of water crashing back, a long surge and a rain of spray
+  const sec = 3.4, o = buf(sec);
+  mixInto(o, E(env(svf(noise(sec, r), (t) => 300 + 1500 * Math.exp(-t / 0.35), 0.6, 'lp'), adExp(0.02, 0.6)), 0), 0);
+  mixInto(o, E(env(svf(noise(sec, r), (t) => 500 + 700 * Math.sin(Math.PI * clamp(t / 2.4, 0, 1)), 1.1, 'bp'), (t) => Math.sin(Math.PI * clamp((t - 0.3) / 2.6, 0, 1)) ** 1.5), -3), 0);
+  mixInto(o, E(grains(r, sec, { rate: (t) => 1500 * Math.exp(-t / 0.7) + 30, fLo: 900, fHi: 6000, tauLo: 0.002, tauHi: 0.008, amp: (t) => Math.exp(-t / 1.0) }), -6), 0.15);
+  return space(hp4(o, 75), { wet: 0.2, tail: 1.2, slap: 0.12, bright: 4000, seed: 251 });
+}
+function glassCascade(r) {
+  // a Michigan Avenue glass curtain wall letting go: shards ringing high, then the sheets
+  // still raining down and bursting on the street a beat later
+  const sec = 3.0, o = buf(sec);
+  const shards = (rate, fLo, fHi, amp) => grains(r, sec, { rate, fLo, fHi, tauLo: 0.004, tauHi: 0.04, amp });
+  mixInto(o, E(shards((t) => 900 * Math.exp(-t / 0.35) + 40, 2500, 9500, (t) => Math.exp(-t / 0.8)), 0), 0);
+  mixInto(o, E(shards((t) => (t > 0.7 ? 700 * Math.exp(-(t - 0.7) / 0.6) : 0), 2000, 8000, () => 0.8), -3), 0);
+  for (const at of [0, 0.75, 1.1]) mixInto(o, E(burst(r, 0.2, { f: 4500, q: 0.6, att: 0.0003, tau: 0.03 }), -6), at);
+  return space(hp4(o, 400), { wet: 0.2, tail: 1.0, slap: 0.13, bright: 9000, seed: 261 });
+}
+// The crowd counting a count-out past three (one / two / three are wr_crowd_count)
+Object.assign(SCRIPTS, {
+  four: (d) => [[0, 'o', 0, 1], [0.06 * d, 'o', 0.6, 0.95], [0.1 * d, 'o', 1, 0.1], [0.3 * d, 'o', 1, 0.08], [0.42 * d, 'r', 0.8, 0.06], [0.55 * d, 'r', 0, 0.2]],
+  five: (d) => [[0, 'a', 0, 1], [0.06 * d, 'a', 0.5, 0.95], [0.1 * d, 'a', 1, 0.08], [0.3 * d, 'a', 1, 0.08], [0.42 * d, 'i', 0.8, 0.08], [0.5 * d, 'i', 0.5, 0.6], [0.58 * d, 'i', 0, 0.9]],
+  six: (d) => [[0, 'i', 0, 1], [0.03 * d, 'i', 0.6, 1], [0.09 * d, 'i', 0.6, 1], [0.11 * d, 'i', 1, 0.08], [0.26 * d, 'i', 0.9, 0.08], [0.3 * d, 'i', 0.1, 0.3], [0.34 * d, 'i', 0.5, 1], [0.42 * d, 'i', 0, 1]],
+  seven: (d) => [[0, 'i', 0, 1], [0.03 * d, 'i', 0.6, 1], [0.08 * d, 'i', 0.5, 1], [0.1 * d, 'e', 1, 0.08], [0.24 * d, 'e', 0.9, 0.08], [0.28 * d, 'u', 0.4, 0.5], [0.33 * d, 'uh', 0.9, 0.1], [0.42 * d, 'n', 0.6, 0.02], [0.52 * d, 'n', 0, 0]],
+  eight: (d) => [[0, 'e', 0, 0.2], [0.04 * d, 'e', 1, 0.1], [0.25 * d, 'e', 0.9, 0.08], [0.33 * d, 'i', 0.7, 0.1], [0.37 * d, 'i', 0, 0.6], [0.41 * d, 'i', 0.5, 1], [0.45 * d, 'i', 0, 1]],
+  nine: (d) => [[0, 'n', 0, 0], [0.04 * d, 'n', 0.7, 0.02], [0.09 * d, 'a', 1, 0.08], [0.3 * d, 'a', 0.95, 0.08], [0.4 * d, 'i', 0.8, 0.08], [0.47 * d, 'n', 0.6, 0.02], [0.58 * d, 'n', 0, 0]],
+  ten: (d) => [[0, 'e', 0, 1], [0.012 * d, 'e', 1, 1], [0.035 * d, 'e', 0.4, 0.9], [0.06 * d, 'e', 1, 0.1], [0.3 * d, 'e', 0.9, 0.08], [0.38 * d, 'n', 0.6, 0.02], [0.5 * d, 'n', 0, 0]],
+});
+function crowdNum(r, n) {
+  // FOUR! .. TEN! - the arena joins in, more of them and higher with every number
+  const word = ['four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][n - 4];
+  return crowdShot(r, {
+    sec: 1.1, count: 70 + 8 * (n - 4), spread: 0.03, f0mul: 1.18 + 0.025 * (n - 4), bright: 0.5 + 0.05 * (n - 4), washAmp: -13, seed: 271 + n, tail: 0.8, wet: 0.4,
+    washEnv: (t) => Math.min(1, t / 0.03) * Math.exp(-Math.max(0, t - 0.12) / 0.14),
+    pick: (rr) => ({ script: SCRIPTS[word](rr.range(0.92, 1.1)), glide: arch(0.12, 0.06, 0.16), rough: 0.3, tilt: 3000 }),
+  });
+}
+
 // ---------------------------------------------------------------- catalogue
 // name: { make(r, v), n (variations), lufs (momentary-max target) | peakDb (level by peak instead),
 //         loop (seconds; exact loop length), seed }
@@ -661,5 +822,18 @@ export const SOUNDS = {
   wr_crowd_boo:  { n: 2, make: crowdBoo, lufs: -17, seed: 4600 },
   wr_crowd_count: { n: 3, make: (r, v) => crowdCount(r, v + 1), lufs: -15.5, seed: 4700 },
   wr_crowd_roar: { n: 1, make: crowdRoar, lufs: -14, seed: 4800 },
+  // landmark spots, foreign objects, count-out
+  wr_clang:      { n: 2, make: clang, lufs: -15, seed: 5000 },
+  wr_wpn_pickup: { n: 1, make: wpnPickup, lufs: -20, seed: 5100 },
+  wr_wpn_drop:   { n: 1, make: wpnDrop, lufs: -18.5, seed: 5200 },
+  wr_wpn_break:  { n: 1, make: wpnBreak, lufs: -16, seed: 5300 },
+  wr_zap:        { n: 1, make: zap, lufs: -16, seed: 5400 },
+  wr_screech:    { n: 1, make: screech, lufs: -19.5, seed: 5500 },
+  wr_bong:       { n: 1, make: bong, lufs: -15.5, seed: 5600 },
+  wr_tick:       { n: 1, make: tick, lufs: -20.5, seed: 5700 },
+  wr_gush:       { n: 1, make: gush, lufs: -19, seed: 5800 },
+  wr_wave:       { n: 1, make: wave, lufs: -16, seed: 5900 },
+  wr_glass:      { n: 1, make: glassCascade, lufs: -18, seed: 6000 },
+  wr_crowd_num:  { n: 7, make: (r, v) => crowdNum(r, v + 4), lufs: -15.5, seed: 6100 },
 };
 export { V as VOWELS };

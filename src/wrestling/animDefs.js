@@ -6,6 +6,7 @@
 // drives all three kaiju; R.key / R.quirks are there for the few places a
 // body needs its own treatment (Tridon's wings and tail, Gorrak's bulk).
 import { mixPose, newPose, resetPose, mirrorPose, copyPose, ramp, rampIn, rampOut, pulse, kf, wobble, smooth, clamp01, TAU } from './animRig.js';
+import { SIGNATURES } from './signatures.js';
 
 const sin = Math.sin, cos = Math.cos, PI = Math.PI;
 const _A = newPose(), _B = newPose(), _C = newPose();
@@ -318,6 +319,20 @@ export const DEFS = {
   entrance: { dur: 1.0, loop: true, speed: 7 / (0.6 * 1.0), pose(t, P, R, dur) {
     stance(P, R); level(P); (STRUT[R.key] || STRUT.godzilla)(P, R, t / dur);
     gait(P, R, t / dur, 0, 1, 7, 0.6, 3.0, MARCH);
+  } },
+
+  // ---- signature grapples (signatures.js): 2 s clips stretched to each move's length; the pose functions work in its real seconds ----
+  sig_a: { dur: 2.0, pose(t, P, R) { stance(P, R); const d = (SIGNATURES[R.key] || SIGNATURES.godzilla)[0]; (SIG_A[R.key] || SIG_A.godzilla)(t * d.dur / 2, P, R, d.T, d.dur); } },
+  sig_b: { dur: 2.0, pose(t, P, R) { stance(P, R); const d = (SIGNATURES[R.key] || SIGNATURES.godzilla)[1]; (SIG_B[R.key] || SIG_B.godzilla)(t * d.dur / 2, P, R, d.T, d.dur); } },
+  sig_victim: { dur: 1.2, loop: true, rootDriven: true, pose(t, P, R, dur) {   // choked, inverted, headlocked: clawing at the grip, legs kicking
+    limp(P, R);
+    const a = t / dur * TAU;
+    hand(P, 'L', 0.3, 0.62 + 0.08 * sin(a * 2), 0.5); hand(P, 'R', 0.32, 0.55 + 0.08 * sin(a * 2 + 2), 0.55); elbow(P, 'L', 1, -0.2, -0.3); elbow(P, 'R', 1, -0.2, -0.3);
+    P.hLp = -0.4; P.hRp = -0.4;
+    P.tLp = 0.25 + 0.45 * sin(a); P.kLb = 0.6 + 0.5 * Math.max(0, sin(a + 1)); P.tRp = 0.25 - 0.45 * sin(a); P.kRb = 0.6 + 0.5 * Math.max(0, -sin(a + 1));
+    P.hdp = -0.45 + 0.1 * sin(a * 2); P.hdy = 0.25 * sin(a); torso(P, -0.15, 0.1 * sin(a), 0.08 * sin(a + 1));
+    tail(P, R, 0.35 * sin(a * 1.5)); wings(P, R, -0.35 + 0.15 * sin(a * 2), 0.45); // (wings folded: a held Tridon would fill the screen)
+    if (R.iTail >= 0) { P.tlp = -0.6; P.kLb = 1.0; }
   } },
 
   // ---- the rival's signature powers: anticipation -> `fire` -> the pose held through the active window -> recovery (fighter.js POWERS) ----
@@ -859,5 +874,131 @@ const FIN_OVER = {
   mecha(Q, R) {      // upright, one arm levelled down at the wreck
     K.mechT(Q, R); Q.fLz = 1.6; Q.fRz = -1.2; torso(Q, 0.12, 0.25, 0); Q.hdp = 0.3;
     hand(Q, 'R', 0.05, -0.55, 0.8); elbow(Q, 'R', 0.3, -1, 0); hand(Q, 'L', 0.4, -0.85, 0.0); wings(Q, R, 0.6, 0);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Signature grapples (the thrower). fn(s, P, R, T, D): s = real seconds into the
+// move, T = its beats and D = its length (signatures.js SIGNATURES). Each starts
+// from the lock-up and ends back in the stance.
+// ---------------------------------------------------------------------------
+const SIG_A = {
+  // Gorrak, TYRANT CHOKESLAM: one hand on the throat, up at full stretch, then the whole body drives it through the mat
+  godzilla(s, P, R, T, D) {
+    blend(P, R, 1 - ramp(s, 0.05, 0.3), K.tieUp);
+    blend(P, R, ramp(s, 0.1, 0.3) * (1 - ramp(s, 0.32, 0.6)), (Q) => {
+      torso(Q, 0.18, 0.15, 0); Q.hz += 1.2; Q.hy -= 1.0; Q.fLz += 1.4;
+      hand(Q, 'R', 0.12, 0.35, 0.95); elbow(Q, 'R', 1, -0.3, -0.2); hand(Q, 'L', 0.5, -0.2, 0.4); Q.hRp = -0.4;
+    });
+    blend(P, R, ramp(s, 0.32, T.lift) * (1 - rampIn(s, T.hang, T.hang + 0.08)), (Q) => {
+      Q.hy += 0.8; Q.hz -= 0.3; Q.hyaw = 0; torso(Q, -0.3, 0.2, -0.08); Q.fLx = 2.4; Q.fRx = 2.4; Q.fLz = 1.4; Q.fRz = -1.6;
+      hand(Q, 'R', 0.1, 0.97, 0.22); elbow(Q, 'R', 1, 0, -0.1); hand(Q, 'L', 0.85, 0.15, 0.1); elbow(Q, 'L', 0.6, -0.6, -0.5);
+      Q.hRp = -0.6; Q.hdp = -0.35; Q.nkp = -0.2; wings(Q, R, 1.1, -0.2);
+    });
+    blend(P, R, rampIn(s, T.hang, T.drop) * (1 - ramp(s, T.drop + 0.2, D)), (Q) => {
+      Q.hy -= 3.8; Q.hz += 2.6; Q.hyaw = 0; torso(Q, 0.8, 0.1, 0); Q.fLz = 3.0; Q.fRz = -1.8; Q.fRpit = 0.5; Q.fLx = 2.4; Q.fRx = 2.4;
+      hand(Q, 'R', 0.08, -0.45, 0.88); elbow(Q, 'R', 1, 0.2, -0.3); hand(Q, 'L', 0.9, 0.2, -0.2); Q.hdp -= 0.4; wings(Q, R, 1.3, -0.3);
+    });
+    // the hang: the arm trembles under the weight
+    const w = pulse(s, T.lift, T.lift + 0.05, T.hang - 0.05, T.hang); P.aRx += 0.012 * w * sin(s * 70); P.s3y += 0.02 * w * sin(s * 55);
+    P.hy += 0.8 * wobble(s, T.drop, 24, 7);
+  },
+  // Tridon, STORM HURRICANRANA: a crouch, a leap onto the shoulders, a backflip with the legs locked, a cocky landing
+  ghidorah(s, P, R, T, D) {
+    blend(P, R, 1 - ramp(s, 0, 0.12), K.tieUp);
+    blend(P, R, ramp(s, 0, T.crouch) * (1 - ramp(s, T.crouch, T.crouch + 0.1)), K.crouch);
+    blend(P, R, ramp(s, T.crouch, T.crouch + 0.15) * (1 - ramp(s, T.leap + 0.05, T.leap + 0.2)), (Q, R2) => {
+      limp(Q, R2); resetSpine(Q); torso(Q, -0.35, 0, 0); Q.hdp = -0.1; Q.hdy = 0; Q.nkp = 0;
+      Q.tLp = 1.35; Q.tRp = 1.35; Q.kLb = 1.5; Q.kRb = 1.5; Q.tLr = 0.5; Q.tRr = 0.5; Q.anLp = 0.4; Q.anRp = 0.4;
+      hand(Q, 'L', 0.15, 0.25, 0.9); hand(Q, 'R', 0.15, 0.25, 0.9); wings(Q, R2, 1.0, -0.3);
+      if (R2.iTail >= 0) { Q.tlp = 0.4; Q.kLb = 1.3; }
+    }, null);
+    blend(P, R, ramp(s, T.leap + 0.05, T.leap + 0.2) * (1 - ramp(s, T.flip - 0.12, T.flip)), (Q, R2) => { K.tuck(Q, R2); Q.tLp = 1.4; Q.tRp = 1.3; wings(Q, R2, 1.3, 0.2); }, null);
+    blend(P, R, pulse(s, T.flip - 0.08, T.flip, T.flip + 0.1, T.flip + 0.28), K.crouch);
+    // the showboat: wings thrown open at the crowd before it even turns round
+    blend(P, R, ramp(s, T.flip + 0.15, T.flip + 0.32) * (1 - ramp(s, D - 0.2, D)), (Q) => {
+      Q.hy += 1.0; Q.hyaw = 0; torso(Q, -0.35, -0.1, 0); Q.nkp = -0.3; Q.hdp = -0.5; Q.fLx = 2; Q.fRx = 2;
+      hand(Q, 'L', 0.85, 0.35, 0.1); hand(Q, 'R', 0.85, 0.35, 0.1); Q.cLr = 0.8; Q.cRr = 0.8; Q.cLy = -0.35; Q.cRy = -0.35; Q.tlp = 0.3;
+    });
+  },
+  // Mechra, CIRCUIT BREAKER: scoop, down on one knee, the spine across the thigh; locked there a beat, then shoved off
+  mecha(s, P, R, T, D) {
+    blend(P, R, 1 - ramp(s, 0.05, 0.25), K.tieUp);
+    blend(P, R, ramp(s, 0.05, 0.25) * (1 - ramp(s, T.scoop - 0.1, T.scoop)), K.liftSquat);
+    blend(P, R, ramp(s, T.scoop - 0.12, T.scoop) * (1 - ramp(s, T.scoop + 0.02, T.knee - 0.08)), (Q) => {
+      K.mechT(Q, R); Q.hy -= 0.6; torso(Q, 0.15, 0, 0); hand(Q, 'L', 0.35, 0.05, 0.85); hand(Q, 'R', 0.35, 0.0, 0.85); elbow(Q, 'L', 1, -0.5, -0.3); elbow(Q, 'R', 1, -0.5, -0.3);
+    });
+    blend(P, R, rampIn(s, T.scoop + 0.02, T.knee) * (1 - ramp(s, T.roll, D - 0.1)), (Q) => {
+      K.mechT(Q, R); Q.hy -= 6.2; Q.hz -= 0.5; torso(Q, 0.25, 0, 0); Q.reach = 0;
+      Q.fLz = 3.4; Q.fLx = 1.6; Q.fRz = -4.6; Q.fRy = 0; Q.fRx = 1.6; Q.fRpit = 1.0; Q.kLo = 0.1;
+      hand(Q, 'L', 0.35, -0.3, 0.8); hand(Q, 'R', 0.3, -0.45, 0.85); elbow(Q, 'L', 1, -0.3, -0.3); elbow(Q, 'R', 1, -0.3, -0.3); Q.hdp = 0.35; wings(Q, R, 0.6, 0);
+    });
+    P.hy += 0.7 * wobble(s, T.knee, 30, 9); P.hz -= 0.4 * wobble(s, T.knee, 40, 12);
+    // the shove off the knee
+    blend(P, R, pulse(s, T.knee + 0.18, T.knee + 0.3, T.roll - 0.05, T.roll + 0.1) * 0.6, (Q) => { K.mechT(Q, R); Q.hy -= 5; hand(Q, 'L', 0.2, -0.1, 0.99); hand(Q, 'R', 0.2, -0.15, 0.99); Q.aLs = 1.15; Q.aRs = 1.15; });
+  },
+};
+
+const SIG_B = {
+  // Gorrak, LOOP BULLDOZER: onto the shoulder, head down and run through the city, then the powerslam
+  godzilla(s, P, R, T, D) {
+    blend(P, R, 1 - ramp(s, 0.02, 0.2), K.tieUp);
+    blend(P, R, pulse(s, 0.02, 0.2, 0.22, T.scoop), K.liftSquat);
+    const carry = ramp(s, 0.25, T.scoop) * (1 - ramp(s, T.run, T.run + 0.1));
+    if (carry > 0) {
+      const ph = ((s - T.scoop) / 0.36 % 1 + 1) % 1, run = ramp(s, T.scoop, T.scoop + 0.12);
+      blend(P, R, carry, (Q) => {
+        level(Q); Q.hyaw = 0; Q.s1y -= 0.12; torso(Q, 0.38, -0.05, 0); Q.hdp = -0.25; Q.nkp = 0.1; Q.hy -= 0.6;
+        hand(Q, 'L', 0.25, 0.55, 0.5); hand(Q, 'R', 0.4, 0.6, 0.3); elbow(Q, 'L', 1, -0.4, -0.4); elbow(Q, 'R', 1, -0.4, -0.4); wings(Q, R, 0.6, 0.3);
+        if (run > 0) gait(Q, R, ph, 0, 1, 12 * run, 0.42, 3.8 * run, RUN);
+      });
+    }
+    blend(P, R, ramp(s, T.run, T.run + 0.12) * (1 - ramp(s, T.drop + 0.2, D)), K.driveDown);
+    P.hy += 0.9 * wobble(s, T.drop, 24, 7);
+  },
+  // Tridon, SKYFALL DDT: front facelock, up on the wings, a dive, the sit-out
+  ghidorah(s, P, R, T, D) {
+    blend(P, R, 1 - ramp(s, 0.02, 0.2), K.tieUp);
+    const lock = ramp(s, 0.05, T.lock) * (1 - ramp(s, T.spike, T.spike + 0.08));
+    blend(P, R, lock, (Q) => {
+      torso(Q, 0.3, -0.1, 0); Q.hyaw = 0; Q.hy -= 0.8;
+      hand(Q, 'L', 0.05, -0.05, 0.75); elbow(Q, 'L', 1, 0.3, -0.2); hand(Q, 'R', 0.3, 0.05, 0.8);
+    });
+    // airborne: legs hang, the wings beat
+    const air = ramp(s, T.lock, T.lock + 0.15) * (1 - ramp(s, T.spike - 0.05, T.spike + 0.05));
+    if (air > 0) {
+      P.reach = 0; P.lLfk = 1; P.lRfk = 1;
+      P.tLp = 0.35 * air; P.tRp = 0.25 * air; P.kLb = 0.6 * air; P.kRb = 0.7 * air; P.anLp = 0.5 * air; P.anRp = 0.5 * air;
+      const b = sin((s - T.lock) * 15), c = cos((s - T.lock) * 15), up = s < T.apex ? 1 : 0.25;
+      P.cLr += air * (0.2 + 0.85 * b * up); P.cRr += air * (0.2 + 0.85 * b * up); P.cLy += air * (-0.2 - 0.5 * c * up); P.cRy += air * (-0.2 - 0.5 * c * up);
+      if (s >= T.apex) { P.cLy += air * 0.8; P.cRy += air * 0.8; P.tLp -= 0.5 * air; P.tRp -= 0.5 * air; torso(P, 0.25 * air, 0, 0); }
+      if (R.iTail >= 0) P.tlp += air * (s >= T.apex ? 0.5 : -0.3);
+    }
+    // the sit-out after the spike: on its seat, legs out, wings flared
+    blend(P, R, ramp(s, T.spike - 0.03, T.spike + 0.05) * (1 - ramp(s, T.topple + 0.05, D - 0.05)), (Q, R2) => {
+      Q.reach = 0; Q.lLfk = 1; Q.lRfk = 1; Q.hy -= 9.5; Q.hz -= 1.5;
+      Q.tLp = 1.45; Q.tRp = 1.4; Q.kLb = 0.15; Q.kRb = 0.2; Q.tLr = 0.35; Q.tRr = 0.35; Q.anLp = -0.2; Q.anRp = -0.2;
+      torso(Q, 0.15, 0, 0); hand(Q, 'L', 0.2, -0.3, 0.8); hand(Q, 'R', 0.7, -0.3, 0.2); Q.cLr = 0.7; Q.cRr = 0.7; Q.cLy = -0.2; Q.cRy = -0.2;
+      if (R2.iTail >= 0) { Q.tlp = 0.2; Q.kLb = 0.4; }
+    });
+  },
+  // Mechra, SYSTEM CRASH: turns it upside down, holds it there for the boos, hops and sits down on it
+  mecha(s, P, R, T, D) {
+    blend(P, R, 1 - ramp(s, 0.02, 0.18), K.tieUp);
+    blend(P, R, pulse(s, 0.02, 0.18, 0.2, T.invert), K.clasp);
+    blend(P, R, ramp(s, T.invert - 0.15, T.invert) * (1 - ramp(s, T.jump - 0.03, T.jump + 0.05)), (Q) => {
+      K.mechT(Q, R); Q.hy -= 0.8; torso(Q, 0.2, 0, 0); Q.fLx = 0.9; Q.fRx = 0.9; Q.fLz = 0.3; Q.fRz = -0.3;
+      hand(Q, 'L', 0.15, -0.2, 0.7); hand(Q, 'R', 0.15, -0.2, 0.7); elbow(Q, 'L', 1, 0, -0.4); elbow(Q, 'R', 1, 0, -0.4); Q.hdp = 0.25; wings(Q, R, 0.9, 0);
+    });
+    blend(P, R, ramp(s, T.jump - 0.03, T.jump + 0.06) * (1 - ramp(s, T.spike - 0.02, T.spike + 0.02)), (Q) => {
+      K.mechT(Q, R); Q.hy -= 2.5; torso(Q, 0.15, 0, 0); hand(Q, 'L', 0.15, -0.3, 0.7); hand(Q, 'R', 0.15, -0.3, 0.7); Q.fLy = 2; Q.fRy = 2;
+    });
+    blend(P, R, ramp(s, T.spike - 0.02, T.spike + 0.03) * (1 - ramp(s, T.topple, D - 0.05)), (Q) => {
+      resetTorso(Q); Q.hyaw = 0; Q.hdp = 0.2; Q.nkp = 0; Q.hdy = 0;
+      Q.reach = 0; Q.lLfk = 1; Q.lRfk = 1; Q.hy -= 10; Q.hz -= 0.5;
+      Q.tLp = 1.5; Q.tRp = 1.5; Q.kLb = 0.1; Q.kRb = 0.1; Q.tLr = 0.45; Q.tRr = 0.45; Q.anLp = -0.3; Q.anRp = -0.3;
+      hand(Q, 'L', 0.2, -0.45, 0.75); hand(Q, 'R', 0.2, -0.45, 0.75); wings(Q, R, 1.1, 0);
+    });
+    P.hy += 0.8 * wobble(s, T.spike, 30, 10);
   },
 };

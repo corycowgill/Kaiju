@@ -820,6 +820,17 @@ export function createFightCam(ctx, W) {
       if (e.near && f) push(0.7, 1, f.pos.x, f.pos.y + 14, f.pos.z);
     });
     on(EV.PIN_BROKEN, () => { if (mode === SHOT && shot.name === 'pin') endShot(0.45); });
+    // (drama) the hand coming down for three: punch in on the shoulders on the mat and hold there
+    on(EV.PIN_NEAR, (e) => {
+      const v = W[e.target];
+      if (!v) return;
+      v.mid(_v);
+      push(1.6, 1.4, _v.x, _v.y + 4, _v.z);
+      hit(0.08, 0, 0, 0, 0, -30);
+    });
+    // (drama) a comeback: push in on the fighter as it fires up; no-sold hits barely move the frame
+    on(EV.COMEBACK_START, (e) => { const f = W[e.who]; if (f) push(Math.max(1, e.fire), 1.2, f.pos.x, f.pos.y + 20, f.pos.z); hit(0.25, 0, 0, 0, 0, 40); });
+    on(EV.COMEBACK_NOSELL, () => hit(0.06, 0, 0, 0, 0, 10));
     on(EV.PIN_FALL, () => { hit(0.45, 0, -1, 0, 30, 80); if (mode === SHOT && shot.name === 'pin') { shot.endT = shot.t + 1.6; shot.max = shot.t + 4; } });
 
     on(EV.FINISHER_START, (e) => {

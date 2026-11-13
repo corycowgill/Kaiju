@@ -1452,7 +1452,8 @@ export function buildChicago(scene, world, opts, K) {
   // big batch tiles keep their draws down at almost no triangle cost
   // (perf) phone LOW: one tile for the whole map, one draw per kit part (the quadrants cost ~90 of its 450-draw
   // budget; every generic building is drawn when any is in view, a few hundred thousand tris at most)
-  K.setBuildingTile(!glb ? Infinity : lite ? 440 : 400); // desktop 400 since the street-wall split
+  // (phone MED too: its 440 tiles split the same four ways, ~100 of its 450 draws for the kit)
+  K.setBuildingTile(!glb || lite ? Infinity : 400); // desktop 400 since the street-wall split
   const B = L.bounds;
   const animators = [];
   const makeParkTree=createChicagoTrees(K,lite,glb);

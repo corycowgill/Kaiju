@@ -70,6 +70,20 @@ export const EVENTS = Object.freeze({
   'strike:reversed':    P({ who: '', target: '', kind: '', x: 0, y: 0, z: 0 }),
   // who's strike hit nothing.
   'strike:whiffed':     P({ who: '', kind: '', combo: 1 }),
+  // A reversal can be had: who (the defender) can turn target's attack around. kind: 'strike' (raise the guard
+  // in the window) | 'grab' (press grab in the window). opens: s until the window opens (0 = now); dur: how long
+  // it stays open. Emitted for both sides; the player's is the learnable cue (flash + ting).
+  'reversal:cue':       P({ who: '', target: '', kind: '', opens: 0, dur: 0 }),
+
+  // ---- comeback ("firing up") ----
+  // who fires up: dur = total seconds (fire-up + flurry). Hurt, behind and beaten, it shrugs hits off and comes back.
+  'comeback:start':     P({ who: '', dur: 0, fire: 0 }),
+  // The fire-up is over: the flurry begins (who is free to act, strikes faster and harder).
+  'comeback:flurry':    P({ who: '', dur: 0 }),
+  // who no-sold a hit from `by` while fired up (took a share of it, no reaction). x/y/z = the contact point.
+  'comeback:nosell':    P({ who: '', by: '', kind: '', damage: 0, x: 0, y: 0, z: 0 }),
+  // It is over. by: 'time' (ran out) | 'done' (its flurry put the foe down) | 'cut' (reversed / cut off) | 'fall'.
+  'comeback:end':       P({ who: '', by: '' }),
 
   // ---- signature powers (beam / roar / charge / stomp / ult) ----
   // power: 'beam' | 'roar' | 'charge' | 'stomp' | 'ult'. name: the kaiju's own name for it ('ATOMIC BREATH').
@@ -102,7 +116,8 @@ export const EVENTS = Object.freeze({
   'grab:escaped':       P({ who: '', target: '', by: '' }),
   // who (the holder) commits to a move out of the lock-up. type: 'whip' | 'suplex' | 'slam' | 'swing' | 'pickup';
   // dur = seconds until its throw:launch / lift:start.
-  'grab:move':          P({ who: '', target: '', type: '', dur: 0 }),
+  // type 'signature': the kaiju's own move (signatures.js); name = its display name, sig = 1 (RUN + toward) | 2 (RUN + away).
+  'grab:move':          P({ who: '', target: '', type: '', dur: 0, name: '', sig: 0 }),
   // who hoists target overhead (gorilla press); who may now walk a few steps.
   'lift:start':         P({ who: '', target: '' }),
   // One full turn of a giant swing (turns = count so far).
@@ -133,6 +148,27 @@ export const EVENTS = Object.freeze({
   'water:impact':       P({ who: '', size: 1, x: 0, z: 0 }),
   // A body came down on the ringside crowd (count flattened).
   'crowd:crushed':      P({ who: '', count: 0, x: 0, z: 0 }),
+  // Landmark set piece (spots.js): who (the body) was thrown / slammed / whipped into Chicago landmark `spot` by `by`.
+  // spot: 'fountain' (Buckingham Fountain) | 'lake' (Lake Michigan) | 'ltracks' (the L, third rail) | 'michigan' (a Michigan Ave tower) | 'bean' (Cloud Gate).
+  // name: display name; type: the throw type ('' for a strike / power); impact 0..1; x/y/z: the point of impact.
+  'spot:hit':           P({ who: '', by: '', spot: '', name: '', type: '', impact: 0, x: 0, y: 0, z: 0 }),
+  // Foreign objects (spots.js). kind: 'girder' | 'pole'. id: index of the weapon. hits: swings it has left.
+  // spawn: one lies at x/z ready to be picked up (a building came down, or the match placed it).
+  'weapon:spawn':       P({ id: 0, kind: '', x: 0, z: 0 }),
+  'weapon:pickup':      P({ who: '', id: 0, kind: '', hits: 0, x: 0, y: 0, z: 0 }),
+  // who dropped it (knocked down, grabbed, thrown) without breaking it; it lies at x/z again.
+  'weapon:drop':        P({ who: '', id: 0, kind: '', x: 0, z: 0 }),
+  // It broke over target on its last hit (or snapped on a building); x/y/z = where.
+  'weapon:break':       P({ who: '', target: '', id: 0, kind: '', x: 0, y: 0, z: 0 }),
+  // Count-out (spots.js counts, match.js scores the fall). who = the fighter outside the arena (venue) square.
+  // start: the referee starts counting (first: the first count of this match, show the rule card).
+  'countout:start':     P({ who: '', first: false, x: 0, z: 0 }),
+  // The count reached `count` (1..10); held: paused (both outside, or the counted one is held by its foe).
+  'countout:count':     P({ who: '', count: 0, held: false }),
+  // The count was stopped. reason: 'in' (back inside in time: count = where it stopped) | 'fall' (the fall ended) | 'reset'.
+  'countout:stop':      P({ who: '', reason: '', count: 0 }),
+  // Ten: who is counted out (match.js gives the fall to the other fighter, by 'countout').
+  'countout:out':       P({ who: '', x: 0, z: 0 }),
 
   // ---- ground game ----
   // who hits the mat. cause: 'strike' | 'throw' | 'power' | 'finisher' | 'ko'.
@@ -147,7 +183,11 @@ export const EVENTS = Object.freeze({
   // The count reached `count` (1, 2, 3). Fires on the slap of the mat.
   'pin:count':          P({ who: '', target: '', count: 0, forced: false }),
   // who (the pinned one) kicked out of target's pin after `count` counts, `at` seconds into the 3-count. near: a 2.9 near-fall.
-  'pin:kickout':        P({ who: '', target: '', count: 0, at: 0, near: false }),
+  // finisher: it kicked out of a finisher's cover (rare: the biggest moment of the match).
+  'pin:kickout':        P({ who: '', target: '', count: 0, at: 0, near: false, finisher: false }),
+  // The referee's hand is coming down for THREE (fires once per cover, `t` s into the count, just before the
+  // last slap; the final count runs in slow motion from here). who: the pinner. For the camera punch-in.
+  'pin:near':           P({ who: '', target: '', t: 0 }),
   // Three count: who pinned target.
   'pin:fall':           P({ who: '', target: '', forced: false }),
   // The pin was broken up by something else. reason: 'hit' | 'ringout' | 'interference'.

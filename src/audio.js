@@ -150,6 +150,19 @@ const WR = {
   wr_crowd_boo:     [2, 0.85, 1, 1.20, 0.04],
   wr_crowd_count:   [3, 1.0,  2, 0.20, 0],      // variation = the number: played by index, never at random
   wr_crowd_roar:    [1, 1.0,  1, 3.00, 0],
+  // landmark spots, foreign objects, count-out
+  wr_clang:         [2, 1.0,  2, 0.08, 0.05],
+  wr_wpn_pickup:    [1, 0.8,  1, 0.30, 0.06],
+  wr_wpn_drop:      [1, 0.85, 2, 0.15, 0.08],
+  wr_wpn_break:     [1, 1.0,  1, 0.30, 0.04],
+  wr_zap:           [1, 1.0,  1, 0.50, 0.03],
+  wr_screech:       [1, 0.85, 1, 1.00, 0.04],
+  wr_bong:          [1, 1.0,  1, 0.50, 0.02],
+  wr_tick:          [1, 0.9,  2, 0.15, 0],
+  wr_gush:          [1, 0.9,  1, 0.50, 0.05],
+  wr_wave:          [1, 1.0,  2, 0.50, 0.04],
+  wr_glass:         [1, 0.9,  1, 0.50, 0.05],
+  wr_crowd_num:     [7, 1.0,  2, 0.20, 0],      // FOUR .. TEN (count-outs), by index like wr_crowd_count
 };
 // Decode order: what the opening bell and the first exchange need comes first
 const WR_FIRST = ['wr_bell', 'wr_loop_crowd_lo', 'wr_loop_crowd_hi', 'wr_strike_l', 'wr_sub', 'wr_slam', 'wr_body', 'wr_crowd_pop', 'wr_strike_h', 'wr_block'];
@@ -195,6 +208,47 @@ function _aim(param, v, t, tc, eps) {
   param.setTargetAtTime(v, t, tc);
 }
 
+// Menu UI cues (Audio.ui): (audio, startTime) -> schedules _uiTone / _uiNoise voices.
+// _uiTone(t, type, f0, f1, glide, att, dur, vol), _uiNoise(t, filter, f0, f1, q, att, dur, vol, env)
+const UI_CUE = {
+  // focus tick: tiny, high, a little different every time
+  move(a, t) {
+    const j = 0.97 + 0.06 * Math.random();
+    a._uiTone(t, 'triangle', 2100 * j, 1500 * j, 0.025, 0.002, 0.045, 0.07);
+    a._uiNoise(t, 'highpass', 5000, 5000, 0.7, 0.001, 0.02, 0.035);
+  },
+  // taiko thock (head, skin, stick) + a short metallic shimmer
+  select(a, t) {
+    a._uiTone(t, 'sine', 210, 95, 0.09, 0.003, 0.28, 0.55);
+    a._uiTone(t, 'triangle', 420, 190, 0.05, 0.002, 0.09, 0.15);
+    a._uiNoise(t, 'bandpass', 1800, 1200, 1.2, 0.001, 0.035, 0.35);
+    for (const f of [2637, 3951, 5274]) { a._uiTone(t + 0.012, 'sine', f, f, 0, 0.004, 0.32, 0.03); a._uiTone(t + 0.012, 'sine', f + 5, f + 5, 0, 0.004, 0.32, 0.02); }
+  },
+  // GO: the big drum with a low boom under it
+  confirm(a, t) {
+    a._uiTone(t, 'sine', 160, 62, 0.18, 0.004, 0.65, 0.75);
+    a._uiTone(t, 'sine', 75, 40, 0.3, 0.01, 0.75, 0.5);
+    a._uiTone(t, 'triangle', 330, 140, 0.06, 0.002, 0.14, 0.2);
+    a._uiNoise(t, 'bandpass', 1500, 900, 1, 0.001, 0.05, 0.4);
+    a._uiNoise(t, 'lowpass', 900, 200, 0.7, 0.005, 0.6, 0.3);
+  },
+  // air drawn back in: falling, swelling, cut
+  back(a, t) { a._uiNoise(t, 'bandpass', 2600, 600, 1.4, 0.18, 0.24, 0.18, 'swell'); },
+  // page turn: a rising pass of air
+  step(a, t) {
+    a._uiNoise(t, 'bandpass', 450, 2400, 1.2, 0.16, 0.32, 0.16, 'swell');
+    a._uiNoise(t, 'lowpass', 300, 700, 0.7, 0.15, 0.3, 0.08, 'swell');
+  },
+  // PRESS START: the title slams down and something enormous growls
+  press(a, t) {
+    UI_CUE.confirm(a, t);
+    a._uiNoise(t, 'highpass', 3000, 2000, 0.7, 0.001, 0.4, 0.15);
+    a._uiTone(t + 0.04, 'sawtooth', 74, 50, 0.9, 0.06, 1.05, 0.12);
+    a._uiTone(t + 0.04, 'sawtooth', 77, 52, 0.9, 0.06, 1.0, 0.1);
+    a._uiNoise(t + 0.03, 'lowpass', 1200, 250, 0.8, 0.05, 1.0, 0.3);
+  },
+};
+
 class Audio {
   constructor() {
     this.ctx = null;
@@ -221,13 +275,20 @@ class Audio {
   }
 
   // Must be called from a user gesture (click / touchstart) to satisfy autoplay policies.
+  // The menu's ui() cues may have built the graph already; init() then only loads the bank.
   init() {
-    if (this.ctx) return;
+    if (this._graph()) this.loadSfx();
+  }
+
+  // The AudioContext and the fixed graph, without fetching anything. Returns false when the
+  // browser has no Web Audio.
+  _graph() {
+    if (this.ctx) return true;
     const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
+    if (!AC) return false;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.45;
+    this.master.gain.value = this.muted ? 0 : 0.45;
     this.master.connect(this.ctx.destination);
     this.sfxOut = this.master;
     // Keep coincident cannon reports, debris and slam tails from overloading the mix.
@@ -243,7 +304,6 @@ class Audio {
     this.musicDuck.connect(this.master);
     this.stageBus = this.ctx.createGain();
     this.stageBus.connect(this.master);
-    this.loadSfx();
     // Fade ambience loops out when updateAmbience() stops being called (pause, menus).
     setInterval(() => {
       if (this._amb && this.ctx && this._now() - this._ambT > 0.5) this._setAmbience(0, 0, 0);
@@ -252,6 +312,7 @@ class Audio {
       if (this._wade && this.ctx && this._now() - this._wadeT > 0.5) _aim(this._wade.g.gain, 0, this._now(), 0.3, 0);
       if (this._mm && this._mm.beds && this._now() - this._mm.bedT > 0.5) this._wrBedSilence();
     }, 250);
+    return true;
   }
 
   setMuted(m) {
@@ -261,6 +322,66 @@ class Audio {
 
   // Resume on backgrounded tabs (iOS suspends the AudioContext)
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+
+  // ============ Menu UI cues ============
+  // ui(kind): 'move' | 'select' | 'confirm' | 'back' | 'step' | 'press'. Synthesized, no files.
+  // Safe before init(): builds the context on the first call made inside a user activation
+  // (and never loads the sample bank); outside one (a gamepad poll) it stays silent, so
+  // Chrome never logs an autoplay warning.
+  ui(kind) {
+    const act = navigator.userActivation, live = !act || act.isActive;
+    if (this.muted || (!this.ctx && !live) || !UI_CUE[kind]) return;
+    if (!this._graph()) return;
+    const c = this.ctx;
+    if (c.state !== 'running') {
+      if (!live) return;                    // gamepad-only, not yet unlocked: stay silent
+      const p = c.resume();                 // plays as soon as it is running
+      if (p && p.catch) p.catch(() => {});
+    }
+    const t = c.currentTime, key = 'ui_' + kind;
+    if (t - (this._lastPlay[key] ?? -1e9) < (kind === 'move' ? 0.04 : 0.08)) return;
+    this._lastPlay[key] = t;
+    if (!this._uiNoiseBuf) {
+      const b = (this._uiNoiseBuf = c.createBuffer(1, c.sampleRate, c.sampleRate)), d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    UI_CUE[kind](this, t + 0.005);
+  }
+
+  // A pitch-gliding oscillator: f0 -> f1 Hz over glide s, attack att, exponential decay to dur.
+  _uiTone(t, type, f0, f1, glide, att, dur, vol) {
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + glide);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + att);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.master);
+    o.onended = () => { try { o.disconnect(); g.disconnect(); } catch (e) {} };
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // Filtered noise: the filter sweeps f0 -> f1 over dur; env 'hit' (fast attack, decay) or
+  // 'swell' (rises to its peak at `att`, then falls away fast) - a whoosh or a reverse.
+  _uiNoise(t, type, f0, f1, q, att, dur, vol, env = 'hit') {
+    const c = this.ctx, s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    s.buffer = this._uiNoiseBuf;
+    f.type = type; f.Q.value = q;
+    f.frequency.setValueAtTime(f0, t);
+    if (f1 !== f0) f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    if (env === 'hit') {
+      g.gain.exponentialRampToValueAtTime(vol, t + att);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    } else {
+      g.gain.linearRampToValueAtTime(vol, t + att);
+      g.gain.setTargetAtTime(0.0001, t + att, Math.max(0.005, (dur - att) / 4));
+    }
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.onended = () => { try { s.disconnect(); f.disconnect(); g.disconnect(); } catch (e) {} };
+    s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
+  }
 
   _now() { return this.ctx.currentTime; }
 
@@ -992,7 +1113,7 @@ class Audio {
     const jobs = [];
     // phones keep two takes of each sound (decoded RAM); the count shouts are never trimmed
     for (let pass = 0; pass < 2; pass++) for (const name of names) {
-      const n = WR[name][0], keep = name === 'wr_crowd_count' ? n : Math.min(n, mm.vars);
+      const n = WR[name][0], keep = name === 'wr_crowd_count' || name === 'wr_crowd_num' ? n : Math.min(n, mm.vars);
       for (let i = pass ? 1 : 0; i < (pass ? keep : 1); i++) {
         if (!(this.wrSfx[name] && this.wrSfx[name][i])) jobs.push([name, i, n > 1 ? `${name}_${i + 1}` : name]);
       }

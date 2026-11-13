@@ -112,7 +112,18 @@ export const TUNE = {
   // what a classic player attack does to a kaiju: fraction of its raw damage (they are tuned to one-shot tanks)
   taken: { melee: 0.12, beam: 0.095, atomic: 0.04, roar: 0.064, charge: 0.06, stomp: 0.048, ult: 0.115, military: 0.25, aoe: 0.05 },
   splashMult: 1.7,
+  // reversal: the player's window is wider by a reaction allowance; the cue flashes cueLead before it opens
+  // (heavies and clotheslines only: a jab is over before anyone could react to a cue). The defender answers
+  // a reversal with a counter shot (a reversed heavy / clothesline floors the attacker).
+  reversalWindowPlayer: 0.28, cueLead: 0.14, cueMinStartup: 0.4, counterDmg: 8, counterRec: 0.5,
+  // comeback ("firing up"): hurt (< cbHp of max), behind on health by cbBehind, beaten (cbBeaten of max taken
+  // over the last ~cbMemory s), cbCost momentum in the meter; once a fall, cbPerMatch a match. Taunt fires it.
+  cbHp: 0.32, cbBehind: 0.18, cbBeaten: 0.12, cbMemory: 10, cbCost: 35, cbPerMatch: 1,
+  cbFire: 1.3, cbFlurry: 3.5, cbNoSell: 0.4, cbHaste: 1.25, cbAtk: 1.15, cbMom: 1, cbAfterStam: 30,
 };
+const STRIKE_KINDS = { light: 1, heavy: 1, clothesline: 1 };
+// The strikes the reversal cue is shown for: slow enough to react to (a heavy), or a run-up (the clothesline)
+const cued = (m) => !!STRIKE_KINDS[m.kind] && !m.ground && (m.startup >= TUNE.cueMinStartup || !!m.dash);
 // Damage kinds that can take the last of a kaiju's health (everything else stops at 1 HP)
 const KO_KINDS = { heavy: 1, clothesline: 1, splash: 1, slam: 1, suplex: 1, toss: 1, swing: 1, building: 1, post: 1, finisher: 1, charge: 1, ult: 1, qa: 1 };
 const POWER_OF = { beam: 'beam', atomic: 'beam', roar: 'roar', charge: 'charge', stomp: 'stomp', ult: 'ult' };
@@ -203,6 +214,12 @@ export class Fighter {
     this.kickouts = 0;                // kick-outs this fall (each one costs resilience)
     this.finished = 0;                // seconds left in which a finisher's victim cannot kick out well
     this.reboundCd = 0;               // > 0: came back dizzy off the ropes recently (the next rebound only staggers it)
+    /** Seconds left in a comeback (0 = none); comebackPhase: 'fire' (rooted, roaring, no-selling) | 'flurry' | ''. */
+    this.comeback = 0; this.comebackPhase = '';
+    this._cbFall = false; this._cbMatch = 0;  // fired up this fall / comebacks this match
+    this._beat = 0;                   // damage taken from the foe lately (decays over TUNE.cbMemory s)
+    this.finKicked = false;           // has kicked out of a finisher this match (it happens once, if ever)
+    this._cueMove = null;             // the foe's move the reversal cue went out for
     this.cd = { beam: 0, roar: 0, charge: 0, stomp: 0, ult: 0 };
     this.armor = false;               // light strikes do not interrupt (ultimate wind-up)
     // pose (root-driven): lie 0 upright .. 1 on its back
@@ -261,6 +278,19 @@ export class Fighter {
   get hittable() { return !this.invuln && this.invulnT <= 0 && this.state !== 'ko' && !this.held && this.state !== 'downed'; }
   /** A grab on it right now cannot be reversed or mashed out of. */
   get grabLocked() { return (this.state === 'staggered' || this.state === 'stunned' || this.tired) && this.grabChain < 2; }
+  /**
+   * Can fire up right now (a taunt press starts the comeback): hurt, behind on health, beaten lately, momentum
+   * in the meter, not used this fall. Works standing, guarding, reeling, dizzy or lying on the mat.
+   */
+  get comebackReady() {
+    const foe = this.opponent, T = TUNE;
+    if (!foe || this.comebackPhase || foe.comebackPhase || this._cbFall || this._cbMatch >= T.cbPerMatch || this.held) return false;
+    if (this.momentum < T.cbCost || this.W.match.state.phase !== 'fight' || foe.state === 'ko') return false;
+    const s = this.state;
+    if (s !== 'neutral' && s !== 'blocking' && s !== 'staggered' && s !== 'stunned' && !(s === 'downed' && this.falling <= 0)) return false;
+    const mine = this.hp / this.maxHp;
+    return mine > 0 && mine < T.cbHp && foe.hp / foe.maxHp - mine >= T.cbBehind && this._beat >= T.cbBeaten * this.maxHp;
+  }
   /** 0..1 progress of this fighter's kick-out (pinned) or escape (held); 0 when neither. For the HUD's mash meter. */
   get struggle() {
     const g = this.W.grapple;
@@ -273,10 +303,11 @@ export class Fighter {
   /**
    * Is `what` legal right now? 'strike' | 'heavy' | 'clothesline' | 'block' |
    * 'grab' | 'stomp' | 'splash' | 'pickup' | 'pin' | 'taunt' | 'finisher' |
-   * 'beam' | 'roar' | 'charge' | 'pstomp' | 'ult' (the last five: the rival's powers).
+   * 'beam' | 'roar' | 'charge' | 'pstomp' | 'ult' (the last five: the rival's powers) | 'comeback' (= comebackReady).
    * Range is part of the answer for the context moves (stomp, splash, pickup, pin, finisher).
    */
   can(what) {
+    if (what === 'comeback') return this.comebackReady;
     if (!this.canAct || this.W.match.state.phase !== 'fight') return false;
     const foe = this.opponent;
     const down = foe && foe.state === 'downed' && !foe.held && foe.falling <= 0 && !foe.invuln;
@@ -333,6 +364,7 @@ export class Fighter {
     this.invulnT = 0; this.lockT = 0; this.lockHits = 0; this.grabChain = 0; this.freeT = 0;
     this.groundHits = 0; this.falling = 0; this.lastImpact = 0; this.kickouts = 0; this.finished = 0; this.reboundCd = 0;
     this.armor = false; this._koPending = false; this._critical = false;
+    this.comeback = 0; this.comebackPhase = ''; this._cbFall = false; this._beat = 0; this._cueMove = null;
     this.lie = 0; this._lieP = 0; this.lieTarget = 0; this.lieByClip = false; this.lean = 0; this.sink = 0;
     this._buf.strike = 0; this._buf.heavy = 0; this._buf.grab = 0; this._buf.pin = 0; this._buf.finisher = 0;
     this._flinch = 0; this._taunt = 0;
@@ -513,6 +545,9 @@ export class Fighter {
     if (this.opponent && this.opponent.state === 'ko') return 0;
     // Only a big move knocks a kaiju out. Jabs, stomps, chip, beams and stray shells leave it on its last legs
     // (1 HP): it has to be put away with a slam, a finisher - or pinned, and it may still kick out at 2.9.
+    // Fired up: it takes a share of the foe's offence and sells none of it (the reactions are skipped below)
+    const nosell = this.comebackPhase !== '' && !blocked && !!this.opponent && by === this.opponent.id && kind !== 'finisher';
+    if (nosell) amount *= TUNE.cbNoSell;
     if (!KO_KINDS[kind] && amount >= this.hp) amount = this.hp - 1;
     if (amount <= 0) return 0;
     let dealt;
@@ -524,18 +559,24 @@ export class Fighter {
       this._hp -= dealt;
     }
     if (dealt <= 0) return 0;
-    this._flinch = 1;
+    this._flinch = nosell ? 0.35 : 1;
     this._flinchDir = -this._flinchDir;
     if (!blocked) {
       if (this.hp < this.maxHp * 0.5) this.gainMomentum(dealt * TUNE.momHurt);
       else this.momentum = this.momentum - dealt * TUNE.momDrain;
+      if (this.opponent && by === this.opponent.id) this._beat += dealt;
     }
     const e = this.W.bus.ev(EV.DAMAGE);
     e.who = this.id; e.by = by; e.amount = dealt; e.kind = kind; e.hp = this.hp; e.maxHp = this.maxHp;
     e.blocked = !!blocked; e.x = x; e.y = y; e.z = z;
     this.W.bus.emit(EV.DAMAGE);
+    if (nosell && this.hp > 0) {
+      const n = this.W.bus.ev(EV.COMEBACK_NOSELL);
+      n.who = this.id; n.by = by; n.kind = kind; n.damage = dealt; n.x = x; n.y = y; n.z = z;
+      this.W.bus.emit(EV.COMEBACK_NOSELL);
+    }
     if (!this._critical && this.hp > 0 && this.hp < this.maxHp * 0.25) { this._critical = true; this._emitWho(EV.HP_CRITICAL); }
-    if (this.state === 'taunting' && dealt > 1) this._tauntInterrupted(by);
+    if (this.state === 'taunting' && dealt > 1 && this.comebackPhase !== 'fire') this._tauntInterrupted(by);
     if (this.hp <= 0) this._ko(by, x, y, z);
     return dealt;
   }
@@ -544,6 +585,7 @@ export class Fighter {
     // Out cold in mid-throw: the fall finishes first (grapple.js lands the body, then it is a KO)
     if (this.held) { this._koPending = true; return; }
     this._koPending = false;
+    if (this.comebackPhase) this.endComeback('fall');
     this.targetable = false; this.solid = false;
     const wasLying = this.lying;
     this.setState('ko', 0, null);
@@ -559,7 +601,7 @@ export class Fighter {
   // ------------------------------------------------------------------ reactions
   /** Hit-stun for dur seconds, shoved along (dx, dz) at push u/s. */
   stagger(dur, by, dx = 0, dz = 0, push = 0) {
-    if (this.held || this.state === 'ko' || this.state === 'downed' || this.invuln) return;
+    if (this.held || this.state === 'ko' || this.state === 'downed' || this.invuln || this.comebackPhase) return;
     // No stun-locks: every further stagger in one chain is shorter, and past the cap the next hit floors it (a knockdown resets everything)
     if (this.lockT + dur > TUNE.lockMax) { this.knockDown(by, 'strike', 0.4, dx, dz, push); return; }
     dur *= Math.max(0.55, 1 - 0.15 * this.lockHits);
@@ -572,7 +614,7 @@ export class Fighter {
   }
   /** Dizzy (a free grab) for dur seconds. */
   stun(dur, by) {
-    if (this.held || this.state === 'ko' || this.state === 'downed' || this.invuln) return;
+    if (this.held || this.state === 'ko' || this.state === 'downed' || this.invuln || this.comebackPhase) return;
     this.setState('stunned', dur);
     const e = this.W.bus.ev(EV.STUN);
     e.who = this.id; e.by = by; e.dur = dur;
@@ -593,7 +635,7 @@ export class Fighter {
   }
   /** Knocked off its feet by a strike or a power: topples backward and slides along (dx, dz). */
   knockDown(by, cause, impact, dx = 0, dz = 0, push = 30) {
-    if (this.held || this.state === 'ko' || this.state === 'downed' || this.invuln) return;
+    if (this.held || this.state === 'ko' || this.state === 'downed' || this.invuln || this.comebackPhase) return;
     this.vel.x += dx * push; this.vel.z += dz * push;
     this.lastImpact = impact; this.groundHits = 0;
     this.falling = TUNE.fallDur;
@@ -674,10 +716,12 @@ export class Fighter {
   _startMove(m) {
     const foe = this.opponent, total = m.startup + m.active + m.recover;
     this.setState('attacking', total, null);
-    this.move = m; this.moveHit = 0; this.moveEta = m.startup;
+    this.move = m; this.moveHit = 0; this.moveEta = m.startup; this._cueMove = null;
     this._syncGate();
     this.spend(m.stam * (this.tired ? 0.5 : 1));
-    _animOpt.fade = 0.08; _animOpt.timeScale = 1; _animOpt.duration = total; _animOpt.commit = total;
+    // (a fired-up flurry runs its strikes faster: update() advances stateT by the haste, the clip keeps up)
+    const haste = this.comebackPhase === 'flurry' && STRIKE_KINDS[m.kind] ? TUNE.cbHaste : 1;
+    _animOpt.fade = 0.08; _animOpt.timeScale = 1; _animOpt.duration = total / haste; _animOpt.commit = total / haste;
     this.W.anims.play(this, animName(m.anim, 'heavy'), _animOpt);
     if (m.kind === 'grab' || m.kind === 'reach') {
       if (m.kind === 'grab') {
@@ -698,8 +742,32 @@ export class Fighter {
       this.yaw = Math.atan2(dx, dz);
     }
     const e = this.W.bus.ev(EV.STRIKE_START);
-    e.who = this.id; e.target = foe ? foe.id : ''; e.kind = m.kind; e.combo = m.combo; e.windup = m.startup;
+    e.who = this.id; e.target = foe ? foe.id : ''; e.kind = m.kind; e.combo = m.combo; e.windup = m.startup / haste;
     this.W.bus.emit(EV.STRIKE_START);
+  }
+
+  /**
+   * The reversal cue: once per big strike (heavy, clothesline), cueLead s before the defender's window opens,
+   * tell the bus the defender could turn it around now. Only while the defender could actually raise a
+   * reversing guard in time (free, not locked out of its guard).
+   */
+  /** How long before contact a guard raised by `foe` against move `m` still reverses it (the player gets a reaction allowance on the cued big strikes). */
+  _revWindow(m, foe) { return foe.isPlayer && cued(m) ? TUNE.reversalWindowPlayer : TUNE.reversalWindow; }
+  _cueReversal(m, t) {
+    const foe = this.opponent;
+    if (!foe || this._cueMove === m || !cued(m)) return;
+    const haste = this.comebackPhase === 'flurry' ? TUNE.cbHaste : 1;
+    // Contact: the end of the wind-up, or for a running clothesline when the dash closes the gap
+    let eta = (m.startup - t) / haste;
+    if (m.dash) eta = Math.max(eta, (m.startup * 0.4 - t) / haste + Math.max(0, this.gapTo(foe) - m.reach) / m.dash);
+    const win = this._revWindow(m, foe);
+    if (eta > win + TUNE.cueLead) return;
+    this._cueMove = m;
+    if (foe.state !== 'neutral' || foe.held || foe.blockLock > 0 || foe.reblock > eta - win || foe.stamina <= 0) return;
+    if (this.gapTo(foe) > m.reach + (m.lunge || 0) + (m.dash ? 60 : 6) || !this.facing(foe, STRIKE_ARC)) return;
+    const e = this.W.bus.ev(EV.REVERSAL_CUE);
+    e.who = foe.id; e.target = this.id; e.kind = 'strike'; e.opens = Math.max(0, eta - win); e.dur = Math.min(win, eta);
+    this.W.bus.emit(EV.REVERSAL_CUE);
   }
 
   _attacking(dt) {
@@ -710,6 +778,7 @@ export class Fighter {
     if (m.kind === 'ppower') { if (t >= this.stateDur) this.setState('neutral'); return; }
     if (m.kind === 'splash') { this._splashTick(dt); return; }
     const p = this.root.position;
+    if (!this.moveHit && this._cueMove !== m) this._cueReversal(m, t);
     if (t < m.startup) {
       // Track the foe through the wind-up and step in
       if (foe && !m.dash) {
@@ -780,10 +849,11 @@ export class Fighter {
     dx /= d; dz /= d;
     let cx = b.x - dx * foe.radius * 0.6, cz = b.z - dz * foe.radius * 0.6, cy = b.y + foe.height * (m.high ? 0.66 : 0.4);
     if (down) { foe.mid(_v); cx = _v.x; cy = foe.lieY + 3; cz = _v.z; }
-    const base = m.dmg * this.dmgMult;
+    const flurry = this.comebackPhase === 'flurry';
+    const base = m.dmg * this.dmgMult * (flurry ? TUNE.cbAtk : 1);
     if (!down && !flight && foe.state === 'blocking' && foe.facing(this, BLOCK_ARC)) {
-      if (foe.reversalOk && foe.blockT <= TUNE.reversalWindow) {
-        // Reversal: a guard raised just in time turns the strike around
+      if (foe.reversalOk && foe.blockT <= this._revWindow(m, foe)) {
+        // Reversal: a guard raised just in time turns the strike around...
         foe.reversalOk = false;
         foe.gainMomentum(TUNE.reversalMom);
         foe.stamina = Math.min(foe.maxStamina, foe.stamina + 8);
@@ -791,9 +861,30 @@ export class Fighter {
         const e = bus.ev(EV.STRIKE_REVERSED);
         e.who = foe.id; e.target = this.id; e.kind = m.kind; e.x = cx; e.y = cy; e.z = cz;
         bus.emit(EV.STRIKE_REVERSED);
-        this.W.hitStop(0.1);
+        if (this.comebackPhase) this.endComeback('cut'); // (a reversal cuts a fired-up kaiju off)
         this.lockT = 0; this.lockHits = 0;
-        this.stagger(TUNE.reversalStagger, foe.id, -dx, -dz, 24);
+        // ...and the defender answers at once: its own heavy shot through the opening (a reversed heavy or
+        // clothesline is floored by it)
+        const big = m.kind === 'heavy' || m.kind === 'clothesline';
+        foe.setState('attacking', TUNE.counterRec, null);
+        foe.move = COUNTER; foe.moveHit = 1; foe.moveEta = 0;
+        foe._syncGate();
+        _animOpt.fade = 0.05; _animOpt.timeScale = 1; _animOpt.duration = TUNE.counterRec + 0.15; _animOpt.commit = TUNE.counterRec;
+        this.W.anims.play(foe, 'strike_3', _animOpt);
+        const dealt = this.applyDamage(TUNE.counterDmg * foe.dmgMult * (big ? 1.5 : 1), 'heavy', foe.id, a.x + dx * this.radius * 0.6, cy, a.z + dz * this.radius * 0.6, false);
+        if (dealt > 0) {
+          const c = bus.ev(EV.STRIKE_LANDED);
+          c.who = foe.id; c.target = this.id; c.kind = 'heavy'; c.combo = 1; c.damage = dealt; c.impact = big ? 0.9 : 0.7;
+          c.high = true; c.counter = true; c.x = a.x + dx * this.radius * 0.6; c.y = cy; c.z = a.z + dz * this.radius * 0.6;
+          bus.emit(EV.STRIKE_LANDED);
+          if (foe.isPlayer) this.ctx.addScore(Math.round(dealt * 10));
+        }
+        this.W.hitStop(0.12);
+        this.W.slowMo(0.45, 0.4, 1);
+        if (this.state !== 'ko') {
+          if (big) this.knockDown(foe.id, 'strike', 0.7, -dx, -dz, 40);
+          else this.stagger(TUNE.reversalStagger, foe.id, -dx, -dz, 30);
+        }
         return true;
       }
       const chip = foe.applyDamage(Math.max(1, base * TUNE.chip), m.kind, this.id, cx, cy, cz, true);
@@ -815,7 +906,7 @@ export class Fighter {
     const wasSoft = foe.state === 'staggered' || foe.state === 'stunned' || foe.tired;
     const dealt = foe.applyDamage(base * (flight ? 1.5 : counter ? TUNE.counterMult : taunted ? TUNE.tauntHitMult : 1), m.kind, this.id, cx, cy, cz, false);
     if (dealt <= 0) return false;
-    this.gainMomentum(m.mom + (counter ? 3 : 0));
+    this.gainMomentum((m.mom + (counter ? 3 : 0)) * (flurry ? TUNE.cbMom : 1));
     if (this.isPlayer) this.ctx.addScore(Math.round(dealt * 10));
     const e = bus.ev(EV.STRIKE_LANDED);
     e.who = this.id; e.target = foe.id; e.kind = m.kind; e.combo = m.combo; e.damage = dealt; e.impact = Math.min(1, m.impact * (counter ? 1.3 : 1));
@@ -826,8 +917,11 @@ export class Fighter {
     if (flight) { this.W.grapple.cutDown(foe, this, m.impact); return true; }
     if (down) { foe._groundHit(); return true; }
     if (armored) return true;
-    if (m.kd === 'always' || (m.kd === 'weak' && (wasSoft || counter))) foe.knockDown(this.id, 'strike', m.impact, dx, dz, m.push);
+    // The flurry's big shot (the third of the string, the heavy, the clothesline) puts the foe down: the comeback's payoff
+    const flurryEnd = flurry && (m.combo >= 3 || m.kind !== 'light');
+    if (flurryEnd || m.kd === 'always' || (m.kd === 'weak' && (wasSoft || counter))) foe.knockDown(this.id, 'strike', flurryEnd ? Math.max(0.7, m.impact) : m.impact, dx, dz, m.push * (flurryEnd ? 1.3 : 1));
     else foe.stagger(m.stagger, this.id, dx, dz, m.push);
+    if (flurryEnd && foe.state === 'downed') this.endComeback('done');
     return true;
   }
 
@@ -1042,6 +1136,8 @@ export class Fighter {
   update(dt) {
     const it = this.intent, B = this._buf;
     this.stateT += dt;
+    // The flurry's strikes run fast
+    if (this.comebackPhase === 'flurry' && this.state === 'attacking' && this.move && STRIKE_KINDS[this.move.kind]) this.stateT += dt * (TUNE.cbHaste - 1);
     this._tick(dt);
     // One-frame presses are remembered for a moment so a press during recovery still counts
     if (it.strike) B.strike = 0.24; if (it.heavy) B.heavy = 0.24; if (it.grab) B.grab = 0.24; if (it.pin) B.pin = 0.24; if (it.finisher) B.finisher = 0.2;
@@ -1051,6 +1147,12 @@ export class Fighter {
       this._ko('military', p.x, p.y + this.height * 0.6, p.z);
     }
     if (this.isPlayer) this._watchPlayerPowers();
+    // The comeback: a taunt press while hurt, behind and beaten fires it up (from the mat, too); the flurry runs out
+    if (it.taunt && dt > 0 && this.comebackReady) { it.taunt = false; this._startComeback(); }
+    if (this.comebackPhase === 'flurry') {
+      this.comeback -= dt;
+      if (this.comeback <= 0 || this.held && this.state !== 'grappling') this.endComeback('time');
+    }
     if (!this.held) {
       switch (this.state) {
         case 'neutral': this._neutral(dt); break;
@@ -1088,6 +1190,7 @@ export class Fighter {
     if (this.finished > 0) this.finished -= dt;
     if (this.reboundCd > 0) this.reboundCd -= dt;
     if (this._kindLock.t > 0) this._kindLock.t -= dt;
+    if (this._beat > 0) this._beat *= Math.exp(-dt / TUNE.cbMemory);
     for (const k in this.cd) if (this.cd[k] > 0) this.cd[k] -= dt;
     // Stun-lock guard: time without control since last free
     if (s === 'staggered' || s === 'stunned') this.lockT += dt;
@@ -1209,6 +1312,7 @@ export class Fighter {
     this.W.bus.emit(EV.TAUNT_START);
   }
   _taunting(dt) {
+    if (this.comebackPhase === 'fire') { if (this.stateT >= this.stateDur) this._cbFlurry(); return; }
     if (this.stateT < this.stateDur) return;
     const foe = this.opponent;
     const gain = foe && (foe.state === 'downed' || foe.state === 'stunned') ? TUNE.tauntMomDown : TUNE.tauntMom;
@@ -1221,6 +1325,48 @@ export class Fighter {
     e.who = this.id; e.id = this._tauntId; e.momentum = this.momentum - m0;
     this.W.bus.emit(EV.TAUNT_COMPLETE);
     this.setState('neutral');
+  }
+
+  // ------------------------------------------------------------------ the comeback ("firing up")
+  // Fire-up (TUNE.cbFire s): up off the mat, rooted, roaring at the crowd, shrugging hits off. Then the flurry
+  // (cbFlurry s): free again, strikes faster and harder, still no-selling; its big shot floors the foe and
+  // ends it. A reversal cuts it off. Costs cbCost momentum; once a fall.
+  _startComeback() {
+    const T = TUNE;
+    this._cbFall = true; this._cbMatch++;
+    this.momentum = this.momentum - T.cbCost;
+    this.comebackPhase = 'fire'; this.comeback = T.cbFire + T.cbFlurry;
+    this.vel.set(0, 0, 0);
+    this.falling = 0; this.invuln = false; this.invulnT = 0; this.blockStun = 0;
+    this.lockT = 0; this.lockHits = 0; this.grabChain = 0;
+    this.lieTarget = 0; // a root-tipped body rises through the fire-up
+    this.stamina = Math.max(this.stamina, 60);
+    this._buf.strike = 0; this._buf.heavy = 0; this._buf.grab = 0; this._buf.pin = 0;
+    this.setState('taunting', T.cbFire, null);
+    _animOpt.fade = 0.2; _animOpt.timeScale = 1; _animOpt.duration = T.cbFire; _animOpt.commit = T.cbFire;
+    this.W.anims.play(this, 'taunt_a', _animOpt);
+    if (this.isPlayer) this.ctx.addScore(500);
+    const e = this.W.bus.ev(EV.COMEBACK_START);
+    e.who = this.id; e.dur = this.comeback; e.fire = T.cbFire;
+    this.W.bus.emit(EV.COMEBACK_START);
+  }
+  _cbFlurry() {
+    this.comebackPhase = 'flurry'; this.comeback = TUNE.cbFlurry;
+    this.setState('neutral');
+    const e = this.W.bus.ev(EV.COMEBACK_FLURRY);
+    e.who = this.id; e.dur = TUNE.cbFlurry;
+    this.W.bus.emit(EV.COMEBACK_FLURRY);
+  }
+  /** The comeback is over. by: 'time' | 'done' (its flurry floored the foe) | 'cut' (reversed, knocked out) | 'fall'. */
+  endComeback(by) {
+    if (!this.comebackPhase) return;
+    const was = this.comebackPhase;
+    this.comebackPhase = ''; this.comeback = 0;
+    if (by === 'time' || by === 'done') this.spend(TUNE.cbAfterStam); // it emptied the tank
+    if (was === 'fire' && this.state === 'taunting' && by !== 'fall') this.setState('neutral');
+    const e = this.W.bus.ev(EV.COMEBACK_END);
+    e.who = this.id; e.by = by;
+    this.W.bus.emit(EV.COMEBACK_END);
   }
 
   // Knockback, buildings, bounds, the other body, wading
@@ -1330,6 +1476,8 @@ export class Fighter {
   }
 }
 const RECOVERY = { id: 'recover', kind: 'ppower', startup: 0, active: 0, recover: 0 };
+// The defender's answer to a reversal (the shot itself lands at once; this is its follow-through)
+const COUNTER = { id: 'counter', kind: 'ppower', startup: 0, active: 0, recover: 0 };
 // What the player's classic powers look like to the state machine (and to the rival's reads)
 const _playerPower = {
   beam: { id: 'beam', kind: 'ppower', power: 'beam', steer: PLAYER_POWER_STEER.beam, startup: 0, active: 0, recover: PLAYER_POWER_COMMIT.beam },

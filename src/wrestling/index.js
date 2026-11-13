@@ -21,6 +21,7 @@ import { createHud } from './hud.js';
 import { createVfx } from './vfx.js';
 import { createSfx } from './sfx.js';
 import { createArena } from '../levels/chicago_arena.js';
+import { createSpots } from './spots.js';
 
 /**
  * @param ctx  the context game.js builds (see notes/wrestling_api.md)
@@ -35,7 +36,7 @@ export function createWrestling(ctx) {
     ctx, bus, EV,
     running: false,
     player: null, rival: null,   // Fighters, valid between start() and dispose()
-    anims: null, match: null, grapple: null, ai: null, input: null, cam: null, hud: null, vfx: null, sfx: null, arena: null,
+    anims: null, match: null, grapple: null, ai: null, input: null, cam: null, hud: null, vfx: null, sfx: null, arena: null, spots: null,
     /** Freeze the simulation for sec real seconds (ctx.hitStop) and tell the bus. */
     hitStop(sec) {
       ctx.hitStop(sec);
@@ -85,9 +86,10 @@ export function createWrestling(ctx) {
   W.vfx = createVfx(ctx, W);
   W.sfx = createSfx(ctx, W);
   W.arena = createArena(ctx, W);
+  W.spots = createSpots(ctx, W); // landmark set pieces, foreign objects, the count-out (spots)
   // Update order. Presentation modules come after the core so they see this frame's events.
   const core = [W.anims, W.match];
-  const show = [W.cam, W.hud, W.vfx, W.sfx, W.arena];
+  const show = [W.cam, W.hud, W.vfx, W.sfx, W.arena, W.spots];
 
   // ---- QA: event log + state forcing (window.__qa.wr under ?debug) ----
   const log = { on: false, events: [], counts: {}, max: 4000 };
@@ -131,6 +133,7 @@ export function createWrestling(ctx) {
       if (!W.running) return;
       W.input.update(dt);
       W.ai.update(dt);
+      W.spots.pre(dt);   // pick-ups and weapon swings read the intents before the fighters do
       W.grapple.update(dt);
       W.player.update(dt);
       W.rival.update(dt);

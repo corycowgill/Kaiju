@@ -1308,6 +1308,24 @@ export function buildArena(scene, world, o) {
   for (const s of [-1, 1]) casters.push({ x: GATE.x, z: GATE.z + s * GATE.hw, w: 5, d: 5, h: GATE.top });
   for (const sc of SCREENS_W) casters.push({ x: sc.x, z: sc.z, w: 1.6, d: SCREEN.w, h: SCREEN.y0 + SCREEN.h });
 
+  // ---- foreign objects: steel girders (one instanced draw for all of them; spots.js places them, held or lying) ----
+  let weapons = null;
+  {
+    // an I-beam in construction yellow (it has to read in a kaiju's fist against sky, mat and crowd), riveted plates, a torn end
+    const B = new Builder(), L = 28;
+    B.box(0, 1.35, 0, L, 0.45, 3.0, C.YELLOW); B.box(0, -1.35, 0, L, 0.45, 3.0, C.YELLOW); B.box(0, 0, 0, L, 2.3, 0.5, C.YELLOW);
+    for (let i = 0; i < 5; i++) B.box(-L / 2 + 1.5 + i * (L - 3) / 4, 0, 0, 0.4, 2.3, 2.7, C.STEEL3); // stiffeners
+    B.box(L / 2 - 0.5, 0, 0, 1.0, 3.3, 3.3, C.DARK); // the torn end
+    B.box(-L / 2 + 0.3, 0, 0, 0.6, 3.1, 3.1, C.STEEL3); // the grip end's plate
+    const im = new THREE.InstancedMesh(B.build(), AS.mStruct, 4);
+    im.name = 'arena_weapons';
+    im.frustumCulled = false; im.castShadow = !!tier; im.receiveShadow = true;
+    const z0 = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (let i = 0; i < 4; i++) im.setMatrixAt(i, z0);
+    scene.add(im);
+    weapons = { mesh: im, length: L };
+  }
+
   _resetUniforms(rt, posts);
   world.arena = {
     cx, cz, half: H, postH: A0.postH, ropeY: A0.ropeY, clearHalf: A0.clearHalf,
@@ -1317,7 +1335,7 @@ export function buildArena(scene, world, o) {
     ramp: { x0: RAMP.x0, x1: RAMP.x1, z: RAMP.z, halfWidth: RAMP.hw },
     gate: { x: GATE.x, z: GATE.z, halfWidth: GATE.hw - 2.5, clearance: GATE.h, top: GATE.top },
     gaps: FEST_RING_GAPS,
-    screens, pyro, casters,
+    screens, pyro, casters, weapons,
     /** True where spectators stand or sit (for throw:land surface 'crowd'). */
     crowdAt(x, z) {
       if (seatY(x, z) > 0) return true;
@@ -1483,6 +1501,10 @@ export function createArena(ctx, W) {
     on(EV.PIN_COUNT, (e) => { show('count', String(e.count), '', 1.1); pop(0.35 + 0.2 * e.count, 0.6 + 0.2 * e.count); });
     on(EV.PIN_KICKOUT, (e) => { show('callout', e.near ? '2.9!' : 'KICK OUT!', '', 1.6); shock(info().cx, info().cz, e.near ? 0.9 : 0.4); pop(e.near ? 1 : 0.5, 1); });
     on(EV.PIN_FALL, () => { pop(1, 1); cr.celebrate = Math.max(cr.celebrate, 4); });
+    // The count-out on the big screens; the crowd counts along, louder as it climbs
+    on(EV.COUNTOUT_COUNT, (e) => { if (e.count > 0 && !e.held) { show('count', String(e.count), 'COUNT-OUT', 1.1); pop(0.2 + 0.07 * e.count, 0.3 + 0.07 * e.count); } });
+    on(EV.COUNTOUT_OUT, () => { show('callout', 'COUNTED OUT!', '', 3); pop(1, 1); });
+    on(EV.SPOT_HIT, (e) => { shock(e.x, e.z, 0.8); pop(1, 1); });
     on(EV.TAUNT_START, () => { cr.flash = Math.max(cr.flash, 0.7); });
     on(EV.TAUNT_COMPLETE, () => { pop(0.8, 1); cr.waveCd = 0; });
     on(EV.FINISHER_START, (e) => { show('callout', e.name || 'FINISHER', '', 4); pop(0.7, 1); });

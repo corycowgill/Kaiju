@@ -39,6 +39,8 @@ const FALLBACK = {
   taunt_win: ['dance'], finisher_windup: ['cast3', 'skill2'], finisher_strike: ['stomp'], finisher_victim: ['dead', 'death'],
   ko: ['death', 'dead'], entrance: ['walk'],
   power_beam: ['skill1', 'cast1'], power_roar: ['skill2', 'cast2'], power_charge: ['skill3', 'stomp'], power_stomp: ['jump', 'stomp'], power_ult: ['cast3', 'stomp'],
+  // signature grapples (signatures.js): the thrower's clip for sig 1 / sig 2 (one per kaiju), and the victim's
+  sig_a: ['skill1', 'punch'], sig_b: ['skill1', 'punch'], sig_victim: [],
 };
 export const ANIMS = Object.freeze(Object.fromEntries(Object.keys(FALLBACK).map((name) => {
   const d = DEFS[name] || {};
@@ -103,6 +105,13 @@ const GRIP = {
   strike_2:        { L: null, R: ['Spine'], t0: 0.14, t1: 0.27, fade: 0.07, out: 1, press: 4, w: 0.8 },
   strike_3:        { L: ['Head'], R: ['Head'], t0: 0.24, t1: 0.36, fade: 0.06, out: 0.8, press: 3, w: 0.7 },
   heavy:           { L: null, R: ['Head'], t0: 0.5, t1: 0.62, fade: 0.07, out: 1, press: 3, w: 0.8 },
+  // signatures, per kaiju ('name.key'); windows in clip time (the clips are 2 s, stretched to the move: signatures.js)
+  'sig_a.godzilla': { L: null, R: ['neck'], t0: 0.15, t1: 1.42, fade: 0.12, out: 0.6, press: 2 },
+  'sig_b.godzilla': { L: ['Spine', 'Hips'], R: ['Spine', 'Hips'], t0: 0.18, t1: 1.54, fade: 0.12, out: 1, press: 4, split: true },
+  'sig_a.ghidorah': { L: ['Head'], R: ['Head'], t0: 0.47, t1: 1.18, fade: 0.1, out: 0.8, press: 3, w: 0.7 },
+  'sig_b.ghidorah': { L: ['Head'], R: ['Spine'], t0: 0.1, t1: 1.38, fade: 0.12, out: 0.6, press: 2.5 },
+  'sig_a.mecha':    { L: ['Spine', 'Hips'], R: ['Spine', 'Hips'], t0: 0.12, t1: 1.12, fade: 0.12, out: 1, press: 4, split: true },
+  'sig_b.mecha':    { L: ['Hips'], R: ['Hips'], t0: 0.15, t1: 1.2, fade: 0.12, out: 0.8, press: 3.5, wrap: 3 },
 };
 
 // ---- anchors: named points on a body for effects (W.anims.anchor) ----
@@ -278,7 +287,7 @@ export function createAnims(ctx, W) {
   }
   function grips(st, dt) {
     const o = st.f.opponent;
-    const name = st.sub || st.anim, G = GRIP[name];
+    const name = st.sub || st.anim, kn = GRIP[name] ? name : name + '.' + st.R.key, G = GRIP[kn];
     let wantL = 0, wantR = 0;
     const ost = o ? states[o.id] : null;
     if (G && ost && ost.B && o.root.visible !== false) {
@@ -288,7 +297,7 @@ export function createAnims(ctx, W) {
         on = t >= G.t0 && t <= G.t1;
       }
       if (on) { wantL = G.L ? (G.w || 1) : 0; wantR = G.R ? (G.w || 1) : 0; }
-      st.gripName = name;
+      st.gripName = kn;
     }
     const H = G || GRIP[st.gripName];
     const k = dt > 0 ? Math.min(1, dt / (H ? H.fade : 0.15)) : 0;

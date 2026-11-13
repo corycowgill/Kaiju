@@ -496,7 +496,7 @@ export function createVfx(ctx, W) {
     auraAcc: 0, full: false, exhausted: false, steamAcc: 0, blockK: 0, stunT: 0,
     trail: { on: false, type: '', dx: 0, dz: 1, t: 0, acc: 0, dacc: 0, by: 'player', px: 0, py: 0, pz: 0 },
     tele: { on: false, t: 0, dur: 0, heavy: false, both: false, hand: 'handR' },
-    glow: 0,
+    glow: 0, glowHex: -1, cbAcc: 0,
   });
   const st = { player: mkSt(), rival: mkSt() };
   const fighter = (id) => (id === 'player' || id === 'rival' ? W[id] : null);
@@ -895,8 +895,22 @@ export function createVfx(ctx, W) {
     let g = full ? 0.2 + 0.06 * Math.sin(T * 9) : m > 0.4 ? 0.14 * (m - 0.4) / 0.6 : 0;
     if (te.on && te.heavy) g = Math.max(g, 0.28 * te.t / te.dur);
     if (fin.on && !fin.hit && fin.who === f.id) g = Math.max(g, Math.min(0.36, 0.2 + fin.t * 0.1));
+    // (drama) fired up: the whole silhouette burns gold, pulsing, and gold embers stream up off it
+    const cb = f.comebackPhase;
+    if (cb) {
+      g = Math.max(g, (cb === 'fire' ? 0.46 : 0.32) + 0.1 * Math.sin(T * 14));
+      const elec = f.key === 'ghidorah'; // (Tridon: storm energy, never flame)
+      s.cbAcc += dt * (FULL ? 40 : 14) * (elec ? 0.35 : 1);
+      while (s.cbAcc >= 1) {
+        s.cbAcc -= 1;
+        const a = rnd() * TAU, r = rr(f.radius * 0.5, f.radius * 1.1), x = p.x + Math.cos(a) * r, y = p.y + rr(0.5, 24), z = p.z + Math.sin(a) * r;
+        if (elec) bolt(x, y, z, x + Math.cos(a) * rr(3, 7), y + rr(3, 9), z + Math.sin(a) * rr(3, 7), 2, 1.6, 1.3, GOLD, 1.2, 0.12);
+        else P(T_FLAME, M_BILL, x, y, z, rr(-2, 2), rr(14, 26), rr(-2, 2), rr(0.4, 0.7), rr(3, 5), 1.2, GOLD, 0.9, 1, 0.5, 0, rr(-0.25, 0.25), 0, 0.7, 0.15, 0.1, 1);
+      }
+    }
     if (f.state === 'ko') g = 0;
-    if (g !== s.glow) { s.glow = g; setKaijuGlow(f.root, (pal[f.id] || pal.player).glow.getHex(), g); }
+    const hex = cb ? 0xffb030 : (pal[f.id] || pal.player).glow.getHex();
+    if (g !== s.glow || hex !== s.glowHex) { s.glow = g; s.glowHex = hex; setKaijuGlow(f.root, hex, g); }
   }
   // Lock-up: sparks grinding out from between the two bodies
   let lock = false, lockAcc = 0;
@@ -971,16 +985,17 @@ export function createVfx(ctx, W) {
   }
 
   // ---- emitters (pyro, confetti, aftermath) ----
-  const E_PYRO = 1, E_CONFETTI = 2, E_EMBERS = 3, E_SMOLDER = 4, E_ARCS = 5, E_STORM = 6;
+  const E_PYRO = 1, E_CONFETTI = 2, E_EMBERS = 3, E_SMOLDER = 4, E_ARCS = 5, E_STORM = 6, E_RAIL = 7;
   const ems = [];
-  for (let i = 0; i < 48; i++) ems.push({ on: false, kind: 0, t: 0, dur: 0, x: 0, y: 0, z: 0, r: 0, acc: 0, acc2: 0, col: C(1, 1, 1), col2: C(1, 1, 1), mix: false, started: false });
+  for (let i = 0; i < 48; i++) ems.push({ on: false, kind: 0, t: 0, dur: 0, x: 0, y: 0, z: 0, r: 0, acc: 0, acc2: 0, col: C(1, 1, 1), col2: C(1, 1, 1), mix: false, started: false, who: '' });
   /** col2: a second colour the emitter mixes in instead of white (pyro: the championship burst). */
   function emitter(kind, x, y, z, dur, col, r = 0, delay = 0, col2 = null) {
     let e = null;
     for (let i = 0; i < ems.length; i++) if (!ems[i].on) { e = ems[i]; break; }
     if (!e) return;
     e.on = true; e.kind = kind; e.t = -delay; e.dur = dur; e.x = x; e.y = y; e.z = z; e.r = r; e.acc = 0; e.acc2 = 0; e.col.copy(col); e.started = false;
-    e.mix = !!col2; e.col2.copy(col2 || col);
+    e.mix = !!col2; e.col2.copy(col2 || col); e.who = '';
+    return e;
   }
   function tickEmitters(dt) {
     for (let i = 0; i < ems.length; i++) {
@@ -1051,6 +1066,25 @@ export function createVfx(ctx, W) {
           const x = e.x + Math.cos(a) * r, z = e.z + Math.sin(a) * r;
           bolt(x, 0.8, z, x + Math.cos(a2) * l, rr(0.8, 5), z + Math.sin(a2) * l, 2, 2.5, 2.2, e.col, 1.2, 0.14);
         }
+      } else if (e.kind === E_RAIL) {
+        // the third rail: current crawling over the body that hit it, discharging into the ground
+        const f = fighter(e.who);
+        if (!f) { e.on = false; continue; }
+        chest(f, _a);
+        e.acc += dt * (FULL ? 22 : 10) * (1 - k * 0.6);
+        while (e.acc >= 1) {
+          e.acc -= 1;
+          const a = rnd() * TAU, a2 = a + rr(-1.4, 1.4), r0 = f.radius * rr(0.5, 0.9), r1 = f.radius * rr(0.5, 1);
+          const y0 = f.pos.y + rr(0.15, 0.9) * f.height, y1 = Math.max(0.5, y0 + rr(-12, 8));
+          bolt(_a.x + Math.cos(a) * r0, y0, _a.z + Math.sin(a) * r0, _a.x + Math.cos(a2) * r1, y1, _a.z + Math.sin(a2) * r1, 3, 2.5, 2.2, rnd() < 0.4 ? WHITE : e.col, 1.4, 0.1);
+        }
+        e.acc2 += dt * (FULL ? 5 : 2.5);
+        while (e.acc2 >= 1) {
+          e.acc2 -= 1;
+          const a = rnd() * TAU;
+          bolt(_a.x + Math.cos(a) * f.radius * 0.6, f.pos.y + f.height * rr(0.2, 0.5), _a.z + Math.sin(a) * f.radius * 0.6, f.pos.x + Math.cos(a) * rr(10, 22), 0.5, f.pos.z + Math.sin(a) * rr(10, 22), 4, 4, 3, e.col, 1.5, 0.14);
+        }
+        LV(T_GLOW, M_BILL, _a.x, _a.y, _a.z, f.radius * 2.6, e.col, 0.35 * (1 - k) * (0.7 + 0.3 * Math.sin(T * 40)), 1);
       } else if (e.kind === E_STORM) {
         // charge: the sky finds the ground around the caster
         e.acc += dt * (FULL ? 5 : 2.5);
@@ -1427,6 +1461,88 @@ export function createVfx(ctx, W) {
     if (w > 0.8) flashLight(e.x, e.y, e.z, col, 8, 0.3);
   }
 
+  // ---- landmark set pieces (spots.js) and foreign objects ----
+  const ELEC = C(0.55, 0.8, 1), GRANITE = C(0.78, 0.52, 0.5), GLASS = C(0.7, 0.88, 1);
+  function fxSpot(e) {
+    const x = e.x, y = Math.max(1, e.y || 0), z = e.z, w = Math.min(1.2, 0.6 + 0.6 * (e.impact || 0.5));
+    if (e.spot === 'fountain') {
+      // the body lands in the basin: the fountain goes off as a geyser, spray ringing out, pink granite flying
+      const near = Math.hypot(x - 29.5, z - 4.4) < 30, cx = near ? 29.5 : x, cz = near ? 4.4 : z;
+      column(cx, 0.3, cz, 60 + 14 * w, 10, 22, 1.6, WATER, 0.85, 0, 3, 1);
+      column(cx, 0.3, cz, 48 + 10 * w, 4, 8, 1.2, WHITE, 0.55, 1, 4, 1);
+      for (let i = 0, n = FULL ? 8 : 5; i < n; i++) {
+        const a = i / n * TAU + rnd() * 0.3;
+        column(cx + Math.cos(a) * 9, 0.3, cz + Math.sin(a) * 9, rr(22, 36), 3, 8, rr(1, 1.4), WATER, 0.7, 0, 4, 1, rr(0.05, 0.25));
+      }
+      gring(cx, cz, 4, 46, 0.8, WATER, 0.8, T_RIPPLE);
+      for (let i = 0; i < cnt(40); i++) {
+        const a = rnd() * TAU, sp = rr(10, 36);
+        P(T_GLOW, M_BILL, cx, rr(20, 55), cz, Math.cos(a) * sp, rr(10, 40), Math.sin(a) * sp, rr(1.4, 2.2), rr(1.2, 2.4), 0.5, WATER, 0.9, 0, 0.3, 60);
+      }
+      dustRing(cx, cz, cnt(12), 8, 16, 30, 6, 15, 1.5, STEAM, 0.45);
+      chips(x, 1, z, 0, 0, cnt(18), 10, 34, 24, 60, GRANITE, 1, 2.6, 1.6);
+    } else if (e.spot === 'lake') {
+      // the wave: a curtain of water thrown up in a ring, a wide ripple, foam rolling out
+      for (let i = 0, n = FULL ? 12 : 7; i < n; i++) {
+        const a = i / n * TAU + rnd() * 0.2, r = rr(14, 22);
+        column(x + Math.cos(a) * r, 0.3, z + Math.sin(a) * r, rr(40, 70) * w, 7, 15, rr(1.3, 1.8), WATER, 0.62, 0, 3.5, 1, rr(0, 0.15));
+      }
+      gring(x, z, 10, 120, 1.8, WATER, 0.8, T_RIPPLE, 0.05);
+      gring(x, z, 8, 85, 1.2, WHITE, 0.6, T_RING, 0.1);
+      dustRing(x, z, cnt(22), 20, 30, 60, 8, 20, 2, STEAM, 0.5);
+    } else if (e.spot === 'ltracks') {
+      // the third rail: a white flash at contact, current over the body, sparks racing both ways along the track
+      P(T_GLINT, M_BILL, x, y + 4, z, 0, 0, 0, 0.3, 60, 14, WHITE, 1.6, 1, 0, 0, 0.4, 2);
+      P(T_BURST, M_BILL, x, y + 4, z, 0, 0, 0, 0.2, 14, 46, ELEC, 1.3, 1, 0, 0, rnd() * TAU);
+      flashLight(x, y + 6, z, ELEC, 12, 0.5);
+      for (let k = -1; k <= 1; k += 2) {
+        for (let i = 0; i < cnt(18); i++) P(T_STREAK, M_VEL, x + rr(-3, 3), rr(1, 6), z, rr(-8, 8), rr(5, 30), k * rr(60, 160), rr(0.3, 0.6), 1.1, 0.3, rnd() < 0.5 ? WHITE : ELEC, 1.6, 1, 1.4, 50, 0, 0, rr(6, 10));
+        bolt(x, 1, z, x + rr(-2, 2), 1, z + k * rr(30, 50), FULL ? 6 : 4, 3, 2.4, ELEC, 1.4, 0.25);
+      }
+      const em = emitter(E_RAIL, x, 0, z, 1.2, ELEC);
+      if (em) em.who = e.who;
+    } else if (e.spot === 'michigan') {
+      // a glass shower from the height of the impact, and the dust it knocks out
+      for (let i = 0; i < cnt(40); i++) {
+        const sp = rr(6, 30), a = rnd() * TAU;
+        P(T_GLINT, M_BILL, x + rr(-8, 8), y + rr(-4, 14), z + rr(-8, 8), Math.cos(a) * sp, rr(-4, 18), Math.sin(a) * sp, rr(1.2, 2), rr(1.4, 3), 0.8, GLASS, 1.4, 1, 0.6, 50, rnd() * TAU, rr(-10, 10));
+      }
+      for (let i = 0; i < cnt(22); i++) {
+        const sz = rr(1, 2.4);
+        P(T_CHIP, M_BILL, x + rr(-8, 8), y + rr(-4, 10), z + rr(-8, 8), rr(-20, 20), rr(0, 20), rr(-20, 20), rr(1.4, 2), sz, sz, GLASS, 1, 0, 0.5, 55, rnd() * TAU, rr(-12, 12), rr(0.5, 1.2), 0, 0.7);
+      }
+      for (let i = 0; i < cnt(8); i++) P(T_PUFF, M_BILL, x + rr(-6, 6), y + rr(-6, 6), z + rr(-6, 6), rr(-8, 8), rr(-4, 6), rr(-8, 8), rr(1.4, 2.2), 6, rr(14, 24), CONCRETE, 0.5, 0, 1.5, -1, rnd() * TAU, 0, 1, 0.08, 0.2, 1);
+    } else if (e.spot === 'bean') {
+      // Cloud Gate throws it back: a mirror flash, rings off the steel, a glint burst
+      P(T_GLINT, M_BILL, x, y + 6, z, 0, 0, 0, 0.4, 80, 16, WHITE, 1.6, 1, 0, 0, 0.5, 1.5);
+      P(T_RING, M_BILL, x, y + 6, z, 0, 0, 0, 0.45, 8, 80, WHITE, 1.3, 1, 0, 0, 0, 0, 1, 0, 0.2);
+      P(T_RING, M_BILL, x, y + 6, z, 0, 0, 0, 0.4, 6, 54, GLASS, 1, 1, 0, 0, 0, 0, 1, 0, 0.2, 0, 0.08);
+      P(T_SHELL, M_BILL, x, y + 6, z, 0, 0, 0, 0.35, 20, 50, WHITE, 0.5, 1, 0, 0, 0, 0, 1, 0, 0.2);
+      for (let i = 0; i < cnt(16); i++) {
+        const a = rnd() * TAU, el = rr(-0.3, 1), sp = rr(30, 70);
+        P(T_GLINT, M_BILL, x, y + 6, z, Math.cos(a) * Math.cos(el) * sp, Math.sin(el) * sp, Math.sin(a) * Math.cos(el) * sp, rr(0.4, 0.7), rr(6, 12), 1, WHITE, 1.4, 1, 1.8, 0, rnd() * TAU, 3);
+      }
+      flashLight(x, y + 6, z, WHITE, 10, 0.35);
+    }
+  }
+  /** Steel on kaiju: an orange spray, steel chips and a hard burst, bigger than a heavy. */
+  function fxSteel(x, y, z, dx, dz, w) {
+    P(T_BURST, M_BILL, x, y, z, 0, 0, 0, 0.18, 12, 34 + 26 * w, SPARK, 1.4, 1, 0, 0, rnd() * TAU);
+    sparks(x, y, z, dx, 0.5, dz, cnt(16 + 18 * w), 40, 120, 0.9, SPARK, 1.2, 0.5, 60);
+    sparks(x, y, z, 0, 1, 0, cnt(8), 20, 60, 1.2, WHITE, 0.9, 0.5, 50, 1.3);
+    for (let j = 0; j < cnt(6 + 8 * w); j++) {
+      const sz = rr(1.2, 2.8);
+      P(T_CHIP, M_BILL, x, y, z, dx * rr(10, 50) + rr(-20, 20), rr(10, 50), dz * rr(10, 50) + rr(-20, 20), rr(1.2, 1.8), sz, sz, STEEL, 1, 0, 0.4, 65, rnd() * TAU, rr(-12, 12), rr(0.6, 1.5), 0, 0.7);
+    }
+  }
+  function fxWeaponHit(e, blocked) {
+    const A = fighter(e.who), V = fighter(e.target);
+    if (A && V) dir2(A.pos.x, A.pos.z, V.pos.x, V.pos.z); else { _dx = 0; _dz = 1; }
+    if (blocked) { _dx = -_dx; _dz = -_dz; } // off the guard, back at the swinger
+    fxSteel(e.x, e.y, e.z, _dx, _dz, blocked ? 0.6 : 1);
+    if (!blocked) flashLight(e.x, e.y, e.z, SPARK, 9, 0.3);
+  }
+
   // ---- lifecycle ----
   const on = (name, fn) => offs.push(W.bus.on(name, fn));
   function setPal(id, f) {
@@ -1497,9 +1613,21 @@ export function createVfx(ctx, W) {
         const f = fighter(e.who);
         if (f) st[f.id].tele.on = false;
         if (e.kind === 'splash' || e.kind === 'stomp') { fxSlam(e.x, e.z, 0.7 + 0.5 * e.impact, colOf(e.who), e.kind === 'splash' ? 1 : 0); return; }
-        fxStrike(e);
+        fxStrike(e, e.kind === 'weapon' ? 1.3 : 1);
+        if (e.kind === 'weapon') fxWeaponHit(e, false);
       });
-      on(EV.STRIKE_BLOCKED, fxBlock);
+      on(EV.STRIKE_BLOCKED, (e) => { fxBlock(e); if (e.kind === 'weapon') fxWeaponHit(e, true); });
+      on(EV.SPOT_HIT, fxSpot);
+      on(EV.WEAPON_PICKUP, (e) => {
+        P(T_GLINT, M_BILL, e.x, e.y, e.z, 0, 0, 0, 0.3, 26, 6, WHITE, 1.3, 1, 0, 0, 0.4, 2);
+        P(T_RING, M_BILL, e.x, e.y, e.z, 0, 0, 0, 0.3, 4, 26, colOf(e.who), 0.9, 1, 0, 0, 0, 0, 1, 0, 0.2);
+        sparks(e.x, e.y, e.z, 0, 1, 0, cnt(8), 20, 50, 1.2, SPARK, 0.9, 0.35, 60, 1.3);
+      });
+      on(EV.WEAPON_BREAK, (e) => {
+        fxSteel(e.x, e.y, e.z, 0, 0, 1.2);
+        P(T_RING, M_BILL, e.x, e.y, e.z, 0, 0, 0, 0.3, 6, 44, WHITE, 1, 1, 0, 0, 0, 0, 1, 0, 0.2);
+        flashLight(e.x, e.y, e.z, SPARK, 8, 0.3);
+      });
       on(EV.STRIKE_REVERSED, fxReversal);
       on(EV.STRIKE_WHIFFED, (e) => { const f = fighter(e.who); if (f) st[f.id].tele.on = false; });
       on(EV.POWER_TELEGRAPH, (e) => {
@@ -1602,6 +1730,29 @@ export function createVfx(ctx, W) {
         chest(f, _a);
         P(T_BURST, M_BILL, _a.x, _a.y, _a.z, 0, 0, 0, 0.22, 14, e.near ? 70 : 44, colOf(e.who), 1.2, 1, 0, 0, rnd() * TAU);
         P(T_RING, M_BILL, _a.x, _a.y, _a.z, 0, 0, 0, 0.35, 8, e.near ? 80 : 50, e.near ? GOLD : colOf(e.who), 1.1, 1, 0, 0, 0, 0, 1, 0, 0.2);
+        if (e.finisher) { igniteAura(f); flashLight(_a.x, _a.y, _a.z, GOLD, 10, 0.5); } // (drama) out of a finisher's cover
+      });
+      // (drama) the player's reversal window: a gold glint where the blow (or the grab) is coming from, closing in
+      on(EV.REVERSAL_CUE, (e) => {
+        if (e.who !== 'player') return;
+        const a = fighter(e.target);
+        if (!a) return;
+        if (e.kind === 'grab') chest(a, _a); else anchor(a, 'handR', _a);
+        const d = Math.max(0.12, e.opens + e.dur);
+        P(T_GLINT, M_BILL, _a.x, _a.y, _a.z, 0, 0, 0, d, 40, 10, GOLD, 1.6, 1, 0, 0, 0.4, 3);
+        P(T_RING, M_BILL, _a.x, _a.y, _a.z, 0, 0, 0, d, 42, 8, GOLD, 1.2, 1, 0, 0, 0, 0, 1, 0, 0.3);
+      });
+      // (drama) firing up: a gold blaze from the mat up, then the body glows gold (tickFighter) while it lasts
+      on(EV.COMEBACK_START, (e) => {
+        const f = fighter(e.who);
+        if (!f) return;
+        igniteAura(f);
+        gring(f.pos.x, f.pos.z, 8, 70, 0.7, GOLD, 1.4);
+        column(f.pos.x, 0.3, f.pos.z, 90, 18, 34, 0.8, GOLD, 0.6, 1, 6, 1);
+      });
+      on(EV.COMEBACK_NOSELL, (e) => {
+        P(T_RING, M_BILL, e.x, e.y, e.z, 0, 0, 0, 0.25, 6, 30, GOLD, 1.1, 1, 0, 0, 0, 0, 1, 0, 0.2);
+        sparks(e.x, e.y, e.z, 0, 0.8, 0, cnt(8), 30, 70, 1.2, GOLD, 1, 0.35, 50, 1.4);
       });
       on(EV.MOMENTUM_SPENT, (e) => {
         const f = fighter(e.who);

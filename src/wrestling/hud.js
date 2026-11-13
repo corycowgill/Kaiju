@@ -18,6 +18,7 @@ import { EV } from './events.js';
 import { BINDINGS, wheelLayout } from './input.js';
 import { FINISHERS } from './grapple.js';
 import { PERSONAS } from './rivalAI.js';
+import { SIGNATURES } from './signatures.js';
 
 // Face crop of assets/<key>.webp (640x360 in-engine renders) for the band portrait
 const PORTRAIT = {
@@ -73,11 +74,12 @@ export function createHud(ctx, W) {
   let pinT = -1;                         // > 0: seconds until the pin numerals go
   let mashKind = '', mashQ = -1, mashOwn = 0;
   let promptKey = '', wheelKey = '', wheelSelT = 0, wheelSel = '';
-  const evPrompt = { grab: false, pickup: false, pin: false, kickout: false, escape: false, getup: false, finisher: false, skip: false, defend: false };
+  const evPrompt = { grab: false, pickup: false, pin: false, kickout: false, escape: false, getup: false, finisher: false, skip: false, defend: false, comeback: false };
   let tipId = '', tipT = 0;
   let tickT = 0, tickGap = 0;
   let cardT = [0, 0], cardWait = { player: -1, rival: -1 };
   let interT = -1;
+  let ruleT = -1, coWho = '';            // count-out (spots.js): rule card timer, who the widget counts
   let hitsTaken = 0;
   let tut = null, tutOn = false;
   let prev = null;                       // strings swapped in start(), restored in dispose()
@@ -109,6 +111,7 @@ export function createHud(ctx, W) {
       cards: { player: cards[0], rival: cards[1] }, inter: $('wr-inter'),
       skip: $('wr-skip'), touch: $('wr-touch'), mashZone: $('wr-mash-zone'),
       btnGrab: $('wr-btn-grab'), btnBlock: $('wr-btn-block'), btnTaunt: $('wr-btn-taunt'), btnLock: $('wr-btn-lock'),
+      co: $('wr-co'), coN: root.querySelector('#wr-co b'), coPips: root.querySelectorAll('#wr-co .pips i'), rule: $('wr-rule'),
       help: $('wr-help'), moves: $('wr-moves'), upTitle: $('upgrade-title'), corner: $('wr-corner'),
       go: $('gameover'), defend: $('wr-defend-btn'), again: $('goAgainBtn'),
     };
@@ -306,8 +309,10 @@ export function createHud(ctx, W) {
 
     // Lock-up: the move wheel takes the slot
     const wheelOn = fight && ui.inLockup;
+    // RUN held in the lock-up: toward / away become the kaiju's two signature moves (signatures.js)
+    const sigs = wheelOn && P.intent && P.intent.sprint ? SIGNATURES[P.key] : null;
     let wk = '';
-    if (wheelOn) wk = device + ui.wheelRot + wheelSel;
+    if (wheelOn) wk = device + ui.wheelRot + wheelSel + (sigs ? 'S' : '');
     if (wk !== wheelKey) {
       wheelKey = wk;
       el.wheel.classList.toggle('on', wheelOn);
@@ -316,7 +321,8 @@ export function createHud(ctx, W) {
         for (let i = 0; i < 4; i++) {
           const n = el.wheel.querySelector('.' + slot[i]);
           n.className = slot[i] + (wheelSel === lay[i] ? ' sel' : '');
-          n.innerHTML = device === 'kbm' ? `${glyph(B.dir[i])}${WHEEL_LABEL[lay[i]]}` : `<span class="ar">${ar[i]}</span>${WHEEL_LABEL[lay[i]]}`;
+          const lab = sigs && lay[i] === 'whip' ? sigs[0].name : sigs && lay[i] === 'suplex' ? sigs[1].name : WHEEL_LABEL[lay[i]];
+          n.innerHTML = device === 'kbm' ? `${glyph(B.dir[i])}${lab}` : `<span class="ar">${ar[i]}</span>${lab}`;
         }
         const c = el.wheel.querySelector('.c');
         c.className = 'c' + (wheelSel === 'slam' ? ' sel' : '');
@@ -326,6 +332,7 @@ export function createHud(ctx, W) {
 
     let html = '', key = '';
     if (mashKind || wheelOn || !live) key = '';
+    else if (fight && P.comebackReady || evPrompt.comeback) { key = 'fire'; html = pill(B.taunt, 'FIRE UP!', '', 'hot') + note('THE CROWD IS BEHIND YOU'); }
     else if (fight && P.state === 'downed' || evPrompt.getup) { key = 'getup'; html = pill(B.mash, 'GET UP', 'MASH'); }
     else if (can('finisher') || evPrompt.finisher) {
       key = 'fin'; html = pill(B.finisher, (FINISHERS[P.key] && FINISHERS[P.key].name) || 'FINISHER', '', 'hot');
@@ -333,13 +340,15 @@ export function createHud(ctx, W) {
       key = 'ground'; html = pill(B.grab, 'PIN', 'HOLD', 'hot') + pill(B.grab, 'PICK UP', 'TAP');
       if (needs('taunt')) { key += 't'; html += pill(B.taunt, 'TAUNT'); }
     } else if (fight && R.state === 'stunned' && P.canAct !== false || evPrompt.grab) { key = 'grab'; html = pill(B.grab, 'GRAB'); }
+    else if (fight && W.spots && W.spots.armed(P)) { const h = W.spots.armed(P).hits; key = 'armed' + h; html = pill(B.strike, 'SWING GIRDER', '', 'hot') + note(`${h} HIT${h > 1 ? 'S' : ''} LEFT`); }
+    else if (fight && W.spots && P.canAct && W.spots.nearestWeapon(P, 12) && !(P.gapTo(R) <= 9 && P.facing(R, 1.0))) { key = 'girder'; html = pill(B.grab, 'RIP UP GIRDER', '', 'hot'); }
     else if (fight && stallT >= 5) {
       key = stallT >= 6 ? 'stall2' : 'stall1';
       html = `<div class="wr-pill hot">${stallT >= 6 ? 'STALLING!' : 'GET BACK IN THERE'}</div>` + note(stallT >= 6 ? `${R.name} IS GAINING MOMENTUM` : 'THE CROWD IS TURNING');
     } else if (tipId && tipT > 0 && fight) {
       key = 'tip' + tipId;
       if (tipId === 'strike') html = pill(B.strike, 'STRIKE') + pill(B.strike, 'HEAVY', 'HOLD');
-      else if (tipId === 'block') html = pill(B.block, 'BLOCK', 'HOLD') + note('JUST BEFORE THE HIT = REVERSAL');
+      else if (tipId === 'block') html = pill(B.block, 'BLOCK', 'HOLD') + note('ON THE GOLD FLASH = REVERSAL');
       else if (tipId === 'grab') html = pill(B.grab, 'GRAB') + note('THEN PUSH A DIRECTION');
       else if (tipId === 'ground') html = pill(B.grab, 'PIN', 'HOLD') + pill(B.taunt, 'TAUNT');
       else if (tipId === 'taunt') html = pill(B.taunt, 'TAUNT') + note('BUILDS MOMENTUM WHILE THEY ARE DOWN');
@@ -354,7 +363,7 @@ export function createHud(ctx, W) {
       if (el.btnGrab) {
         el.btnGrab.classList.toggle('cue', /ground|grab/.test(key));
         el.btnBlock.classList.toggle('cue', key.endsWith('tipblock'));
-        el.btnTaunt.classList.toggle('cue', /groundt|tiptaunt|tipground/.test(key));
+        el.btnTaunt.classList.toggle('cue', /groundt|tiptaunt|tipground|fire$/.test(key));
       }
     }
 
@@ -409,7 +418,7 @@ export function createHud(ctx, W) {
   function hideCards() { for (const id of ['player', 'rival']) { stopAnim(el.cards[id]); cardWait[id] = -1; } }
   function fallBand(e) {
     const ms = W.match.state;
-    el.inter.children[0].textContent = `FALL ${e.fall} · ${e.by === 'ko' ? 'KNOCKOUT' : 'PINFALL'}`;
+    el.inter.children[0].textContent = `FALL ${e.fall} · ${e.by === 'ko' ? 'KNOCKOUT' : e.by === 'countout' ? 'COUNT-OUT' : 'PINFALL'}`;
     el.inter.children[1].textContent = nameOf(e.winner);
     el.inter.children[2].innerHTML = `<span>${nameOf('player')}</span><b>${ms.playerFalls} - ${ms.rivalFalls}</b><span>${nameOf('rival')}</span>`;
     interT = 2.6;
@@ -447,13 +456,16 @@ export function createHud(ctx, W) {
     const mv = (label, html) => `<div class="mv">${label}<span>${html}</span></div>`;
     const or = (a, b) => glyph(a) + (b ? `<em>OR</em>${glyph(b)}` : '');
     const dirs = d === 'kbm' ? null : '<em>PUSH</em>';
+    const sg = W.player ? SIGNATURES[W.player.key] : null;
     if (el.moves) {
       el.moves.innerHTML = `<h4>STRIKES</h4>${mv('STRIKE (3-HIT STRING)', glyph(B.strike))}${mv('HEAVY', `<em>HOLD</em>${or(B.strike, B.heavyAlt)}`)}`
         + mv('CLOTHESLINE', `${glyph(B.sprint)}<em>+</em>${glyph(B.strike)}`)
-        + `<h4>DEFENSE</h4>${mv('BLOCK', `<em>HOLD</em>${or(B.block, B.blockAlt)}`)}${mv('REVERSAL', '<em>BLOCK JUST BEFORE THE HIT</em>')}${mv('ESCAPE A HOLD · KICK OUT', `<em>MASH</em>${glyph(B.mash)}`)}`
+        + `<h4>DEFENSE</h4>${mv('BLOCK', `<em>HOLD</em>${or(B.block, B.blockAlt)}`)}${mv('REVERSAL', '<em>BLOCK ON THE GOLD FLASH</em>')}${mv('REVERSE A GRAB', `<em>ON THE FLASH</em>${glyph(B.grab)}`)}${mv('ESCAPE A HOLD · KICK OUT', `<em>MASH</em>${glyph(B.mash)}`)}`
         + `<h4>GRAPPLE</h4>${mv('GRAB', glyph(B.grab))}${mv('IRISH WHIP', `<em>THEN</em>${dirs ? dirs + '<em>TOWARD</em>' : '<em>TOWARD</em>'}`)}${mv('SUPLEX', '<em>THEN AWAY</em>')}${mv('GIANT SWING', '<em>THEN SIDEWAYS</em>')}${mv('GORILLA PRESS', `<em>THEN</em>${glyph(B.grab)}<em>OR WAIT</em>`)}`
+        + mv(sg ? `${sg[0].name} · ${sg[1].name}` : 'SIGNATURE MOVES', `<em>THEN HOLD</em>${glyph(B.sprint)}<em>+ TOWARD · AWAY</em>`)
         + `<h4>ON A DOWNED RIVAL</h4>${mv('PIN', `<em>HOLD</em>${glyph(B.grab)}`)}${mv('PICK UP', `<em>TAP</em>${glyph(B.grab)}`)}${mv('STOMP · SPLASH', `${glyph(B.strike)}<em>· HOLD</em>${glyph(B.strike)}`)}`
-        + `<h4>SHOWMANSHIP</h4>${mv('TAUNT (BUILDS MOMENTUM)', glyph(B.taunt))}${mv(fin, `<em>FULL MOMENTUM</em>${glyph(B.finisher)}`)}${mv('LOCK-ON / FREE CAMERA', glyph(B.lock))}`
+        + `<h4>SHOWMANSHIP</h4>${mv('TAUNT (BUILDS MOMENTUM)', glyph(B.taunt))}${mv('FIRE UP (HURT AND BEHIND)', `<em>WHEN PROMPTED</em>${glyph(B.taunt)}`)}${mv(fin, `<em>FULL MOMENTUM</em>${glyph(B.finisher)}`)}${mv('LOCK-ON / FREE CAMERA', glyph(B.lock))}`
+        + `<h4>FIGHTING INTO CHICAGO</h4>${mv('FOREIGN OBJECT (GIRDER)', `<em>NEXT TO ONE</em>${glyph(B.grab)}<em>· SWING</em>${glyph(B.strike)}<em>· 3 HITS</em>`)}${mv('LANDMARKS', '<em>THROW THEM INTO THE FOUNTAIN, THE LAKE, THE L</em>')}${mv('COUNT-OUT', '<em>OUTSIDE THE ARENA: BACK BEFORE 10</em>')}`
         + (d === 'touch' ? '' : `<h4>POWERS</h4>${mv('BEAM · ROAR · CHARGE · STOMP', glyph(B.beam) + glyph(B.roar) + glyph(B.charge) + glyph(B.stomp))}`);
     }
     if (el.help && d !== 'touch') {
@@ -465,6 +477,18 @@ export function createHud(ctx, W) {
 
   // ---- lifecycle ----------------------------------------------------------------
   /** A match (or a title defense) begins: fresh fighters, every layer up. */
+  /** Count-out widget: n called so far (0..10), held = paused. */
+  function coSet(n, held) {
+    el.coN.textContent = held ? '–' : String(n);
+    for (let i = 0; i < el.coPips.length; i++) el.coPips[i].classList.toggle('on', i < n);
+    el.co.classList.toggle('late', n >= 7 && !held);
+    el.co.classList.toggle('held', !!held);
+    el.co.lastElementChild.textContent = held ? 'COUNT HELD · BOTH OUTSIDE' : 'GET BACK TO THE RING!';
+  }
+  function coHide() {
+    coWho = '';
+    if (el.co && el.co.classList.contains('on')) { el.co.classList.remove('on'); stopAnim(el.co); stopAnim(el.coN); }
+  }
   function begin() {
     side.player = el.p1; side.rival = el.p2;
     live = true;
@@ -477,6 +501,7 @@ export function createHud(ctx, W) {
     for (const c of el.calls) { stopAnim(c); c._on = 0; c._pos = ''; }
     stopAnim(el.pin); stopAnim(el.inter); hideCards();
     el.count.classList.remove('on'); el.mash.classList.remove('on'); el.wheel.classList.remove('on'); el.ticker.className = '';
+    coHide(); ruleT = -1; if (el.rule) { stopAnim(el.rule); el.rule.style.opacity = '0'; }
     el.prompt.classList.add('off'); el.prompt.innerHTML = '';
     if (el.mashZone) el.mashZone.classList.remove('on');
     el.go.classList.remove('wr', 'wr-win', 'wr-loss');
@@ -507,6 +532,7 @@ export function createHud(ctx, W) {
     if (mashKind) writeMash(dtReal);
     for (const c of el.calls) if (c._on > 0) c._on -= dtReal;
     if (pinT > 0) { pinT -= dtReal; if (pinT <= 0) pinEnd(false); }
+    if (ruleT > 0) { ruleT -= dtReal; if (ruleT <= 0 && el.rule) play(el.rule, [{ opacity: 1 }, { opacity: 0 }], 350); }
     if (tickT > 0) { tickT -= dtReal; if (tickT <= 0) el.ticker.className = ''; }
     if (tickGap > 0) tickGap -= dtReal;
     if (tipT > 0) { tipT -= dtReal; if (tipT <= 0) tipId = ''; }
@@ -552,7 +578,7 @@ export function createHud(ctx, W) {
     on(EV.GRAB_START, (e) => { if (e.who === 'player') learned('grab'); });
     on(EV.TAUNT_START, (e) => { if (e.who === 'player') learned('taunt'); });
     on(EV.FINISHER_START, (e) => { if (e.who === 'player') learned('finisher'); });
-    on(EV.GRAB_MOVE, (e) => { if (e.who === 'player') { wheelSel = e.type; wheelSelT = 0.5; wheelKey = '\u0000'; slowT = 1; } });
+    on(EV.GRAB_MOVE, (e) => { if (e.who === 'player') { wheelSel = e.type === 'signature' ? (e.sig === 1 ? 'whip' : 'suplex') : e.type; wheelSelT = 0.5; wheelKey = '\u0000'; slowT = 1; } });
     on(EV.PIN_START, (e) => {
       if (e.who === 'player') learned('ground');
       el.pinB.textContent = ''; el.pin.className = '';
@@ -568,7 +594,35 @@ export function createHud(ctx, W) {
       if (!e.near) callout(e.count > 0 ? `KICKOUT AT ${e.count}!` : 'KICKOUT!', '', 'defend', e.who); // the director calls the near falls
     });
     on(EV.PIN_BROKEN, () => { pinEnd(false); setMash(''); });
+    // (drama) the reversal window: the touch button that takes it throbs with the gold flash in the world
+    on(EV.REVERSAL_CUE, (e) => {
+      const b = e.who === 'player' && device === 'touch' && !reduced ? (e.kind === 'grab' ? el.btnGrab : el.btnBlock) : null;
+      if (b) play(b, [{ transform: 'scale(1)' }, { transform: 'scale(1.22)', offset: 0.3 }, { transform: 'scale(1)' }], Math.max(250, (e.opens + e.dur) * 1000), 'none');
+    });
     on(EV.KO, () => { pinEnd(false); setMash(''); callout('K.O.!', '', 'result', ''); });
+    // The count-out (spots.js)
+    on(EV.COUNTOUT_START, (e) => {
+      if (!el.co) return;
+      coWho = e.who;
+      el.co.className = `${cls(e.who)} on${e.who === 'player' ? ' mine' : ''}`;
+      coSet(0, false);
+      play(el.co, reduced ? [{ opacity: 1 }, { opacity: 1 }] : [{ opacity: 0, transform: `translateX(${e.who === 'player' ? -40 : 40}px)` }, { opacity: 1, transform: 'translateX(0)' }], 220);
+      if (e.first && el.rule) {
+        ruleT = 5.5;
+        play(el.rule, reduced ? [{ opacity: 1 }, { opacity: 1 }] : [{ opacity: 0, transform: 'translateX(-50%) scale(1.3)' }, { opacity: 1, transform: 'translateX(-50%) scale(0.97)', offset: 0.6 }, { opacity: 1, transform: 'translateX(-50%) scale(1)' }], 320);
+      }
+    });
+    on(EV.COUNTOUT_COUNT, (e) => {
+      if (!el.co || e.who !== coWho) return;
+      coSet(e.count, e.held);
+      if (e.count > 0 && !e.held && !reduced) play(el.coN, [{ transform: 'scale(1.9)', opacity: 0.4 }, { transform: 'scale(1)', opacity: 1 }], e.count >= 7 ? 260 : 180);
+    });
+    on(EV.COUNTOUT_STOP, (e) => {
+      if (e.who !== coWho) return;
+      coHide();
+      if (e.reason === 'in' && e.count >= 7) callout('BEAT THE COUNT!', `AT ${e.count}`, 'defend', e.who);
+    });
+    on(EV.COUNTOUT_OUT, () => { coHide(); });
     // The match director's words
     on(EV.CALLOUT, (e) => callout(e.text, e.sub, e.tier, e.who));
     on(EV.COMMENTARY, (e) => say(e.text, e.tone, e.tone !== 'neutral'));
@@ -649,6 +703,14 @@ export function createHud(ctx, W) {
     ['u', 'r', 'd', 'l'].forEach((sl, i) => { const n = el.wheel.querySelector('.' + sl); n.className = sl + (i ? '' : ' sel'); n.innerHTML = `${glyph('W')}<span class="ar">▲</span>WHIP`; });
     el.wheel.querySelector('.c').innerHTML = `${glyph('E')}SLAM`;
     el.ticker.className = 'on hype'; el.tickerLine.textContent = 'There is the bell! We are under way in Chicago!';
+    // count-out widget (late + mine), its number punch, and the rule card
+    if (el.co) {
+      el.co.className = 'p1 on mine late'; el.coN.textContent = '8';
+      for (let i = 0; i < el.coPips.length; i++) el.coPips[i].classList.toggle('on', i < 8);
+      loop(el.co, [{ opacity: 0, transform: 'translateX(-40px)' }, { opacity: 1, transform: 'translateX(0)' }], 500);
+      loop(el.coN, [{ transform: 'scale(1.9)', opacity: 0.4 }, { transform: 'scale(1)', opacity: 1 }], 400);
+      loop(el.rule, [{ opacity: 0, transform: 'translateX(-50%) scale(1.3)' }, { opacity: 1, transform: 'translateX(-50%) scale(1)' }], 500);
+    }
     // cards, fall band, letterbox, skip, touch cues
     for (const id of ['player', 'rival']) {
       const c = el.cards[id];
@@ -698,6 +760,7 @@ export function createHud(ctx, W) {
       for (const n of el.pips.player.children) n.classList.remove('on');
       el.pin.className = ''; el.count.classList.remove('on');
       el.mash.classList.remove('on'); el.wheel.classList.remove('on'); el.ticker.className = '';
+      if (el.co) { el.co.className = 'p2'; el.coN.textContent = '0'; for (const n of el.coPips) n.classList.remove('on'); el.rule.style.opacity = '0'; }
       el.prompt.classList.add('off'); el.prompt.innerHTML = '';
       el.root.classList.remove('lbox');
       if (el.btnGrab) { el.btnGrab.classList.remove('cue'); el.btnTaunt.classList.remove('cue'); }

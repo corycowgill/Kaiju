@@ -2529,7 +2529,19 @@ async function _settleGpu(extraRoots = [], timeoutMs = 8000) {
     const top = document.getElementById('wr-top');
     if (top) top.style.transition = 'none';
     wrRoot.classList.remove('lbox', 'cine'); body.classList.remove('wr-cine');
+    // ...with what the bell itself brings up: the commentary ticker and the
+    // FIGHT! call (either one, first drawn at the bell, built a 0.2-0.8 s
+    // raster program there, with the hud's prewarm drawn or not)
+    const ticker = document.getElementById('wr-ticker'), call = wrRoot.querySelector('.wr-call');
+    const was = { tk: ticker && ticker.className, call: call && [call.className, call.style.opacity, ...[...call.children].map((c) => c.textContent)] };
+    if (ticker) ticker.className = 'on hype';
+    if (call && call.children.length >= 3) {
+      call.className = 'wr-call t-result'; call.style.opacity = '1';
+      call.children[1].textContent = 'FIGHT!'; call.children[2].textContent = 'CHICAGO HEAVYWEIGHT TITLE';
+    }
     await _steadyFrames(1500, 3500, true);
+    if (ticker) ticker.className = was.tk;
+    if (call && was.call) { call.className = was.call[0]; call.style.opacity = was.call[1]; [...call.children].forEach((c, i) => { c.textContent = was.call[2 + i]; }); }
     wrRoot.classList.toggle('lbox', had[0]); wrRoot.classList.toggle('cine', had[1]); body.classList.toggle('wr-cine', had[2]);
     await _steadyFrames(600, 3000, true); // (the letterbox's 0.4 s slide back)
     if (top) top.style.transition = '';

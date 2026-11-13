@@ -442,6 +442,32 @@ if (mode === 'wrestling') await step('wrestling', async () => {
       faceOff();
       drive.rival.strike = true; tick(8); drive.player.block = true;
       expect(until(() => n(EV.STRIKE_REVERSED) >= 1, 2) && rv.state === 'staggered', 'a guard raised just before the hit was not a reversal');
+      // ---- (drama) the reversal cue on a heavy, the guard raised on it, the counter that floors the attacker ----
+      faceOff(); drive.player.block = false; pl.intent.block = false; tick(30);
+      {
+        const c0 = n(EV.REVERSAL_CUE), r0 = n(EV.STRIKE_REVERSED);
+        drive.rival.heavy = true;
+        expect(until(() => n(EV.REVERSAL_CUE) > c0, 1), 'a heavy at the player raised no reversal:cue');
+        tick(10); drive.player.block = true;
+        expect(until(() => n(EV.STRIKE_REVERSED) > r0, 1.5) && until(() => rv.state === 'downed', 1), `a guard raised on the cue did not reverse the heavy and floor the rival (rival '${rv.state}')`);
+        drive.player.block = false; pl.intent.block = false;
+        until(() => rv.state === 'neutral' && pl.state === 'neutral', 10);
+      }
+      // ---- (drama) the comeback: beaten, behind, a taunt press fires it up; hits are no-sold; it runs out ----
+      faceOff();
+      {
+        const hp0 = P.hp;
+        P.hp = P.maxHp * 0.2; pl.momentum = 60; pl._beat = P.maxHp * 0.3;
+        expect(pl.comebackReady, 'a beaten, behind player with momentum was not offered the comeback');
+        drive.player.taunt = true; tick(2);
+        expect(n(EV.COMEBACK_START) >= 1 && pl.comebackPhase === 'fire', 'the taunt press did not fire the comeback up');
+        drive.rival.heavy = true;
+        expect(until(() => n(EV.COMEBACK_NOSELL) >= 1, 1.5) && pl.state === 'taunting', `a hit in the fire-up was not no-sold (player '${pl.state}')`);
+        expect(until(() => pl.comebackPhase === 'flurry', 2) && until(() => !pl.comebackPhase, 6) && n(EV.COMEBACK_END) >= 1, 'the comeback did not go through its flurry and end');
+        expect(!pl.comebackReady, 'the comeback was offered twice in one fall');
+        P.hp = hp0; pl._cbMatch = 0; pl._cbFall = false; pl._beat = 0;
+        until(() => rv.state === 'neutral' && pl.state === 'neutral', 10);
+      }
       // ---- every throw ----
       const throwIt = (label, type, dir, ox, during) => {
         faceOff(ox);

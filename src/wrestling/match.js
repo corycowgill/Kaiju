@@ -12,6 +12,7 @@
 // carries on. A knockout is a fall too: the winner walks over and covers for
 // a three count that cannot be kicked out of.
 import { EV } from './events.js';
+import { FINISHERS } from './grapple.js';
 
 /** Match tuning. */
 export const MATCH = {
@@ -21,6 +22,8 @@ export const MATCH = {
   rivalHpPerDefense: 0.2,
   rivalAtk: 0.85, rivalAtkPerFall: 0.1, rivalAtkPerDefense: 0.15, rivalAtkMax: 1.7,
   healBetween: 0.35, healFloor: 0.75, momCarry: 20, // between falls: +35% of max health, at least 75%; momentum carried over is capped
+  loserMom: 35,           // ...and the one who just lost a fall comes out of the corner fired up (lead changes, a live third fall)
+  decHeal: 0.2, decFloor: 0.6, // before the deciding fall both are running on fumes: less back, so it is short, close and every pin could be it
   koWait: 1.5, koRun: 2.0, fallHold: 1.4, betweenPose: 2.2, winHold: 4.5, loseHold: 3.5,
   interferenceAt: [50, 40, 34], interferenceJitter: 12, interferenceLen: 22, interferenceEta: 4,
   scoreFall: 2500, scoreMatch: 10000,
@@ -36,6 +39,7 @@ const LINES = {
   suplex: ['Up and over!', 'Suplex! The whole Loop felt that!', 'Dropped on the back of the head!'],
   slam: ['Press slam!', 'Up overhead... and DOWN!', 'Military press!'],
   swing: ['Around and around!', 'The giant swing! How many turns?', 'Somebody stop the ride!'],
+  sig: ['The {1}! That is {0}\'s signature!', 'Here comes the {1}!', '{0} goes to the {1}!'],
   building: ['Right through the building!', 'There goes the property value!', 'Call the insurance company!', 'That one was load-bearing!'],
   landmark: ['NOT THE {0}!', 'They will be rebuilding the {0} for years!', 'Through the {0}! Good grief!'],
   ropes: ['The ropes are straining!', 'Slingshot off the cables!'],
@@ -46,6 +50,14 @@ const LINES = {
   pin: ['Cover! Is this it?', 'Hooks the leg!', 'Shoulders down!'],
   kickout: ['Kick out!', 'Not yet!', 'Shoulder up!'],
   near: ['SO close! Two and nine tenths!', 'How did {0} kick out of THAT?', 'I thought that was three!'],
+  nearer: ['A HAIR from three! A HAIR!', 'The hand was coming DOWN! {0} survives!', 'Two point nine nine! Unbelievable!'],
+  finKick: ['{0} KICKED OUT OF THE {1}! NOBODY kicks out of the {1}!', 'The {1} was not enough?! Grant Park has come unglued!', 'I have never seen that! {0} survived the {1}!'],
+  rally: ['The crowd is trying to rally {0}!', 'Listen to Chicago! They want {0} back in this!'],
+  rivalRally: ['Uh oh. {0} is not done yet...', '{0} is getting a second wind!'],
+  comeback: ['{0} is FIRING UP!', '{0} is feeding off this crowd!', 'Here comes {0}! The fire is back!'],
+  nosell: ['{0} is not even feeling it!', '{0} shrugs it off!', 'No effect! {0} wants more!'],
+  cbDone: ['And {0} drops {1}! What a comeback!', 'Down goes {1}! {0} has turned this around!'],
+  cbCut: ['Cut off! {1} snuffed out the comeback!', '{1} saw it coming! The fire is out!'],
   taunt: ['Playing to the crowd!', '{0} wants to hear it, Chicago!'],
   tauntHit: ['Showboating will cost you!', 'Never turn your back on a kaiju!'],
   momentum: ['{0} is fired up!', 'The momentum is with {0}!'],
@@ -74,7 +86,8 @@ export function createMatch(ctx, W) {
   let stallT = 0, booT = 0;
   // director
   let heat = 0.25, heatWas = 0.25, heatT = 0, lineT = 0, promptT = 0;
-  const prompts = { grab: false, pickup: false, pin: false, kickout: false, escape: false, finisher: false, skip: false, getup: false };
+  const prompts = { grab: false, pickup: false, pin: false, kickout: false, escape: false, finisher: false, skip: false, getup: false, comeback: false };
+  const rallied = { player: false, rival: false }; // the crowd has noticed this fall's comeback chance
   const corner = { px: 0, pz: 0, rx: 0, rz: 0 };
   const ent = { x0: 0, x1: 0, z: 0, py: 0 };
 
@@ -152,9 +165,10 @@ export function createMatch(ctx, W) {
     const p = W.player, r = W.rival;
     p.reset(corner.px, corner.pz, -Math.PI / 2);
     r.reset(corner.rx, corner.rz, Math.PI / 2);
+    const need = Math.floor(s.bestOf / 2) + 1, decider = s.playerFalls === need - 1 && s.rivalFalls === need - 1;
     if (healed) for (const f of [p, r]) {
-      f.hp = Math.min(f.maxHp, Math.max(f.hp + f.maxHp * MATCH.healBetween, f.maxHp * MATCH.healFloor));
-      f.momentum = Math.min(f.momentum, MATCH.momCarry);
+      f.hp = Math.min(f.maxHp, Math.max(f.hp + f.maxHp * (decider ? MATCH.decHeal : MATCH.healBetween), f.maxHp * (decider ? MATCH.decFloor : MATCH.healFloor)));
+      f.momentum = f.id === s.winner ? Math.min(f.momentum, MATCH.momCarry) : Math.max(Math.min(f.momentum, MATCH.momCarry), MATCH.loserMom);
     }
   }
   function tuneRival() {
@@ -175,6 +189,8 @@ export function createMatch(ctx, W) {
     const hp = Math.round((MATCH.hpBase + MATCH.hpStat * r.cfg.stats.hp) * MATCH.rivalHp * (1 + MATCH.rivalHpPerDefense * s.defense));
     r.maxHp = hp; r.hp = hp;
     p.momentum = Math.min(p.momentum, 50); r.momentum = 0;
+    for (const f of [p, r]) { f._cbMatch = 0; f.finKicked = false; }
+    rallied.player = rallied.rival = false;
     tuneRival();
     const e = bus.ev(EV.MATCH_START);
     e.playerKey = p.key; e.rivalKey = r.key; e.playerName = p.name; e.rivalName = r.name; e.bestOf = s.bestOf; e.defense = s.defense;
@@ -292,6 +308,7 @@ export function createMatch(ctx, W) {
       p.hp = php; r.hp = rhp; p.momentum = pm;
     }
     p.kickouts = 0; r.kickouts = 0; p._critical = false; r._critical = false;
+    p._cbFall = false; r._cbFall = false; rallied.player = rallied.rival = false;
     freeFighter(p); freeFighter(r);
     tuneRival();
     fallT = 0; koT = 0; koRunT = -1; seq = ''; stallT = 0; booT = 0; r.speedMult = 1;
@@ -311,6 +328,7 @@ export function createMatch(ctx, W) {
     const loser = winner === 'player' ? 'rival' : 'player';
     if (winner === 'player') s.playerFalls++; else s.rivalFalls++;
     s.winner = winner; s.by = by;
+    W.player.endComeback('fall'); W.rival.endComeback('fall');
     const need = Math.floor(s.bestOf / 2) + 1;
     const decided = s.playerFalls >= need || s.rivalFalls >= need;
     let e = bus.ev(EV.FALL_END);
@@ -500,6 +518,15 @@ export function createMatch(ctx, W) {
     prompt('kickout', g.pin.active && g.pin.V === p && !g.pin.forced && !g.pin.done);
     prompt('escape', g.hold.active && g.hold.V === p && !g.hold.locked);
     prompt('getup', fight && p.state === 'downed' && !p.held && p.falling <= 0);
+    // The comeback is on offer: the crowd tries to rally the player (the rival's, it dreads)
+    const ready = fight && p.comebackReady;
+    prompt('comeback', ready);
+    for (const f of [p, W.rival]) {
+      if (rallied[f.id] || !(fight && f.comebackReady)) continue;
+      rallied[f.id] = true;
+      if (f.isPlayer) { pop('chant', 0.8, f.pos.x, f.pos.z); say('rally', 'hype', f.name, '', true); }
+      else say('rivalRally', 'neutral', f.name);
+    }
   }
 
   function listen() {
@@ -512,9 +539,34 @@ export function createMatch(ctx, W) {
     on(EV.PIN_COUNT, (e) => { pop('count', 0.4 + e.count * 0.2, W[e.who].pos.x, W[e.who].pos.z); });
     on(EV.PIN_KICKOUT, (e) => {
       if (s.phase === 'pin') setPhase('fight');
-      pop(e.near ? 'ooh' : 'pop', e.near ? 1 : 0.5, W[e.who].pos.x, W[e.who].pos.z);
-      if (e.near) { callout('NEAR FALL!', 'move', e.who, '2.9!'); say('near', 'shock', nameOf(e.who), '', true); }
-      else say('kickout', 'neutral', nameOf(e.who));
+      const f = W[e.who];
+      pop(e.near ? 'ooh' : 'pop', e.near ? 1 : 0.5, f.pos.x, f.pos.z);
+      if (e.finisher) {
+        // Kicked out of a finisher: the moment of the match
+        const fn = (FINISHERS[f.opponent.key] || FINISHERS.godzilla).name;
+        callout(e.at >= 2.94 ? '2.99!!' : '2.9!!', 'finisher', e.who, `${f.name} KICKED OUT OF THE ${fn}`);
+        pop('pop', 1, f.pos.x, f.pos.z); pop('chant', 1, f.pos.x, f.pos.z);
+        say('finKick', 'shock', f.name, fn, true);
+        heat = 1;
+      } else if (e.near) {
+        // The closer to three, the bigger the number on screen
+        const late = e.at >= 2.9;
+        callout(e.at >= 2.94 ? '2.99!' : '2.9!', late ? 'landmark' : 'move', e.who, 'NEAR FALL');
+        say(late ? 'nearer' : 'near', 'shock', f.name, '', true);
+      } else say('kickout', 'neutral', f.name);
+    });
+    on(EV.COMEBACK_START, (e) => {
+      const f = W[e.who];
+      callout('FIRED UP!', 'landmark', e.who, f.name);
+      if (f.isPlayer) { pop('pop', 1, f.pos.x, f.pos.z); pop('chant', 1, f.pos.x, f.pos.z); } else pop('boo', 0.9, f.pos.x, f.pos.z);
+      say('comeback', 'hype', f.name, '', true);
+      heat = Math.min(1, heat + 0.3);
+    });
+    on(EV.COMEBACK_NOSELL, (e) => { if (e.damage >= 2) { pop('ooh', 0.5, e.x, e.z); say('nosell', 'hype', nameOf(e.who)); } });
+    on(EV.COMEBACK_END, (e) => {
+      const f = W[e.who];
+      if (e.by === 'done') { say('cbDone', 'hype', f.name, f.opponent.name, true); pop('pop', 1, f.pos.x, f.pos.z); }
+      else if (e.by === 'cut') { say('cbCut', 'shock', f.name, f.opponent.name, true); pop('gasp', 0.8, f.pos.x, f.pos.z); }
     });
     on(EV.PIN_BROKEN, () => { if (s.phase === 'pin') setPhase('fight'); });
     on(EV.PIN_FALL, (e) => onFall(e.who, e.forced ? 'ko' : 'pin'));
@@ -537,6 +589,14 @@ export function createMatch(ctx, W) {
     on(EV.GRAB_REVERSED, (e) => { callout('REVERSAL!', 'move', e.who); pop('pop', 0.7, W[e.who].pos.x, W[e.who].pos.z); say('reversal', 'hype', '', '', true); });
     on(EV.BLOCK_BROKEN, (e) => { callout('GUARD BREAK!', 'move', e.by); pop('gasp', 0.5, W[e.who].pos.x, W[e.who].pos.z); });
     on(EV.GRAB_MOVE, (e) => {
+      if (e.name) {
+        // A signature move (signatures.js): its name, and the crowd knows it
+        callout(e.name, 'move', e.who, 'SIGNATURE');
+        pop(e.who === 'player' ? 'pop' : 'ooh', 0.7, W[e.who].pos.x, W[e.who].pos.z);
+        say('sig', 'hype', nameOf(e.who), e.name, true);
+        heat = Math.min(1, heat + 0.15);
+        return;
+      }
       if (!MOVE_NAME[e.type]) return;
       callout(MOVE_NAME[e.type], 'move', e.who);
       say(e.type, 'neutral');
@@ -583,7 +643,10 @@ export function createMatch(ctx, W) {
       listen();
       beginMatch();
     },
+    /** Sim seconds per real second over the last running frame (slow motion < 1; hit-stop frames skipped). */
+    timeScale: 1,
     update(dt, dtReal) {
+      if (dt > 0 && dtReal > 0) api.timeScale = Math.min(1, dt / dtReal);
       if (swapping) return;
       if (lineT > 0) lineT -= dtReal;
       if (s.phase === 'entrance') updateEntrance(dt);
