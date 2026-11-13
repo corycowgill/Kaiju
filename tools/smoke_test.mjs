@@ -616,7 +616,8 @@ if (mode === 'wrestling') await step('wrestling', async () => {
     if (kaijuGLB.godzilla.root.rotation.order !== 'XYZ' || kaijuGLB.godzilla.root.rotation.x !== 0) fail('wrestling: dispose() left the player root tilted / with a changed rotation order');
   }
   scene.remove(kaijuGLB.godzilla.root);
-  wrestlingSummary = `wrestling ok (${Object.keys(EVENTS).length} events, ${Object.keys(ANIMS).length} anims, ring at ${A.cx}, ${A.cz}, crowd ${A.crowd ? A.crowd.alive.length : 0}); `;
+  if (!(A.throwables && A.throwables.items.length >= 8)) fail(`wrestling: only ${A.throwables ? A.throwables.items.length : 0} park throwables placed round the ring (spots)`);
+  wrestlingSummary = `wrestling ok (${Object.keys(EVENTS).length} events, ${Object.keys(ANIMS).length} anims, ring at ${A.cx}, ${A.cz}, crowd ${A.crowd ? A.crowd.alive.length : 0}, throwables ${A.throwables ? A.throwables.items.length : 0}); `;
 });
 await new Promise((r) => setTimeout(r, 300)); // flipbooks + ground textures (async image loads) settle
 

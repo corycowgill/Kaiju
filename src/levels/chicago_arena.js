@@ -1350,6 +1350,7 @@ export function buildArena(scene, world, o) {
       [-26, -34, 0, 0.1], [2, -40, 1, 0], [30, -34, 0, -0.15], [52, -26, 1, 0],
       [-24, 160, 0, -0.08], [4, 166, 1, 0], [32, 160, 0, 0.12], [54, 152, 1, 0],
       [62, 24, 0, Math.PI / 2], [64, 102, 0, Math.PI / 2 + 0.1], [-48, -30, 1, 0], [-46, 156, 1, 0],
+      [62, -6, 1, 0], [62, 134, 1, 0], [-8, -58, 0, 0.05], [-6, 182, 0, -0.05],
     ];
     const counts = [0, 0], plan = [];
     const clearAt = (x, z, r) => {
@@ -1359,12 +1360,18 @@ export function buildArena(scene, world, o) {
       if (o.grid) o.grid.forEachNear(x, z, r + 12, (b) => { if (!b.destroyed && Math.abs(b.x - x) < b.w / 2 + r && Math.abs(b.z - z) < b.d / 2 + r) hit = true; });
       return !hit;
     };
+    const whyAt = (x, z, r) => { if (world.isWater && world.isWater(x, z)) return 'water'; if (Math.abs(x - cx) < MAT + r && Math.abs(z - cz) < MAT + r) return 'mat'; let w = ''; if (o.grid) o.grid.forEachNear(x, z, r + 12, (b) => { if (!w && !b.destroyed && Math.abs(b.x - x) < b.w / 2 + r && Math.abs(b.z - z) < b.d / 2 + r) w = (b.fest ? 'fest ' : 'b ') + (b.landmarkId || '') + Math.round(b.x) + ',' + Math.round(b.z); }); return w; };
     for (const [x0, z0, k, yaw] of SPOTS) {
       const K = kinds[k], r = Math.max(K.w, K.d) * 0.5 + 1;
       // nudged outward from the venue if something stands there already
       let x = x0, z = z0, ok = false;
-      for (let t = 0; t < 4 && !ok; t++) { ok = clearAt(x, z, r); if (!ok) { const dx = x - cx, dz = z - cz, l = Math.hypot(dx, dz) || 1; x += dx / l * 10; z += dz / l * 10; } }
-      if (ok) { plan.push({ x, z, k, yaw }); counts[k]++; }
+      const dx = x0 - cx, dz = z0 - cz, l = Math.hypot(dx, dz) || 1, ux = dx / l, uz = dz / l;
+      // the spot, then sideways along the venue, then further out (the festival's stages and stalls stand round here too)
+      for (let t = 0; t < 4 && !ok; t++) for (const side of [0, 14, -14, 28, -28]) {
+        x = x0 + ux * 10 * t - uz * side; z = z0 + uz * 10 * t + ux * side;
+        if (clearAt(x, z, r) && !plan.some((p) => Math.hypot(p.x - x, p.z - z) < r + 12)) { ok = true; break; }
+      }
+      if (ok) { plan.push({ x, z, k, yaw }); counts[k]++; } else (throwables.skipped || (throwables.skipped = [])).push(`${x0},${z0}:${whyAt(x0, z0, r)}`);
     }
     kinds.forEach((K, k) => {
       if (!counts[k]) return;

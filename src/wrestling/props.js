@@ -29,7 +29,7 @@ export const PROP_TUNE = {
   festMinH: 3,         // the festival's stages, screens, towers, bars and cabins count too (the park around the ring has no other buildings)
   big: { h: 36, side: 22 }, // past these a building is heavy: slower to carry, a longer wind-up, a slower flight, more damage (x weight)
   rip: 0.8, carryMax: 9, carrySpeed: 0.45, cooldown: 10,
-  windup: 0.75, speed: 72, gravity: 70, tMin: 0.7, tMax: 1.6,
+  windup: 0.75, rivalEasy: 0.2, // + the rival's wind-up at defense 0 speed: 72, gravity: 70, tMin: 0.7, tMax: 1.6,
   dmg: 50, dmgPerH: 0.6, chip: 0.25, chipStam: 30, push: 46,
   dropDmg: 9,          // one hit at least this big drops it (on top of any stagger / knockdown)
 };
@@ -54,7 +54,7 @@ const _dmgOpt = { kind: 'building', src: 'player', aerial: true };
 /** @param hooks { callout(text, sub, tier, who), say(text, tone), pop(kind, impact, x, z) } */
 export function createProps(ctx, W, hooks) {
   const T = PROP_TUNE, bus = W.bus;
-  const mk = () => ({ k: 1, move: CARRY, on: false, phase: '', f: null, b: null, t: 0, slots: [], m0: [], ox: 0, oz: 0, h: 0, side: 0,
+  const mk = () => ({ wu: 0.75, k: 1, move: CARRY, on: false, phase: '', f: null, b: null, t: 0, slots: [], m0: [], ox: 0, oz: 0, h: 0, side: 0,
     x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, tx: 0, tz: 0, yaw: 0, spin: 0, eta: 0, hit: false });
   const props = { player: mk(), rival: mk() };
   const cd = { player: 0, rival: 0 };
@@ -188,7 +188,9 @@ export function createProps(ctx, W, hooks) {
     // aimed where the foe stands now: the tell is honest, a step aside beats it
     P.tx = foe.pos.x; P.tz = foe.pos.z;
     f.yaw = Math.atan2(P.tx - f.pos.x, P.tz - f.pos.z);
-    const wu = T.windup * P.k;
+    // (a title match against the rival: a little longer to read it coming; a defense goes back to normal)
+    const wu = T.windup * P.k + (f.isPlayer ? 0 : (W.match && W.match.state.defense === 0 ? T.rivalEasy : 0));
+    P.wu = wu;
     W.anims.play(f, 'throw', { fade: 0.08, timeScale: 1, duration: wu / 0.4, commit: wu / 0.4 });
     const r = foe.radius + Math.max(P.b.w, P.b.d) * 0.5;
     const e = bus.ev(EV.POWER_TELEGRAPH);
@@ -331,7 +333,7 @@ export function createProps(ctx, W, hooks) {
       return;
     }
     place(P, carryFrame(P, _c));
-    if (P.phase === 'windup') { if (P.t >= T.windup * P.k) release(P); return; }
+    if (P.phase === 'windup') { if (P.t >= P.wu) release(P); return; }
     if (P.t >= T.carryMax) startThrow(P); // arms give out: it goes anyway
   }
 
