@@ -344,7 +344,12 @@ export function createHud(ctx, W) {
     else if (fight && W.spots && W.spots.carrying && W.spots.carrying(P)) { const c = W.spots.carrying(P); key = 'carry' + c.phase; html = c.phase === 'carry' ? pill(B.strike, 'THROW BUILDING', '', 'hot') + note('AT YOUR RIVAL') : '<div class="wr-pill hot">HEAVE!</div>'; }
     else if (fight && W.spots && W.spots.armed(P)) { const h = W.spots.armed(P).hits; key = 'armed' + h; html = pill(B.strike, 'SWING GIRDER', '', 'hot') + note(`${h} HIT${h > 1 ? 'S' : ''} LEFT`); }
     else if (fight && W.spots && P.canAct && W.spots.nearestWeapon(P, 12) && !(P.gapTo(R) <= 9 && P.facing(R, 1.0))) { key = 'girder'; html = pill(B.grab, 'RIP UP GIRDER', '', 'hot'); }
-    else if (fight && W.spots && W.spots.buildingNear && P.canAct && !(P.gapTo(R) <= 9 && P.facing(R, 1.0)) && W.spots.buildingCooldown(P) <= 0 && W.spots.buildingNear(P, 9)) { key = 'bldg'; html = pill(B.grab, 'RIP UP BUILDING', '', 'hot'); }
+    else if (fight && W.spots && W.spots.buildingNear && P.canAct && !(P.gapTo(R) <= 9 && P.facing(R, 1.0)) && W.spots.buildingCooldown(P) <= 0 && W.spots.buildingNear(P, tipId && tipT > 0 ? 12 : 40)) {
+      // in reach: the verb; close by: point it out so the player knows the building can be thrown
+      const bn = W.spots.buildingNear(P, 40);
+      if (bn.dist <= 12) { key = 'bldg'; html = pill(B.grab, 'RIP UP BUILDING', '', 'hot'); }
+      else { key = 'bldgnear'; html = note('BUILDING NEARBY') + pill(B.grab, 'WALK UP AND RIP IT UP'); }
+    }
     else if (fight && stallT >= 5) {
       key = stallT >= 6 ? 'stall2' : 'stall1';
       html = `<div class="wr-pill hot">${stallT >= 6 ? 'STALLING!' : 'GET BACK IN THERE'}</div>` + note(stallT >= 6 ? `${R.name} IS GAINING MOMENTUM` : 'THE CROWD IS TURNING');

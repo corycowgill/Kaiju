@@ -118,7 +118,7 @@ export const TUNE = {
   reversalWindowPlayer: 0.28, cueLead: 0.14, cueMinStartup: 0.4, counterDmg: 8, counterRec: 0.5,
   // comeback ("firing up"): hurt (< cbHp of max), behind on health by cbBehind, beaten (cbBeaten of max taken
   // over the last ~cbMemory s), cbCost momentum in the meter; once a fall, cbPerMatch a match. Taunt fires it.
-  cbHp: 0.32, cbBehind: 0.18, cbBeaten: 0.12, cbMemory: 10, cbCost: 35, cbPerMatch: 1, cbRivalGrace: 0.06,
+  cbHp: 0.32, cbBehind: 0.18, cbBeaten: 0.12, cbMemory: 10, cbCost: 35, cbPerMatch: 1, cbRivalGrace: 0.1,
   cbFire: 1.3, cbFlurry: 3.5, cbNoSell: 0.4, cbHaste: 1.25, cbAtk: 1.15, cbMom: 1, cbAfterStam: 30,
 };
 const STRIKE_KINDS = { light: 1, heavy: 1, clothesline: 1 };

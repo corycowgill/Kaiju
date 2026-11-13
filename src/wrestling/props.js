@@ -24,14 +24,17 @@ import { EV } from './events.js';
 
 /** Tuning (exported for the AI and the sims). */
 export const PROP_TUNE = {
-  reach: 9,            // u from the body's edge to the building's footprint
-  maxH: 36, minH: 6, maxSide: 22,
+  reach: 12,           // u from the body's edge to the building's footprint
+  maxH: 50, minH: 6, maxSide: 30,
+  festMinH: 3,         // the festival's stages, screens, towers, bars and cabins count too (the park around the ring has no other buildings)
+  big: { h: 36, side: 22 }, // past these a building is heavy: slower to carry, a longer wind-up, a slower flight, more damage (x weight)
   rip: 0.8, carryMax: 9, carrySpeed: 0.45, cooldown: 10,
   windup: 0.75, speed: 72, gravity: 70, tMin: 0.7, tMax: 1.6,
   dmg: 50, dmgPerH: 0.6, chip: 0.25, chipStam: 30, push: 46,
   dropDmg: 9,          // one hit at least this big drops it (on top of any stagger / knockdown)
 };
 const CARRY = Object.freeze({ id: 'carry', kind: 'ppower', startup: 0, active: 0, recover: 0, steer: PROP_TUNE.carrySpeed });
+const CARRY_HEAVY = Object.freeze({ id: 'carry', kind: 'ppower', startup: 0, active: 0, recover: 0, steer: PROP_TUNE.carrySpeed * 0.65 });
 const LINES = {
   rip: ['{0} ripped a building out of the ground!', 'That is somebody\'s office!', '{0} is holding a city block over its head!'],
   hit: ['Direct hit! Right in the face with a building!', 'They threw the WHOLE building!', 'That was zoned commercial!'],
@@ -50,7 +53,7 @@ const _dmgOpt = { kind: 'building', src: 'player', aerial: true };
 /** @param hooks { callout(text, sub, tier, who), say(text, tone), pop(kind, impact, x, z) } */
 export function createProps(ctx, W, hooks) {
   const T = PROP_TUNE, bus = W.bus;
-  const mk = () => ({ on: false, phase: '', f: null, b: null, t: 0, slots: [], m0: [], ox: 0, oz: 0, h: 0, side: 0,
+  const mk = () => ({ k: 1, move: CARRY, on: false, phase: '', f: null, b: null, t: 0, slots: [], m0: [], ox: 0, oz: 0, h: 0, side: 0,
     x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, tx: 0, tz: 0, yaw: 0, spin: 0, eta: 0, hit: false });
   const props = { player: mk(), rival: mk() };
   const cd = { player: 0, rival: 0 };
@@ -62,8 +65,8 @@ export function createProps(ctx, W, hooks) {
 
   /** An ordinary standing building this kaiju can lift (not a landmark, a tent, a fence, a bridge, or too big). */
   function liftable(b) {
-    if (!b || b.destroyed || b.landmarkId || b.fest || b.isFence || b.isBridge || b.customMesh) return false;
-    if (b.h < T.minH || b.h > T.maxH || Math.max(b.w, b.d) > T.maxSide) return false;
+    if (!b || b.destroyed || b.landmarkId || b.isFence || b.isBridge || b.customMesh || b.crushOnContact) return false;
+    if (b.h < (b.fest ? T.festMinH : T.minH) || b.h > T.maxH || Math.max(b.w, b.d) > T.maxSide) return false;
     return !!((b._glbSlots && b._glbSlots.length) || (b._bodyIM && b._bodyIndex >= 0));
   }
   function visitNear(b) {
@@ -131,6 +134,8 @@ export function createProps(ctx, W, hooks) {
     const P = props[f.id];
     P.on = true; P.phase = 'rip'; P.f = f; P.b = b; P.t = 0; P.hit = false;
     P.ox = b.x; P.oz = b.z; P.h = b.h;
+    P.k = Math.max(1, Math.sqrt(Math.max(b.h / T.big.h, Math.max(b.w, b.d) / T.big.side)));
+    P.move = P.k > 1.1 ? CARRY_HEAVY : CARRY;
     P.side = Math.random() < 0.5 ? 1 : -1;
     capture(P, b);
     // The city's own collapse: out of the grid, rubble and dust on the lot, the crash, the score and building:destroyed
@@ -138,7 +143,7 @@ export function createProps(ctx, W, hooks) {
     place(P, _c.makeTranslation(P.ox, 0, P.oz)); // (and straight back where it stood: it rises from there)
     f.yaw = Math.atan2(b.x - f.pos.x, b.z - f.pos.z);
     f.recover(999);
-    f.move = CARRY; f.armor = true;
+    f.move = P.move; f.armor = true;
     if (f.isPlayer) f._syncGate();
     W.anims.play(f, 'lift', { fade: 0.15, timeScale: 1, duration: T.rip, commit: T.rip });
     if (ctx.fx && ctx.fx.dustBurst) ctx.fx.dustBurst(_v.set(b.x, 0, b.z), Math.max(b.w, b.d) * 0.8 + 8, ctx.quality && !ctx.quality.full ? 6 : 12);
@@ -157,7 +162,7 @@ export function createProps(ctx, W, hooks) {
     carryFrame(P, _c);
     _v.setFromMatrixPosition(_c);
     crash(P, f.pos.x + Math.sin(f.yaw) * (f.radius + 8), 3, f.pos.z + Math.cos(f.yaw) * (f.radius + 8), false);
-    if (f.state === 'attacking' && f.move === CARRY) f.setState('neutral');
+    if (f.state === 'attacking' && f.move === P.move) f.setState('neutral');
     f.armor = false;
     if (f.isPlayer) f._syncGate();
   }
@@ -167,12 +172,13 @@ export function createProps(ctx, W, hooks) {
     // aimed where the foe stands now: the tell is honest, a step aside beats it
     P.tx = foe.pos.x; P.tz = foe.pos.z;
     f.yaw = Math.atan2(P.tx - f.pos.x, P.tz - f.pos.z);
-    W.anims.play(f, 'throw', { fade: 0.08, timeScale: 1, duration: T.windup / 0.4, commit: T.windup / 0.4 });
+    const wu = T.windup * P.k;
+    W.anims.play(f, 'throw', { fade: 0.08, timeScale: 1, duration: wu / 0.4, commit: wu / 0.4 });
     const r = foe.radius + Math.max(P.b.w, P.b.d) * 0.5;
     const e = bus.ev(EV.POWER_TELEGRAPH);
-    e.who = f.id; e.target = foe.id; e.power = 'building'; e.name = 'BUILDING'; e.dur = T.windup + 0.9; e.radius = r; e.x = P.tx; e.z = P.tz;
+    e.who = f.id; e.target = foe.id; e.power = 'building'; e.name = 'BUILDING'; e.dur = wu + 0.9; e.radius = r; e.x = P.tx; e.z = P.tz;
     bus.emit(EV.POWER_TELEGRAPH);
-    if (!f.isPlayer && ctx.ui && ctx.ui.warnIndicator) ctx.ui.warnIndicator(f, T.windup + 0.6);
+    if (!f.isPlayer && ctx.ui && ctx.ui.warnIndicator) ctx.ui.warnIndicator(f, wu + 0.6);
   }
   function release(P) {
     const f = P.f, foe = f.opponent;
@@ -182,7 +188,7 @@ export function createProps(ctx, W, hooks) {
     _w.set(0, P.h / 2, 0).applyMatrix4(_c);
     P.x = _w.x; P.y = _w.y; P.z = _w.z;
     const dx = P.tx - P.x, dz = P.tz - P.z, d = Math.hypot(dx, dz) || 1;
-    const t = Math.min(T.tMax, Math.max(T.tMin, d / T.speed)), y1 = 12;
+    const t = Math.min(T.tMax * P.k, Math.max(T.tMin, d / (T.speed / P.k))), y1 = 12;
     P.vx = dx / t; P.vz = dz / t; P.vy = (y1 - P.y + 0.5 * T.gravity * t * t) / t;
     P.eta = t; P.t = 0; P.phase = 'fly';
     P.yaw = f.yaw; P.spin = 0;
@@ -221,7 +227,7 @@ export function createProps(ctx, W, hooks) {
   function hitFoe(P, foe) {
     const f = P.f;
     const blocked = foe.state === 'blocking' && foe.facing(f, 1.35);
-    const dmg = (T.dmg + T.dmgPerH * P.h) * f.dmgMult;
+    const dmg = (T.dmg + T.dmgPerH * Math.min(P.h, T.big.h)) * P.k * f.dmgMult;
     const dx = P.vx, dz = P.vz, l = Math.hypot(dx, dz) || 1;
     let dealt;
     if (blocked) {
@@ -278,7 +284,7 @@ export function createProps(ctx, W, hooks) {
     const f = P.f;
     if (P.phase === 'fly') { fly(P, dt); return; }
     // Held: a stagger, a knockdown, a grab or any big hit makes it fall
-    const holding = f.state === 'attacking' && (f.move === CARRY || P.phase === 'windup');
+    const holding = f.state === 'attacking' && (f.move === P.move || P.phase === 'windup');
     if (!holding || f.held) { drop(P); return; }
     P.t += dt;
     if (P.phase === 'rip') {
@@ -294,7 +300,7 @@ export function createProps(ctx, W, hooks) {
       return;
     }
     place(P, carryFrame(P, _c));
-    if (P.phase === 'windup') { if (P.t >= T.windup) release(P); return; }
+    if (P.phase === 'windup') { if (P.t >= T.windup * P.k) release(P); return; }
     if (P.t >= T.carryMax) startThrow(P); // arms give out: it goes anyway
   }
 
@@ -312,7 +318,7 @@ export function createProps(ctx, W, hooks) {
         if (press && P.phase === 'carry') startThrow(P);
         // the rival walks its intent at carrying pace (the player's is game.js's, through the gate's steer)
         if (!f.isPlayer && P.phase !== 'rip' && !f.held) {
-          const sp = f.cfg.stats.speed * 18 * T.carrySpeed;
+          const sp = f.cfg.stats.speed * 18 * P.move.steer;
           f.pos.x += it.moveX * sp * dt; f.pos.z += it.moveZ * sp * dt;
           if (it.faceYaw !== null && it.faceYaw !== undefined) f.yaw += Math.atan2(Math.sin(it.faceYaw - f.yaw), Math.cos(it.faceYaw - f.yaw)) * (1 - Math.exp(-5 * dt));
         }
@@ -335,7 +341,7 @@ export function createProps(ctx, W, hooks) {
     /** A fighter took a big hit (fighter damage event): drop what it carries. */
     onDamage(who, amount) { const P = props[who]; if (P.on && P.phase !== 'fly' && amount >= T.dropDmg) drop(P); },
     /** End of a fall / dispose: everything in the air or in hands shatters now. */
-    clear() { for (const id in props) { const P = props[id]; if (P.on) { if (P.f && P.f.state === 'attacking' && P.f.move === CARRY) P.f.setState('neutral'); if (P.f) P.f.armor = false; crash(P, P.phase === 'fly' ? P.x : P.f.pos.x, 2, P.phase === 'fly' ? P.z : P.f.pos.z, false); } cd[id] = 0; } },
+    clear() { for (const id in props) { const P = props[id]; if (P.on) { if (P.f && P.f.state === 'attacking' && P.f.move === P.move) P.f.setState('neutral'); if (P.f) P.f.armor = false; crash(P, P.phase === 'fly' ? P.x : P.f.pos.x, 2, P.phase === 'fly' ? P.z : P.f.pos.z, false); } cd[id] = 0; } },
     /** Nearest building f could rip up (within maxGap of its body's edge), or null (scratch result). */
     buildingNear(f, maxGap = 40) {
       const b = f ? nearest(f, maxGap) : null;

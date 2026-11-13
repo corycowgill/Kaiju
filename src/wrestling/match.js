@@ -21,7 +21,8 @@ export const MATCH = {
   rivalHp: 1.1,           // x that for the rival (the player has its powers on tap and a human's reads)
   rivalHpPerDefense: 0.2,
   rivalAtk: 0.85, rivalAtkPerFall: 0.1, rivalAtkPerDefense: 0.15, rivalAtkMax: 1.7,
-  firstAtk: 0.78, firstRamp: 0.5, // the first title match (defense 0): a softer rival and half the fall-to-fall ramp
+  firstAtk: 0.72, firstRamp: 0.5, firstHp: 0.95, // the first title match (defense 0): a softer, lighter rival and half the fall-to-fall ramp
+  // (re-tuned 2026-11-13 after the count-out was removed: a casual player no longer wins falls by counting the rival out)
   healBetween: 0.35, healFloor: 0.75, momCarry: 20, // between falls: +35% of max health, at least 75%; momentum carried over is capped
   loserMom: 35,           // ...and the one who just lost a fall comes out of the corner fired up (lead changes, a live third fall)
   decHeal: 0.2, decFloor: 0.6, // before the deciding fall both are running on fumes: less back, so it is short, close and every pin could be it
@@ -191,7 +192,7 @@ export function createMatch(ctx, W) {
     ctx.rules.passiveRage = false; // momentum is earned (the fighter adds its own trickle)
     if (s.defense === 0) p.maxHp = Math.round(MATCH.hpBase + MATCH.hpStat * p.cfg.stats.hp); // (health upgrades add to it from here)
     p.hp = p.maxHp;
-    const hp = Math.round((MATCH.hpBase + MATCH.hpStat * r.cfg.stats.hp) * MATCH.rivalHp * (1 + MATCH.rivalHpPerDefense * s.defense));
+    const hp = Math.round((MATCH.hpBase + MATCH.hpStat * r.cfg.stats.hp) * (s.defense === 0 ? MATCH.firstHp : MATCH.rivalHp) * (1 + MATCH.rivalHpPerDefense * s.defense));
     r.maxHp = hp; r.hp = hp;
     p.momentum = Math.min(p.momentum, 50); r.momentum = 0;
     for (const f of [p, r]) { f._cbMatch = 0; f.finKicked = false; }

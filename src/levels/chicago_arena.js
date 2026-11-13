@@ -1326,6 +1326,71 @@ export function buildArena(scene, world, o) {
     weapons = { mesh: im, length: L };
   }
 
+  // ---- throwables in the park (src/wrestling/props.js rips them up like light buildings) ----
+  // Tour semis and delay / lighting towers on every side of the venue (north, south, the runway side), one instanced
+  // draw per kind, the venue's atlas material. Each spot is checked against the city / festival footprints and the water.
+  const throwables = { items: [], ims: [] };
+  {
+    const semi = new Builder(), tower = new Builder();
+    // a 40-footer and its tractor, kaiju-scale (24 x 6 x 8.5), along local X, base on the ground
+    semi.box(-2.5, 4.9, 0, 19, 6.6, 6, C.WHITE); semi.box(-2.5, 6.4, 3.02, 19, 1.2, 0.05, C.RED); semi.box(-2.5, 6.4, -3.02, 19, 1.2, 0.05, C.RED);
+    semi.box(-2.5, 5.0, 3.03, 19, 0.5, 0.05, C.BLUE); semi.box(-2.5, 5.0, -3.03, 19, 0.5, 0.05, C.BLUE);
+    semi.box(-2.5, 1.2, 0, 18, 0.8, 4.6, C.DARK);
+    semi.box(9.2, 3.6, 0, 4.6, 5.2, 5.6, C.NAVY); semi.box(10.6, 4.6, 0, 1.9, 2.0, 5.2, C.HOUSING); semi.box(7.6, 7.0, 0, 1.5, 1.6, 5.2, C.NAVY);
+    for (const x of [-10, -7.6, 4.5, 9.8]) for (const z of [-2.5, 2.5]) semi.box(x, 0.85, z, 1.7, 1.7, 1.0, C.BLACK);
+    // a delay / lighting tower: truss legs, a mid platform, a speaker cluster and a lamp bar on top (6 x 6 x 30)
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) tower.bar(sx * 2.6, 0, sz * 2.6, sx * 1.6, 27, sz * 1.6, 0.5, C.STEEL);
+    for (let y = 4; y < 27; y += 5.5) { const a = 2.6 - 1.0 * y / 27; tower.box(0, y, 0, 2 * a + 0.4, 0.35, 2 * a + 0.4, C.STEEL2); }
+    tower.box(0, 0.4, 0, 6.4, 0.8, 6.4, C.CONC); tower.box(0, 14, 0, 4.2, 0.4, 4.2, C.DARK);
+    tower.box(0, 25, 1.4, 4.4, 5.2, 2.6, C.BLACK); tower.box(0, 25, 2.75, 3.8, 4.4, 0.1, C.HOUSING);
+    tower.box(0, 29.2, 0, 5.4, 1.3, 1.4, C.HOUSING); for (let i = -2; i <= 2; i++) tower.box(i * 1.05, 29.2, 0.72, 0.8, 0.8, 0.1, C.LAMP);
+    const kinds = [{ kind: 'semi', g: semi.build(), w: 24, d: 6, h: 8.5 }, { kind: 'tower', g: tower.build(), w: 6.4, d: 6.4, h: 30 }];
+    // where (x, z, kind index, yaw): beyond the north and south stands, and either side of the runway towards the lake
+    const SPOTS = [
+      [-26, -34, 0, 0.1], [2, -40, 1, 0], [30, -34, 0, -0.15], [52, -26, 1, 0],
+      [-24, 160, 0, -0.08], [4, 166, 1, 0], [32, 160, 0, 0.12], [54, 152, 1, 0],
+      [62, 24, 0, Math.PI / 2], [64, 102, 0, Math.PI / 2 + 0.1], [-48, -30, 1, 0], [-46, 156, 1, 0],
+    ];
+    const counts = [0, 0], plan = [];
+    const clearAt = (x, z, r) => {
+      if (world.isWater && world.isWater(x, z)) return false;
+      if (Math.abs(x - cx) < MAT + r && Math.abs(z - cz) < MAT + r) return false;
+      let hit = false;
+      if (o.grid) o.grid.forEachNear(x, z, r + 12, (b) => { if (!b.destroyed && Math.abs(b.x - x) < b.w / 2 + r && Math.abs(b.z - z) < b.d / 2 + r) hit = true; });
+      return !hit;
+    };
+    for (const [x0, z0, k, yaw] of SPOTS) {
+      const K = kinds[k], r = Math.max(K.w, K.d) * 0.5 + 1;
+      // nudged outward from the venue if something stands there already
+      let x = x0, z = z0, ok = false;
+      for (let t = 0; t < 4 && !ok; t++) { ok = clearAt(x, z, r); if (!ok) { const dx = x - cx, dz = z - cz, l = Math.hypot(dx, dz) || 1; x += dx / l * 10; z += dz / l * 10; } }
+      if (ok) { plan.push({ x, z, k, yaw }); counts[k]++; }
+    }
+    kinds.forEach((K, k) => {
+      if (!counts[k]) return;
+      const im = new THREE.InstancedMesh(K.g, AS.mStruct, counts[k]);
+      im.name = 'arena_throw_' + K.kind;
+      im.frustumCulled = false; im.castShadow = !!tier; im.receiveShadow = true;
+      scene.add(im);
+      throwables.ims.push(im);
+      let i = 0;
+      for (const p of plan) {
+        if (p.k !== k) continue;
+        const m0 = new THREE.Matrix4().compose(_v.set(p.x, 0, p.z), _q.setFromAxisAngle(_Y, p.yaw), _s.set(1, 1, 1));
+        im.setMatrixAt(i, m0);
+        const c = Math.abs(Math.cos(p.yaw)), s = Math.abs(Math.sin(p.yaw));
+        throwables.items.push({ isProp: true, kind: K.kind, x: p.x, z: p.z, w: K.w * c + K.d * s, d: K.w * s + K.d * c, h: K.h, im, idx: i, m0, alive: true });
+        i++;
+      }
+      im.instanceMatrix.needsUpdate = true;
+    });
+    /** Put every throwable back where it stood (a new fall). */
+    throwables.reset = () => {
+      for (const it of throwables.items) { it.alive = true; it.im.setMatrixAt(it.idx, it.m0); }
+      for (const im of throwables.ims) im.instanceMatrix.needsUpdate = true;
+    };
+  }
+
   _resetUniforms(rt, posts);
   world.arena = {
     cx, cz, half: H, postH: A0.postH, ropeY: A0.ropeY, clearHalf: A0.clearHalf,
@@ -1335,7 +1400,7 @@ export function buildArena(scene, world, o) {
     ramp: { x0: RAMP.x0, x1: RAMP.x1, z: RAMP.z, halfWidth: RAMP.hw },
     gate: { x: GATE.x, z: GATE.z, halfWidth: GATE.hw - 2.5, clearance: GATE.h, top: GATE.top },
     gaps: FEST_RING_GAPS,
-    screens, pyro, casters, weapons,
+    screens, pyro, casters, weapons, throwables,
     /** True where spectators stand or sit (for throw:land surface 'crowd'). */
     crowdAt(x, z) {
       if (seatY(x, z) > 0) return true;

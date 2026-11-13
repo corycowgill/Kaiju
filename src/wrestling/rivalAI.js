@@ -579,16 +579,16 @@ export function createRivalAI(ctx, W) {
     return S.ropeSide !== '';
   }
   // Buildings ripped out of the ground and thrown (props.js through W.spots)
-  function bldgReady(me, foe, gap, reach = 110) {
+  function bldgReady(me, foe, gap, reach = 130) {
     const sp = W.spots;
     if (!sp || !sp.buildingNear || !P.bldg || now < S.bldgCd || sp.buildingCooldown(me) > 0 || armedNow(me)) return 0;
     // Gorrak wants one whenever the foe is at throwing range; Mechra mostly when the foe stands off or it is behind
-    const want = gap > P.bldgGap && gap < 120 ? 1 : 0;
+    const want = gap > P.bldgGap && gap < 140 ? 1 : 0;
     if (!want) return 0;
     const b = sp.buildingNear(me, reach);
     if (!b) return 0;
     S.bx = b.x; S.bz = b.z;
-    return P.bldg * lerp(0.6, 1.2, S.k) * (1 + (S.key === 'mecha' ? 1.5 : 0.5) * S.desperate);
+    return P.bldg * lerp(0.6, 1.2, S.k) * (1 + (S.key === 'mecha' ? 1.5 : 0.5) * S.desperate) * (W.match.state.defense ? 1 : 0.5); // (the title match: half as often)
   }
   // Carrying one: back off / close in to 40-90 u, show it off (Gorrak), then the throw (its wind-up is the tell)
   function carryDrive(dt, me, foe, it) {
@@ -782,7 +782,7 @@ else {
       case 'beamguard': setPlan('guard', 0.7 + rnd() * 0.7); S.stage = 1; S.guardUntil = now + S.planDur; note('beam-guard', '', ''); break;
       case 'ropes': setPlan('ropes', 2.6); S.budget = Math.max(S.budget, 1); note('ropes', S.ropeSide, ''); break;
       case 'weapon': setPlan('weapon', 3.5); note('weapon', '', ''); break;
-      case 'bldg': setPlan('bldg', 6); note('bldg', '', ''); break;
+      case 'bldg': setPlan('bldg', 7); note('bldg', '', ''); break;
       case 'swat': setPlan('swat', 3.2); S.swatCd = 6 + rnd() * 5; note('swat', S.swat.type, ''); break;
       case 'poke': setAct('string'); S.budget = Math.max(S.budget, 1); break;
       case 'grab': setAct('grab'); S.budget = Math.max(S.budget, 1); break;
@@ -913,9 +913,9 @@ else {
       }
       case 'bldg': {
         // Walk to the building and rip it up (a grab with the foe out of reach: props.js)
-        const b = W.spots && W.spots.buildingNear ? W.spots.buildingNear(me, 110) : null;
+        const b = W.spots && W.spots.buildingNear ? W.spots.buildingNear(me, 130) : null;
         if (!b || (gap < 10 && foe.state !== 'downed') || now < S.bldgCd || W.spots.buildingCooldown(me) > 0) { S.plan = ''; return; }
-        if (b.dist > 8) {
+        if (b.dist > 10) { // (props.js rips from 12 u)
           const dx = b.x - me.pos.x, dz = b.z - me.pos.z, d = Math.hypot(dx, dz) || 1;
           if (b.dist > 35) toward(me, it, b.x, b.z, 1, true);
           else { it.moveX = dx / d; it.moveZ = dz / d; } // (straight at it: the walker would steer round it)
@@ -923,7 +923,7 @@ else {
           return;
         }
         it.grab = true; S.plan = 'busy'; S.busyT = 0;
-        S.bldgCd = now + 22 + rnd() * 10; S.carryT = 0;
+        S.bldgCd = now + 22 + rnd() * 10 + 15 * (1 - S.k); S.carryT = 0; // (a novice rival: fewer)
         voice('bldg', 'shock');
         return;
       }
@@ -1017,7 +1017,7 @@ else {
         if (!mercy) {
           opt('stomp', gg < 30 ? G.stomp * (second ? 0.6 : 1) * (1 + 0.5 * P.workBack * (foe.worked || 0)) : 0);
           // Off to rip up a building while it lies there (it will be up by the time the building comes)
-          const bw = gg > 24 ? bldgReady(me, foe, Math.max(gg, P.bldgGap + 1), 55) : 0; // (a building close by: it gets there before the foe is up)
+          const bw = gg > (P.bldg >= 2 ? 10 : 24) && foe.stateDur - foe.stateT > 1 ? bldgReady(me, foe, Math.max(gg, P.bldgGap + 1), 110) : 0; // (a building close enough: the foe is up by the time it throws, at range)
           opt('bldg', bw * 1.5);
           // Tridon: up on a corner post, and fly
           opt('dive', P.dive && !second && me.can('pstomp') && me.momentum >= POWERS.stomp.cost && foe.stateDur - foe.stateT > 0.6 && pickPost(foe) ? P.dive * (1 + S.cocky) * lerp(0.5, 1, S.k) : 0);
@@ -1030,7 +1030,7 @@ else {
       S.gPlan = choose() || 'wait';
       S.planT = 0; S.diveStage = 0;
       S.lazyPin = S.gPlan === 'pin' && est >= 0.5 && P.cockyPin > 0.5;
-      if (S.gPlan === 'bldg') { S.gPlan = 'done'; setPlan('bldg', 6); note('bldg', 'ground', ''); }
+      if (S.gPlan === 'bldg') { S.gPlan = 'done'; setPlan('bldg', 7); note('bldg', 'ground', ''); }
       if (S.gPlan === 'stomp' && P.cheap > 0.5) { crowd('boo', 0.5); voice(foe.worked ? 'work' : 'stomp', 'neutral'); }
       note('ground', S.gPlan, '');
       if (S.gPlan !== 'taunt' && S.gPlan !== 'wait') S.chain++;

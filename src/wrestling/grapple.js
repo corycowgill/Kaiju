@@ -60,13 +60,15 @@ export const GRAPPLE = {
   // pin
   countAt: [1.0, 2.0, 3.0], forcedAt: [0.8, 1.6, 2.4], nearFall: 2.55,
   pinGain: 0.07, pinGainS: 0.22, pinDecay: 0.22, pinLate: 2.7,
-  pinFirstMatch: 1.3,                   // x the player's kick-out mashing in the first title match (defense 0)
+  pinFirstMatch: 1.6,                  // x the player's kick-out mashing in the first title match (defense 0)
   pinLateS: 0.4,                       // the player's kick-out cannot come before pinLate while its strength is under this (then earlier, to ~1 s when fresh)
   kickSpan: 0.78,                       // the rival's kick-out curve: strength 0.13 .. 0.13 + span maps 2.95 s .. 0.45 s (wider = more 2.9s)
   nearSlow: 2.45, nearSlowScale: 0.4,   // the referee's hand coming down for three: the last of the count in slow motion
   wearPerFall: 0.05,                    // kick-outs get harder fall by fall (a long match wears both down)
   // a finisher's cover: kicked out of only if the roll says so (once a match, healthy enough), and then only at the death
   finKickBase: 0.06, finKickHp: 0.45, finKickMax: 0.22, finKickHpMin: 0.3,
+  // ...the player in the first title match (defense 0): up to finFirstKicks of them, each a finFirstChance roll
+  finFirstKicks: 1, finFirstChance: 0.75, finFirstHpMin: 0.15,
   // finisher
   finDmg: 55, finRadius: 70, finRange: 22,
 };
@@ -778,8 +780,11 @@ export function createGrapple(ctx, W) {
     // Off a finisher: over, unless the roll gives this kaiju the one kick-out of its match (and then only at 2.9)
     const hpF = Math.max(0, V.hp) / Math.max(1, V.maxHp);
     pin.fin = !forced && V.finished > 0;
-    pin.finOk = pin.fin && !V.finKicked && hpF >= GRAPPLE.finKickHpMin
-      && Math.random() < Math.min(GRAPPLE.finKickMax, GRAPPLE.finKickBase + GRAPPLE.finKickHp * (hpF - GRAPPLE.finKickHpMin));
+    // (the first title match: a new player gets a real chance at the rival's finisher, mashing still decides it)
+    const firstP = V.isPlayer && !(W.match.state.defense > 0);
+    pin.finOk = pin.fin && (firstP
+      ? V.finKicked < GRAPPLE.finFirstKicks && hpF >= GRAPPLE.finFirstHpMin && Math.random() < GRAPPLE.finFirstChance
+      : !V.finKicked && hpF >= GRAPPLE.finKickHpMin && Math.random() < Math.min(GRAPPLE.finKickMax, GRAPPLE.finKickBase + GRAPPLE.finKickHp * (hpF - GRAPPLE.finKickHpMin)));
     if (forced || V.isPlayer) pin.kickAt = Infinity;
     else if (pin.fin) pin.kickAt = pin.finOk ? 2.88 + Math.random() * 0.09 : Infinity;
     else {
@@ -812,7 +817,7 @@ export function createGrapple(ctx, W) {
     bus.emit(EV.PIN_KICKOUT);
     pin.active = false;
     V.kickouts++;
-    if (finK) { V.finKicked = true; V.finished = 0; }
+    if (finK) { V.finKicked = (V.finKicked | 0) + 1; V.finished = 0; }
     V.gainMomentum(finK ? 30 : near ? 14 : 7);
     V.stamina = Math.min(V.maxStamina, V.stamina + 12);
     if (V.isPlayer) ctx.addScore(finK ? 3000 : near ? 800 : 250);
