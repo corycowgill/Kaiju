@@ -34,6 +34,7 @@ export const PROP_TUNE = {
   dropDmg: 9,          // one hit at least this big drops it (on top of any stagger / knockdown)
 };
 const CARRY = Object.freeze({ id: 'carry', kind: 'ppower', startup: 0, active: 0, recover: 0, steer: PROP_TUNE.carrySpeed });
+const CARRY_LIGHT = Object.freeze({ id: 'carry', kind: 'ppower', startup: 0, active: 0, recover: 0, steer: 0.62 });
 const CARRY_HEAVY = Object.freeze({ id: 'carry', kind: 'ppower', startup: 0, active: 0, recover: 0, steer: PROP_TUNE.carrySpeed * 0.65 });
 const LINES = {
   rip: ['{0} ripped a building out of the ground!', 'That is somebody\'s office!', '{0} is holding a city block over its head!'],
@@ -57,7 +58,7 @@ export function createProps(ctx, W, hooks) {
     x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, tx: 0, tz: 0, yaw: 0, spin: 0, eta: 0, hit: false });
   const props = { player: mk(), rival: mk() };
   const cd = { player: 0, rival: 0 };
-  const nearRes = { x: 0, z: 0, h: 0, dist: 0, b: null };
+  const nearRes = { x: 0, z: 0, h: 0, dist: 0, b: null, kind: '' };
   const carryRes = { phase: '', t: 0 };
   const flyRes = { x: 0, y: 0, z: 0, vx: 0, vz: 0, tx: 0, tz: 0, eta: 0, by: '', r: 0 };
   let best = null, bestD = 0, qf = null;
@@ -77,9 +78,17 @@ export function createProps(ctx, W, hooks) {
     if (d < bestD) { bestD = d; best = b; }
   }
   function nearest(f, maxGap) {
-    if (!ctx.forEachBuildingNear) return null;
     best = null; bestD = maxGap; qf = f;
-    ctx.forEachBuildingNear(f.pos.x, f.pos.z, f.radius + maxGap + 24, visitNear);
+    if (ctx.forEachBuildingNear) ctx.forEachBuildingNear(f.pos.x, f.pos.z, f.radius + maxGap + 24, visitNear);
+    // and the park's throwables (chicago_arena.js: semis, towers)
+    const A = W.arena && W.arena.info, items = A && A.throwables ? A.throwables.items : null;
+    if (items) for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it.alive) continue;
+      const dx = Math.max(0, Math.abs(f.pos.x - it.x) - it.w / 2), dz = Math.max(0, Math.abs(f.pos.z - it.z) - it.d / 2);
+      const d = Math.hypot(dx, dz) - f.radius;
+      if (d < bestD) { bestD = d; best = it; }
+    }
     qf = null;
     return best;
   }
@@ -134,12 +143,19 @@ export function createProps(ctx, W, hooks) {
     const P = props[f.id];
     P.on = true; P.phase = 'rip'; P.f = f; P.b = b; P.t = 0; P.hit = false;
     P.ox = b.x; P.oz = b.z; P.h = b.h;
-    P.k = Math.max(1, Math.sqrt(Math.max(b.h / T.big.h, Math.max(b.w, b.d) / T.big.side)));
-    P.move = P.k > 1.1 ? CARRY_HEAVY : CARRY;
     P.side = Math.random() < 0.5 ? 1 : -1;
-    capture(P, b);
-    // The city's own collapse: out of the grid, rubble and dust on the lot, the crash, the score and building:destroyed
-    ctx.collapseBuilding(b, f.id);
+    if (b.isProp) {
+      // a park throwable: light (quick to carry, a short wind-up, less damage); its one slot in the arena's instanced kind
+      P.k = 0.8; P.move = CARRY_LIGHT;
+      P.slots.length = 0; P.m0.length = 0; P.slots.push(b.im, b.idx); P.m0.push(b.m0);
+      b.alive = false;
+    } else {
+      P.k = Math.max(1, Math.sqrt(Math.max(b.h / T.big.h, Math.max(b.w, b.d) / T.big.side)));
+      P.move = P.k > 1.1 ? CARRY_HEAVY : CARRY;
+      capture(P, b);
+      // The city's own collapse: out of the grid, rubble and dust on the lot, the crash, the score and building:destroyed
+      ctx.collapseBuilding(b, f.id);
+    }
     place(P, _c.makeTranslation(P.ox, 0, P.oz)); // (and straight back where it stood: it rises from there)
     f.yaw = Math.atan2(b.x - f.pos.x, b.z - f.pos.z);
     f.recover(999);
@@ -151,7 +167,7 @@ export function createProps(ctx, W, hooks) {
     const e = bus.ev(EV.PROP_LIFT);
     e.who = f.id; e.x = b.x; e.z = b.z; e.h = b.h;
     bus.emit(EV.PROP_LIFT);
-    hooks.callout('RIPPED OUT OF THE GROUND!', 'A WHOLE BUILDING', 'move', f.id);
+    hooks.callout(b.isProp ? 'PICKED IT UP!' : 'RIPPED OUT OF THE GROUND!', b.isProp ? (b.kind === 'semi' ? 'A TOUR SEMI' : 'A LIGHTING TOWER') : 'A WHOLE BUILDING', 'move', f.id);
     hooks.say(pick(LINES.rip).replace('{0}', f.name), 'shock');
     hooks.pop(f.isPlayer ? 'pop' : 'gasp', 0.9, b.x, b.z);
   }
@@ -219,10 +235,25 @@ export function createProps(ctx, W, hooks) {
     W.rival.targetable = false;
     ctx.damageInRadius(_v.set(x, 0, z), 18, 260, _dmgOpt);
     W.rival.targetable = tw;
+    smashProps(x, z, 16, f);
     const e = bus.ev(EV.PROP_CRASH);
     e.who = f.id; e.x = x; e.y = y; e.z = z; e.h = P.h;
     bus.emit(EV.PROP_CRASH);
     if (!hitFoe) { hooks.say(pick(LINES.miss), 'hype'); hooks.pop('ooh', 0.7, x, z); }
+  }
+  /** Park throwables under something heavy coming down at (x, z) break into debris. */
+  function smashProps(x, z, r, by) {
+    const A = W.arena && W.arena.info, items = A && A.throwables ? A.throwables.items : null;
+    if (!items) return;
+    for (const it of items) {
+      if (!it.alive || Math.hypot(it.x - x, it.z - z) > r + Math.max(it.w, it.d) / 2) continue;
+      it.alive = false;
+      it.im.setMatrixAt(it.idx, _zero); it.im.instanceMatrix.needsUpdate = true;
+      _w.set(it.x, 3, it.z);
+      if (ctx.world.spawnExplosion) ctx.world.spawnExplosion(_w.clone(), 0.8);
+      if (ctx.fx && ctx.fx.dustBurst) ctx.fx.dustBurst(_w.clone().setY(0), 16, 6);
+      if (by && by.isPlayer) ctx.addScore(300);
+    }
   }
   function hitFoe(P, foe) {
     const f = P.f;
@@ -346,7 +377,7 @@ export function createProps(ctx, W, hooks) {
     buildingNear(f, maxGap = 40) {
       const b = f ? nearest(f, maxGap) : null;
       if (!b) return null;
-      nearRes.x = b.x; nearRes.z = b.z; nearRes.h = b.h; nearRes.dist = bestD; nearRes.b = b;
+      nearRes.x = b.x; nearRes.z = b.z; nearRes.h = b.h; nearRes.dist = bestD; nearRes.b = b; nearRes.kind = b.isProp ? b.kind : 'building';
       return nearRes;
     },
     /** f's building in hand: { phase 'rip' | 'carry' | 'windup', t } or null (scratch result). */
@@ -367,6 +398,7 @@ export function createProps(ctx, W, hooks) {
       }
       return null;
     },
+    smashProps,
     /** Seconds before f may rip up another. */
     cooldown(f) { return f ? Math.max(0, cd[f.id]) : 0; },
   };

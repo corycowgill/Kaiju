@@ -347,8 +347,9 @@ export function createHud(ctx, W) {
     else if (fight && W.spots && W.spots.buildingNear && P.canAct && !(P.gapTo(R) <= 9 && P.facing(R, 1.0)) && W.spots.buildingCooldown(P) <= 0 && W.spots.buildingNear(P, tipId && tipT > 0 ? 12 : 40)) {
       // in reach: the verb; close by: point it out so the player knows the building can be thrown
       const bn = W.spots.buildingNear(P, 40);
-      if (bn.dist <= 12) { key = 'bldg'; html = pill(B.grab, 'RIP UP BUILDING', '', 'hot'); }
-      else { key = 'bldgnear'; html = note('BUILDING NEARBY') + pill(B.grab, 'WALK UP AND RIP IT UP'); }
+      const what = bn.kind === 'semi' ? 'TOUR SEMI' : bn.kind === 'tower' ? 'LIGHTING TOWER' : 'BUILDING';
+      if (bn.dist <= 12) { key = 'bldg' + what; html = pill(B.grab, bn.kind === 'building' ? 'RIP UP BUILDING' : `PICK UP ${what}`, '', 'hot'); }
+      else { key = 'bldgnear' + what; html = note(`${what} NEARBY`) + pill(B.grab, 'WALK UP AND THROW IT'); }
     }
     else if (fight && stallT >= 5) {
       key = stallT >= 6 ? 'stall2' : 'stall1';

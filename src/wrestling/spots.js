@@ -102,6 +102,7 @@ export function createSpots(ctx, W) {
   // Thrown buildings (props.js)
   const props = createProps(ctx, W, { callout: emitCallout2, say: (t, tone) => say(t, tone), pop: (k, i, x, z) => pop(k, i, x, z) });
   function emitCallout2(text, sub, tier, who) { if (tier === 'landmark') landmarkCall(text, sub, who); else emitCallout(text, sub, tier, who); }
+  function resetThrowables() { const A = W.arena && W.arena.info; if (A && A.throwables && A.throwables.reset) A.throwables.reset(); }
   const phase = () => (W.match && W.match.state ? W.match.state.phase : '');
   const fighters = () => (W.player && W.rival ? [W.player, W.rival] : null);
 
@@ -381,12 +382,14 @@ export function createSpots(ctx, W) {
   // ------------------------------------------------------------------ events
   function subscribe() {
     const on = (n, fn) => offs.push(bus.on(n, fn));
-    on(EV.MATCH_START, () => { placeInitial(); });
-    on(EV.FALL_START, () => { props.clear(); zap.player = zap.rival = 0; zapDown.player = zapDown.rival = 0; for (const w of weapons) if (w.state === 'held') { w.owner = null; w.state = 'off'; w.dirty = true; } });
+    on(EV.MATCH_START, () => { placeInitial(); resetThrowables(); });
+    on(EV.FALL_START, () => { props.clear(); resetThrowables(); zap.player = zap.rival = 0; zapDown.player = zapDown.rival = 0; for (const w of weapons) if (w.state === 'held') { w.owner = null; w.state = 'off'; w.dirty = true; } });
     on(EV.BUILDING_IMPACT, (e) => {
       const id = spotOf(e.building);
       if (id === 'michigan') fire(id, W[e.who], W[e.by], e.type, 0.9, e.x, e.y, e.z, e.building);
     });
+    // a body coming down on a park throwable (a semi, a tower) flattens it
+    on(EV.THROW_LAND, (e) => { props.smashProps(e.x, e.z, 10, W[e.who] || null); });
     on(EV.THROW_LAND, (e) => {
       // (the landing point is the torso; the root, at the hips, counts too: a body across the basin's rim is in it)
       const V = W[e.target];
@@ -534,7 +537,7 @@ export function createSpots(ctx, W) {
       live = false;
       for (const off of offs) off();
       offs = [];
-      props.clear();
+      props.clear(); resetThrowables();
       if (jets) jets.scale.y = 1;
       if (fountainB && fountainHp > 0) { fountainB.maxHp = fountainHp; fountainB.hp = Math.min(fountainB.hp, fountainHp); }
       jets = null; fountainB = null; fountainHp = 0;
