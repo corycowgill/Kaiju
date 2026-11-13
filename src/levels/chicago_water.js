@@ -14,6 +14,7 @@ const NTRAIL = 6;  // wake trail points
  *  open water (the planes out to the horizon). R: land 0, water 1..255 =
  *  distance to the nearest land, 0..DMAX u. G: 255 on river / pond water
  *  (its own palette), 0 on the lake and harbours. */
+let _shoreTex = null;
 export function bakeShoreField(polys, rects, box, cell = 2) {
   const nx = Math.ceil((box.x1 - box.x0) / cell), nz = Math.ceil((box.z1 - box.z0) / cell);
   const wet = new Uint8Array(nx * nz);
@@ -69,7 +70,10 @@ export function bakeShoreField(polys, rects, box, cell = 2) {
     const du = (d[k] / 3) * cell; // chamfer units -> world units
     data[k * 2] = 1 + Math.round(254 * Math.min(1, du / DMAX));
   }
-  const tex = new THREE.DataTexture(data, nx, nz, THREE.RGFormat, THREE.UnsignedByteType);
+  // (perf) a new build's field replaces the last one's (its water is gone):
+  // freed here, they stayed on the GPU, one 486x532 field per restart
+  _shoreTex?.dispose();
+  const tex = _shoreTex = new THREE.DataTexture(data, nx, nz, THREE.RGFormat, THREE.UnsignedByteType);
   tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.needsUpdate = true;
@@ -90,7 +94,14 @@ export function bakeShoreField(polys, rects, box, cell = 2) {
 
 /** Tileable wave normal map (RG = slope x/z, B unused) with height in A,
  *  from a sum of integer-frequency directional sine waves (so it tiles). */
+// (perf) Seeded, so the same for every build: made once (each rebuild's copy
+// stayed on the GPU after a restart)
+let _waveTex = null;
 function _waveTexture(size = 256) {
+  if (_waveTex && _waveTex.image.width === size) return _waveTex;
+  return (_waveTex = _makeWaveTexture(size));
+}
+function _makeWaveTexture(size) {
   const waves = [];
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);

@@ -2339,8 +2339,9 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
   const stage = new THREE.Group();
   if (kaijuRoot) stage.add(kaijuRoot);
   if (rivalRoot) stage.add(rivalRoot); // a second kaiju staged like the first
+  const stagedEnemies = [];
   for (const C of [Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech]) {
-    try { stage.add(new C(0, 0).root); } catch (e) {
+    try { const r = new C(0, 0).root; stagedEnemies.push(r); stage.add(r); } catch (e) {
       warnOnce('prewarm|' + C.name, `[prewarm] ${C.name} not prewarmed (template missing?):`, e.message);
     }
   }
@@ -2460,6 +2461,8 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
   if (kaijuRoot) stage.remove(kaijuRoot);
   if (rivalRoot) stage.remove(rivalRoot);
   stage.traverse((n) => { if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose(); });
+  // (their own procedural parts too, e.g. the jet's burner cone: one per START was left on the GPU)
+  for (const r of stagedEnemies) disposeInstance(r);
   if (onProgress) onProgress(renderer.info.programs.length, renderer.info.programs.length);
   console.log(`[prewarm:start] gameplay set linked + uploaded in ${(performance.now() - t0).toFixed(0)} ms (${renderer.info.programs.length} programs)`);
 }
@@ -2649,6 +2652,7 @@ function _teardownScene() {
   const keepRoot = state.kaiju && state.kaiju.glb ? state.kaiju.root : null;
   if (keepRoot) state.kaiju.glb.mixer.stopAllAction();
   const keepRival = _rivalCache ? _rivalCache.glb.root : null; // likewise cached
+  const cityTex = new Set();
   for (const o of [...scene.children]) {
     // Pooled point lights (effects.js / vfx.js) are added lazily and are
     // reused forever, so they stay.
@@ -2667,8 +2671,18 @@ function _teardownScene() {
       if (n.isInstancedMesh && !n.userData.vfxPool) n.dispose();
       // Each skinned clone (civilians, soldiers, mechs) owns a GPU bone texture.
       if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose();
+      // (perf) Textures a city build makes itself (data and canvas: the
+      // shore field, wave and wear maps, festival screens, splash sprites)
+      // were left on the GPU: ~8 per restart. Freed with the city; a cached
+      // one that the next build reuses is simply uploaded again. Image
+      // textures (GLB, effect sheets) belong to their caches and stay.
+      if (!n.userData.vfxPool) for (const m of [].concat(n.material || [])) {
+        for (const v of Object.values(m)) if (v && (v.isDataTexture || v.isCanvasTexture)) cityTex.add(v);
+        if (m.uniforms) for (const u of Object.values(m.uniforms)) if (u && u.value && (u.value.isDataTexture || u.value.isCanvasTexture)) cityTex.add(u.value);
+      }
     });
   }
+  for (const t of cityTex) t.dispose();
 }
 
 /** The menu picked a different level than the one built: swap the city
