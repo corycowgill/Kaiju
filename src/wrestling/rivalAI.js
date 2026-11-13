@@ -63,7 +63,7 @@ export const PERSONAS = Object.freeze({
     pw: { beam: 0.9, roar: 1.4, charge: 0.6, stomp: 0.7 }, saveAt: 70, saver: 0.5, punish: 0.8, punishAct: { string: 0.2, heavy: 0.5, grab: 0.3 },
     // persona beats: walk pace, P(no-sells a big hit), signature weights [toward, away], rope runs, top-rope dives, heel tricks, lazy covers when ahead, back work
     walk: 0.8, noSell: 0.4, sig: [3.0, 3.5], ropeRun: 0, dive: 0, cheap: 0.08, cockyPin: 0.2, workBack: 0, bldgTaunt: 1.5,
-    fireUp: 0.95, vsFire: 'trade', weapon: 1.3, spotLove: 1.4,
+    fireUp: 0.95, vsFire: 'trade', weapon: 1.3, spotLove: 1.4, bldg: 2.4, bldgGap: 30, bldgShow: 1.0, vsBldg: 'block',
     tells: 'jab-jab-HEAVY (guard after the second jab; raise it late and the heavy is reversed); rarely guards, so strike first; loves the press slam and holds you up there (mash); roars in your face (a jab stops it); stomps or gloats over you when you are down; big hits do not always rock it (it no-sells and swings right back: block); RUN-grabs into the CHOKESLAM, or onto its shoulder and through the nearest building (LOOP BULLDOZER)',
   },
   // Tridon: the fast, showy storm dragon. In and out, running clotheslines, whips, dives, and far too much taunting.
@@ -78,7 +78,7 @@ export const PERSONAS = Object.freeze({
     taunt: 1.5, tauntDown: 2.0, catchRebound: 0.95,
     pw: { beam: 0.6, roar: 0.5, charge: 1.3, stomp: 0.4 }, saveAt: 80, // (the jump is saved for the top-rope dive) saver: 0.65, punish: 0.7, punishAct: { string: 0.6, heavy: 0.1, grab: 0.3 },
     walk: 1, noSell: 0, sig: [2.6, 2.6], ropeRun: 2.0, dive: 5, cheap: 0.15, cockyPin: 1.2, workBack: 0, bldgTaunt: 1,
-    fireUp: 0.75, vsFire: 'flee', weapon: 0.25, spotLove: 1,
+    fireUp: 0.75, vsFire: 'flee', weapon: 0.25, spotLove: 1, bldg: 0.25, bldgGap: 40, bldgShow: 0.2, vsBldg: 'dodge',
     tells: 'backs out after an exchange and comes back with a running clothesline (block it, or step aside and punish the miss); whips you at the ropes to cut you down on the rebound; taunts after knockdowns (get up and hit him: a taunting kaiju takes x1.4); dives on you when you are down (mash up and he crashes on the mat); sprints himself tired; runs the ropes for a clothesline (block it as he comes back); climbs a corner post to fly at you when you are down (get up, he lands on nothing); covers lazily when ahead (kick out early)',
   },
   // Mechra: the methodical war machine. Holds its range, zones with the cannon, guards, and punishes what you miss.
@@ -93,7 +93,7 @@ export const PERSONAS = Object.freeze({
     taunt: 0.12, tauntDown: 0.3, catchRebound: 0.7,
     pw: { beam: 1.5, roar: 1.0, charge: 0.8, stomp: 0.5 }, saveAt: 55, saver: 0.4, punish: 1.0, punishAct: { string: 0.25, heavy: 0.45, grab: 0.3 },
     walk: 0.92, noSell: 0, sig: [3.0, 2.6], ropeRun: 0, dive: 0, cheap: 1, cockyPin: 0.1, workBack: 1, bldgTaunt: 0.5,
-    fireUp: 0.5, vsFire: 'guard', weapon: 1.0, spotLove: 0.8,
+    fireUp: 0.5, vsFire: 'guard', weapon: 1.0, spotLove: 0.8, bldg: 0.9, bldgGap: 55, bldgShow: 0, vsBldg: 'dodge',
     tells: 'guards strings, so grab it; answers a blocked string with a counter-heavy (stop after the third hit and block: reversal); steps back and fires the cannon when you stand off (sidestep late, punish the recovery); punishes what you miss; slow on its feet, it cannot run you down; a heel: it waits by you as you get up and jumps you (block on the way up), stomps you while you are down, and works your back with the CIRCUIT BREAKER and SYSTEM CRASH (each makes your kick-outs harder this fall)',
   },
 });
@@ -132,6 +132,7 @@ const VOICE = Object.freeze({
     noSell: ['{0} shrugs it off!', '{0} walks right through that!', 'That only made {0} angry!'],
     building: ['{0} is looking for a building!', '{0} wants to put somebody through the skyline!', '{0} is redecorating the Loop!'],
     taunt: ['{0} beats its chest! The ground is shaking!', '{0} demands respect from Chicago!'],
+    bldg: ['{0} just pulled a building out of the ground!', 'Is {0} going to THROW that?', 'Somebody call the zoning board! {0} has a building!'],
     fire: ['{0} is HULKING UP!', '{0} is shaking the whole park!', 'You just made {0} mad!'],
   },
   ghidorah: {
@@ -145,6 +146,7 @@ const VOICE = Object.freeze({
     stomp: ['{0} keeps putting the boots in!', 'The crowd is letting {0} hear it!', 'Kicking a kaiju while it is down, {0}?'],
     work: ['{0} is working on the back!', '{0} is targeting that spine!', 'Methodical. {0} is taking you apart piece by piece.'],
     reversal: ['{0} saw that coming a mile away!', 'Calculated. {0} reads everything.', 'Countered by the machine!'],
+    bldg: ['{0} rips up a building from long range!', 'Calculated: {0} brought artillery.'],
     guardFire: ['{0} covers up and waits it out!', 'Cold as steel: {0} weathers the storm.'],
   },
 });
@@ -189,7 +191,7 @@ export function createRivalAI(ctx, W) {
     // persona beats
     noSell: false, noSellT: 0, noSellCd: 0, voiceAt: 0, shoutAt: 0, cheapGo: false, lazyPin: false, dozerYaw: 0, dozerOn: false,
     ropeSide: '', rx: 0, rz: 0, ropeCalled: false, postX: 0, postZ: 0, bldgT: -99, sigCd: 0,
-    fireTry: 0, foeFireUntil: 0, wx: 0, wz: 0,
+    fireTry: 0, foeFireUntil: 0, wx: 0, wz: 0, bldgCd: 0, bx: 0, bz: 0, carryT: 0, dodgeT: -1, dodgeUntil: 0, dodgeX: 0, dodgeZ: 0, dodgeDo: 0,
   };
   const T = AI_TUNE;
   const sk = (pair) => lerp(pair[0], pair[1], S.k);
@@ -256,7 +258,7 @@ export function createRivalAI(ctx, W) {
     S.fvx = 0; S.fvz = 0; S.milOn = false; S.milHurt = 0; S.swat = null; S.swatCd = 0; S.beamEye = 0;
     S.noSell = false; S.noSellCd = 0; S.voiceAt = 0; S.shoutAt = 0; S.cheapGo = false; S.lazyPin = false; S.dozerOn = false;
     S.ropeSide = ''; S.ropeCalled = false; S.bldgT = -99; S.sigCd = 0;
-    S.fireTry = 0; S.foeFireUntil = 0;
+    S.fireTry = 0; S.foeFireUntil = 0; S.bldgCd = now + 12 + rnd() * 8; S.carryT = 0; S.dodgeT = -1;
     if (W.player) { S.fpx = W.player.pos.x; S.fpz = W.player.pos.z; }
     S.strafe = rnd() < 0.5 ? 1 : -1;
   }
@@ -576,6 +578,45 @@ export function createRivalAI(ctx, W) {
     }
     return S.ropeSide !== '';
   }
+  // Buildings ripped out of the ground and thrown (props.js through W.spots)
+  function bldgReady(me, foe, gap, reach = 110) {
+    const sp = W.spots;
+    if (!sp || !sp.buildingNear || !P.bldg || now < S.bldgCd || sp.buildingCooldown(me) > 0 || armedNow(me)) return 0;
+    // Gorrak wants one whenever the foe is at throwing range; Mechra mostly when the foe stands off or it is behind
+    const want = gap > P.bldgGap && gap < 120 ? 1 : 0;
+    if (!want) return 0;
+    const b = sp.buildingNear(me, reach);
+    if (!b) return 0;
+    S.bx = b.x; S.bz = b.z;
+    return P.bldg * lerp(0.6, 1.2, S.k) * (1 + (S.key === 'mecha' ? 1.5 : 0.5) * S.desperate);
+  }
+  // Carrying one: back off / close in to 40-90 u, show it off (Gorrak), then the throw (its wind-up is the tell)
+  function carryDrive(dt, me, foe, it) {
+    const gap = me.gapTo(foe);
+    S.carryT += dt;
+    it.faceYaw = me.yawTo(foe);
+    if (gap < 38) away(me, foe, it, 1, false);
+    else if (gap > 95) toward(me, it, foe.pos.x, foe.pos.z, 1, false);
+    if (S.carryT > 0.7 + P.bldgShow && gap >= 30 && gap <= 105 && me.facing(foe, 0.3)) { it.strike = true; S.carryT = 0; note('bldg-throw', '', ''); }
+  }
+  // One thrown AT it: sidestep across its line, or brace behind the guard
+  // (decided on the throw's wind-up tell, power:telegraph 'building': the aim is fixed when the wind-up starts)
+  function onBuildingTell(e) {
+    if (e.who !== 'player' || e.power !== 'building' || !W.rival || !W.player) return;
+    const me = W.rival, foe = W.player;
+    S.dodgeT = now + react(); S.dodgeUntil = now + e.dur + 1.0;
+    const u = rnd(), good = sk(T.block) * (0.6 + 0.4 * P.guard) + 0.15;
+    S.dodgeDo = u < good ? (P.vsBldg === 'block' ? 2 : 1) : u < good + 0.15 ? 2 : 0;
+    const dx = me.pos.x - foe.pos.x, dz = me.pos.z - foe.pos.z, d = Math.hypot(dx, dz) || 1, side = rnd() < 0.5 ? 1 : -1;
+    S.dodgeX = -dz / d * side; S.dodgeZ = dx / d * side;
+  }
+  function dodgeBuilding(dt, me, it) {
+    if (S.dodgeT < 0 || now >= S.dodgeUntil) { S.dodgeT = -1; return false; }
+    if (now < S.dodgeT || S.dodgeDo === 0 || me.state !== 'neutral' && me.state !== 'blocking') return false;
+    if (S.dodgeDo === 2) { if (me.can('block') || me.state === 'blocking') { it.block = true; return true; } return false; }
+    go(me, it, S.dodgeX, S.dodgeZ, 1, true);
+    return true;
+  }
   // Foreign objects (spots.js)
   function armedNow(me) { return !!(W.spots && W.spots.armed && W.spots.armed(me)); }
   function findWeapon(me, r) {
@@ -717,6 +758,8 @@ else {
       opt('backoff', gap < S.wantGap - 5 ? 0.9 : 0);
       opt('feint', gap < 34 ? P.w.feint : 0);
       opt('ropes', P.ropeRun && gap < 40 && !me.tired && me.stamina > 40 && ropeTarget(me, foe) ? P.ropeRun * 0.6 * (1 + S.cocky) : 0);
+      // A building to rip out of the ground and throw (the spectacle: a long cooldown)
+      opt('bldg', bldgReady(me, foe, gap));
       // A girder lying about: Gorrak and the heel go and rip it up
       opt('weapon', P.weapon && gap > 14 && !armedNow(me) && findWeapon(me, 70) ? P.weapon * lerp(0.6, 1.2, S.k) * (1 + 0.6 * S.desperate) : 0);
       opt('taunt', gap > 26 + 16 * S.k && S.tauntCd <= 0 && foe.state !== 'attacking' && S.foeAggro < 0.5 ? P.taunt * (0.5 + 1.5 * S.cocky) * lerp(1.2, 0.4, S.k) * (S.desperate > 0.5 ? 0.3 : 1) : 0);
@@ -739,6 +782,7 @@ else {
       case 'beamguard': setPlan('guard', 0.7 + rnd() * 0.7); S.stage = 1; S.guardUntil = now + S.planDur; note('beam-guard', '', ''); break;
       case 'ropes': setPlan('ropes', 2.6); S.budget = Math.max(S.budget, 1); note('ropes', S.ropeSide, ''); break;
       case 'weapon': setPlan('weapon', 3.5); note('weapon', '', ''); break;
+      case 'bldg': setPlan('bldg', 6); note('bldg', '', ''); break;
       case 'swat': setPlan('swat', 3.2); S.swatCd = 6 + rnd() * 5; note('swat', S.swat.type, ''); break;
       case 'poke': setAct('string'); S.budget = Math.max(S.budget, 1); break;
       case 'grab': setAct('grab'); S.budget = Math.max(S.budget, 1); break;
@@ -867,6 +911,22 @@ else {
         if (S.mode === 'lull') { S.mode = 'engage'; S.budget = Math.max(S.budget, 1); }
         return;
       }
+      case 'bldg': {
+        // Walk to the building and rip it up (a grab with the foe out of reach: props.js)
+        const b = W.spots && W.spots.buildingNear ? W.spots.buildingNear(me, 110) : null;
+        if (!b || (gap < 10 && foe.state !== 'downed') || now < S.bldgCd || W.spots.buildingCooldown(me) > 0) { S.plan = ''; return; }
+        if (b.dist > 8) {
+          const dx = b.x - me.pos.x, dz = b.z - me.pos.z, d = Math.hypot(dx, dz) || 1;
+          if (b.dist > 35) toward(me, it, b.x, b.z, 1, true);
+          else { it.moveX = dx / d; it.moveZ = dz / d; } // (straight at it: the walker would steer round it)
+          it.faceYaw = Math.atan2(dx, dz);
+          return;
+        }
+        it.grab = true; S.plan = 'busy'; S.busyT = 0;
+        S.bldgCd = now + 22 + rnd() * 10; S.carryT = 0;
+        voice('bldg', 'shock');
+        return;
+      }
       case 'weapon': {
         // Walk to the girder, rip it up (a grab with the foe out of reach: spots.js)
         if (armedNow(me) || !findWeapon(me, 80)) { S.plan = ''; return; }
@@ -956,6 +1016,9 @@ else {
         if (P.cockyPin && S.cocky > 0.3 && est >= 0.5) opt('pin', P.cockyPin * S.cocky * 1.4);
         if (!mercy) {
           opt('stomp', gg < 30 ? G.stomp * (second ? 0.6 : 1) * (1 + 0.5 * P.workBack * (foe.worked || 0)) : 0);
+          // Off to rip up a building while it lies there (it will be up by the time the building comes)
+          const bw = gg > 24 ? bldgReady(me, foe, Math.max(gg, P.bldgGap + 1), 55) : 0; // (a building close by: it gets there before the foe is up)
+          opt('bldg', bw * 1.5);
           // Tridon: up on a corner post, and fly
           opt('dive', P.dive && !second && me.can('pstomp') && me.momentum >= POWERS.stomp.cost && foe.stateDur - foe.stateT > 0.6 && pickPost(foe) ? P.dive * (1 + S.cocky) * lerp(0.5, 1, S.k) : 0);
           opt('splash', gg > 12 && gg < MOVES.splash.reach - 2 && me.stamina > 20 ? G.splash * (1 + 0.5 * S.cocky) : 0);
@@ -967,6 +1030,7 @@ else {
       S.gPlan = choose() || 'wait';
       S.planT = 0; S.diveStage = 0;
       S.lazyPin = S.gPlan === 'pin' && est >= 0.5 && P.cockyPin > 0.5;
+      if (S.gPlan === 'bldg') { S.gPlan = 'done'; setPlan('bldg', 6); note('bldg', 'ground', ''); }
       if (S.gPlan === 'stomp' && P.cheap > 0.5) { crowd('boo', 0.5); voice(foe.worked ? 'work' : 'stomp', 'neutral'); }
       note('ground', S.gPlan, '');
       if (S.gPlan !== 'taunt' && S.gPlan !== 'wait') S.chain++;
@@ -1065,6 +1129,7 @@ else {
       if (now > S.gthrAt + 0.12) S.gthr = false;
       else if (S.gthrDo === 1 && now >= S.gthrSeen) { away(me, foe, it, 1, true); return; }
     }
+    if (S.plan === 'bldg') { runPlan(dt, me, foe, it, gap); return; } // (on its way to a building: a downed foe can wait)
     if (down) { ground(dt, me, foe, it); return; }
     S.gPlan = '';
     // The foe has fired up: Gorrak trades, Tridon wants no part of it, Mechra covers up and waits it out
@@ -1333,6 +1398,7 @@ else {
       on(EV.KNOCKDOWN, onKnockdown);
       on(EV.GETUP_DONE, onGetupDone);
       on(EV.GETUP, onGetup);
+      on(EV.POWER_TELEGRAPH, onBuildingTell);
       if (EV.COMEBACK_START) on(EV.COMEBACK_START, onComeback);
       on(EV.TAUNT_START, onRivalBeat); on(EV.STRIKE_REVERSED, onRivalBeat); on(EV.GRAB_REVERSED, onRivalBeat); on(EV.PIN_START, onRivalBeat); on(EV.BUILDING_IMPACT, onRivalBeat);
       on(EV.PIN_KICKOUT, onKickout);
@@ -1368,6 +1434,11 @@ else {
         } else if ((S.fireTry += dt) >= 0) S.fireTry = 0;
       } else if (S.fireTry > 0) S.fireTry = 0;
       else if (S.fireTry < 0) S.fireTry = Math.min(0, S.fireTry + dt);
+      if (W.spots && W.spots.carrying) {
+        const c = W.spots.carrying(me);
+        if (c) { if (c.phase === 'carry') carryDrive(dt, me, foe, it); return; }
+      }
+      if (dodgeBuilding(dt, me, it)) return;
       switch (me.state) {
         case 'neutral': if (!me.held) neutral(dt, me, foe, it); break;
         case 'attacking': attacking(me, it); break;
