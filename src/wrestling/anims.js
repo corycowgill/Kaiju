@@ -11,8 +11,11 @@
 //  - On top of the clips, after both mixers have ticked each frame, this module
 //    adds what cannot be baked: locomotion picked from the root's real
 //    velocity (stance, walk, back-pedal, strafe, run - time-scaled so feet do
-//    not skate), a recoil spring through spine and head on every hit, heads
-//    that track the opponent, and hand IK that puts the holder's hands on the
+//    not skate), a recoil spring through spine and head on every hit (weighted
+//    by where on the body it landed), inertia (torso, arms, wings / coat, tail
+//    and - off the ground - legs lag behind the root's own acceleration and
+//    spin, on springs: follow-through on every start, stop, throw and landing),
+//    heads that track the opponent, and hand IK that puts the holder's hands on the
 //    other body in lock-ups, lifts, swings and pins whatever the two kaiju's
 //    proportions are.
 // The combat core moves the ROOTS (position, yaw, and the pitch / roll of a
@@ -128,6 +131,30 @@ const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vect
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _dU = new THREE.Quaternion(), _dF = new THREE.Quaternion(), _rootQ = new THREE.Quaternion();
 const _ikArm = { l1: 0, l2: 0, qU0inv: null, qF0inv: null };
 const smooth01 = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+const clampTo = (x, lo, hi) => (x < lo ? lo : x > hi ? hi : x);
+
+// ---- inertia: springs on the parts that hang off the body, driven by the root's motion ----
+// k / c: stiffness and damping (1/s^2, 1/s); g: spring force per u/s^2 of root acceleration in the body frame;
+// lim: how far a part may swing (rad). Steady lag under an acceleration a is g * a / k.
+export const INERTIA = {
+  aMax: 420,                                       // root acceleration is clamped here (a landing, a teleport that slipped through)
+  torso: 0.25,                                      // (on the recoil spring: k 190)
+  torsoYaw: 6,                                     // twist against the turn, per rad/s
+  arm:  { k: 110, c: 6.5, g: 0.33, up: 0.8, fling: 15, lim: 1.1, tuck: 0.15, fore: 0.5 },
+  leg:  { k: 120, c: 8, g: 0.3, lim: 0.8, knee: 0.5 },
+  wing: { k: 90, c: 5, g: 0.18, lim: 0.6 },
+  tail: { k: 70, c: 5, g: 0.15, turn: 5.8, lim: 0.7, limGround: 0.16 },
+  calm: 0.4,                                       // arms while the body is doing a move of its own (a strike keeps its line)
+};
+// states in which the body is not in charge of its own limbs
+const LOOSE = { airborne: 1, downed: 1, staggered: 1, stunned: 1, ko: 1, grappled: 1, pinned: 1 };
+// spring channels (angle, velocity pairs in st.S)
+const S_ALP = 0, S_ALR = 2, S_ARP = 4, S_ARR = 6, S_LP = 8, S_LR = 10, S_WUP = 12, S_WBK = 14, S_TP = 16, S_TY = 18, S_N = 20;
+function sprung(S, i, force, k, c, h, lo, hi) {
+  S[i + 1] += (force - k * S[i] - c * S[i + 1]) * h;
+  S[i] += S[i + 1] * h;
+  if (S[i] < lo) { S[i] = lo; if (S[i + 1] < 0) S[i + 1] = 0; } else if (S[i] > hi) { S[i] = hi; if (S[i + 1] > 0) S[i + 1] = 0; }
+}
 const _once = { duration: undefined, commit: undefined, hold: false, restart: true };
 
 /** @returns {{ start, play, stop, current, update, updateIdle, dispose, info, markTime }} */
@@ -149,6 +176,9 @@ export function createAnims(ctx, W) {
       sp: 0, sv: 0, sy: 0, syv: 0, sr: 0, srv: 0, lookY: 0, lookP: 0, gripL: 0, gripR: 0, gripName: '',
       gL: new THREE.Vector3(), gR: new THREE.Vector3(),
       gait: '', gaitT: 0, px: f.root.position.x, pz: f.root.position.z, vx: 0, vz: 0, yaw: f.root.rotation.y, yawRate: 0,
+      // inertia: the root's height, vertical speed, acceleration (world), pitch / roll and their rates; the limb springs; how high the last hit landed (0 feet .. 1 head); legs loose (0..1)
+      py: f.root.position.y, vy: 0, ax: 0, ay: 0, az: 0, rx: f.root.rotation.x, rz: f.root.rotation.z, wP: 0, wR: 0,
+      S: new Float32Array(S_N), hi: 0.6, air: 0,
     };
   }
   function stateOf(f) {
@@ -164,6 +194,8 @@ export function createAnims(ctx, W) {
     const R = st.R;
     st.B = st.glb.rest.bones;
     st.mod = [R.iS2, R.iS3, R.iNeck, R.iHead, R.arm[0].iUp, R.arm[0].iLo, R.arm[1].iUp, R.arm[1].iLo];
+    // (inertia also swings the clavicles - wings, spike coat, shoulder pods -, the legs of a body off the ground, and a tail that has a bone)
+    for (const i of [R.arm[0].iSh, R.arm[1].iSh, R.leg[0].iUp, R.leg[0].iLo, R.leg[1].iUp, R.leg[1].iLo, R.iTail]) if (i >= 0 && !st.mod.includes(i)) st.mod.push(i);
     st.base = st.mod.map(() => new THREE.Quaternion());
     st.wrote = st.mod.map(() => new THREE.Quaternion(9, 9, 9, 9));
   }
@@ -178,21 +210,78 @@ export function createAnims(ctx, W) {
   }
   function springs(st, dt) {
     const k = 190, c = 9;                         // ~2.2 Hz, lightly damped: one clear overshoot
+    const R = st.R, f = st.f, S = st.S, I = INERTIA;
     if (dt > 0) {
       const h = Math.min(dt, 0.033);
-      st.sv += (-k * st.sp - c * st.sv) * h; st.sp += st.sv * h;
-      st.syv += (-k * st.sy - c * st.syv) * h; st.sy += st.syv * h;
-      st.srv += (-k * st.sr - c * st.srv) * h; st.sr += st.srv * h;
+      // The root's acceleration in the body's own frame (+x its left, +y its up, +z its front): everything that
+      // hangs off the body lags behind it. Upright chains (spine, neck) tip away from it, hanging ones (arms, legs) trail it.
+      f.root.getWorldQuaternion(_rootQ).invert();
+      _v1.set(st.ax, st.ay, st.az).applyQuaternion(_rootQ);
+      const lx = _v1.x, ly = _v1.y, lz = _v1.z, spin = Math.min(6, Math.abs(st.wP) + Math.abs(st.wR));
+      st.sv += (-I.torso * lz - k * st.sp - c * st.sv) * h; st.sp += st.sv * h;
+      st.syv += (-I.torsoYaw * clampTo(st.yawRate, -5, 5) - k * st.sy - c * st.syv) * h; st.sy += st.syv * h;
+      st.srv += (I.torso * lx - k * st.sr - c * st.srv) * h; st.sr += st.srv * h;
+      st.sp = clampTo(st.sp, -0.6, 0.6); st.sy = clampTo(st.sy, -0.6, 0.6); st.sr = clampTo(st.sr, -0.6, 0.6);
+      // arms: trailing the body; out from the sides in free fall and in a tumble, pressed in on a landing
+      const A = I.arm, up = -ly * A.up + spin * A.fling;
+      for (let s = 0; s < 2; s++) {
+        const sign = R.arm[s].sign, o = s ? S_ARP : S_ALP;
+        sprung(S, o, A.g * lz, A.k, A.c, h, -A.lim, A.lim);
+        sprung(S, o + 2, -A.g * lx + sign * up, A.k, A.c, h, sign > 0 ? -A.tuck : -A.lim, sign > 0 ? A.lim : A.tuck);
+      }
+      // legs: only loose on a body off its feet (held up, thrown, tumbling)
+      const off = f.held && (f.root.position.y > 2.5 || Math.abs(f.root.rotation.x) > 0.4 || Math.abs(f.root.rotation.z) > 0.4) ? 1 : 0;
+      st.air += (off - st.air) * (1 - Math.exp(-h * 9));
+      const L = I.leg;
+      sprung(S, S_LP, L.g * lz, L.k, L.c, h, -L.lim, L.lim);
+      sprung(S, S_LR, -L.g * lx, L.k, L.c, h, -L.lim, L.lim);
+      // wings / coat / pods on the clavicles: tips lag up-down and fore-aft
+      const Wg = I.wing;
+      sprung(S, S_WUP, -Wg.g * ly, Wg.k, Wg.c, h, -Wg.lim, Wg.lim);
+      sprung(S, S_WBK, Wg.g * lz, Wg.k, Wg.c, h, -Wg.lim, Wg.lim);
+      // tail (a cantilever out of the back): whips against a turn and a sidestep, droops under a lift
+      if (R.iTail >= 0) {
+        const T = I.tail, lim = T.limGround + (T.lim - T.limGround) * st.air;
+        sprung(S, S_TP, -T.g * ly, T.k, T.c, h, -lim, lim);
+        sprung(S, S_TY, T.g * lx - T.turn * clampTo(st.yawRate, -5, 5), T.k, T.c, h, -lim, lim);
+      }
     }
-    if (Math.abs(st.sp) + Math.abs(st.sy) + Math.abs(st.sr) < 1e-4) return;
-    const R = st.R;
-    nudge(st, R.iS2, st.sp * 0.4, st.sy * 0.4, st.sr * 0.4);
-    nudge(st, R.iS3, st.sp * 0.35, st.sy * 0.4, st.sr * 0.3);
-    nudge(st, R.iNeck, st.sp * 0.45, st.sy * 0.3, st.sr * 0.4);
-    if (!R.quirks.headOnNeck) nudge(st, R.iHead, st.sp * 0.4, st.sy * 0.2, st.sr * 0.3);
+    // where the last hit landed shifts the recoil: high = the head and neck snap, low = the trunk folds
+    const lowW = 1.25 - 0.5 * st.hi, highW = 0.7 + 0.6 * st.hi;
+    if (Math.abs(st.sp) + Math.abs(st.sy) + Math.abs(st.sr) >= 1e-4) {
+      nudge(st, R.iS2, st.sp * 0.4 * lowW, st.sy * 0.4 * lowW, st.sr * 0.4 * lowW);
+      nudge(st, R.iS3, st.sp * 0.35, st.sy * 0.4, st.sr * 0.3);
+      nudge(st, R.iNeck, st.sp * 0.45 * highW, st.sy * 0.3 * highW, st.sr * 0.4 * highW);
+      if (!R.quirks.headOnNeck) nudge(st, R.iHead, st.sp * 0.4 * highW, st.sy * 0.2 * highW, st.sr * 0.3 * highW);
+    }
+    // arms (less of it while the body is throwing a move of its own)
+    const calm = st.anim && !LOOSE[f.state] && !f.held ? I.calm : 1;
+    for (let s = 0; s < 2; s++) {
+      const o = s ? S_ARP : S_ALP, p = S[o] * calm, r = S[o + 2] * calm, G = R.arm[s];
+      if (Math.abs(p) + Math.abs(r) < 1e-3) continue;
+      nudge(st, G.iUp, p, 0, r);
+      nudge(st, G.iLo, p * I.arm.fore, 0, 0);
+    }
+    if (st.air > 0.01 && Math.abs(S[S_LP]) + Math.abs(S[S_LR]) > 1e-3) {
+      for (let s = 0; s < 2; s++) {
+        const G = R.leg[s];
+        if (G.iUp === R.iTail) continue;           // (Tridon's left thigh bone is its tail)
+        nudge(st, G.iUp, S[S_LP] * st.air * (s ? 1 : 0.8), 0, S[S_LR] * st.air);
+        nudge(st, G.iLo, Math.abs(S[S_LP]) * I.leg.knee * st.air, 0, 0);
+      }
+    }
+    const wg = R.quirks.wings;
+    if (Math.abs(S[S_WUP]) + Math.abs(S[S_WBK]) > 1e-3) {
+      for (let s = 0; s < 2; s++) { const sign = R.arm[s].sign, i = R.arm[s].iSh; if (i >= 0) nudge(st, i, 0, sign * S[S_WBK] * wg, sign * S[S_WUP] * wg); }
+    }
+    if (R.iTail >= 0 && Math.abs(S[S_TP]) + Math.abs(S[S_TY]) > 1e-3) {
+      nudge(st, R.iTail, S[S_TP], S[S_TY], 0);
+      // (a tail bone that is also a thigh: the shin under it stays with the body)
+      for (let s = 0; s < 2; s++) if (R.leg[s].iUp === R.iTail) nudge(st, R.leg[s].iLo, -S[S_TP], -S[S_TY], 0);
+    }
   }
-  /** A hit from world (x, z): kick the recoil spring away from it. mag ~0..1.5 */
-  function recoil(st, x, z, mag) {
+  /** A hit from world (x, y, z): kick the recoil spring away from it, and everything loose with it. mag ~0..1.5 */
+  function recoil(st, x, z, mag, y) {
     const f = st.f, p = f.root.position, yaw = f.root.rotation.y;
     let dx = p.x - x, dz = p.z - z;
     const d = Math.hypot(dx, dz);
@@ -201,7 +290,18 @@ export function createAnims(ctx, W) {
     const s = Math.sin(yaw), c = Math.cos(yaw), fwd = dx * s + dz * c, lat = dx * c - dz * s;
     st.sv += fwd * 9 * mag;                        // from the front: the torso snaps back (pitch < 0)
     st.srv += -lat * 7 * mag;                      // heading left: the body leans left (roll < 0)
-    st.syv += lat * 4 * mag;
+    st.syv += lat * 5.5 * mag;
+    // how high it landed (feet 0 .. head 1): springs() gives a high one to the neck and head, a low one to the trunk
+    if (st.R && y !== undefined) st.hi = clampTo((y - p.y) / Math.max(6, st.R.headY), 0, 1);
+    // the body is knocked out from under its arms, wings and tail: they are left behind, then catch up
+    const S = st.S;
+    for (let s = 0; s < 2; s++) {
+      const o = s ? S_ARP : S_ALP, side = st.R ? st.R.arm[s].sign : 1;
+      S[o + 1] += fwd * 6 * mag;
+      S[o + 3] += (-lat * 5 + side * 2.5) * mag;   // (and thrown a little wide)
+    }
+    S[S_WBK + 1] += -fwd * 4 * mag; S[S_WUP + 1] += 3 * mag;
+    S[S_TY + 1] += lat * 5 * mag; S[S_TP + 1] += -2 * mag;
   }
   function look(st, dt) {
     const f = st.f, o = f.opponent, R = st.R;
@@ -366,13 +466,25 @@ export function createAnims(ctx, W) {
 
   function track(st, dt) {
     const p = st.f.root.position, yaw = st.f.root.rotation.y;
+    const r = st.f.root.rotation;
     if (dt > 1e-5) {
-      const dx = p.x - st.px, dz = p.z - st.pz, k = 1 - Math.exp(-dt / 0.08);
-      if (dx * dx + dz * dz < 900) { st.vx += (dx / dt - st.vx) * k; st.vz += (dz / dt - st.vz) * k; }   // (a teleport is not a velocity)
+      const dx = p.x - st.px, dz = p.z - st.pz, dh = p.y - st.py, k = 1 - Math.exp(-dt / 0.08);
+      const ox = st.vx, oy = st.vy, oz = st.vz;
+      if (dx * dx + dz * dz + dh * dh < 900) {   // (a teleport is not a velocity)
+        st.vx += (dx / dt - st.vx) * k; st.vz += (dz / dt - st.vz) * k; st.vy += (dh / dt - st.vy) * k;
+        // ...and the change in it is what the springs feel
+        const ka = 1 - Math.exp(-dt / 0.05), M = INERTIA.aMax;
+        st.ax += (clampTo((st.vx - ox) / dt, -M, M) - st.ax) * ka;
+        st.ay += (clampTo((st.vy - oy) / dt, -M, M) - st.ay) * ka;
+        st.az += (clampTo((st.vz - oz) / dt, -M, M) - st.az) * ka;
+      } else { st.ax = 0; st.ay = 0; st.az = 0; }
       let dy = yaw - st.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       st.yawRate += (dy / dt - st.yawRate) * k;
+      let dp = r.x - st.rx; dp = Math.atan2(Math.sin(dp), Math.cos(dp));
+      let dr = r.z - st.rz; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+      st.wP += (dp / dt - st.wP) * k; st.wR += (dr / dt - st.wR) * k;
     }
-    st.px = p.x; st.pz = p.z; st.yaw = yaw;
+    st.px = p.x; st.pz = p.z; st.py = p.y; st.yaw = yaw; st.rx = r.x; st.rz = r.z;
   }
 
   function tick(dt) {
@@ -415,7 +527,7 @@ export function createAnims(ctx, W) {
       // Every hit lands on the body: a recoil through spine and head, away from where it came from
       offs.push(W.bus.on(EV.DAMAGE, (e) => {
         const st = W[e.who] ? states[e.who] : null;
-        if (st) recoil(st, e.x, e.z, Math.min(1.4, 0.3 + e.amount / 14) * (e.blocked ? 0.4 : 1));
+        if (st) recoil(st, e.x, e.z, Math.min(1.6, 0.35 + e.amount / 12) * (e.blocked ? 0.4 : 1), e.y);
       }));
       // Locomotion clips are ours for the whole match: game.js stops picking idle / walk / run for the player
       ctx.player.control.loco = false;

@@ -55,6 +55,8 @@ export const GRAPPLE = {
   // giant swing
   swingSetup: 0.45, swingW0: 2.5, swingAccel: 3.4, swingWMax: 8.5, swingTurns: 3, swingSpeed: 58, swingPerTurn: 26, swingUp: 15, swingDmg: 10, swingTurnCost: 5,
   // flight
+  // a thrown body off the mat: one heavy hop (its own gravity), slewing round as it ploughs; a toss tumbles a little off-axis
+  hopMin: 14, hopMax: 34, hopKeep: 0.6, hopGravity: 180, hopPitch: 0.05, slew: 0.022, tossRoll: 0.9, swingSpin: 0.55,
   gravity: 70, slideDecel: 95, smashMin: 42, bldgDmg: 8, bldgSpeedDmg: 0.045, landSpeedDmg: 0.08,
   ropeHp: 3,
   // pin
@@ -91,7 +93,7 @@ const angDiff = (a, b) => { const d = a - b; return Math.atan2(Math.sin(d), Math
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
-const mkFlight = () => ({ on: false, V: null, by: null, type: '', mode: '', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, roll: 0, spinP: 0, spinR: 0,
+const mkFlight = () => ({ on: false, V: null, by: null, type: '', mode: '', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, roll: 0, spinP: 0, spinR: 0, spinY: 0, hop: 0, hopV: 0,
   count: 0, rebounds: 0, t: 0, impact: 0, landed: false, mom: 0 });
 
 /** @returns the grapple runtime (see the members' comments) */
@@ -461,6 +463,7 @@ export function createGrapple(ctx, W) {
             G.swingSpeed + G.swingPerTurn * Math.min(G.swingTurns, turns), G.swingUp + 3 * Math.min(G.swingTurns, turns));
           flightOf(V).count = n; flightOf(V).mom = 14; // (the wrecking-ball hits already paid)
           flightOf(V).pitch = -HALF_PI; flightOf(V).yaw = hold.ang + Math.PI; flightOf(V).spinP = 0; flightOf(V).spinR = 0;
+          flightOf(V).spinY = hold.omega * G.swingSpin; // (let go mid-turn: it keeps turning, flat, like a thrown plate)
           releaseThrower(A, 0.6);
         }
         break;
@@ -481,7 +484,9 @@ export function createGrapple(ctx, W) {
     f.on = true; f.V = V; f.by = by; f.type = type; f.mode = mode;
     f.x = x; f.y = y; f.z = z; f.vx = dx * speed; f.vz = dz * speed; f.vy = up;
     f.yaw = mode === 'run' ? Math.atan2(dx, dz) : V.root.rotation.y; f.pitch = V.root.rotation.x; f.roll = mode === 'air' ? V.root.rotation.z : 0;
-    f.spinP = mode === 'air' ? -(2.5 + speed * 0.02) : 0; f.spinR = 0;
+    f.spinP = mode === 'air' ? -(2.5 + speed * 0.02) : 0; f.spinR = 0; f.spinY = 0; f.hop = 0; f.hopV = 0;
+    // (a toss never leaves the hands dead square: a little roll goes with the tumble)
+    if (type === 'toss') f.spinR = (Math.random() < 0.5 ? -1 : 1) * GRAPPLE.tossRoll * (0.5 + 0.5 * Math.random());
     f.count = 0; f.rebounds = 0; f.t = 0; f.impact = 0; f.landed = false; f.mom = 0;
     V.held = true; V.targetable = false; V.solid = false; V.lean = 0;
     V.vel.set(0, 0, 0);
@@ -736,14 +741,18 @@ export function createGrapple(ctx, W) {
         const k = 1 - Math.exp(-16 * dt);
         f.pitch += (target - f.pitch) * k; f.roll += (0 - f.roll) * k;
       } else { f.pitch += f.spinP * dt; f.roll += f.spinR * dt; }
+      f.yaw += f.spinY * dt;
       if (f.y <= V.lieY) {
         f.y = V.lieY;
         f.pitch = -HALF_PI; f.roll = 0;
-        const base = f.type === 'swing' ? G.swingDmg : G.tossDmg;
+        const base = f.type === 'swing' ? G.swingDmg : G.tossDmg, down = -f.vy;
         const surface = impact(V, f.by, f.type, base, f.type === 'swing' ? 0.55 : 0.5, false);
         f.mode = 'slide'; f.landed = true;
         const keep = surface === 'water' ? 0.3 : 0.55;
         f.vx *= keep; f.vz *= keep; f.vy = 0;
+        // Off the mat once, and slewing round: the way it was turning, or whichever way the ground takes it
+        f.hop = 0; f.hopV = surface === 'water' ? 0 : Math.min(G.hopMax, Math.max(G.hopMin, down * G.hopKeep));
+        f.spinY = f.spinY * 0.5 + (Math.random() < 0.5 ? -1 : 1) * speed * G.slew * (0.4 + 0.6 * Math.random());
       }
       V.setPose(f.x, f.y, f.z, f.yaw, f.pitch, f.roll);
       return;
@@ -751,8 +760,14 @@ export function createGrapple(ctx, W) {
     // slide: on its back, ploughing to a stop
     const ns = Math.max(0, speed - G.slideDecel * dt);
     if (speed > 0) { f.vx *= ns / speed; f.vz *= ns / speed; }
-    V.setPose(f.x, V.lieY, f.z, f.yaw, -HALF_PI, 0);
-    if (ns < 4) {
+    if (f.hopV !== 0 || f.hop > 0) {
+      f.hopV -= G.hopGravity * dt; f.hop += f.hopV * dt;
+      if (f.hop <= 0) { f.hop = 0; f.hopV = 0; }
+    }
+    f.yaw += f.spinY * dt; f.spinY *= Math.exp(-3.5 * dt);
+    // (in the hop the shoulders come up off the mat first)
+    V.setPose(f.x, V.lieY + f.hop, f.z, f.yaw, -HALF_PI + Math.min(0.3, f.hop * G.hopPitch), 0);
+    if (ns < 4 && f.hop <= 0) {
       f.on = false;
       V.targetable = true;
       V.land(f.by.id, 'throw', f.impact, false);

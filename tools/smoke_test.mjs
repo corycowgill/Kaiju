@@ -386,7 +386,16 @@ if (mode === 'wrestling') await step('wrestling', async () => {
     const pl = W.player;
     let rv = W.rival;
     qa.events.start();
-    const tick = (frames = 1) => { for (let f = 0; f < frames; f++) wr.update(1 / 60, 1 / 60); };
+    // (every frame: no layer on top of the clips may leave a bone without a number in it)
+    let badBone = '';
+    const bonesOk = () => {
+      for (const id of ['player', 'rival']) {
+        const fr = wr.W[id], rest = fr && fr.glb && fr.glb.rest;
+        if (!rest) continue;
+        for (let i = 0; i < rest.bones.length; i++) { const q = rest.bones[i].quaternion; if (!(q.x + q.y + q.z + q.w === q.x + q.y + q.z + q.w)) { badBone = `${fr.key} ${rest.names[i]} (${fr.state}, anim '${fr.animName}')`; return; } }
+      }
+    };
+    const tick = (frames = 1) => { for (let f = 0; f < frames; f++) { wr.update(1 / 60, 1 / 60); if (!badBone) { bonesOk(); if (badBone) fail(`wrestling: NaN bone rotation on ${badBone}`); } } };
     const until = (cond, sec = 10) => { for (let f = 0; f < sec * 60 && !cond(); f++) tick(); return !!cond(); };
     const n = (name) => qa.events.counts[name] || 0;
     const expect = (ok, what) => { if (!ok) fail(`wrestling (round ${round + 1}): ${what}`); };
