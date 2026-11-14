@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.13.3', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.13.4', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -2812,13 +2812,17 @@ async function _settleGpu(extraRoots = [], timeoutMs = 8000) {
     // raster program there, with the hud's prewarm drawn or not)
     const ticker = document.getElementById('wr-ticker'), call = wrRoot.querySelector('.wr-call');
     const was = { tk: ticker && ticker.className, call: call && [call.className, call.style.opacity, ...[...call.children].map((c) => c.textContent)] };
-    if (ticker) ticker.className = 'on hype';
+    // (in the booth's own dress: the speaker's tag, and a line long enough to be clamped to its two rows)
+    const tkLine = ticker && ticker.querySelector('.line'), wasLine = tkLine && tkLine.textContent;
+    if (ticker) ticker.className = 'on mike hype';
+    if (tkLine) tkLine.textContent = 'There is the bell! We are under way in Chicago, a hundred thousand strong in Grant Park, and what a night it is going to be for the heavyweight title!';
     if (call && call.children.length >= 3) {
       call.className = 'wr-call t-result'; call.style.opacity = '1';
       call.children[1].textContent = 'FIGHT!'; call.children[2].textContent = 'CHICAGO HEAVYWEIGHT TITLE';
     }
     await _steadyFrames(1500, 3500, true);
     if (ticker) ticker.className = was.tk;
+    if (tkLine) tkLine.textContent = wasLine;
     if (call && was.call) { call.className = was.call[0]; call.style.opacity = was.call[1]; [...call.children].forEach((c, i) => { c.textContent = was.call[2 + i]; }); }
     wrRoot.classList.toggle('lbox', had[0]); wrRoot.classList.toggle('cine', had[1]); body.classList.toggle('wr-cine', had[2]);
     await _steadyFrames(600, 3000, true); // (the letterbox's 0.4 s slide back)
@@ -6161,6 +6165,14 @@ function _hudPrewarmBegin() {
   }
   try {
     document.body.classList.add('hud-prewarm');
+    // Kaiju Havoc's callouts in motion (their slam-in, as havocCallout plays it): shown still, their first slam in
+    // play built a raster program (an 8 s freeze on this machine's driver, at the first building of a run)
+    for (const c of document.querySelectorAll('#hv-calls .wr-call')) {
+      if (!c.animate) continue;
+      const a = c.animate([{ opacity: 0, transform: 'scale(1.8)' }, { opacity: 1, transform: 'scale(0.95)', offset: 0.3 }, { opacity: 1, transform: 'scale(1.03)', offset: 0.6 }, { opacity: 0, transform: 'translateY(-10px) scale(1.02)' }],
+        { duration: 600, iterations: Infinity, direction: 'alternate' });
+      extra.push({ remove: () => a.cancel() });
+    }
     hud.classList.remove('hidden');
     powers.classList.remove('hidden');
     if (touchUI) for (const id of touchIds) $(id)?.classList.remove('hidden');

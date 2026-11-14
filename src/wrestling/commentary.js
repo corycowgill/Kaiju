@@ -142,7 +142,20 @@ export function createCommentary(ctx, W) {
       const rows = byTopic.get(t);
       if (!rows) continue;
       let n = 0;
-      for (const r of rows) if (fits(r[1], f) && n++ < 6) for (const u of r[2]) if (u[3] > 0) audio.voLoad(u[2]);
+      for (const r of rows) if (fits(r[1], f) && n++ < 6) for (const u of r[2]) if (u[3] > 0 && !primed.has(u[2])) { primed.add(u[2]); primeQ.push(u[2]); }
+    }
+    pump();
+  }
+  // Primed files come in two at a time: the bell asks for well over a hundred, and that many fetches and decodes at
+  // once stalled a phone. (A line that is due NOW does not wait in this queue: utter() and begin() load it directly.)
+  const primeQ = [], primed = new Set();
+  let priming = 0;
+  function pump() {
+    while (priming < 2 && primeQ.length) {
+      const p = audio.voLoad(primeQ.shift());
+      if (!p || !p.then) continue;
+      priming++;
+      p.then(() => { priming--; if (live) pump(); else primeQ.length = 0; });
     }
   }
   function tick(dtReal) {
