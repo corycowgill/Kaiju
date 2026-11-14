@@ -398,8 +398,8 @@ export function createMatch(ctx, W) {
           ctx.military.clear();
           toCorners(true);
           direct(W.player, null); direct(W.rival, null);
-          // Corner advice: the upgrade pick (pauses the sim; the pick calls back)
-          ctx.offerUpgrades(onPicked);
+          // (owner, 2026-11-13: no power-up pick between falls in the title match: back to the corners and straight to the bell)
+          onPicked();
         }
         break;
       case 'advice':

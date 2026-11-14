@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.13.0', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.13.1', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -3923,6 +3923,7 @@ function addRage(amount) {
 const MAX_PICKUPS = isMobile ? 10 : 24;
 let _dropT = -1, _dropN = 0;
 function maybeDropPickup(pos, source = 'building') {
+  if (_mode.id === 'wrestling') return; // (owner: no power-ups in the title match, whatever falls)
   const t = rollDrop(source);
   if (!t) return;
   const heart = t === 'hp' && state.hp < state.maxHp * 0.5;

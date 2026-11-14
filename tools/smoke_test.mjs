@@ -542,7 +542,8 @@ if (mode === 'wrestling') await step('wrestling', async () => {
       drive.player.pin = true;
       expect(until(() => n(EV.PIN_FALL) >= 1, 8), 'pin: three count never came on a beaten rival');
       expect(n(EV.PIN_COUNT) >= 3 && n(EV.FALL_END) === 1 && M.playerFalls === 1 && M.phase === 'between', `fall 1 not scored (falls ${M.playerFalls}, phase '${M.phase}')`);
-      expect(until(() => M.phase === 'fight' && M.fall === 2, 12) && upgradesOffered === 1, 'no corner advice / second fall after the first');
+      expect(until(() => M.phase === 'fight' && M.fall === 2, 12), 'no second fall after the first');
+      expect(upgradesOffered === 0, 'the title match offered a power-up pick between falls (owner: it must not)');
       expect(pl.state === 'neutral' && rv.state === 'neutral' && rv.hp > rv.maxHp * 0.5, 'fighters were not reset for the second fall');
       // ---- a knockout is a fall: forced cover, three count, the match is won ----
       qa.ko('rival');

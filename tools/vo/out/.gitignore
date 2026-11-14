@@ -1,2 +1,9 @@
 tts.log
-suspect.json
+tts_mike.log
+design.log
+build.log
+suspect*.json
+ab/
+takes/
+status.json
+queue_mike.sh

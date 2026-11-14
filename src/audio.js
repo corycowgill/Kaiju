@@ -7,7 +7,7 @@
 import { cachedFetch } from './assetCache.js';
 
 const SFX_DIR = 'assets/sfx/';
-const VO_DIR = 'assets/vo/', VO_GAIN = 2.4; // (the master runs at 0.45: the booth is the loudest thing that is not an explosion)
+const VO_DIR = 'assets/vo/', VO_REC = 2, VO_GAIN = 2.4; // (the master runs at 0.45: the booth is the loudest thing that is not an explosion)
 
 // name: [variations, gain, maxVoices, cooldown (s), rate jitter (+/-)]
 // variations > 1 load as name_1..name_N, otherwise just name.
@@ -1015,7 +1015,8 @@ class Audio {
     const M = this._vo || (this._vo = new Map());
     let p = M.get(id);
     if (!p) {
-      p = cachedFetch(VO_DIR + id + '.mp3')
+      // (plain fetch with the recording's version: a re-recorded line keeps its file name, and must not come back from a cache)
+      p = fetch(VO_DIR + id + '.mp3?r=' + VO_REC).then((r) => { if (!r.ok) throw new Error('vo ' + r.status); return r.arrayBuffer(); })
         .then((arr) => new Promise((resolve, reject) => { this.ctx.decodeAudioData(arr, resolve, reject); }))
         .catch(() => null);
       M.set(id, p);
