@@ -79,6 +79,12 @@ export const FINISHERS = Object.freeze({
   godzilla: { name: 'ATOMIC DRIVER', apex: 58, spin: 0 },
   ghidorah: { name: 'THUNDERFALL', apex: 88, spin: 2 },
   mecha:    { name: 'ROCKET BUSTER', apex: 72, spin: 1 },
+  cindervault: { name: 'CALDERA COLLAPSE', apex: 62, spin: 0 },
+  brineveil: { name: 'HADAL CRUSHER', apex: 67, spin: -1 },
+  rimehorn: { name: 'AVALANCHE DRIVER', apex: 55, spin: 0 },
+  vesperax: { name: 'AMETHYST GUILLOTINE', apex: 82, spin: 2 },
+  thornwake: { name: 'OLD GROWTH BREAKER', apex: 58, spin: 0 },
+  ferrumaw: { name: 'POLARITY CRASH', apex: 70, spin: 1 },
 });
 const FIN_T = { grab: 0.5, lift: 1.1, rise: 2.0, apex: 2.35, drop: 2.8, end: 3.7 };
 const TWO_PI = Math.PI * 2, HALF_PI = Math.PI / 2;

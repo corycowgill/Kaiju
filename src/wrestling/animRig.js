@@ -1,4 +1,4 @@
-// Procedural animation for the shared 24-bone kaiju rig: the rig model, the
+// Procedural animation for the shared kaiju biped rig: the rig model, the
 // pose solver and the clip baker. OWNER: animation engineer (with anims.js and
 // animDefs.js). No DOM, no per-frame allocation outside the bake.
 //
@@ -69,14 +69,14 @@ function chain(rest, a, b, c) {
  * Everything positional is in rig space (u).
  */
 export function buildRig(key, rest) {
-  const Q = QUIRKS[key] || QUIRKS.mecha;
   const n = rest.bones.length, I = rest.index;
+  const Q = QUIRKS[key] || { headOnNeck: false, tailBone: 'Tail', wings: 0.35 };
   const R = {
     key, quirks: Q, n, names: rest.names, parent: rest.parent, index: I,
     wp: rest.wp, wq: rest.wq, wqInv: rest.wq.map((q) => q.clone().invert()),
     unit: rest.unit, origin: rest.origin,
     iHips: I.Hips, iS1: I.Spine02, iS2: I.Spine01, iS3: I.Spine, iNeck: I.neck, iHead: I.Head,
-    iTail: Q.tailBone ? I[Q.tailBone] : -1,
+    iTail: I[Q.tailBone] ?? -1,
     arm: [null, null], leg: [null, null],
     hipH: rest.wp[I.Hips].y,
   };

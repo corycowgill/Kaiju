@@ -7,8 +7,10 @@ const CONTACTS={
   ghidorah:{stomp:[1.08,1.6],punch:[1.0,2.5]},
   mecha:{stomp:[1.08,1.6],punch:[1.25,2.5]},
 };
+const TRELLIS_CONTACTS = { stomp: [.78, 1.5], punch: [1.15, 2.3] };
+
 export function prepareMeleeAnimations(animations,key) {
-  const profile=CONTACTS[key]||CONTACTS.godzilla,result={};
+  const profile=CONTACTS[key]||TRELLIS_CONTACTS,result={};
   for(const kind of ['stomp','punch']) {
     const original=animations[kind];if(!original)continue;
     const [contact,end]=profile[kind],name=kind==='stomp'?'meleeStomp':'meleePunch';

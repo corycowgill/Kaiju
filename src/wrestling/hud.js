@@ -19,6 +19,7 @@ import { BINDINGS, wheelLayout } from './input.js';
 import { FINISHERS } from './grapple.js';
 import { PERSONAS } from './rivalAI.js';
 import { SIGNATURES } from './signatures.js';
+import { ROSTER } from './roster.js';
 
 // Face crop of assets/<key>.webp (640x360 in-engine renders) for the band portrait
 const PORTRAIT = {
@@ -26,7 +27,6 @@ const PORTRAIT = {
   ghidorah: { pos: '58% 38%', size: '230%' },
   mecha: { pos: '60% 6%', size: '250%' },
 };
-const EPITHET = { godzilla: 'THE ATOMIC TYRANT', ghidorah: 'THE THREE-HEADED STORM', mecha: 'THE IRON EXECUTIONER' };
 const HOME = { player: 'FROM THE DEPTHS OF LAKE MICHIGAN', rival: 'FROM THE WRECKAGE OF THE LOOP' };
 const FALL_JP = ['', '一本目', '二本目', '三本目', '四本目', '五本目'];
 const COUNT_WORD = ['', 'ONE!', 'TWO!', 'THREE!'];
@@ -132,10 +132,10 @@ export function createHud(ctx, W) {
     s.name.textContent = f.name;
     const defense = W.match.state.defense > 0;
     s.role.textContent = (id === 'player') === defense ? 'CHAMPION' : 'CHALLENGER';
-    const p = PORTRAIT[f.key] || PORTRAIT.godzilla;
-    s.port.style.backgroundImage = `url(assets/${f.key}.webp)`;
-    s.port.style.backgroundPosition = p.pos;
-    s.port.style.backgroundSize = p.size;
+    const p = PORTRAIT[f.key];
+    s.port.style.backgroundImage = `url(assets/${f.cfg.portrait})`;
+    s.port.style.backgroundPosition = p?.pos ?? '50% 30%';
+    s.port.style.backgroundSize = p?.size ?? '135%';
     s.hp = s.st = s.mo = -1; s.chipTxt = ''; s.chip.textContent = ''; s.chip.className = 'chip';
     s.crit = s.gassed = s.full = s.out = false;
     s.root.classList.remove('crit', 'gassed', 'full', 'out');
@@ -418,9 +418,10 @@ export function createHud(ctx, W) {
     const defense = W.match.state.defense > 0;
     c.querySelector('.role').textContent = ((id === 'player') === defense ? 'THE CHAMPION' : 'THE CHALLENGER');
     c.querySelector('.nm').textContent = f.name;
-    c.querySelector('.ep').textContent = EPITHET[f.key] || '';
-    c.querySelector('.st').textContent = HOME[id];
-    c.querySelector('.pic i').style.backgroundImage = `url(assets/${f.key}.webp)`;
+    c.querySelector('.ep').textContent = f.cfg.epithet;
+    const home = ROSTER[f.key]?.home;
+    c.querySelector('.st').textContent = home && !PORTRAIT[f.key] ? `FROM ${home.toUpperCase()}` : HOME[id];
+    c.querySelector('.pic i').style.backgroundImage = `url(assets/${f.cfg.portrait})`;
     const d = id === 'player' ? -1 : 1, ms = 3400;
     cardT[id === 'player' ? 0 : 1] = ms / 1000;
     play(c, reduced ? [{ opacity: 1 }, { opacity: 1, offset: 0.9 }, { opacity: 0 }] : [
@@ -617,7 +618,6 @@ export function createHud(ctx, W) {
     el = resolve();
     if (!el) return false;
     if (el.defend) { el.defend.addEventListener('click', onDefend); el.defend.addEventListener('touchstart', onDefend, { passive: false }); }
-    for (const k of ['godzilla', 'ghidorah', 'mecha']) { const im = new Image(); im.src = `assets/${k}.webp`; } // decoded before the first card
     return true;
   }
 

@@ -69,7 +69,8 @@ export class LoneKaijuAI {
       this.phase='approach';this.timer=s.kaijuHP<s.maxKaijuHP*.4?1:1.5;
     }
     s.warning=this.phase==='windup'?this.timer:0;
-    s.attackLabel=this.kind==='stomp'?'STOMP — MOVE OR JUMP':this.kind==='punch'?'PUNCH — DODGE SIDEWAYS':'AIMED BEAM — KEEP MOVING';
+    s.attackLabel=this.kind==='stomp'?'STOMP — MOVE OR JUMP':this.kind==='punch'?'PUNCH — DODGE SIDEWAYS':
+      `${state.monsterCfg?.beam?.name || 'AIMED BEAM'} — KEEP MOVING`;
   }
   strike(s) {
     if(s.role==='helicopter'||this.strikeResolved)return;
@@ -106,13 +107,16 @@ export class LoneKaijuAI {
     const cover=this.coverQuery.nearest(world,this.ray,reach,true)?.building;
     if(cover)reach=this.coverQuery.result.distance;
     this.impact.copy(this.origin).addScaledVector(this.direction,reach);
-    world.spawnBeam(this.origin.clone(),this.direction.clone(),reach,0x75dfff,0xb2f5ff);
+    const config = state.monsterCfg;
+    const power = world.spawnKaijuPower?.(config, 'beam', this.origin, { direction: this.direction, extent: reach });
+    if (!power) world.spawnBeam(this.origin.clone(),this.direction.clone(),reach,0x75dfff,0xb2f5ff);
     const along=this.hit.copy(pos).sub(this.origin).dot(this.direction);
     if(!this.hitPlayer&&along>=0&&along<reach+(cover?0:2)&&this.ray.distanceSqToPoint(pos)<16) {
       s.hp-=35;this.hitPlayer=true;
     }
     if(cover)cover.damage(35,this.impact,world);
     if(!this.impactShown){
+      if (power) world.spawnKaijuPower(config, 'impact', this.impact, { extent: 10 });
       if(world.spawnEnergyImpact)world.spawnEnergyImpact(this.impact.clone(),this.direction.clone().negate());
       else world.spawnExplosion(this.impact.clone(),.8);
       this.impactShown=true;

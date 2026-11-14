@@ -45,11 +45,11 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const angDiff = (a, b) => { const d = a - b; return Math.atan2(Math.sin(d), Math.cos(d)); };
 
 /**
- * The three wrestlers. Weights are relative within a group; probabilities are
+ * Wrestling personas. Weights are relative within a group; probabilities are
  * 0..1 at full skill unless noted. What a player can learn about each one is
  * in `tells` (documentation only: the numbers above it are what produce them).
  */
-export const PERSONAS = Object.freeze({
+const BASE_PERSONAS = {
   // Gorrak: the bruising tyrant. Walks you down, trades instead of blocking, ends strings with the big right hand, slams.
   godzilla: {
     id: 'tyrant', react: 1.15, space: 11, burst: [2, 4], lull: [0.9, 2.0], sprint: 0.15,
@@ -95,6 +95,46 @@ export const PERSONAS = Object.freeze({
     walk: 0.92, noSell: 0, sig: [3.0, 2.6], ropeRun: 0, dive: 0, cheap: 1, cockyPin: 0.1, workBack: 1, bldgTaunt: 0.5,
     fireUp: 0.5, vsFire: 'guard', weapon: 1.0, spotLove: 0.8, bldg: 0.9, bldgGap: 55, bldgShow: 0, bldgSmash: 0.4, vsBldg: 'dodge',
     tells: 'guards strings, so grab it; answers a blocked string with a counter-heavy (stop after the third hit and block: reversal); steps back and fires the cannon when you stand off (sidestep late, punish the recovery); punishes what you miss; slow on its feet, it cannot run you down; a heel: it waits by you as you get up and jumps you (block on the way up), stomps you while you are down, and works your back with the CIRCUIT BREAKER and SYSTEM CRASH (each makes your kick-outs harder this fall)',
+  },
+};
+
+const { godzilla: bruiser, ghidorah: showman, mecha: technician } = BASE_PERSONAS;
+export const PERSONAS = Object.freeze({
+  ...BASE_PERSONAS,
+  cindervault: {
+    ...bruiser, id: 'cindervault', space: 8, noSell: .31, bldg: 1.7,
+    w: { ...bruiser.w, heavy: 1.6, rush: .7 }, sig: [3.9, 2.2],
+    pw: { beam: .65, roar: 1.75, charge: 1.15, stomp: .75 },
+    tells: 'Closes the gap, trades heavy strikes and looks for a Caldera Chokebomb out of a lock-up.',
+  },
+  brineveil: {
+    ...showman, id: 'brineveil', space: 25, circle: 1.45, dive: .8, ropeRun: 1.1, taunt: .25,
+    pw: { beam: 1.15, roar: 1.55, charge: .85, stomp: .4 }, sig: [2, 3.6],
+    tells: 'Circles outside striking distance, then closes for Riptide Suplex or fires Abyssal Lance.',
+  },
+  rimehorn: {
+    ...bruiser, id: 'rimehorn', space: 14, react: 1.28, guard: .8, noSell: .32, sprint: .07,
+    w: { ...bruiser.w, string: .7, grab: 1.65, feint: .05 }, sig: [3.4, 2.5],
+    pw: { beam: 1.2, roar: 1.55, charge: .5, stomp: .85 },
+    tells: 'Plants its feet, guards and counters an approach with a Whiteout or a Permafrost Drop.',
+  },
+  vesperax: {
+    ...showman, id: 'vesperax', react: .8, space: 16, sprint: .8, ender: .4, ropeRun: 1.6, dive: 2.2,
+    w: { ...showman.w, string: 1.4, rush: 1.65 }, sig: [3.6, 2.9],
+    pw: { beam: .45, roar: .55, charge: 1.85, stomp: .45 },
+    tells: 'Darts in with short strings and Scythe Dash. A missed dash opens a counter.',
+  },
+  thornwake: {
+    ...bruiser, id: 'thornwake', space: 12, guard: .68, showHold: .65, bldg: .85,
+    lock: { ...bruiser.lock, swing: 1.3, slam: 2 }, sig: [3.8, 2.8],
+    pw: { beam: .9, roar: 1.5, charge: .6, stomp: 1.0 },
+    tells: 'Works from a wide stance, then takes the fight to the ground with Rootlock Slam.',
+  },
+  ferrumaw: {
+    ...technician, id: 'ferrumaw', space: 27, workBack: .2, cheap: .55, zoner: 1.75,
+    w: { ...technician.w, heavy: 1.05, rush: .65 }, sig: [2.7, 3.8],
+    pw: { beam: 1.8, roar: 1.1, charge: 1.35, stomp: .35 },
+    tells: 'Waits for a whiff, then intercepts the recovery with Rail Burst or Coil Crash.',
   },
 });
 

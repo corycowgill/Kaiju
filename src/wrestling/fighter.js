@@ -980,8 +980,14 @@ export class Fighter {
 
   // ------------------------------------------------------------------ the rival's signature powers
   _startPower(name) {
-    const def = POWERS[name], foe = this.opponent;
-    if (!def || this.cd[name] > 0 || this.momentum < def.cost) return false;
+    const base = POWERS[name], foe = this.opponent;
+    if (!base || this.cd[name] > 0 || this.momentum < base.cost) return false;
+    const classic = this.cfg.ultimateName && this.cfg[name];
+    const def = classic ? {
+      ...base,
+      dmg: base.dmg * classic.damage / 220,
+      radius: classic.radius ? classic.radius * .68 : base.radius,
+    } : base;
     this.cd[name] = def.cd;
     if (name === 'ult') this.spendMomentum(); else this.momentum = this.momentum - def.cost;
     this.setState('attacking', def.windup + def.active + def.recover, null);
@@ -1011,7 +1017,7 @@ export class Fighter {
   }
   _powerName(power) {
     const c = this.cfg;
-    return power === 'beam' ? c.beam.name : power === 'roar' ? c.roar.name : power === 'charge' ? c.charge.name : power === 'stomp' ? 'KAIJU STOMP' : 'KAIJU FURY';
+    return power === 'beam' ? c.beam.name : power === 'roar' ? c.roar.name : power === 'charge' ? c.charge.name : power === 'stomp' ? 'KAIJU STOMP' : c.ultimateName || 'KAIJU FURY';
   }
   _emitFired(def, x, y, z, dx, dz, range, radius) {
     const e = this.W.bus.ev(EV.POWER_FIRED);

@@ -1516,7 +1516,7 @@
     --top: 112px; --bot: 84px; --gut: 32px;
     --ls: 1; --ld: 0.27;                              /* logo scale: hero / docked */
     --cut: 22px;
-    display: block; padding: 0; overflow: hidden; background: #050102; text-align: left;
+    display: block; padding: 0; overflow: hidden; overflow: clip; background: #050102; text-align: left;
   }
   #menu > * { position: absolute; }
   #menu.mn-loading { display: none; } /* under the loading screen (game.js): no reel, no CSS loops */
@@ -1767,7 +1767,7 @@
   .mn-fighters { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 30px; padding: 0 var(--gut); }
   .fs-show { position: relative; min-height: 0; overflow: hidden; }
   .fs-pic {
-    position: absolute; left: -4%; right: -4%; top: 0; bottom: 0; background: #0b0205 50% 38% / cover no-repeat;
+    position: absolute; left: -4%; right: -4%; top: 0; bottom: 0; background: #0b0205 50% 12% / cover no-repeat;
     -webkit-mask-image: radial-gradient(ellipse 50% 56% at 50% 50%, #000 40%, transparent 100%);
     mask-image: radial-gradient(ellipse 50% 56% at 50% 50%, #000 40%, transparent 100%);
   }
@@ -1782,12 +1782,13 @@
     background: var(--c-red); clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
   }
   .fs-name {
-    font: 900 96px/0.92 'Noto Sans JP', sans-serif; letter-spacing: -1px; color: var(--c-cream); text-transform: uppercase;
+    font: 900 clamp(32px, 6.15vw, 96px)/0.92 'Noto Sans JP', sans-serif; letter-spacing: -1px; color: var(--c-cream); text-transform: uppercase;
     transform: skewX(-8deg); transform-origin: 0 100%;
     text-shadow: 0 4px 0 #6a0d12, 0 8px 0 #1a0004, 0 14px 30px rgba(0, 0, 0, 0.8), 0 0 40px rgba(255, 60, 60, 0.35);
   }
   .fs-epi { display: flex; align-items: baseline; gap: 14px; font: 400 22px/1 var(--f-display); letter-spacing: 4px; color: var(--c-gold); }
   .fs-epi .jp { font: 700 18px/1 var(--f-jp); letter-spacing: 0.2em; color: var(--c-kanji); }
+  .fs-description { max-width: 520px; margin: 0; font: 400 15px/1.45 var(--f-jp); color: var(--c-cream); }
   .fs-stats { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 14px; align-items: center; max-width: 520px; margin-top: 6px; }
   .fs-stats span { font: 400 16px/1 var(--f-display); letter-spacing: 3px; color: var(--c-muted); }
   .fs-stats b { font: 400 18px/1 var(--f-display); letter-spacing: 1px; color: var(--c-cream); text-align: right; min-width: 36px; }
@@ -1799,7 +1800,7 @@
     background: rgba(10, 2, 4, 0.75); border: 1px solid rgba(255, 230, 200, 0.18);
   }
   .fs-powers svg { width: 20px; height: 20px; overflow: visible; fill: var(--ac); stroke: rgba(10, 0, 4, 0.9); stroke-width: 1.3; stroke-linejoin: round; paint-order: stroke; }
-  .fs-powers .beam { --ac: #5ce1ff; } .fs-powers .roar { --ac: #ff9a3c; } .fs-powers .charge { --ac: #ffd24a; }
+  .fs-powers .beam { --ac: #5ce1ff; } .fs-powers .roar { --ac: #ff9a3c; } .fs-powers .charge { --ac: #ffd24a; } .fs-powers .ult { --ac: #fa8197; }
   .fs-powers svg .d { fill: #1a0006; stroke: none; } .fs-powers svg .t { fill: #fff4dc; stroke: none; }
   .fs-powers svg .s { fill: none; stroke: var(--ac); stroke-width: 2.4; stroke-linecap: round; }
   .fs-powers svg .z, .fs-powers svg .o { fill: none; stroke: #1a0006; stroke-width: 1.6; }
@@ -1812,7 +1813,8 @@
   @keyframes fsPic { from { transform: translate3d(50px, 0, 0) scale(1.05); opacity: 0.2; } to { transform: none; opacity: 1; } }
   @keyframes fsInfo { from { transform: translate3d(-40px, 0, 0); opacity: 0; } to { transform: none; opacity: 1; } }
 
-  .fs-side { display: flex; flex-direction: column; gap: 12px; min-height: 0; padding-top: 4px; }
+  .fs-side { display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 4px 8px 8px 0; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
+  .fs-side > * { flex-shrink: 0; }
   .fs-label {
     display: flex; align-items: center; gap: 10px; font: 400 18px/1 var(--f-display); letter-spacing: 5px; color: var(--c-gold); white-space: nowrap;
   }
@@ -1826,9 +1828,10 @@
   #menu .fs-label #levelTitle .jp-line { font-family: var(--f-jp); font-weight: 700; font-size: 12px; margin-right: 6px; }
   #menu .fs-stage-label::after { order: 3; }
 
-  #menu .monsters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  #menu .monsters { --roster-columns: 3; display: grid; grid-template-columns: repeat(var(--roster-columns), minmax(0, 1fr)); gap: 10px; }
   #menu .monster-card {
-    position: relative; width: auto; padding: 0; cursor: pointer; overflow: hidden; aspect-ratio: 1 / 1.05; max-height: 250px;
+    position: relative; width: auto; padding: 0; cursor: pointer; overflow: hidden; height: clamp(54px, 13vh, 138px);
+    container-type: inline-size;
     background: #12040a; border: 0; border-radius: 0; box-shadow: none; text-align: left;
     clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
     transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -1842,7 +1845,7 @@
   #menu .monster-card .preview::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 45%, rgba(5, 1, 2, 0.95)); }
   #menu .monster-card .preview video.card-video { z-index: 0; }
   #menu .monster-card h3 {
-    position: absolute; left: 12px; right: 10px; bottom: 9px; margin: 0; font: 400 28px/1 var(--f-display); letter-spacing: 3px;
+    position: absolute; left: 10px; right: 8px; bottom: 9px; margin: 0; font: 400 clamp(11px, 11cqi, 25px)/1 var(--f-display); letter-spacing: 0.04em;
     color: var(--c-cream); text-transform: uppercase; text-shadow: 0 2px 0 #1a0004;
   }
   #menu .monster-card p, #menu .monster-card .stat { display: none; }
@@ -1973,7 +1976,6 @@
     #menu { --ls: 0.8; --gut: 24px; }
     .mc-body b { font-size: 40px; }
     .mc-pitch { font-size: 13px; }
-    .fs-name { font-size: 76px; }
   }
   @media (max-width: 1000px) and (min-height: 541px) {
     #menu { --ls: 0.62; }
@@ -1985,7 +1987,6 @@
   @media (max-height: 760px) and (min-height: 541px) {
     #menu { --top: 96px; --bot: 74px; --ld: 0.24; }
     .mn-head { top: calc(-1 * var(--top) + 20px); }
-    .fs-name { font-size: 72px; }
     .mc-pitch { min-height: 0; }
   }
 
@@ -2022,9 +2023,10 @@
     .fs-show::before { font-size: 150px; }
     .fs-info { gap: 4px; }
     .fs-role { font-size: 12px; padding: 4px 9px 3px; }
-    .fs-name { font-size: 40px; text-shadow: 0 3px 0 #6a0d12, 0 5px 0 #1a0004, 0 8px 16px rgba(0, 0, 0, 0.8); }
+    .fs-name { font-size: clamp(24px, 5.1vw, 40px); text-shadow: 0 3px 0 #6a0d12, 0 5px 0 #1a0004, 0 8px 16px rgba(0, 0, 0, 0.8); }
     .fs-epi { font-size: 14px; letter-spacing: 2px; gap: 8px; }
     .fs-epi .jp { font-size: 12px; }
+    .fs-description { font-size: 12px; line-height: 1.3; }
     .fs-stats { gap: 3px 8px; margin-top: 2px; }
     .fs-stats span { font-size: 12px; letter-spacing: 2px; }
     .fs-stats b { font-size: 13px; min-width: 26px; }
@@ -2035,8 +2037,8 @@
     .fs-label .jp { font-size: 10px; }
     #menu .fs-label #levelTitle { display: none; }
     #menu .monsters { gap: 8px; }
-    #menu .monster-card { aspect-ratio: auto; height: 82px; max-height: none; }
-    #menu .monster-card h3 { font-size: 18px; left: 8px; bottom: 5px; letter-spacing: 2px; }
+    #menu .monster-card { height: clamp(48px, 14vh, 82px); }
+    #menu .monster-card h3 { font-size: clamp(10px, 11cqi, 18px); left: 6px; right: 4px; bottom: 5px; }
     #menu .monster-card .preview { font-size: 30px; }
     #menu .monster-card.selected::before { top: 6px; font-size: 12px; padding: 3px 6px 2px 10px; }
     #menu .levels { gap: 8px; }
@@ -2059,6 +2061,11 @@
     #loading-screen > .ld-mode { margin: -10px 0 12px; font-size: 13px; letter-spacing: 4px; }
   }
   @media (max-height: 540px) and (max-width: 700px) { #menu #deployment-selection { display: none; } }
+  @media (max-height: 540px) and (max-width: 620px) {
+    #menu .monsters { --roster-columns: 2; }
+    .mn-head b { font-size: clamp(18px, 4vw, 25px); letter-spacing: 1.5px; }
+    .mn-head .jp { display: none; }
+  }
   /* Phones: no reel, no spinning rays, no sheen (the still pushes in instead) */
   body.mobile .mn-sun { animation: none; }
   body.mobile .lg-havoc .fx { animation: none; }
@@ -2192,6 +2199,7 @@
         <div class="fs-role" id="fs-role">PLAYER 1</div>
         <div class="fs-name" id="fs-name" data-t="GORRAK">GORRAK</div>
         <div class="fs-epi"><span class="jp" id="fs-jp">暴君</span><span id="fs-epi">THE ATOMIC TYRANT</span></div>
+        <p class="fs-description" id="fs-description"></p>
         <div class="fs-stats" id="fs-stats"></div>
         <div class="fs-powers" id="fs-powers"></div>
       </div>
@@ -2541,73 +2549,74 @@
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.13.4",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.13.4",
-    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.13.4",
-    "./src/audio.js": "./src/audio.js?v=1.13.4",
-    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.13.4",
-    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.13.4",
-    "./src/carBatch.js": "./src/carBatch.js?v=1.13.4",
-    "./src/city.js": "./src/city.js?v=1.13.4",
-    "./src/effects.js": "./src/effects.js?v=1.13.4",
-    "./src/enemies.js": "./src/enemies.js?v=1.13.4",
-    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.13.4",
-    "./src/game.js": "./src/game.js?v=1.13.4",
-    "./src/intro.js": "./src/intro.js?v=1.13.4",
-    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.13.4",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.13.4",
-    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.13.4",
-    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.13.4",
-    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.13.4",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.13.4",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.13.4",
-    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.13.4",
-    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.13.4",
-    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.13.4",
-    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.13.4",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.13.4",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.13.4",
-    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.13.4",
-    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.13.4",
-    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.13.4",
-    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.13.4",
-    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.13.4",
-    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.13.4",
-    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.13.4",
-    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.13.4",
-    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.13.4",
-    "./src/look.js": "./src/look.js?v=1.13.4",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.13.4",
-    "./src/modelGallery.js": "./src/modelGallery.js?v=1.13.4",
-    "./src/monsters.js": "./src/monsters.js?v=1.13.4",
-    "./src/pickups.js": "./src/pickups.js?v=1.13.4",
-    "./src/powerVfx.js": "./src/powerVfx.js?v=1.13.4",
-    "./src/quality.js": "./src/quality.js?v=1.13.4",
-    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.13.4",
-    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.13.4",
-    "./src/vfx.js": "./src/vfx.js?v=1.13.4",
-    "./src/waterPlay.js": "./src/waterPlay.js?v=1.13.4",
-    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.13.4",
-    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.13.4",
-    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.13.4",
-    "./src/wrestling/carve.js": "./src/wrestling/carve.js?v=1.13.4",
-    "./src/wrestling/commentary.js": "./src/wrestling/commentary.js?v=1.13.4",
-    "./src/wrestling/commentaryLines.js": "./src/wrestling/commentaryLines.js?v=1.13.4",
-    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.13.4",
-    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.13.4",
-    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.13.4",
-    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.13.4",
-    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.13.4",
-    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.13.4",
-    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.13.4",
-    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.13.4",
-    "./src/wrestling/props.js": "./src/wrestling/props.js?v=1.13.4",
-    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.13.4",
-    "./src/wrestling/roster.js": "./src/wrestling/roster.js?v=1.13.4",
-    "./src/wrestling/signatures.js": "./src/wrestling/signatures.js?v=1.13.4",
-    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.13.4",
-    "./src/wrestling/spots.js": "./src/wrestling/spots.js?v=1.13.4",
-    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.13.4"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.14.0",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.14.0",
+    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.14.0",
+    "./src/audio.js": "./src/audio.js?v=1.14.0",
+    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.14.0",
+    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.14.0",
+    "./src/carBatch.js": "./src/carBatch.js?v=1.14.0",
+    "./src/city.js": "./src/city.js?v=1.14.0",
+    "./src/effects.js": "./src/effects.js?v=1.14.0",
+    "./src/enemies.js": "./src/enemies.js?v=1.14.0",
+    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.14.0",
+    "./src/game.js": "./src/game.js?v=1.14.0",
+    "./src/intro.js": "./src/intro.js?v=1.14.0",
+    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.14.0",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.14.0",
+    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.14.0",
+    "./src/kaijuPowers.js": "./src/kaijuPowers.js?v=1.14.0",
+    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.14.0",
+    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.14.0",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.14.0",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.14.0",
+    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.14.0",
+    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.14.0",
+    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.14.0",
+    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.14.0",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.14.0",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.14.0",
+    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.14.0",
+    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.14.0",
+    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.14.0",
+    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.14.0",
+    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.14.0",
+    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.14.0",
+    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.14.0",
+    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.14.0",
+    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.14.0",
+    "./src/look.js": "./src/look.js?v=1.14.0",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.14.0",
+    "./src/modelGallery.js": "./src/modelGallery.js?v=1.14.0",
+    "./src/monsters.js": "./src/monsters.js?v=1.14.0",
+    "./src/pickups.js": "./src/pickups.js?v=1.14.0",
+    "./src/powerVfx.js": "./src/powerVfx.js?v=1.14.0",
+    "./src/quality.js": "./src/quality.js?v=1.14.0",
+    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.14.0",
+    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.14.0",
+    "./src/vfx.js": "./src/vfx.js?v=1.14.0",
+    "./src/waterPlay.js": "./src/waterPlay.js?v=1.14.0",
+    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.14.0",
+    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.14.0",
+    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.14.0",
+    "./src/wrestling/carve.js": "./src/wrestling/carve.js?v=1.14.0",
+    "./src/wrestling/commentary.js": "./src/wrestling/commentary.js?v=1.14.0",
+    "./src/wrestling/commentaryLines.js": "./src/wrestling/commentaryLines.js?v=1.14.0",
+    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.14.0",
+    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.14.0",
+    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.14.0",
+    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.14.0",
+    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.14.0",
+    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.14.0",
+    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.14.0",
+    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.14.0",
+    "./src/wrestling/props.js": "./src/wrestling/props.js?v=1.14.0",
+    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.14.0",
+    "./src/wrestling/roster.js": "./src/wrestling/roster.js?v=1.14.0",
+    "./src/wrestling/signatures.js": "./src/wrestling/signatures.js?v=1.14.0",
+    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.14.0",
+    "./src/wrestling/spots.js": "./src/wrestling/spots.js?v=1.14.0",
+    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.14.0"
   }
 }
 </script>
@@ -2621,7 +2630,7 @@
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.13.4"></script>
-<script type="module" async src="./src/intro.js?v=1.13.4"></script>
+<script type="module" src="./src/game.js?v=1.14.0"></script>
+<script type="module" async src="./src/intro.js?v=1.14.0"></script>
 </body>
 </html>

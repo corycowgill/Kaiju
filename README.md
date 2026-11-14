@@ -18,11 +18,17 @@ There is no plot. There is a city. There is you. There is gravity and the sound 
 
 Pick your monster:
 
-| | Name | Vibe |
-|---|---|---|
+| Name | Vibe |
+|---|---|
 | Gorrak | Reptilian tyrant. Big HP, atomic breath. The classic. |
 | Tridon | Three-headed dragon. Faster, electric. Loud at parties. |
 | Mechra | Cybernetic war machine. Plasma cannon, missile barrage. Doesn't sleep. |
+| Cindervault | A basalt gorilla with molten seams and fists that crack the ground. |
+| Brineveil | A deep-sea angler with a luminous lure and a pressure wave that scatters enemies. |
+| Rimehorn | A glacier-armored musk ox that takes heavy punishment and charges through the line. |
+| Vesperax | A quick amethyst mantis with scythe-like forearms. |
+| Thornwake | A walking siege engine of ancient bark and living roots. |
+| Ferrumaw | A bio-metal pangolin that fires scrap from its magnetic scales. |
 
 Each one has a unique beam, roar, and charge attack with their own colors, costs, and damage profiles. Mostly the differences will be cosmetic until wave 4, when they will be very, very not.
 
@@ -89,19 +95,19 @@ This is a single-page web app -- no build step, no bundler, no npm install ritua
 index.html            # Shell, HUD, mobile controls, CSS, importmap
 src/
   game.js             # Main loop, scene/camera, player + powers, waves, upgrades
-  monsters.js         # Three selectable kaiju (stat configs + procedural fallback meshes)
+  monsters.js         # Selectable kaiju, stats, powers, and procedural fallback meshes
   city.js             # Procedural Tokyo layout + GLB building/debris placement
   enemies.js          # Tank, Helicopter, Mech, Jet, Artillery, Soldier, BossMech
   effects.js          # Legacy particle effects (explosions, sparks, beams)
   vfx.js              # Shader-based VFX manager with quality tiers + flipbook cache
-  kaijuLoader.js      # GLB model + animation loading for all three kaiju
+  kaijuLoader.js      # GLB model and animation loading for the kaiju roster
   pickups.js          # HP / rage / score pickups
   audio.js            # Procedural Web Audio synthesis
   quality.js          # Device detection + graphics quality tiers (low/med/high)
 assets/
   buildings/          # 22 Meshy AI GLB building models (landmarks + generic)
   debris/             # 6 Meshy AI GLB debris/rubble models
-  kaiju_model/        # Godzilla GLB animations (18 clips)
+  kaiju_model/        # Gorrak and the six new kaiju, each in one animated GLB
   ghidorah_model/     # Ghidorah GLB animations (21 clips)
   mecha_model/        # Mecha GLB animations (20 clips)
   godzilla.webp       # Character select portrait
@@ -110,11 +116,11 @@ assets/
   music.mp3           # Background music loop
 ```
 
-### 3D Models (Meshy AI GLBs)
+### 3D Models
 
-All 3D models are generated with [Meshy AI](https://www.meshy.ai/) and exported as `.glb` files. The game uses a two-phase template system: all GLB templates are loaded once during the loading screen, then cloned per-instance for buildings and debris.
+The original models were generated with [Meshy AI](https://www.meshy.ai/) and exported as `.glb` files. The game loads building and debris templates once during the loading screen and clones them as needed.
 
-**Kaiju** -- Each kaiju has 18-21 animation clips (idle, walk, run, sprint, turns, attacks, dance, death, etc.) loaded from separate GLB files. The `kaijuLoader.js` module de-duplicates files, creates an `AnimationMixer`, and exposes `play()` / `playOnce()` for seamless animation blending.
+**Kaiju** share a GLB format that packs each model, skin, textures, and animation clips into one file. The `kaijuLoader.js` module creates an `AnimationMixer` and exposes `play()` and `playOnce()` for animation blending.
 
 **Buildings** -- 22 unique building models spanning skyscrapers, condos, shopping centers, and Tokyo landmarks (Tokyo Tower, Skytree, Tokyo Dome, Buddhist temple, Shinto shrine, nuclear plant, etc.). Each is auto-scaled to a target height and given an AABB collision hitbox derived from its bounding box.
 

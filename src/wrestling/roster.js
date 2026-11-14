@@ -7,6 +7,12 @@ export const ROSTER = Object.freeze({
   godzilla: Object.freeze({ align: 'face', name: 'Gorrak', home: 'Lake Michigan', style: 'brawler' }),
   ghidorah: Object.freeze({ align: 'heel', name: 'Tridon', home: 'parts unknown', style: 'showman' }),
   mecha:    Object.freeze({ align: 'heel', name: 'Mechra', home: 'the laboratory', style: 'technician' }),
+  cindervault: Object.freeze({ align: 'heel', name: 'Cindervault', home: 'a buried caldera', style: 'brawler' }),
+  brineveil: Object.freeze({ align: 'heel', name: 'Brineveil', home: 'the hadal trenches', style: 'ambusher' }),
+  rimehorn: Object.freeze({ align: 'face', name: 'Rimehorn', home: 'the Arctic icefields', style: 'powerhouse' }),
+  vesperax: Object.freeze({ align: 'heel', name: 'Vesperax', home: 'the amethyst caverns', style: 'duelist' }),
+  thornwake: Object.freeze({ align: 'face', name: 'Thornwake', home: 'an old-growth forest', style: 'grappler' }),
+  ferrumaw: Object.freeze({ align: 'face', name: 'Ferrumaw', home: 'the foundry district', style: 'bruiser' }),
 });
 
 /** 'face' | 'heel' for a monster key. */

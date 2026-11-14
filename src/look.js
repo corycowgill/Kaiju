@@ -30,6 +30,7 @@
 //  - a time of day that slides from golden hour to dusk: lights, sky, fog,
 //    exposure, bloom and grade are all uniform writes.
 import * as THREE from 'three';
+import { MONSTERS } from './monsters.js';
 
 const N = 28;
 // Shadow height field range: the map's R channel is height / HS_RANGE
@@ -663,7 +664,7 @@ function _blob(i, root, slot) {
 
 // ---------------------------------------------------------------- kaiju
 // Per-slot treatment (0 player, 1 rival). rim multiplies the sun-side rim
-// colour; tint / sat normalise the albedo so the three read as one family.
+// colour; tint and saturation keep the roster's albedo in a similar range.
 const _kaiju = [
   { rim: [1, 1, 1], power: 2.4, tint: [1, 1, 1], sat: 1, radius: 9, height: 30, root: null },
   { rim: [1, 1, 1], power: 2.4, tint: [1, 1, 1], sat: 1, radius: 9, height: 30, root: null },
@@ -681,12 +682,15 @@ const KAIJU_STYLE = {
  *  opts.tint multiplies its albedo on top). Idempotent. */
 export function styleKaiju(root, slot, key, opts = {}) {
   if (!root) return;
-  const st = KAIJU_STYLE[key] || { gain: 1, sat: 1, rough: 0.7, radius: 9, height: 30 };
+  const config = MONSTERS[key];
+  const legacy = KAIJU_STYLE[key];
+  const st = legacy ?? config?.look ?? { gain: 1, sat: 1, rough: 0.7 };
   const k = _kaiju[slot];
   const t = opts.tint || (slot === 1 ? [1.0, 0.93, 0.93] : [1, 1, 1]);
   k.tint[0] = st.gain * t[0]; k.tint[1] = st.gain * t[1]; k.tint[2] = st.gain * t[2];
   k.sat = st.sat * (opts.sat || 1);
-  k.radius = st.radius; k.height = st.height;
+  k.radius = legacy?.radius ?? 9 * (config?.stats.scale ?? 1);
+  k.height = legacy?.height ?? new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).y;
   // The rival's sun-side rim leans magenta-red, the player's stays gold
   k.rim = opts.rim || (slot === 1 ? [1.25, 0.42, 0.55] : [1, 1, 1]);
   k.root = root;

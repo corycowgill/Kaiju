@@ -322,8 +322,8 @@ export const DEFS = {
   } },
 
   // ---- signature grapples (signatures.js): 2 s clips stretched to each move's length; the pose functions work in its real seconds ----
-  sig_a: { dur: 2.0, pose(t, P, R) { stance(P, R); const d = (SIGNATURES[R.key] || SIGNATURES.godzilla)[0]; (SIG_A[R.key] || SIG_A.godzilla)(t * d.dur / 2, P, R, d.T, d.dur); } },
-  sig_b: { dur: 2.0, pose(t, P, R) { stance(P, R); const d = (SIGNATURES[R.key] || SIGNATURES.godzilla)[1]; (SIG_B[R.key] || SIG_B.godzilla)(t * d.dur / 2, P, R, d.T, d.dur); } },
+  sig_a: { dur: 2.0, pose(t, P, R) { signaturePose(t, P, R, 0); } },
+  sig_b: { dur: 2.0, pose(t, P, R) { signaturePose(t, P, R, 1); } },
   sig_victim: { dur: 1.2, loop: true, rootDriven: true, pose(t, P, R, dur) {   // choked, inverted, headlocked: clawing at the grip, legs kicking
     limp(P, R);
     const a = t / dur * TAU;
@@ -882,6 +882,24 @@ const FIN_OVER = {
 // move, T = its beats and D = its length (signatures.js SIGNATURES). Each starts
 // from the lock-up and ends back in the stance.
 // ---------------------------------------------------------------------------
+function signaturePose(t, P, R, slot) {
+  stance(P, R);
+  const d = (SIGNATURES[R.key] || SIGNATURES.godzilla)[slot];
+  const time = t * d.dur / 2;
+  if (!d.lift) {
+    const poses = slot === 0 ? SIG_A : SIG_B;
+    (poses[R.key] || poses.godzilla)(time, P, R, d.T, d.dur);
+    return;
+  }
+  const { grip, peak, hit } = d.T;
+  const wheel = d.id === 'wheel';
+  blend(P, R, 1 - ramp(time, grip * .65, grip), K.tieUp);
+  blend(P, R, pulse(time, grip * .65, grip, grip + .1, (grip + peak) * .5), K.liftSquat);
+  blend(P, R, pulse(time, grip, peak, peak + .05, hit), wheel ? K.heaveBack : K.liftTop);
+  blend(P, R, pulse(time, peak, hit, hit + .12, d.dur), wheel ? K.bridge : K.driveDown);
+  P.hy += .7 * wobble(time, hit, 25, 8);
+}
+
 const SIG_A = {
   // Gorrak, TYRANT CHOKESLAM: one hand on the throat, up at full stretch, then the whole body drives it through the mat
   godzilla(s, P, R, T, D) {

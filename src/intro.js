@@ -123,21 +123,17 @@ function playIntro() {
 // behind the game).
 const menuEl = document.getElementById('menu');
 const menuShown = () => !!menuEl && !menuEl.classList.contains('hidden');
-function cardKey(card) {
-  const h = card.querySelector('h3');
-  return h ? h.textContent.trim().toLowerCase() : '';
-}
 function ensurePreview(card) {
   let v = card.querySelector('video.card-video');
   if (v || card.dataset.noVideo) return v;
   const prev = card.querySelector('.preview');
-  const key = cardKey(card);
-  if (!prev || !key) return null;
+  const file = card.dataset.previewVideo;
+  if (!prev || !file) return null;
   v = makeVideo('', { loop: true, preload: 'none' });
   v.className = 'card-video';
   v.addEventListener('error', () => { if (!v.getAttribute('src')) return; card.dataset.noVideo = '1'; v.remove(); });
   v.addEventListener('playing', () => v.classList.add('on'));
-  v.src = VID + 'preview_' + key + '.mp4';
+  v.src = VID + file;
   prev.appendChild(v);
   return v;
 }
@@ -145,7 +141,7 @@ function updateCard(card, hovered) {
   const active = menuShown() && (hovered || card.classList.contains('selected') || card.classList.contains('pad-focus'));
   if (active) {
     const v = ensurePreview(card);
-    if (v && !v.getAttribute('src')) v.src = VID + 'preview_' + cardKey(card) + '.mp4';
+    if (v && !v.getAttribute('src')) v.src = VID + card.dataset.previewVideo;
     if (v && v.paused) v.play().catch(() => {});
   } else {
     const v = card.querySelector('video.card-video');

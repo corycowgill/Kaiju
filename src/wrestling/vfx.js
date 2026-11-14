@@ -1280,6 +1280,7 @@ export function createVfx(ctx, W) {
     shockLater(0, x, z, R, col.getHex());
     shockLater(0.18, x, z, R * 0.6, alt.getHex());
     flashLight(x, 14, z, col, 16, 0.7);
+    if (A && ctx.world.spawnKaijuPower?.(A.cfg, 'ult', new THREE.Vector3(x, .3, z), { extent: R })) return;
     emitter(E_SMOLDER, x, 0, z, 9, col, R * 0.35, 0.6);
     emitter(E_EMBERS, x, 0, z, 6, col, R * 0.5, 0.2);
     if (key === 'ghidorah') {
@@ -1634,6 +1635,16 @@ export function createVfx(ctx, W) {
         let t = teles[0];
         for (let i = 0; i < teles.length; i++) if (!teles[i].on) { t = teles[i]; break; }
         t.on = true; t.t = 0; t.dur = Math.max(0.15, e.dur); t.r = e.radius; t.x = e.x; t.z = e.z; t.who = e.who; t.target = e.target;
+      });
+      on(EV.POWER_FIRED, (e) => {
+        // Player powers are already rendered by the city combat path.
+        if (e.who !== 'rival' || e.power === 'stomp') return;
+        const f = fighter(e.who);
+        if (!f || !ctx.world.spawnKaijuPower) return;
+        const radial = e.power === 'roar' || e.power === 'ult';
+        const pos = new THREE.Vector3(e.x, radial ? f.pos.y : e.y, e.z);
+        const direction = radial ? undefined : new THREE.Vector3(e.dirX, 0, e.dirZ);
+        ctx.world.spawnKaijuPower(f.cfg, e.power, pos, { extent: radial ? e.radius : e.range, direction });
       });
       on(EV.POWER_HIT, fxPower);
       on(EV.STAGGER, fxStagger);

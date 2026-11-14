@@ -3,6 +3,7 @@ import { prepareMeleeAnimations } from './kaijuMelee.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { cachedFetch, normalizeGLTFMaterials, withParseSlot, reportLoadError } from './assetCache.js';
+import { MONSTERS } from './monsters.js';
 
 /** Fetch a GLB via the asset cache, then parse it with GLTFLoader. */
 function _cachedGLB(loader, url) {
@@ -93,15 +94,11 @@ const ONE_SHOT_KEYS = new Set([
   'cast1', 'cast2', 'cast3', 'shrug', 'turnSharp', 'backRight',
 ]);
 
-// Model configs by monster key
-// Each model ships as ONE merged GLB (mesh/skin/texture once + every clip).
-// Clips are named after the original per-animation file, minus the Meshy
-// prefix and '.glb' (e.g. 'Animation_Walking_withSkin'), so the ANIMS
-// tables above still describe which clip each game key uses.
-const MODEL_CONFIGS = {
-  godzilla: { file: './assets/kaiju_model/godzilla.glb',    anims: GODZILLA_ANIMS },
-  ghidorah: { file: './assets/ghidorah_model/ghidorah.glb', anims: GHIDORAH_ANIMS },
-  mecha:    { file: './assets/mecha_model/mecha.glb',       anims: MECHA_ANIMS },
+// The original exports name clips after their Meshy files. New exports use game keys.
+const LEGACY_CLIPS = {
+  godzilla: GODZILLA_ANIMS,
+  ghidorah: GHIDORAH_ANIMS,
+  mecha: MECHA_ANIMS,
 };
 
 /**
@@ -113,15 +110,15 @@ const MODEL_CONFIGS = {
 
 /**
  * Loads a Kaiju GLB model and all animation clips.
- * @param {string} monsterKey - 'godzilla' or 'ghidorah'
+ * @param {string} monsterKey - key in the monster roster
  * @param {ProgressCallback} [onProgress] - optional progress callback
  * @returns {Promise<Object>} { root, mixer, animations, head, tail, play, playOnce }
  */
 export async function loadKaijuModel(monsterKey, onProgress) {
-  const config = MODEL_CONFIGS[monsterKey];
-  if (!config) throw new Error(`No GLB model config for "${monsterKey}"`);
-
-  const { file, anims } = config;
+  const legacy = LEGACY_CLIPS[monsterKey];
+  const model = MONSTERS[monsterKey]?.model;
+  if (!model) throw new Error(`No GLB model config for "${monsterKey}"`);
+  const file = `./assets/${model}`;
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); // GLBs are meshopt-compressed (tools/optimize_assets.mjs)
   const totalSteps = 1;
 
@@ -158,7 +155,8 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   // Map game keys -> clips by clip name (shared clips reuse one action set per key,
   // exactly like the old one-file-per-animation loader)
   const clipsByName = new Map(gltf.animations.map((c) => [c.name, c]));
-  for (const [name, animFile] of Object.entries(anims)) {
+  const clipNames = legacy ?? Object.fromEntries(gltf.animations.map(({ name }) => [name, name]));
+  for (const [name, animFile] of Object.entries(clipNames)) {
     const clip = clipsByName.get(animFile.replace(/\.glb$/, ''));
     if (!clip) { reportLoadError('KaijuLoader', file, new Error(`missing clip "${animFile}" for "${name}"`)); continue; }
     animations[name] = clip;
@@ -190,7 +188,7 @@ export async function loadKaijuModel(monsterKey, onProgress) {
   root.traverse((o) => {
     const n = (o.name || '').toLowerCase();
     if (!head && (n.includes('head') || n.includes('skull'))) head = o;
-    if (!tail && (n.includes('tail') || n.includes('hips'))) tail = o;
+    if (!tail && (n.includes('tail') || (legacy && n.includes('hips')))) tail = o;
   });
   if (!head) {
     head = new THREE.Object3D();
@@ -198,6 +196,7 @@ export async function loadKaijuModel(monsterKey, onProgress) {
     head.position.set(0, 1.8, 0.3);
     root.add(head);
   }
+  tail ??= root.getObjectByName('Hips');
   if (!tail) {
     tail = new THREE.Object3D();
     tail.name = 'tail';

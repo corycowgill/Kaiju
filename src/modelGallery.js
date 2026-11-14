@@ -3,11 +3,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { cachedFetch, withParseSlot } from './assetCache.js';
+import { MONSTERS } from './monsters.js';
 
 const exhibits = [
-  ['Kaiju', 'Gorrak', 'kaiju_model/godzilla.glb', 'A nuclear reactor with teeth. The city asked him to lower his carbon footprint. He lowered his foot.'],
-  ['Kaiju', 'Tridon', 'ghidorah_model/ghidorah.glb', 'Three heads, one body, and no agreement about which way to fly. All three voted to destroy the airport.'],
-  ['Kaiju', 'Mechra', 'mecha_model/mecha.glb', 'Built to save the city. The engineers forgot to uncheck “demolish city” in the factory settings.'],
+  ...Object.values(MONSTERS).map(({ name, model, galleryDescription, description }) =>
+    ['Kaiju', name, model, galleryDescription || description]),
   ['Military', 'Type 10 Tank', 'military/tank_type10.glb', 'Its crew was told to aim for the knees. From down here, everything looks like a knee.'],
   ['Military', 'Attack Helicopter', 'military/attack_helicopter.glb', 'The pilot signed up for aerial surveillance. Nobody mentioned the target could surveil back at eye level.'],
   ['Military', 'Fighter Jet', 'enemies/jet.glb', 'Fast enough to break the sound barrier. Still too slow to escape the third-act budget.'],

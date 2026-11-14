@@ -13,6 +13,10 @@
 // OWNER: rival (with combat's grapple.js).
 import { EV } from './events.js';
 
+function elementalSignature(id, name, dur, cost, dmg, T, lift, reach, turn) {
+  return Object.freeze({ id, name, dur, cost, dmg, T: Object.freeze(T), lift, reach, turn });
+}
+
 /** Per kaiju: [sig 1 (RUN + toward), sig 2 (RUN + away)]. T = the beats (s), dur = the thrower's anim (s). */
 export const SIGNATURES = Object.freeze({
   godzilla: Object.freeze([
@@ -26,6 +30,30 @@ export const SIGNATURES = Object.freeze({
   mecha: Object.freeze([
     Object.freeze({ id: 'breaker', name: 'CIRCUIT BREAKER', dur: 1.7, cost: 16, dmg: 24, T: Object.freeze({ scoop: 0.45, knee: 0.72, roll: 1.15 }) }),
     Object.freeze({ id: 'piledriver', name: 'SYSTEM CRASH', dur: 2.0, cost: 20, dmg: 28, T: Object.freeze({ invert: 0.5, hold: 0.85, jump: 1.0, spike: 1.12, topple: 1.45 }) }),
+  ]),
+  cindervault: Object.freeze([
+    elementalSignature('vault', 'CALDERA CHOKEBOMB', 2.0, 19, 28, { grip: .38, peak: .96, hit: 1.47 }, 26, 10, .3),
+    elementalSignature('wheel', 'BASALT BACKDROP', 2.05, 21, 27, { grip: .48, peak: .98, hit: 1.52 }, 19, 19, -.95),
+  ]),
+  brineveil: Object.freeze([
+    elementalSignature('vault', 'PRESSURE BOMB', 1.85, 17, 24, { grip: .25, peak: .82, hit: 1.35 }, 17, 12, .72),
+    elementalSignature('wheel', 'RIPTIDE SUPLEX', 1.95, 19, 26, { grip: .33, peak: .89, hit: 1.47 }, 23, 22, 1.14),
+  ]),
+  rimehorn: Object.freeze([
+    elementalSignature('vault', 'PERMAFROST DROP', 2.12, 21, 29, { grip: .43, peak: 1.04, hit: 1.57 }, 22, 9, -.24),
+    elementalSignature('wheel', 'TUNDRA TOSS', 2.02, 20, 27, { grip: .42, peak: .93, hit: 1.52 }, 18, 25, .78),
+  ]),
+  vesperax: Object.freeze([
+    elementalSignature('wheel', 'SCYTHE SUPLEX', 1.72, 16, 23, { grip: .26, peak: .74, hit: 1.26 }, 16, 20, -.92),
+    elementalSignature('vault', 'PRISM DRIVER', 1.83, 19, 26, { grip: .29, peak: .83, hit: 1.33 }, 27, 11, 1.2),
+  ]),
+  thornwake: Object.freeze([
+    elementalSignature('vault', 'ROOTLOCK SLAM', 2.1, 19, 28, { grip: .42, peak: 1.05, hit: 1.55 }, 16, 15, .4),
+    elementalSignature('wheel', 'TIMBER SUPLEX', 2.22, 21, 29, { grip: .52, peak: 1.05, hit: 1.69 }, 25, 21, -1.08),
+  ]),
+  ferrumaw: Object.freeze([
+    elementalSignature('wheel', 'COIL SUPLEX', 1.92, 18, 25, { grip: .35, peak: .83, hit: 1.46 }, 18, 17, 1.1),
+    elementalSignature('vault', 'IRON CLAMP', 2.05, 22, 29, { grip: .37, peak: .93, hit: 1.52 }, 24, 9, -.8),
   ]),
 });
 /** Back damage a kaiju can carry (Mechra works it): each point takes fight out of its kick-outs (grapple.js pinStrength). */
@@ -75,6 +103,7 @@ export function createSignatures(ctx, W, K) {
   // Put it down on its back where it lies now, and let the thrower go
   function finish(type, base, size, rec) {
     const A = hold.A, V = hold.V;
+    if (s.def.lift) ctx.world?.spawnKaijuPower?.(A.cfg, 'impact', V.pos, { extent: 26 + s.def.reach * .45 });
     K.endHold();
     s.def = null;
     K.impact(V, A, type, base, size, true);
@@ -105,7 +134,7 @@ export function createSignatures(ctx, W, K) {
     return true;
   }
 
-  // ------------------------------------------------------------------ the six timelines
+  // ------------------------------------------------------------------ throw timelines
   // Each is (A, V, t, dt): t seconds since begin(); it calls finish() when the body is down.
   function chokeslam(A, V, t) {
     const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI;
@@ -341,7 +370,32 @@ export function createSignatures(ctx, W, K) {
     }
   }
 
-  const RUN = { chokeslam, bulldozer, rana, ddt, breaker, piledriver };
+  function elementalThrow(A, V, t) {
+    const { id, T, lift, reach, turn, dmg } = s.def;
+    const wheel = id === 'wheel', pitch = wheel ? 1.5 * PI : -HALF_PI;
+    const gy = K.groundY(A);
+    const grip = smooth(t / T.grip);
+    const rise = smooth((t - T.grip) / (T.peak - T.grip));
+    const drop = clamp01((t - T.peak) / (T.hit - T.peak)) ** 2;
+    const sweep = rise * (wheel ? .6 : .25) + drop * (wheel ? .4 : .75);
+    const yaw = s.yaw + turn * sweep * PI;
+    const fx = Math.sin(yaw), fz = Math.cos(yaw);
+    const distance = lerp(lerp(s.d0, s.d0 * .58, grip), reach, drop);
+    const x = s.x + fx * distance, z = s.z + fz * distance;
+    K.stand(A, s.x, s.z, yaw, .15 * grip - (wheel ? .42 : .24) * rise + .6 * drop);
+    _pt.x = x; _pt.z = z;
+    ctx.clampToBounds(_pt);
+    V.setPose(_pt.x, lerp(V.hc + gy + lift * rise, V.lieY, drop), _pt.z,
+      yaw + PI, pitch * (rise * .24 + drop * .76), wheel ? .45 * rise * (1 - drop) : 0);
+    if (t >= T.peak && s.beat === 0) {
+      s.beat = 1;
+      launchEv(wheel ? 'suplex' : 'slam', _pt.x, V.hc + gy + lift, _pt.z, fx, fz, lift / (T.hit - T.peak));
+      W.slowMo(.65, .22);
+    }
+    if (drop >= 1) finish(wheel ? 'suplex' : 'slam', dmg, wheel ? .74 : .88, wheel ? .45 : .57);
+  }
+
+  const RUN = { chokeslam, bulldozer, rana, ddt, breaker, piledriver, vault: elementalThrow, wheel: elementalThrow };
 
   return {
     begin,

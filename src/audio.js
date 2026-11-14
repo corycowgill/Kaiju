@@ -112,6 +112,15 @@ const STAGE_GAIN = 0.8;
 // Takes the compressor node's built-in make-up gain back out (see _buildMatchMix)
 const LIMIT_TRIM = 0.7807; // -2.15 dB, measured in Chrome (devtools/audio limiter render) for the settings below
 const KAIJU_SFX = { gojira: 'gorrak', ghidorah: 'tridon', mecha: 'mechra', godzilla: 'gorrak', gorrak: 'gorrak', tridon: 'tridon', mechra: 'mechra' };
+// New voices use different registers of the recorded organic and metal cues.
+const KAIJU_VOICES = {
+  cindervault: { family: 'gorrak', rate: .76 },
+  brineveil: { family: 'tridon', rate: .68 },
+  rimehorn: { family: 'gorrak', rate: .88 },
+  vesperax: { family: 'tridon', rate: 1.29 },
+  thornwake: { family: 'gorrak', rate: .64 },
+  ferrumaw: { family: 'mechra', rate: .83 },
+};
 
 // ---- Wrestling pack (Chicago title match). Synthesized offline by tools/wrestling_sfx/
 // (OGG + M4A), fetched only when a match starts, played through the match mix below.
@@ -387,7 +396,7 @@ class Audio {
   _now() { return this.ctx.currentTime; }
 
   // Pick per-kaiju beam/roar/charge samples. Takes the monsters.js variant key.
-  setMonster(variant) { this._kaiju = KAIJU_SFX[variant] || 'gorrak'; }
+  setMonster(variant) { this._kaiju = variant || 'gorrak'; }
 
   // ============ Sampled SFX ============
   // Fetch + decode every sample in the bank (a few at a time). OGG Vorbis
@@ -476,7 +485,15 @@ class Audio {
 
   // Kaiju-specific sample name, e.g. beam -> beam_tridon. who (optional): a monster key
   // or variant ('godzilla' / 'gojira', 'ghidorah', 'mecha'); omitted = the player's kaiju.
-  _k(kind, who) { return kind + '_' + (who ? KAIJU_SFX[who] || this._kaiju : this._kaiju); }
+  _voiceFamily(who = this._kaiju) {
+    return KAIJU_VOICES[who]?.family || KAIJU_SFX[who] || 'gorrak';
+  }
+
+  _voiceRate(who = this._kaiju) {
+    return KAIJU_VOICES[who]?.rate ?? 1;
+  }
+
+  _k(kind, who) { return kind + '_' + this._voiceFamily(who); }
 
   // ============ Ambience loops ============
   // Call once per frame with the live enemy list and the kaiju position:
@@ -837,7 +854,7 @@ class Audio {
   // beam / roar / charge / ult take the kaiju explicitly (who: monster key or variant) so
   // two kaiju can each have their own voice; without it they are the player's, as before.
   beam(who) {
-    if (this._play(this._k('beam', who))) return;
+    if (this._play(this._k('beam', who), 1, this._voiceRate(who))) return;
     this._combatFallback(this._k('beam', who), .45, 950, .66);
   }
 
@@ -847,14 +864,14 @@ class Audio {
   }
 
   roar(who) {
-    if (this._play(this._k('roar', who))) return;
+    if (this._play(this._k('roar', who), 1, this._voiceRate(who))) return;
     this.tone(60, 0.7, 'sawtooth', 0.6, 60);
     this.tone(110, 0.7, 'square', 0.4, 30);
     this.noise(0.5, 700, 0.45);
   }
 
   charge(who) {
-    if (this._play(this._k('charge', who))) return;
+    if (this._play(this._k('charge', who), 1, this._voiceRate(who))) return;
     this.tone(180, 0.35, 'sawtooth', 0.55, 180);
     this.noise(0.3, 500, 0.4);
   }
@@ -882,7 +899,7 @@ class Audio {
 
   ult(who) {
     if (this._play('ult')) {
-      this._play(this._k('roar', who), 0.6, 0.9, 0.15); // monster cry layered on the blast
+      this._play(this._k('roar', who), 0.6, 0.9 * this._voiceRate(who), 0.15);
       return;
     }
     this.tone(80, 1.2, 'sawtooth', 0.6, 40);
@@ -1312,9 +1329,10 @@ class Audio {
   vox(who, kind, gain = 1, pan = 0, when = 0, prio = 3) {
     const mm = this._mm;
     if (!this.ctx || !mm || !mm.on) return false;
-    const set = VOX[KAIJU_SFX[who] || this._kaiju], cuts = set && set[kind];
+    const family = this._voiceFamily(who);
+    const set = VOX[family], cuts = set && set[kind];
     if (!cuts) return false;
-    const key = 'vox_' + kind + (KAIJU_SFX[who] || this._kaiju);
+    const key = 'vox_' + kind + family;
     let k = Math.floor(Math.random() * cuts.length);
     if (cuts.length > 1 && k === this._lastPick[key]) k = (k + 1) % cuts.length;
     this._lastPick[key] = k;
@@ -1324,7 +1342,7 @@ class Audio {
     const t = this._now(), at = t + when;
     if (Math.abs(at - (this._lastPlay[key] ?? -1e9)) < 0.18) return true;
     this._lastPlay[key] = at;
-    const j = 1 + (Math.random() * 2 - 1) * 0.05;
+    const j = (1 + (Math.random() * 2 - 1) * 0.05) * this._voiceRate(who);
     return this._wrStart(buf, key, cut[6] * gain, cut[4] * j, at, pan, prio, Math.min(cut[2], Math.max(0, buf.duration - cut[3] - 0.05)), cut[3], 0, cut[5] * j);
   }
 

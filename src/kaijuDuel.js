@@ -246,7 +246,9 @@ export class KaijuDuelRival {
       const cover = this.cover.nearest(world, this.ray, BEAM_RANGE, true, .5);
       const length = cover?.distance ?? BEAM_RANGE;
       const cfg = this.config.beam;
-      world.spawnBeam(this.ray.origin, this.ray.direction, length, cfg.color, cfg.glow);
+      if (!world.spawnKaijuPower?.(this.config, 'beam', this.ray.origin, { direction: this.ray.direction, extent: length })) {
+        world.spawnBeam(this.ray.origin, this.ray.direction, length, cfg.color, cfg.glow);
+      }
       this.body.copy(player);
       this.body.y += 12;
       const along = this.point.subVectors(this.body, this.ray.origin).dot(this.ray.direction);
@@ -256,6 +258,7 @@ export class KaijuDuelRival {
       if (cover) {
         this.ray.at(length, this.point);
         this.damageBlocker(cover.building, world, cfg.damage * 1.1, .45);
+        world.spawnKaijuPower?.(this.config, 'impact', this.point, { extent: 12 });
         world.spawnExplosion?.(this.point.clone(), .8);
       }
       return;

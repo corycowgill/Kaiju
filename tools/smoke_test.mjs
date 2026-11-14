@@ -1,5 +1,5 @@
 // Headless asset-load smoke test: loads every template the game loads (trees, props, cars,
-// pedestrian, buildings + landmarks, debris, enemies, all three kaiju, VFX flipbooks, ground
+// pedestrian, buildings + landmarks, debris, enemies, all kaiju, VFX flipbooks, ground
 // textures, LOD1 twins), builds the city and spawns one of each actor, for desktop HIGH and iPhone MED
 // (which loads the assets/m/ mobile variants). Exits non-zero on ANY console.warn/error,
 // uncaught error, window.__loadErrors entry or missing template. Silent fallbacks (a loader
@@ -154,6 +154,7 @@ const Q = await imp('quality.js');
 const city = await imp('city.js');
 const enemies = await imp('enemies.js');
 const { loadKaijuModel } = await imp('kaijuLoader.js');
+const { MONSTERS } = await imp('monsters.js');
 const vfx = await imp('vfx.js');
 const assetCache = await imp('assetCache.js');
 const { loadLoneView } = await imp('loneSoldier.js');
@@ -233,7 +234,10 @@ if (level === 'chicago' && mode === 'waves') await step('rigged festival crowd',
   if(!contacts||contacts.count>256)fail('festival: contact shadow batch missing or unbounded');
 });
 const kaijuGLB = {};
-for (const key of ['godzilla', 'ghidorah', 'mecha']) kaijuGLB[key] = await step(`kaiju ${key}`, () => loadKaijuModel(key));
+for (const [key, { model, portrait }] of Object.entries(MONSTERS)) {
+  for (const file of [model, portrait]) if (!fs.existsSync(repoFile(`assets/${file}`))) fail(`kaiju ${key}: missing ${file}`);
+  kaijuGLB[key] = await step(`kaiju ${key}`, () => loadKaijuModel(key));
+}
 if (Q.GLB_CONTENT) {
   await step('building/debris/enemy templates', () => Promise.all([city.loadBuildingTemplates(undefined, level), city.loadDebrisTemplates(), enemies.loadEnemyTemplates()]));
   await step('flushPendingGLBBuildings', () => city.flushPendingGLBBuildings(scene));
