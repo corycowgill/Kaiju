@@ -63,7 +63,7 @@ export const PERSONAS = Object.freeze({
     pw: { beam: 0.9, roar: 1.4, charge: 0.6, stomp: 0.7 }, saveAt: 70, saver: 0.5, punish: 0.8, punishAct: { string: 0.2, heavy: 0.5, grab: 0.3 },
     // persona beats: walk pace, P(no-sells a big hit), signature weights [toward, away], rope runs, top-rope dives, heel tricks, lazy covers when ahead, back work
     walk: 0.8, noSell: 0.4, sig: [3.0, 3.5], ropeRun: 0, dive: 0, cheap: 0.08, cockyPin: 0.2, workBack: 0, bldgTaunt: 1.5,
-    fireUp: 0.95, vsFire: 'trade', weapon: 1.3, spotLove: 1.4, bldg: 2.4, bldgGap: 30, bldgShow: 1.0, vsBldg: 'block',
+    fireUp: 0.95, vsFire: 'trade', weapon: 1.3, spotLove: 1.4, bldg: 2.4, bldgGap: 30, bldgShow: 1.0, bldgSmash: 0.6, vsBldg: 'block',
     tells: 'jab-jab-HEAVY (guard after the second jab; raise it late and the heavy is reversed); rarely guards, so strike first; loves the press slam and holds you up there (mash); roars in your face (a jab stops it); stomps or gloats over you when you are down; big hits do not always rock it (it no-sells and swings right back: block); RUN-grabs into the CHOKESLAM, or onto its shoulder and through the nearest building (LOOP BULLDOZER)',
   },
   // Tridon: the fast, showy storm dragon. In and out, running clotheslines, whips, dives, and far too much taunting.
@@ -78,7 +78,7 @@ export const PERSONAS = Object.freeze({
     taunt: 1.5, tauntDown: 2.0, catchRebound: 0.95,
     pw: { beam: 0.6, roar: 0.5, charge: 1.3, stomp: 0.4 }, saveAt: 80, // (the jump is saved for the top-rope dive) saver: 0.65, punish: 0.7, punishAct: { string: 0.6, heavy: 0.1, grab: 0.3 },
     walk: 1, noSell: 0, sig: [2.6, 2.6], ropeRun: 2.0, dive: 5, cheap: 0.15, cockyPin: 1.2, workBack: 0, bldgTaunt: 1,
-    fireUp: 0.75, vsFire: 'flee', weapon: 0.25, spotLove: 1, bldg: 0.25, bldgGap: 40, bldgShow: 0.2, vsBldg: 'dodge',
+    fireUp: 0.75, vsFire: 'flee', weapon: 0.25, spotLove: 1, bldg: 0.25, bldgGap: 40, bldgShow: 0.2, bldgSmash: 0.25, vsBldg: 'dodge',
     tells: 'backs out after an exchange and comes back with a running clothesline (block it, or step aside and punish the miss); whips you at the ropes to cut you down on the rebound; taunts after knockdowns (get up and hit him: a taunting kaiju takes x1.4); dives on you when you are down (mash up and he crashes on the mat); sprints himself tired; runs the ropes for a clothesline (block it as he comes back); climbs a corner post to fly at you when you are down (get up, he lands on nothing); covers lazily when ahead (kick out early)',
   },
   // Mechra: the methodical war machine. Holds its range, zones with the cannon, guards, and punishes what you miss.
@@ -93,7 +93,7 @@ export const PERSONAS = Object.freeze({
     taunt: 0.12, tauntDown: 0.3, catchRebound: 0.7,
     pw: { beam: 1.5, roar: 1.0, charge: 0.8, stomp: 0.5 }, saveAt: 55, saver: 0.4, punish: 1.0, punishAct: { string: 0.25, heavy: 0.45, grab: 0.3 },
     walk: 0.92, noSell: 0, sig: [3.0, 2.6], ropeRun: 0, dive: 0, cheap: 1, cockyPin: 0.1, workBack: 1, bldgTaunt: 0.5,
-    fireUp: 0.5, vsFire: 'guard', weapon: 1.0, spotLove: 0.8, bldg: 0.9, bldgGap: 55, bldgShow: 0, vsBldg: 'dodge',
+    fireUp: 0.5, vsFire: 'guard', weapon: 1.0, spotLove: 0.8, bldg: 0.9, bldgGap: 55, bldgShow: 0, bldgSmash: 0.4, vsBldg: 'dodge',
     tells: 'guards strings, so grab it; answers a blocked string with a counter-heavy (stop after the third hit and block: reversal); steps back and fires the cannon when you stand off (sidestep late, punish the recovery); punishes what you miss; slow on its feet, it cannot run you down; a heel: it waits by you as you get up and jumps you (block on the way up), stomps you while you are down, and works your back with the CIRCUIT BREAKER and SYSTEM CRASH (each makes your kick-outs harder this fall)',
   },
 });
@@ -191,7 +191,7 @@ export function createRivalAI(ctx, W) {
     // persona beats
     noSell: false, noSellT: 0, noSellCd: 0, voiceAt: 0, shoutAt: 0, cheapGo: false, lazyPin: false, dozerYaw: 0, dozerOn: false,
     ropeSide: '', rx: 0, rz: 0, ropeCalled: false, postX: 0, postZ: 0, bldgT: -99, sigCd: 0,
-    fireTry: 0, foeFireUntil: 0, wx: 0, wz: 0, bldgCd: 0, bx: 0, bz: 0, carryT: 0, dodgeT: -1, dodgeUntil: 0, dodgeX: 0, dodgeZ: 0, dodgeDo: 0,
+    fireTry: 0, foeFireUntil: 0, wx: 0, wz: 0, bldgCd: 0, bx: 0, bz: 0, carryT: 0, smashGo: false, smashAsk: false, dodgeT: -1, dodgeUntil: 0, dodgeX: 0, dodgeZ: 0, dodgeDo: 0,
   };
   const T = AI_TUNE;
   const sk = (pair) => lerp(pair[0], pair[1], S.k);
@@ -601,6 +601,15 @@ export function createRivalAI(ctx, W) {
     const gap = me.gapTo(foe);
     S.carryT += dt;
     it.faceYaw = me.yawTo(foe);
+    // the foe walked in under it: one more look at bringing it down over its head
+    if (!S.smashGo && !S.smashAsk && gap < 16) { S.smashAsk = true; S.smashGo = rnd() < (P.bldgSmash || 0); }
+    if (S.smashGo) {
+      // Over the head (props.js smashes with the foe inside 15 u and in front): walk it in, then the swing
+      if (S.carryT > 5 || foe.state === 'ko' || foe.held) { S.smashGo = false; S.carryT = 0; return; } // (never got there: throw it)
+      if (gap > 11) toward(me, it, foe.pos.x, foe.pos.z, 1, false);
+      if (S.carryT > 0.5 && gap <= 13 && me.facing(foe, 0.4)) { it.strike = true; S.carryT = 0; S.smashGo = false; note('bldg-smash', '', ''); }
+      return;
+    }
     if (gap < 38) away(me, foe, it, 1, false);
     else if (gap > 95) toward(me, it, foe.pos.x, foe.pos.z, 1, false);
     if (S.carryT > 0.7 + P.bldgShow && gap >= 30 && gap <= 105 && me.facing(foe, 0.3)) { it.strike = true; S.carryT = 0; note('bldg-throw', '', ''); }
@@ -935,6 +944,8 @@ else {
         }
         it.grab = true; S.plan = 'busy'; S.busyT = 0;
         S.bldgCd = now + 22 + rnd() * 10 + 15 * (1 - S.k); S.carryT = 0; // (a novice rival: fewer)
+        // thrown, or carried in and broken over the foe's head (more often with the foe down or close)
+        S.smashAsk = false; S.smashGo = rnd() < (P.bldgSmash || 0) * (foe.state === 'downed' || gap < 25 ? 1.5 : 1) * (W.match.state.defense ? 1 : 0.8);
         voice('bldg', 'shock');
         return;
       }
