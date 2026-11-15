@@ -420,7 +420,8 @@ export function buildNyc(scene, world, opts, K) {
   K.setBuildingLite(lite);
   setLookLayerKey('nyc', NYC_LOOK.key, NYC_LOOK.az); // (nyc-design's light: nycLook.js)
   const smallCull = glb && lite ? { px: 3, maxH: 2, keep: /tree|lamp/i } : null;
-  const instance = () => K.instanceStaticClones(scene, !glb ? Infinity : lite ? 240 : 120, lite ? 185 : 150, smallCull);
+  // (instancing tiles twice DC's: Midtown's street furniture is ten kinds on every corner)
+  const instance = () => K.instanceStaticClones(scene, !glb ? Infinity : lite ? 480 : 300, lite ? 185 : 150, smallCull);
   K.setBuildingTile(!glb || lite ? Infinity : 400);
   const B = L.bounds;
   const S = L.scale || 0.2;
@@ -958,11 +959,11 @@ export function buildNyc(scene, world, opts, K) {
       const h = def.trueHeightM * S;
       const url = NYC_BASE + def.file;
       const rotY = def.face ? LK.faceRot(lm.rotY || 0, def.face) : def.faceX ? LK.faceRot(lm.rotY || 0, def.faceX, true) : (lm.rotY || 0);
-      if (def.shiftM) {
+      if (def.shiftM || def.offsetM) {
         // A model whose origin is not its building's centre: the site moves
-        // shiftM metres along the model's front (+Z)
+        // shiftM metres along the model's front (+Z), and/or offsetM [east, south] metres on the map
         grid.remove(b);
-        b.x += Math.sin(rotY) * def.shiftM * S; b.z += Math.cos(rotY) * def.shiftM * S;
+        b.x += Math.sin(rotY) * (def.shiftM || 0) * S + (def.offsetM?.[0] || 0) * S; b.z += Math.cos(rotY) * (def.shiftM || 0) * S + (def.offsetM?.[1] || 0) * S;
         b.group.position.set(b.x, 0, b.z); b.group.updateMatrix();
         grid.add(b);
       }
@@ -1137,15 +1138,18 @@ export function buildNyc(scene, world, opts, K) {
   const windowPulse = K.buildGlobalWindows(scene, LK.windows);
   if (windowPulse) animators.push(windowPulse);
 
-  // ---- street dressing: acorn lamps, signals, shelters ----
+  // ---- street dressing: lamps, signals, shelters, corner furniture, the park ----
   {
+    // NYC props at true size (manifest heightM x 0.2), Chicago's at their kit height
+    const propH = (name, chi) => { const d = NYC_PROP_GLBS.find((p) => p.name === name); return d && d.heightM ? d.heightM * S : chi; };
     for (const n of ['chi_streetlamp', 'chi_bus_shelter']) {
       K.propScene(n)?.traverse((o) => { if (o.isMesh && o.material.emissiveMap) o.material.emissiveIntensity = 0.08; });
     }
     // NYC's own lamp when nyc-design ships one, else Chicago's, else the Tokyo kit lamp, else procedural
     const lampName = K.hasProp('nyc_streetlamp') ? 'nyc_streetlamp' : K.hasProp('chi_streetlamp') ? 'chi_streetlamp' : 'street_lamp';
     const hasLamp = K.hasProp(lampName);
-    const lampEvery = lite ? 56 : 34;
+    // (NYC's cobra-heads ~35 m apart on each side; Chicago's lamps sparser)
+    const lampEvery = lampName === 'nyc_streetlamp' ? (lite ? 26 : 14) : lite ? 56 : 34;
     let n = 0;
     for (const e of net.edges) {
       const w = e.laneOff * 4;
@@ -1155,17 +1159,13 @@ export function buildNyc(scene, world, opts, K) {
         const off = s * (w / 2 + 0.25);
         const x = net.nodes[e.a].x + e.dx * t - e.dz * off, z = net.nodes[e.a].z + e.dz * t + e.dx * off;
         if (isWater(x, z) || onRing(x, z)) continue;
-        const lamp = hasLamp ? K.cloneProp(lampName, 5.6 * PS) : LK.makeLamp();
+        const lamp = hasLamp ? K.cloneProp(lampName, propH(lampName, 5.6 * PS)) : LK.makeLamp();
         if (!hasLamp) lamp.scale.setScalar(PS);
         lamp.position.set(x, 0, z);
         lamp.rotation.y = Math.atan2(e.dx, e.dz) + (s > 0 ? -Math.PI / 2 : Math.PI / 2);
         lamp.matrixAutoUpdate = false; lamp.updateMatrix();
         lamp.userData.instance = true;
         scene.add(lamp);
-        if (!lite && Math.random() < 0.45) {
-          const tx = net.nodes[e.a].x + e.dx * (t + lampEvery / 2) + e.dz * off, tz = net.nodes[e.a].z + e.dz * (t + lampEvery / 2) - e.dx * off;
-          if (t + lampEvery / 2 < e.len - 6 && !isWater(tx, tz) && !onRing(tx, tz)) tree(tx, tz, 0.9 + Math.random() * 0.2, 'street');
-        }
       }
     }
     const sigName = K.hasProp('nyc_traffic_signal') ? 'nyc_traffic_signal' : 'chi_traffic_signal';
@@ -1183,7 +1183,7 @@ export function buildNyc(scene, world, opts, K) {
         const x = node.x + ux * back - uz * side, z = node.z + uz * back + ux * side;
         if (onRing(x, z)) continue;
         placed.push([node.x, node.z]);
-        const sig = K.cloneProp(sigName, 6.4 * PS);
+        const sig = K.cloneProp(sigName, propH(sigName, 6.4 * PS));
         sig.position.set(x, 0, z);
         sig.rotation.y = Math.atan2(ux, uz);
         sig.matrixAutoUpdate = false; sig.updateMatrix();
@@ -1200,13 +1200,78 @@ export function buildNyc(scene, world, opts, K) {
       const off = s * (w / 2 + 0.3);
       const x = net.nodes[e.a].x + e.dx * t - e.dz * off, z = net.nodes[e.a].z + e.dz * t + e.dx * off;
       if (isWater(x, z) || onRing(x, z)) continue;
-      const p = K.hasProp(shelterName) ? K.cloneProp(shelterName, 2.6 * PS) : LK.makeShelter();
+      const p = K.hasProp(shelterName) ? K.cloneProp(shelterName, propH(shelterName, 2.6 * PS)) : LK.makeShelter();
       if (!K.hasProp(shelterName)) p.scale.setScalar(PS);
       p.position.set(x, 0, z);
       p.rotation.y = Math.atan2(e.dx, e.dz) + (s > 0 ? -Math.PI / 2 : Math.PI / 2);
       p.matrixAutoUpdate = false; p.updateMatrix();
       p.userData.instance = true;
       scene.add(p);
+    }
+    // One prop at true size, instanced (seeded so a run looks the same each time)
+    const rng = _seeded('nyc-dressing');
+    const put = (name, x, z, ry) => {
+      if (!K.hasProp(name) || isWater(x, z) || onRing(x, z) || inRingBox(x, z)) return false;
+      const p = K.cloneProp(name, propH(name, 1));
+      p.position.set(x, 0, z); p.rotation.y = ry;
+      p.matrixAutoUpdate = false; p.updateMatrix();
+      p.userData.instance = true;
+      scene.add(p);
+      return true;
+    };
+    // Corners of the avenues: hydrants, trash cans, mailboxes, the odd subway entrance and newsstand; carts and steam stacks mid-block
+    const corners = net.nodes.map((nd, i) => [nd, i]).filter(([nd]) => nd.edges.length >= 3);
+    const caps = { nyc_hydrant: lite ? 0 : 220, nyc_trash_can: lite ? 0 : 220, nyc_mailbox: lite ? 0 : 60, nyc_subway_entrance: lite ? 14 : 40, nyc_newsstand: lite ? 8 : 30 };
+    const count = {};
+    for (const [nd, ni] of corners) {
+      const e = net.edges[nd.edges[0]], w = e.laneOff * 4, ux = e.a === ni ? e.dx : -e.dx, uz = e.a === ni ? e.dz : -e.dz;
+      for (const [name, chance, back, side] of [['nyc_hydrant', 0.5, 1.6, 0.4], ['nyc_trash_can', 0.5, 1.2, -0.4], ['nyc_mailbox', 0.15, 2.2, 0.5], ['nyc_subway_entrance', w >= MAJOR_W ? 0.18 : 0, 3.2, 0.9], ['nyc_newsstand', w >= MAJOR_W ? 0.12 : 0, 4.4, 0.8]]) {
+        if ((count[name] || 0) >= caps[name] || rng() > chance) continue;
+        const o = w / 2 + SIDEWALK_W * side + 0.6, x = nd.x + ux * (w / 2 + back) - uz * o, z = nd.z + uz * (w / 2 + back) + ux * o;
+        if (put(name, x, z, Math.atan2(ux, uz))) count[name] = (count[name] || 0) + 1;
+      }
+    }
+    for (let i = 0; i < (lite ? 10 : 36) && art.length; i++) {
+      const e = art[Math.floor(rng() * art.length)], w = e.laneOff * 4, t = e.len * (0.2 + rng() * 0.6), sd = rng() < 0.5 ? 1 : -1;
+      const x0 = net.nodes[e.a].x + e.dx * t, z0 = net.nodes[e.a].z + e.dz * t;
+      if (i % 3 === 2) put('nyc_steam_stack', x0 - e.dz * sd * w * 0.18, z0 + e.dx * sd * w * 0.18, Math.atan2(e.dx, e.dz)); // (in the roadway, off the centre line)
+      else put('nyc_food_cart', x0 - e.dz * sd * (w / 2 + 0.5), z0 + e.dx * sd * (w / 2 + 0.5), Math.atan2(e.dx, e.dz) + (sd > 0 ? -Math.PI / 2 : Math.PI / 2));
+    }
+    // Sidewalk sheds (scaffolding) along a few avenue frontages
+    for (let i = 0; i < (lite ? 0 : 30) && art.length; i++) {
+      const e = art[Math.floor(rng() * art.length)], w = e.laneOff * 4, t = e.len * (0.25 + rng() * 0.5), sd = rng() < 0.5 ? 1 : -1;
+      const o = sd * (w / 2 + SIDEWALK_W * 0.6);
+      put('nyc_scaffold', net.nodes[e.a].x + e.dx * t - e.dz * o, net.nodes[e.a].z + e.dz * t + e.dx * o, Math.atan2(e.dz, -e.dx));
+    }
+    // Central Park: bishop-crook lamps and benches along the walks, schist outcrops on the wooded lawns
+    if (cpPoly) {
+      let lamps = 0, benches = 0;
+      const lampCap = lite ? 60 : 260, benchCap = lite ? 0 : 200;
+      for (const q of L.paths) {
+        let acc = 0;
+        for (let i = 0; i + 1 < q.points.length && lamps < lampCap; i++) {
+          const [ax, az] = q.points[i], [bx, bz] = q.points[i + 1], l = Math.hypot(bx - ax, bz - az);
+          if (l < 0.01) continue;
+          const dx = (bx - ax) / l, dz = (bz - az) / l;
+          for (; acc < l; acc += 9) {
+            const x = ax + dx * acc + dz * 0.9, z = az + dz * acc - dx * 0.9;
+            if (!pointInPoly(x, z, cpPoly)) continue;
+            if (put('nyc_park_lamp', x, z, Math.atan2(dx, dz))) lamps++;
+            if (benches < benchCap && rng() < 0.5 && put('nyc_bench', x - dz * 1.6 + dx * 2, z + dx * 1.6 + dz * 2, Math.atan2(-dz, dx))) benches++;
+          }
+          acc -= l;
+        }
+      }
+      const wooded = L.parks.filter((p) => p.kind === 'lawn' && p.surface === 'trees' && pointInPoly(p.polygon[0][0], p.polygon[0][1], cpPoly));
+      const rocks = ['nyc_rock_umpire', 'nyc_rock_hump', 'nyc_rock_ledge'];
+      for (let i = 0, n = 0; i < 400 && n < (lite ? 12 : 40) && wooded.length; i++) {
+        const p = wooded[Math.floor(rng() * wooded.length)];
+        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (const [x, z] of p.polygon) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+        const x = x0 + rng() * (x1 - x0), z = z0 + rng() * (z1 - z0);
+        if (!pointInPoly(x, z, p.polygon) || onRoad(x, z, 1) || L.paths.some((q) => distToPolyline(x, z, q.points) < 2.5)) continue;
+        if (put(rocks[n % 3], x, z, rng() * 6.28)) n++;
+      }
     }
   }
 

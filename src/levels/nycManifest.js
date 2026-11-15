@@ -10,7 +10,8 @@ export const NYC_BASE = './assets/buildings/nyc/';
 // height is the roof. face: the world direction of the model's +Z front.
 // fit 'footprint' (+ maxH, stretch): fill the layout outline instead of the
 // true-height uniform scale. exact (+ atOrigin): map scale, no fit.
-// shiftM: metres the site moves along the model's front. stone: debris tint.
+// shiftM: metres the site moves along the model's front. offsetM: [east, south] metres in map directions
+// (added to the site, combines with shiftM). stone: debris tint.
 export const NYC_LANDMARK_GLBS = [
   // nyc-design, procedural Blender builds at true size (devtools/nyc/design/tools/build_*.py, tiling facade maps from
   // nyc_tex.py). All: metres, Y up, base y=0 (street grade), centred X/Z on the lot, front +Z, LOD1 twin, metal 0.
@@ -29,14 +30,14 @@ export const NYC_LANDMARK_GLBS = [
   { id: 'one_times_square', file: 'one_times_square.glb', trueHeightM: 118.0, face: 'north', stone: 0x3a3a40, ready: true }, // 20 x 30.6 m wedge (narrow north end at +Z); screens material 'nyc_ts_screens' = assets/textures/nyc_billboards.jpg 4x4 atlas (swap for the animated LED material by name if wanted); ball mast to 118 m
   { id: 'new_york_times_building', file: 'new_york_times_building.glb', trueHeightM: 319.0, face: 'west', stone: 0xc8c6c0, ready: true }, // tower 57 x 57 m + 20 m podium behind (58 x 87 m total); +Z Eighth Ave
   // nyc-design helpers (devtools/nyc/design/tools/build_<id>.py, build_towers2.py): same conventions
-  { id: 'grand_central_terminal', file: 'grand_central_terminal.glb', trueHeightM: 46.4, face: 'south', stone: 0xc8baa0, ready: true }, // 91 x 100.7 m incl. the Park Ave viaduct terrace (deck 7.5 m) in front; +Z the 42nd St facade (Tiffany clock, three arched windows)
-  { id: 'nypl', file: 'nypl.glb', trueHeightM: 39.5, face: 'east', stone: 0xd6d2c8, ready: true }, // 120 x 108 m incl. terrace and steps; +Z the Fifth Ave portico (marble)
+  { id: 'grand_central_terminal', file: 'grand_central_terminal.glb', trueHeightM: 46.4, face: 'south', stone: 0xc8baa0, offsetM: [0, 5.6], ready: true }, // 91 x 100.7 m incl. the Park Ave viaduct terrace (deck 7.5 m) in front; +Z the 42nd St facade (Tiffany clock, three arched windows)
+  { id: 'nypl', file: 'nypl.glb', trueHeightM: 39.5, face: 'east', stone: 0xd6d2c8, offsetM: [8.4, 0], ready: true }, // 120 x 108 m incl. terrace and steps; +Z the Fifth Ave portico (marble)
   { id: 'st_patricks_cathedral', file: 'st_patricks_cathedral.glb', trueHeightM: 100.6, face: 'west', stone: 0xd8d4ca, ready: true }, // 50 x 123 m incl. the Lady Chapel; +Z the Fifth Ave twin-spire front
   { id: 'plaza_hotel', file: 'plaza_hotel.glb', trueHeightM: 85.5, face: 'east', stone: 0xd4d0c4, ready: true }, // 75.6 x 97 m; +Z the Fifth Ave front over Grand Army Plaza; copper mansard
   { id: 'carnegie_hall', file: 'carnegie_hall.glb', trueHeightM: 63.0, face: 'north', stone: 0x9a6448, ready: true }, // 48.6 x 65.7 m incl. the 57th St studio wing; +Z the 57th St front
   { id: 'radio_city_music_hall', file: 'radio_city_music_hall.glb', trueHeightM: 140.0, face: 'west', stone: 0xc8bca4, ready: true }, // 65 x 74 m block incl. 1270 Sixth Ave (140 m) behind; +Z Sixth Ave, the marquee corner on the 50th St side (+X = downtown)
-  { id: 'un_general_assembly', file: 'un_general_assembly.glb', trueHeightM: 32.8, face: 'north', stone: 0xd6d2c8, ready: true }, // 55 x 135 m; +Z the north visitors' glass wall
-  { id: 'madison_square_garden', file: 'madison_square_garden.glb', trueHeightM: 48.0, face: 'east', stone: 0xb8b2a6, ready: true }, // 126 x 187 m (drum 124 m, Chase Square pavilion toward +Z Seventh Ave, service block at the back)
+  { id: 'un_general_assembly', file: 'un_general_assembly.glb', trueHeightM: 32.8, face: 'north', stone: 0xd6d2c8, offsetM: [-28, -28], ready: true }, // 55 x 135 m; +Z the north visitors' glass wall
+  { id: 'madison_square_garden', file: 'madison_square_garden.glb', trueHeightM: 48.0, face: 'east', stone: 0xb8b2a6, offsetM: [6.4, 0], ready: true }, // 126 x 187 m (drum 124 m, Chase Square pavilion toward +Z Seventh Ave, service block at the back)
   { id: 'columbus_circle', file: 'columbus_circle.glb', trueHeightM: 23.2, face: 'south', stone: 0xc8c4bc, ready: true }, // 72 m round plaza island with the Columbus column; place at the circle centre (fits inside the inner kerb)
   { id: 'un_secretariat', file: 'un_secretariat.glb', trueHeightM: 155.8, face: 'west', stone: 0xd6d2c8, ready: true }, // 88 x 29 m; +Z the First Ave glass face; white marble ends
   { id: 'hudson_yards_30', file: 'hudson_yards_30.glb', trueHeightM: 388.0, face: 'south', stone: 0x9cb0c4, ready: true }, // 120 x 164 m incl. the Shops podium; +Z downtown; Edge prow at 335 m

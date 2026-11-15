@@ -280,6 +280,7 @@ export const MOBILE_VARIANTS = new Set([
   "buildings/nyc/st_patricks_cathedral.glb",
   "buildings/nyc/steinway_tower.glb",
   "buildings/nyc/the_spiral.glb",
+  "buildings/nyc/trump_tower.glb",
   "buildings/nyc/trump_world_tower.glb",
   "buildings/nyc/two_manhattan_west.glb",
   "buildings/nyc/un_general_assembly.glb",
@@ -354,7 +355,4 @@ export const MOBILE_VARIANTS = new Set([
   "trees/tree_ginkgo.glb",
   "trees/tree_sakura.glb",
   "trees/tree_zelkova.glb",
-  "viewmodels/helicopter_view.glb",
-  "viewmodels/infantry_view.glb",
-  "viewmodels/tank_view.glb"
 ]);
