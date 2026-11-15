@@ -395,7 +395,7 @@ export function createSignatures(ctx, W, K) {
 
   // Cindervault, CALDERA CHOKEBOMB: by the throat, up, shaken like a rag; it jumps with it and lands on top
   function chokebomb(A, V, t) {
-    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, top = liftTop(A, V, 25);
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, top = Math.max(10, liftTop(A, V, 25) - 0.6 * V.hc); // (by the throat: the hand at its neck, not under its back)
     if (t < T.grip) {
       const u = smooth(t / T.grip);
       K.stand(A, s.x, s.z, s.yaw, 0.12 * u);
@@ -661,7 +661,7 @@ export function createSignatures(ctx, W, K) {
 
   // Thornwake, ROOTLOCK SLAM: the roots come up round it and hoist it high, then drag it down into the ground
   function rootlock(A, V, t) {
-    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, top = liftTop(A, V, 26), at = s.d0 + 2;
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, top = liftTop(A, V, 26), at = s.d0 + 2, over = Math.min(at, A.radius + 2);
     if (t < T.grip) {
       const u = smooth(t / T.grip);
       K.stand(A, s.x, s.z, s.yaw, -0.12 * u);
@@ -671,14 +671,15 @@ export function createSignatures(ctx, W, K) {
     if (t < T.peak) {
       const u = smooth((t - T.grip) / (T.peak - T.grip));
       K.stand(A, s.x, s.z, s.yaw, -0.12 - 0.12 * u);
-      vAt(V, at, V.hc + gy - 2.5 + (top + 2.5) * u, vy + 0.5 * Math.sin(PI * u), lerp(0, -1.2, u), 0.08 * Math.sin(t * 17));
+      // (drawn in over its head as it rises: up on its raised hands, not out in front of them)
+      vAt(V, lerp(at, over, u), V.hc + gy - 2.5 + (top + 2.5) * u, vy + 0.5 * Math.sin(PI * u), lerp(0, -1.2, u), 0.08 * Math.sin(t * 17));
       return;
     }
     if (s.beat < 1) { s.beat = 1; W.slowMo(0.55, 0.3); launchEv('slam', V.pos.x, V.pos.y, V.pos.z, fx, fz, top / (T.hit - T.peak)); }
     // (a beat at the top, then yanked: the drop is cubic)
     const u = clamp01((t - T.peak) / (T.hit - T.peak)), e = u * u * u;
     K.stand(A, s.x, s.z, s.yaw, lerp(-0.24, 0.5, e));
-    vAt(V, lerp(at, s.d0 + 4, e), lerp(V.hc + gy + top, V.lieY, e), vy, lerp(-1.2, -HALF_PI, e), 0.06 * (1 - e) * Math.sin(t * 17));
+    vAt(V, lerp(over, s.d0 + 4, e), lerp(V.hc + gy + top, V.lieY, e), vy, lerp(-1.2, -HALF_PI, e), 0.06 * (1 - e) * Math.sin(t * 17));
     if (u >= 1) {
       vAt(V, s.d0 + 4, V.lieY, vy, -HALF_PI, 0);
       finish('slam', s.def.dmg, 0.92, 0.6);
