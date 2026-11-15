@@ -2430,10 +2430,10 @@ function _showMobileDataWarning() {
     // trailer video only streams if played). Re-measure when assets change.
     // 2026-11, after tools/optimize_assets.mjs: desktop Chicago 64.7 / Tokyo 73.9,
     // phone MED 37.0 / 28.5, phone LOW 31.7 / 10.3 MB.
-    // Washington DC (2026-11-15, every response counted incl. code and audio,
-    // 30 s of play): desktop 38.4, phone MED 24.9, phone LOW 19.6 MB.
+    // Washington DC (2026-11-15, after dc-design's detail passes; every response
+    // counted incl. code and audio, 30 s of play): desktop 58.6, phone MED 35.4, phone LOW 30.1 MB.
     const chi = selectedLevel === 'chicago', dc = selectedLevel === 'dc';
-    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? (chi ? '~37 MB' : dc ? '~25 MB' : '~29 MB') : (chi ? '~32 MB' : dc ? '~20 MB' : '~10 MB')) : (chi ? '~65 MB' : dc ? '~38 MB' : '~74 MB');
+    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? (chi ? '~37 MB' : dc ? '~35 MB' : '~29 MB') : (chi ? '~32 MB' : dc ? '~30 MB' : '~10 MB')) : (chi ? '~65 MB' : dc ? '~59 MB' : '~74 MB');
     warn.classList.remove('hidden');
     warn.style.display = 'flex';
     const okBtn = document.getElementById('data-warn-ok');
