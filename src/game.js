@@ -2741,6 +2741,7 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
   // stalled the GPU 0.9-3.8 s when the first powers fired
   for (const t of effectTextures()) _texQueue.add(t);
   await _preuploadTextures([scene, stage, kaijuRoot, rivalRoot]);
+  _miniWarm(); // (the minimap layer's first paints, behind the loading screen)
   // One warm frame behind the opaque loading screen, shadow pass back on and
   // the staged kaiju/enemies in the scene unculled: links the shadow-depth
   // variants (compile() can't build them) with nothing else queued.
@@ -4128,7 +4129,7 @@ function progressObjective(kind) {
 }
 
 world.onBuildingDestroyed = (b) => {
-  _miniDirty = true; // its minimap dot goes
+  _miniErase(b); // its minimap dot goes
   if (_mode.onBuildingDestroyed) _mode.onBuildingDestroyed(b, _dmgSrc || 'player');
   // Brought down by someone else (the rival kaiju): no score, rage, combo, objective or pickup
   if (_dmgSrc) { audio.collapse(); return; }
@@ -6115,9 +6116,34 @@ function _miniLayer(scale) {
     const b = world.buildings[i];
     if (b.destroyed) continue;
     c.fillRect((b.group.position.x - x0) * scale - 1, (b.group.position.z - z0) * scale - 1, 2, 2);
+    b._miniDot = true;
   }
   _mini = { canvas, x0, z0, scale, buildings: world.buildings, water: world.mapWater };
   return _mini;
+}
+/** A fallen building's dot off the cached layer: that 2 px square cleared and
+ *  the water under it copied back, not the whole layer repainted. Repainting
+ *  it on a collapse froze the first collapse of a run for 0.4-14 s (Chrome's
+ *  2D raster in the GPU process: traced on NYC; gone with the minimap hidden). */
+function _miniErase(b) {
+  if (!_mini || _mini.buildings !== world.buildings) { _miniDirty = true; return; }
+  if (!b._miniDot) return;
+  b._miniDot = false;
+  const c = _mini.canvas.getContext('2d'), x = Math.floor((b.group.position.x - _mini.x0) * _mini.scale - 1), y = Math.floor((b.group.position.z - _mini.z0) * _mini.scale - 1);
+  c.clearRect(x, y, 3, 3);
+  if (_miniWater) c.drawImage(_miniWater.canvas, x, y, 3, 3, x, y, 3, 3);
+}
+/** START prewarm: the layer painted and every op a run makes on it (an erase,
+ *  the blit into the minimap) done once while the loading screen is up. */
+function _miniWarm() {
+  if (!minimapCtx || !world.buildings) return;
+  try {
+    const L = _miniLayer((minimapCanvas.width / 2) / MINIMAP_RANGE), c = L.canvas.getContext('2d');
+    c.clearRect(0, 0, 3, 3);
+    if (_miniWater) c.drawImage(_miniWater.canvas, 0, 0, 3, 3, 0, 0, 3, 3);
+    minimapCtx.drawImage(L.canvas, 0, 0);
+    minimapCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+  } catch (e) { /* the first real frame paints it */ }
 }
 function drawMinimap() {
   if (!minimapCtx || !state.kaiju) return;

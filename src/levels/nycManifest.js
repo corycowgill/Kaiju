@@ -26,7 +26,53 @@ export const NYC_LANDMARK_GLBS = [
   { id: 'central_park_tower', file: 'central_park_tower.glb', trueHeightM: 472.0, face: 'south', stone: 0x98a8b8, ready: true }, // podium 58 x 52 m, shaft cantilevered toward +X (= east when +Z looks downtown); +Z 57th St (north side of 57th)
   { id: 'steinway_111w57', file: 'steinway_tower.glb', trueHeightM: 435.0, face: 'north', stone: 0xc0a080, ready: true }, // 30 x 79 m incl. Steinway Hall in front (+Z, 57th St); tower 18 x 60 m behind, feathered setbacks at the back (south)
   { id: 'one57', file: 'one57.glb', trueHeightM: 306.0, face: 'east', stone: 0x7890ac, ready: true }, // 56 x 40 m podium; roofs cascade down toward +X (= uptown when +Z looks east)
+  { id: 'one_times_square', file: 'one_times_square.glb', trueHeightM: 118.0, face: 'north', stone: 0x3a3a40, ready: true }, // 20 x 30.6 m wedge (narrow north end at +Z); screens material 'nyc_ts_screens' = assets/textures/nyc_billboards.jpg 4x4 atlas (swap for the animated LED material by name if wanted); ball mast to 118 m
   { id: 'new_york_times_building', file: 'new_york_times_building.glb', trueHeightM: 319.0, face: 'west', stone: 0xc8c6c0, ready: true }, // tower 57 x 57 m + 20 m podium behind (58 x 87 m total); +Z Eighth Ave
+  // nyc-design helpers (devtools/nyc/design/tools/build_<id>.py, build_towers2.py): same conventions
+  { id: 'grand_central_terminal', file: 'grand_central_terminal.glb', trueHeightM: 46.4, face: 'south', stone: 0xc8baa0, ready: true }, // 91 x 100.7 m incl. the Park Ave viaduct terrace (deck 7.5 m) in front; +Z the 42nd St facade (Tiffany clock, three arched windows)
+  { id: 'nypl', file: 'nypl.glb', trueHeightM: 39.5, face: 'east', stone: 0xd6d2c8, ready: true }, // 120 x 108 m incl. terrace and steps; +Z the Fifth Ave portico (marble)
+  { id: 'st_patricks_cathedral', file: 'st_patricks_cathedral.glb', trueHeightM: 100.6, face: 'west', stone: 0xd8d4ca, ready: true }, // 50 x 123 m incl. the Lady Chapel; +Z the Fifth Ave twin-spire front
+  { id: 'plaza_hotel', file: 'plaza_hotel.glb', trueHeightM: 85.5, face: 'east', stone: 0xd4d0c4, ready: true }, // 75.6 x 97 m; +Z the Fifth Ave front over Grand Army Plaza; copper mansard
+  { id: 'carnegie_hall', file: 'carnegie_hall.glb', trueHeightM: 63.0, face: 'north', stone: 0x9a6448, ready: true }, // 48.6 x 65.7 m incl. the 57th St studio wing; +Z the 57th St front
+  { id: 'radio_city_music_hall', file: 'radio_city_music_hall.glb', trueHeightM: 140.0, face: 'west', stone: 0xc8bca4, ready: true }, // 65 x 74 m block incl. 1270 Sixth Ave (140 m) behind; +Z Sixth Ave, the marquee corner on the 50th St side (+X = downtown)
+  { id: 'un_general_assembly', file: 'un_general_assembly.glb', trueHeightM: 32.8, face: 'north', stone: 0xd6d2c8, ready: true }, // 55 x 135 m; +Z the north visitors' glass wall
+  { id: 'madison_square_garden', file: 'madison_square_garden.glb', trueHeightM: 48.0, face: 'east', stone: 0xb8b2a6, ready: true }, // 126 x 187 m (drum 124 m, Chase Square pavilion toward +Z Seventh Ave, service block at the back)
+  { id: 'columbus_circle', file: 'columbus_circle.glb', trueHeightM: 23.2, face: 'south', stone: 0xc8c4bc, ready: true }, // 72 m round plaza island with the Columbus column; place at the circle centre (fits inside the inner kerb)
+  { id: 'un_secretariat', file: 'un_secretariat.glb', trueHeightM: 155.8, face: 'west', stone: 0xd6d2c8, ready: true }, // 88 x 29 m; +Z the First Ave glass face; white marble ends
+  { id: 'hudson_yards_30', file: 'hudson_yards_30.glb', trueHeightM: 388.0, face: 'south', stone: 0x9cb0c4, ready: true }, // 120 x 164 m incl. the Shops podium; +Z downtown; Edge prow at 335 m
+  { id: 'vessel', file: 'vessel.glb', trueHeightM: 47.7, face: 'south', stone: 0xa86a48, ready: true }, // 49 m across at the top, 15 m at the base
+  { id: 'deutsche_bank_center', file: 'deutsche_bank_center.glb', trueHeightM: 235.0, face: 'east', stone: 0x7c96a0, ready: true }, // 129 x 146 m; +Z the curved base on the circle
+  { id: 'citigroup_center', file: 'citigroup_center.glb', trueHeightM: 279.0, face: 'west', stone: 0xd0d0cc, ready: true }, // 61 x 125 m incl. St Peter's and the plaza block; +Z Lexington Ave; slanted top faces downtown
+  { id: 'lever_house', file: 'lever_house.glb', trueHeightM: 94.6, face: 'east', stone: 0x7aa8a0, ready: true }, // 61.5 x 59 m (podium covers the lot, slab along the north edge); +Z Park Ave
+  { id: 'seagram_building', file: 'seagram_building.glb', trueHeightM: 160.0, face: 'west', stone: 0x6a5644, shiftM: 15, ready: true }, // 60 x 90 m incl. the 30 m plaza in front (+Z Park Ave) and the back wings
+  { id: 'queensboro_bridge', file: 'queensboro_bridge.glb', trueHeightM: 107.0, face: 'south', stone: 0x5e6e66, ready: true }, // 534 x 36 m, model X along the bridge (grid east), origin = the layout centre; decks 37-41 m and +7.5 m; towers 92 m, finials 107 m. Place exact (no height fit): trueHeightM is the finial top
+  { id: 'hudson_yards_10', file: 'hudson_yards_10.glb', trueHeightM: 268.0, face: 'east', stone: 0x9cb0c4, ready: true }, // tier B
+  { id: 'hudson_yards_35', file: 'hudson_yards_35.glb', trueHeightM: 308.0, face: 'east', stone: 0xc8c4bc, ready: true }, // tier B
+  { id: 'hudson_yards_50', file: 'hudson_yards_50.glb', trueHeightM: 308.0, face: 'west', stone: 0xb8bcc0, ready: true }, // tier B
+  { id: 'hudson_yards_15', file: 'hudson_yards_15.glb', trueHeightM: 279.0, face: 'east', stone: 0x9cb0c4, ready: true }, // tier B
+  { id: 'the_spiral', file: 'the_spiral.glb', trueHeightM: 313.9, face: 'west', stone: 0x9cb0c4, ready: true }, // tier B; planted terraces spiral up
+  { id: 'one_manhattan_west', file: 'one_manhattan_west.glb', trueHeightM: 303.0, face: 'east', stone: 0x8ca0b4, ready: true }, // tier B
+  { id: 'two_manhattan_west', file: 'two_manhattan_west.glb', trueHeightM: 285.0, face: 'east', stone: 0x8ca0b4, ready: true }, // tier B
+  { id: 'one_penn_plaza', file: 'one_penn_plaza.glb', trueHeightM: 229.0, face: 'east', stone: 0x4a4a4c, ready: true }, // tier B; Eighth Ave
+  { id: 'park_270', file: 'park_270.glb', trueHeightM: 423.2, face: 'east', stone: 0x9cb0c4, ready: true }, // tier B; JPMorgan Chase HQ, Park Ave
+  { id: 'gm_building', file: 'gm_building.glb', trueHeightM: 216.6, face: 'west', stone: 0xd0d0cc, ready: true }, // tier B; Fifth Ave / Grand Army Plaza
+  { id: 'four_times_square', file: 'four_times_square.glb', trueHeightM: 351.0, face: 'west', stone: 0x9cb0c4, ready: true }, // tier B; the square side
+  { id: 'worldwide_plaza', file: 'worldwide_plaza.glb', trueHeightM: 237.0, face: 'east', stone: 0x9a6a50, ready: true }, // tier B; Eighth Ave
+  { id: 'hearst_tower', file: 'hearst_tower.glb', trueHeightM: 182.2, face: 'east', stone: 0xb8c4cc, ready: true }, // tier B; Eighth Ave
+  { id: 'central_park_south_220', file: 'central_park_south_220.glb', trueHeightM: 290.0, face: 'north', stone: 0xd0ccc0, ready: true }, // tier B; Central Park
+  { id: 'moma_53w53', file: 'moma_53w53.glb', trueHeightM: 320.1, face: 'south', stone: 0x6c7c8c, ready: true }, // tier B; 53rd St
+  { id: 'bloomberg_tower', file: 'bloomberg_tower.glb', trueHeightM: 246.0, face: 'west', stone: 0x9cb0c4, ready: true }, // tier B; Lexington Ave
+  { id: 'trump_tower', file: 'trump_tower.glb', trueHeightM: 205.5, face: 'west', stone: 0x4a443e, ready: true }, // 36 x 54 m (35.5 along Fifth x 52.5 along 56th); +Z Fifth Ave; sawtooth planted terraces on the Fifth Ave side
+  { id: 'trump_world_tower', file: 'trump_world_tower.glb', trueHeightM: 262.0, face: 'east', stone: 0x5a5650, ready: true }, // tier B; First Ave
+  { id: 'international_building', file: 'international_building.glb', trueHeightM: 156.6, face: 'east', stone: 0xc8bca4, ready: true }, // tier B; Fifth Ave (facing St Patrick's, Atlas in the forecourt)
+  { id: 'helmsley_building', file: 'helmsley_building.glb', trueHeightM: 172.0, face: 'north', stone: 0xc8bca4, ready: true }, // tier B; looks up Park Ave, portals at the base
+  { id: 'waldorf_astoria', file: 'waldorf_astoria.glb', trueHeightM: 190.5, face: 'west', stone: 0xc8bca4, ready: true }, // tier B; Park Ave
+  { id: 'chanin_building', file: 'chanin_building.glb', trueHeightM: 197.8, face: 'north', stone: 0x9a6a50, ready: true }, // tier B
+  { id: 'paramount_building', file: 'paramount_building.glb', trueHeightM: 119.0, face: 'east', stone: 0xd0ccc0, ready: true }, // tier B; Broadway / the square
+  { id: 'new_yorker_hotel', file: 'new_yorker_hotel.glb', trueHeightM: 152.2, face: 'east', stone: 0xb8a080, ready: true }, // tier B; Eighth Ave; NEW YORKER sign
+  { id: 'sony_building', file: 'sony_building.glb', trueHeightM: 196.0, face: 'east', stone: 0xb8a0a0, ready: true }, // tier B; Madison Ave
+  { id: 'madison_383', file: 'madison_383.glb', trueHeightM: 230.0, face: 'west', stone: 0x9cb0c4, ready: true }, // tier B; Madison Ave
+  { id: 'park_425', file: 'park_425.glb', trueHeightM: 262.0, face: 'west', stone: 0x9cb0c4, ready: true }, // tier B; Park Ave
 ];
 
 // Generic blocks by height bucket (game units: low < 7, short 7-18,
@@ -88,12 +134,12 @@ export const NYC_PROP_GLBS = [
 // Extra traffic: { url, len, weight, parked?, albedo?, minRoadW?, ready }
 export const NYC_VEHICLE_GLBS = [
   // nyc-design (devtools/nyc/design/tools/build_nyc_vehicles.py). Front +Z, wheels at y 0, metres
-  { url: NYC_BASE + 'nyc_taxi.glb', len: 4.9, weight: 10, ready: true }, // yellow cab (roof sign TAXI, no logos)
+  { url: NYC_BASE + 'nyc_taxi.glb', len: 4.9, weight: 30, ready: true }, // yellow cab (roof sign TAXI, no logos)
   { url: NYC_BASE + 'nyc_bus.glb', len: 12.5, weight: 3, parked: false, minRoadW: 6.5, ready: true }, // MTA-style 40 ft bus, invented livery
   { url: NYC_BASE + 'nyc_box_truck.glb', len: 7.6, weight: 3, ready: true }, // white box truck
   { url: NYC_BASE + 'nyc_delivery_van.glb', len: 5.9, weight: 3, ready: true }, // delivery van
   { url: NYC_BASE + 'nyc_suv_black.glb', len: 5.7, weight: 3, ready: true }, // black livery SUV
-  { url: NYC_BASE + 'nyc_police.glb', len: 5.2, weight: 1, ready: true }, // blue-and-white POLICE car (3 primitives)
+  { url: NYC_BASE + 'nyc_police.glb', len: 5.05, weight: 4, lightBar: true, parked: false, ready: true }, // blue-and-white POLICE car (3 primitives)
 ];
 
 // Kit pieces placed many times or fitted to named footprints:
@@ -104,6 +150,9 @@ export const NYC_KIT_GLBS = {
   nyc_water_tank: { file: 'nyc_water_tank.glb', heightM: 7.6, ready: true },
   // Rooftop cooling tower / mechanical box cluster (8 x 4.3 x 4.5 m) for flat roofs of procedural masses and glass slabs
   nyc_rooftop_mech: { file: 'nyc_rooftop_mech.glb', heightM: 4.3, ready: true },
+  // USS Maine Monument at Merchants' Gate (the park corner of Columbus Circle, north-east of the circle): 26 x 21 m,
+  // pylon to 22.3 m, +Z the fountain side facing the circle (true size, place exact)
+  maine_monument: { file: 'maine_monument.glb', heightM: 22.3, ready: true },
 };
 
 // Debris for wrecked NYC buildings (urls), used instead of the shared concrete kit when listed.

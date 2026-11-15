@@ -13,6 +13,7 @@ import { LEVEL_KIT as LK } from './chicago.js';
 import { nycGround, nycFacade, tickNycMaterials, createNycTrees, nycWater } from './nycMaterials.js';
 import { configureChicagoWear } from './chicagoMaterials.js';
 import { isMobile } from '../quality.js';
+import { assetURL } from '../assetCache.js';
 import { splashPool } from './chicago_harbor.js';
 import { bakeShoreField, makeWaterMaterial, waterUniforms, waterFX } from './chicago_water.js';
 import { buildArena, arenaNoTree, setArenaSite } from './chicago_arena.js';
@@ -105,8 +106,19 @@ function _styled(defs, style) {
   const own = defs.filter((g) => g.style && re.test(g.style));
   return own.length ? own : defs;
 }
+/** The kit pieces for a lot h tall: its bucket, cut to the pieces whose true
+ *  height is within ~35% of h (a piece is scaled to the lot height, so a 50 m
+ *  piece on a 90 m lot draws storeys 1.8x tall; else the nearest heights),
+ *  then to the lot's style where any of those suit it. */
+function _sizedDefs(h, style) {
+  const all = _bucketDefs(LK.bucket(h));
+  const off = (g) => (g.trueM ? Math.abs(Math.log(h / (g.trueM[1] * 0.2))) : 0);
+  const near = all.filter((g) => off(g) < 0.3);
+  const best = Math.min(...all.map(off));
+  return _styled(near.length ? near : all.filter((g) => off(g) <= best + 0.15), style);
+}
 function _pickGeneric(h, avoid, rnd = Math.random, style = null) {
-  const all = _styled(_bucketDefs(LK.bucket(h)), style);
+  const all = _sizedDefs(h, style);
   const fit = all.filter((g) => !g.maxH || h <= g.maxH);
   const own = fit.length ? fit : all;
   const ok = avoid ? own.filter((g) => !avoid.has(g.url)) : own;
@@ -766,20 +778,25 @@ export function buildNyc(scene, world, opts, K) {
   for (const q of L.paths) for (const pts of clipVenue(q.points, 0)) addBatch(ribbon(pts, -Math.max(0.3, q.width / 2), Math.max(0.3, q.width / 2), 0.04), D.gravel);
   const treeOK = (x, z, poly) => (!poly || pointInPoly(x, z, poly)) && !isWater(x, z) && !onRoad(x, z, 1.2) && !onLandmark(x, z);
   let trees = 0;
-  // (the surveyed trees: thinned to the cap)
-  const TREE_CAP = L.trees ? (!glb ? 700 : lite ? 1300 : 3200) : lite ? 260 : 900;
+  // The surveyed trees, in order until the cap: every elm (the Mall), Central
+  // Park's woodland, the plane trees, then the street trees thinned evenly.
+  // Instanced (draws by template, not by tree); phone LOW keeps the park.
+  const TREE_CAP = L.trees ? (!glb ? 1400 : lite ? 2800 : 7500) : lite ? 260 : 900;
   const tree = (x, z, s, kind) => { if (trees < TREE_CAP) { scene.add(makeParkTree(x, z, s * PS, kind)); trees++; } };
   if (L.trees) {
-    // (every elm: the Mall's allee in Central Park; plane and street trees thinned to the cap)
-    const special = L.trees.filter((t) => t[2] === 'elm'), other = L.trees.filter((t) => t[2] !== 'elm');
-    const room = Math.max(0, TREE_CAP - special.length), step = other.length > room ? other.length / Math.max(1, room) : 1;
-    const list = [...special];
-    for (let i = 0; i < other.length && list.length < TREE_CAP; i += step) list.push(other[Math.floor(i)]);
-    // (nycLandscape.js sizes each layout kind to its species' true height at s = 1)
-    for (const [x, z, kind] of list) {
-      if (isWater(x, z) || onRoad(x, z, 0.3) || onLandmark(x, z) || inRingBox(x, z)) continue;
-      tree(x, z, 0.9 + Math.random() * 0.2, kind);
+    // (open lawns stay open: Sheep Meadow, the Great Lawn, the ring box)
+    const meadows = L.parks.filter((p) => /meadow|great lawn/i.test(p.name)).map((p) => p.polygon);
+    const ok = ([x, z]) => !isWater(x, z) && !onRoad(x, z, 0.3) && !onLandmark(x, z) && !inRingBox(x, z) && !meadows.some((q) => pointInPoly(x, z, q));
+    const list = [];
+    for (const kinds of [['elm'], ['park'], ['plane'], ['street', null]]) {
+      const tier = L.trees.filter((t) => kinds.includes(t[2]) || (kinds.includes(null) && !['elm', 'park', 'plane', 'street'].includes(t[2]))).filter(ok);
+      const room = TREE_CAP - list.length;
+      if (room <= 0) break;
+      const step = tier.length > room ? tier.length / room : 1;
+      for (let i = 0; i < tier.length && list.length < TREE_CAP; i += step) list.push(tier[Math.floor(i)]);
     }
+    // (nycLandscape.js sizes each layout kind to its species' true height at s = 1)
+    for (const [x, z, kind] of list) tree(x, z, 0.9 + Math.random() * 0.2, kind);
   }
   // Hudson / East River piers (parks with surface 'pier'): a concrete deck
   // 0.8u over the water on a dark pile edge, under their sheds
@@ -804,9 +821,13 @@ export function buildNyc(scene, world, opts, K) {
     g.computeVertexNormals();
     addBatch(g, D.steelDark);
   }
+  const cpPoly = L.parks.find((q) => /^central park$/i.test(q.name))?.polygon || null;
   for (const p of L.parks) {
     if (p.surface === 'pier') continue;
-    const plaza = { parking: roadMat, gravel: D.gravel, paved: plazaMat }[p.surface] || plazaMat;
+    // (in Central Park: ballfields are grass, playgrounds and nameless paved bits park asphalt, not white plaza stone)
+    const inCP = cpPoly && pointInPoly(p.polygon[0][0], p.polygon[0][1], cpPoly);
+    if (inCP && /ballfield/i.test(p.name)) p.kind = 'lawn';
+    const plaza = { parking: roadMat, gravel: D.gravel, paved: inCP ? D.gravel : plazaMat }[p.surface] || plazaMat;
     const uv = p.kind === 'plaza' && p.surface === 'parking' ? 1 / ASPHALT_TILE : p.surface === 'paved' ? 1 / SW_TILE : 1 / 14;
     const base = p.kind === 'plaza' ? plaza : p.kind === 'lawn' ? lawnMat : grassMat;
     const lay = !p.fill ? 0 : p.kind === 'plaza' ? 3 : 2;
@@ -910,7 +931,7 @@ export function buildNyc(scene, world, opts, K) {
     // (read at the collapse: a fill row may have placed another kit piece than the pick)
     Object.defineProperty(b, 'debrisTint', { get() { return _stoneOf(this.glbUrl || pick); } });
     orient(b, o.w, o.d, o.rotY);
-    K.queueGLB({ url: pick, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: _styled(_bucketDefs(LK.bucket(o.h)), o.style).map((g) => g.url), stretch: 1.3, fill, lot: lotOf(o.w, o.d, o.rotY), roof: roofFor(o, rnd) });
+    K.queueGLB({ url: pick, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: _sizedDefs(o.h, o.style).map((g) => g.url), stretch: 1.3, fill, lot: lotOf(o.w, o.d, o.rotY), roof: roofFor(o, rnd) });
   };
   for (const o of L.buildings) if (!(lite && o.phoneSkip)) placeBlock(o);
 
@@ -987,9 +1008,24 @@ export function buildNyc(scene, world, opts, K) {
       g2.fillStyle = '#ffffff'; g2.fillText(WORDS[i % WORDS.length], x + 64, y + 52, 116);
       g2.strokeStyle = '#05050a'; g2.lineWidth = 4; g2.strokeRect(x + 2, y + 2, 124, 124);
     }
+    // nyc-design's 4 x 4 billboard atlas (assets/textures/nyc_billboards.jpg) once it loads; the canvas until then
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = 4;
     const led = new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, fog: true });
+    new THREE.TextureLoader().load(assetURL('./assets/textures/nyc_billboards.jpg'), (t) => {
+      t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+      t.offset.copy(tex.offset); tex.image = t.image; tex.needsUpdate = true; t.dispose();
+    }, undefined, () => { /* the canvas stays */ });
+    // One Times Square's own screens (its GLB's 'nyc_ts_screens' material) step with them
+    const tsScreens = [];
+    K.onTemplatesReady((sc, get) => {
+      const def = NYC_LANDMARK_GLBS.find((g) => g.ready && g.id === 'one_times_square');
+      get(def ? NYC_BASE + def.file : '')?.traverse((o) => {
+        if (o.isMesh && o.material?.name === 'nyc_ts_screens' && o.material.map) {
+          const m = o.material.map; m.wrapS = m.wrapT = THREE.RepeatWrapping; m.needsUpdate = true; tsScreens.push(m);
+        }
+      });
+    });
     led.userData.shared = true;
     const raw = new Map((L.rawBuildings || []).map((o) => [o.id, o]));
     for (const sg of signs) {
@@ -1047,7 +1083,7 @@ export function buildNyc(scene, world, opts, K) {
       }
     }
     let shown = 0;
-    animators.push({ update(dt, time) { const n = Math.floor(time / 3.5); if (n !== shown) { shown = n; tex.offset.set((n % 4) / 4, Math.floor(n / 4) % 4 / 4); } } });
+    animators.push({ update(dt, time) { const n = Math.floor(time / 3.5); if (n !== shown) { shown = n; tex.offset.set((n % 4) / 4, Math.floor(n / 4) % 4 / 4); for (const m of tsScreens) m.offset.copy(tex.offset); } } });
   }
 
   // ---- the High Line: the planted deck on its girders and riveted columns, 9 m over the West Side ----
