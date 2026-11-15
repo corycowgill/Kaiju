@@ -6067,7 +6067,7 @@ const minimapCanvas = document.getElementById('minimap');
 const minimapCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null;
 const MINIMAP_RANGE = 380; // world units shown half-extent
 
-let _mini = null, _miniDirty = true;
+let _mini = null, _miniDirty = true, _miniWater = null;
 function _miniLayer(scale) {
   if (_mini && !_miniDirty && _mini.buildings === world.buildings && _mini.water === world.mapWater && _mini.scale === scale) return _mini;
   _miniDirty = false;
@@ -6079,10 +6079,21 @@ function _miniLayer(scale) {
   const pad = MINIMAP_RANGE * 1.5;
   x0 -= pad; z0 -= pad; x1 += pad; z1 += pad;
   const canvas = (_mini && _mini.canvas) || document.createElement('canvas');
-  canvas.width = Math.ceil((x1 - x0) * scale); canvas.height = Math.ceil((z1 - z0) * scale);
+  const cw = Math.ceil((x1 - x0) * scale), chh = Math.ceil((z1 - z0) * scale);
+  if (canvas.width !== cw || canvas.height !== chh) { canvas.width = cw; canvas.height = chh; }
   const c = canvas.getContext('2d');
-  // Water (levels that carry outlines): lake, river, ponds; holes cut out
-  if (world.mapWater) {
+  c.clearRect(0, 0, cw, chh);
+  // Water (levels that carry outlines): filled once per city into its own
+  // canvas and copied in on every redraw, not refilled whenever a building
+  // falls. (NYC's first layout froze 1-14 s on the first collapse inside the
+  // GPU process's canvas raster (RasterDecoder, an ANGLE worker task) and not
+  // with the minimap hidden; this repaint is the cheaper part to remove.)
+  const wk = world.mapWater && `${x0}|${z0}|${cw}|${chh}`;
+  if (wk && !(_miniWater && _miniWater.water === world.mapWater && _miniWater.key === wk)) {
+    const wc = (_miniWater && _miniWater.canvas) || document.createElement('canvas');
+    wc.width = cw; wc.height = chh;
+    _miniWater = { canvas: wc, water: world.mapWater, key: wk };
+    const c = wc.getContext('2d');
     c.fillStyle = 'rgba(40, 110, 170, 0.55)';
     // One path per body so overlaps (river mouth into the lake) don't cancel
     for (const w of world.mapWater) {
@@ -6097,6 +6108,7 @@ function _miniLayer(scale) {
       c.fill('evenodd');
     }
   }
+  if (wk) c.drawImage(_miniWater.canvas, 0, 0);
   // Buildings (simple dots, sampled)
   c.fillStyle = 'rgba(180, 180, 200, 0.35)';
   for (let i = 0; i < world.buildings.length; i += 3) {

@@ -42,6 +42,8 @@ const CAPS = [
 // Colour-map floor (longest side) above the default: traffic gets kicked and thrown past the
 // camera, and smooth car paint shows blur and block artefacts long before a facade does
 const FLOORS = [
+  // NYC landmarks (tiling facade maps, seen close at kaiju-eye; the generic kit nyc_* keeps the density rule): nyc-design
+  [/^buildings\/nyc\/(?!nyc_|debris_)[a-z0-9_]+?(_lod1)?\.glb$/, 512],
   // DC headline landmarks (tiling stone / facade maps, seen close at kaiju-eye): dc-design
   [/^buildings\/dc\/(us_capitol|white_house|lincoln_memorial|jefferson_memorial|washington_monument)(_lod1)?\.glb$/, 1024],
   [/^buildings\/dc\/(smithsonian_castle|natural_history_museum|air_and_space_museum|national_gallery_west|national_gallery_east|nmaahc|hirshhorn_museum|wwii_memorial|national_archives|old_post_office|treasury_building|supreme_court|library_of_congress|eeob|nmah|nmai)(_lod1)?\.glb$/, 512],

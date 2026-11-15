@@ -92,8 +92,21 @@ function _bucketDefs(bucket) {
 }
 /** One kit url for a block of height h (rnd: the block's own seeded random, so a
  *  building gets the same piece every run; avoid: urls standing next door). */
-function _pickGeneric(h, avoid, rnd = Math.random) {
-  const all = _bucketDefs(LK.bucket(h));
+// The layout's style per lot (from its era and height: cartographer) -> the
+// kit styles that suit it (nyc-design's `style` field); a lot keeps the whole
+// bucket when none of them is in it
+const STYLE_OK = {
+  tenement: /tenement|brownstone|whitebrick/, prewar: /prewar|limestone|deco/, whitebrick: /whitebrick|prewar/,
+  glassslab: /glassslab|glasstower/, glasstower: /glasstower|glassslab/,
+};
+function _styled(defs, style) {
+  const re = STYLE_OK[style];
+  if (!re) return defs;
+  const own = defs.filter((g) => g.style && re.test(g.style));
+  return own.length ? own : defs;
+}
+function _pickGeneric(h, avoid, rnd = Math.random, style = null) {
+  const all = _styled(_bucketDefs(LK.bucket(h)), style);
   const fit = all.filter((g) => !g.maxH || h <= g.maxH);
   const own = fit.length ? fit : all;
   const ok = avoid ? own.filter((g) => !avoid.has(g.url)) : own;
@@ -529,19 +542,22 @@ export function buildNyc(scene, world, opts, K) {
   // River over the whole fetch area (else a strip along the grid from each
   // bank), clipped to the outside of the play rectangle in four pieces, so
   // they never overlap the layout's water
-  const farWater = [];
-  const farRivers = L.surround?.water?.length ? L.surround.water
-    : [[SHORE.hudson - SHORE.hudsonW, SHORE.hudson], [SHORE.east, SHORE.east + SHORE.eastW]].map(([v0, v1]) => [fromVU(v0, -FAR), fromVU(v1, -FAR), fromVU(v1, FAR), fromVU(v0, FAR)]);
+  // (surround water: { name, polygon, holes } with Roosevelt Island and the
+  // piers as holes, the lakes past the box too; an older bare-ring list works)
+  const farWater = []; // { polygon, holes }
+  const farRivers = L.surround?.water?.length ? L.surround.water.map((w) => (Array.isArray(w) ? { polygon: w, holes: [] } : { polygon: w.polygon, holes: w.holes || [] }))
+    : [[SHORE.hudson - SHORE.hudsonW, SHORE.hudson], [SHORE.east, SHORE.east + SHORE.eastW]].map(([v0, v1]) => ({ polygon: [fromVU(v0, -FAR), fromVU(v1, -FAR), fromVU(v1, FAR), fromVU(v0, FAR)], holes: [] }));
   for (const river of farRivers) {
     for (const region of OUTSIDE) {
-      const piece = clipPoly(river, region);
-      if (piece.length >= 3) farWater.push(piece);
+      const piece = clipPoly(river.polygon, region);
+      if (piece.length < 3) continue;
+      farWater.push({ polygon: piece, holes: river.holes.map((h) => clipPoly(h, region)).filter((h) => h.length >= 3) });
     }
   }
   if (L.water.length) {
     const shore = [[], [], []], waterMeshes = [];
     if (farWater.length) {
-      const fm = new THREE.Mesh(mergeGeometries(farWater.map((p) => polygonGeom(p, 0.19, 1)), false), M.water);
+      const fm = new THREE.Mesh(mergeGeometries(farWater.map((p) => polygonGeom(p.polygon, 0.19, 1, p.holes)), false), M.water);
       fm.matrixAutoUpdate = false; fm.updateMatrix();
       scene.add(fm);
       waterMeshes.push(fm);
@@ -566,7 +582,7 @@ export function buildNyc(scene, world, opts, K) {
       }
     }
     if (shore[0].length) addBatch(LK.geom(...shore), M.seawall);
-    const field = bakeShoreField([...L.water, ...farWater.map((polygon) => ({ kind: 'lake', polygon }))], [], { x0: B.minX - 100, z0: B.minZ - 100, x1: B.maxX + 100, z1: B.maxZ + 100 });
+    const field = bakeShoreField([...L.water, ...farWater.map((p) => ({ kind: 'lake', polygon: p.polygon, holes: p.holes }))], [], { x0: B.minX - 100, z0: B.minZ - 100, x1: B.maxX + 100, z1: B.maxZ + 100 });
     const waterMat = makeWaterMaterial(field);
     for (const wm of waterMeshes) wm.material = waterMat;
     const WU = waterUniforms(waterMat);
@@ -578,7 +594,12 @@ export function buildNyc(scene, world, opts, K) {
     animators.push(wfx);
     if (world) world.water = wfx;
   }
-  const swMat = M.path;
+  // NYC's own ground maps (nycMaterials.js): sidewalks, lawns, plazas, park paths
+  const swMat = nycGround(new THREE.MeshStandardMaterial({ roughness: 1 }), 'pavement');
+  const lawnMat = nycGround(new THREE.MeshStandardMaterial({ roughness: 1 }), 'lawn');
+  const grassMat = nycGround(new THREE.MeshStandardMaterial({ roughness: 1 }), 'grass');
+  const plazaMat = nycGround(new THREE.MeshStandardMaterial({ roughness: 1 }), 'plaza');
+  for (const m of [swMat, lawnMat, grassMat, plazaMat]) m.userData.shared = true;
 
   // ---- roads ----
   // Title Match: the streets through the venue (Constitution Ave, 15th and
@@ -754,18 +775,40 @@ export function buildNyc(scene, world, opts, K) {
     const room = Math.max(0, TREE_CAP - special.length), step = other.length > room ? other.length / Math.max(1, room) : 1;
     const list = [...special];
     for (let i = 0; i < other.length && list.length < TREE_CAP; i += step) list.push(other[Math.floor(i)]);
-    // true sizes on DC's elm template (~22 m at 1.0): the Mall's elms, London planes ~18 m, Midtown's street trees (honey locust, pear) ~10 m
-    const SIZE = { elm: [1.0, 0.18], plane: [0.78, 0.18], park: [0.8, 0.3], street: [0.46, 0.14] };
+    // (nycLandscape.js sizes each layout kind to its species' true height at s = 1)
     for (const [x, z, kind] of list) {
       if (isWater(x, z) || onRoad(x, z, 0.3) || onLandmark(x, z) || inRingBox(x, z)) continue;
-      const [s0, sv] = SIZE[kind] || SIZE.park;
-      tree(x, z, s0 + Math.random() * sv, 'elm');
+      tree(x, z, 0.9 + Math.random() * 0.2, kind);
     }
   }
+  // Hudson / East River piers (parks with surface 'pier'): a concrete deck
+  // 0.8u over the water on a dark pile edge, under their sheds
+  const PIER_Y = 0.8, pierDecks = [], pierEdge = [[], [], []];
+  const pierPolys = L.parks.filter((p) => p.surface === 'pier').map((p) => p.polygon);
   for (const p of L.parks) {
-    const plaza = { parking: roadMat, gravel: D.gravel, paved: swMat }[p.surface] || M.lot;
+    if (p.surface !== 'pier') continue;
+    pierDecks.push(polygonGeom(p.polygon, PIER_Y, 1 / SW_TILE));
+    const [pos, , idx] = pierEdge;
+    for (let i = 0; i < p.polygon.length; i++) {
+      const a = p.polygon[i], b = p.polygon[(i + 1) % p.polygon.length], i0 = pos.length / 3;
+      // (both faces, own vertices each: rings come in either winding)
+      for (let k = 0; k < 2; k++) pos.push(a[0], 0, a[1], b[0], 0, b[1], b[0], PIER_Y, b[1], a[0], PIER_Y, a[1]);
+      idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3, i0 + 4, i0 + 6, i0 + 5, i0 + 4, i0 + 7, i0 + 6);
+    }
+  }
+  if (pierDecks.length) {
+    addBatch(mergeGeometries(pierDecks, false), swMat);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pierEdge[0], 3));
+    g.setIndex(pierEdge[2]);
+    g.computeVertexNormals();
+    addBatch(g, D.steelDark);
+  }
+  for (const p of L.parks) {
+    if (p.surface === 'pier') continue;
+    const plaza = { parking: roadMat, gravel: D.gravel, paved: plazaMat }[p.surface] || plazaMat;
     const uv = p.kind === 'plaza' && p.surface === 'parking' ? 1 / ASPHALT_TILE : p.surface === 'paved' ? 1 / SW_TILE : 1 / 14;
-    const base = p.kind === 'plaza' ? plaza : p.kind === 'lawn' ? M.lawn : M.grass;
+    const base = p.kind === 'plaza' ? plaza : p.kind === 'lawn' ? lawnMat : grassMat;
     const lay = !p.fill ? 0 : p.kind === 'plaza' ? 3 : 2;
     addBatch(polygonGeom(p.polygon, 0.03, uv), lay ? LK.decal(base, lay) : base);
     for (const q of p.paths) addBatch(ribbon(q.points, -q.width / 2, q.width / 2, 0.04), D.gravel);
@@ -779,7 +822,7 @@ export function buildNyc(scene, world, opts, K) {
       if (Math.random() < (p.kind === 'lawn' ? 0.8 : 0.55)) continue;
       const tx = x + (Math.random() - 0.5) * step * 0.7, tz = z + (Math.random() - 0.5) * step * 0.7;
       if (p.paths.some((q) => distToPolyline(tx, tz, q.points) < q.width / 2 + 2)) continue;
-      if (treeOK(tx, tz, p.polygon)) tree(tx, tz, 0.9 + Math.random() * 0.5);
+      if (treeOK(tx, tz, p.polygon)) tree(tx, tz, 0.9 + Math.random() * 0.2, 'park');
     }
   }
 
@@ -791,12 +834,28 @@ export function buildNyc(scene, world, opts, K) {
   const turned = (r) => Math.abs(Math.sin(2 * (r || 0))) > 0.05;
   const orient = (b, w, d, r) => { if (turned(r)) b.obb = { hw: w / 2, hd: d / 2, c: Math.cos(r), s: Math.sin(r) }; };
   const lotOf = (w, d, r) => (turned(r) ? { w, d } : null);
+  // Rooftop kit (city.js entry.roof, falls with the building): a wooden water
+  // tank on most pre-war, tenement and white-brick roofs (one or two), a plant
+  // room on the glass slabs; true size. Off on phone LOW (the procedural tier).
+  const TANK = glb && _kit('nyc_water_tank'), MECH = glb && _kit('nyc_rooftop_mech');
+  const roofFor = (o, rnd) => {
+    if (o.h < 3 || o.h > 60 || Math.min(o.w, o.d) < 3) return null;
+    const out = [], spot = () => [(rnd() - 0.5) * 1.1, (rnd() - 0.5) * 1.1];
+    if (TANK && /tenement|prewar|whitebrick/.test(o.style || 'prewar') && rnd() < 0.62) {
+      out.push({ url: TANK, fx: spot()[0], fz: spot()[1], ry: rnd() * 6.28, s: S });
+      if (o.w * o.d > 32 && rnd() < 0.5) out.push({ url: TANK, fx: spot()[0], fz: spot()[1], ry: rnd() * 6.28, s: S });
+    }
+    if (MECH && (/glass/.test(o.style || '') || rnd() < 0.25) && rnd() < 0.7) out.push({ url: MECH, fx: spot()[0] * 0.6, fz: spot()[1] * 0.6, ry: Math.round(rnd() * 4) * Math.PI / 2, s: S });
+    return out.length ? out : null;
+  };
   const placeBlock = (o) => {
     const color = LK.facadeColor();
     const c = Math.abs(Math.cos(o.rotY || 0)), s = Math.abs(Math.sin(o.rotY || 0));
     const aw = o.w * c + o.d * s, ad = o.w * s + o.d * c;
     if (inRingBox(o.x, o.z, aw / 2, ad / 2)) return; // the Title Match venue stands here
     if (o.x < B.minX || o.x > B.maxX || o.z < B.minZ || o.z > B.maxZ) return; // (a lot whose centre lies past the edge)
+    // a split lot's cell out over the river (a lot's rect overhanging the bulkhead): left out
+    if (o.cell && isWater(o.x, o.z) && !L.onPier.has(o.id) && !pierPolys.some((q) => pointInPoly(o.x, o.z, q))) return;
     // A kit piece made for this very footprint (nycManifest layoutIds)
     const own = Object.values(NYC_KIT_GLBS).find((d) => d.ready && d.layoutIds && d.layoutIds.includes(o.id));
     if (own) {
@@ -810,7 +869,7 @@ export function buildNyc(scene, world, opts, K) {
       return;
     }
     const rnd = _seeded(o.id + ':' + Math.round(o.x) + ':' + Math.round(o.z));
-    const url = _pickGeneric(o.h, null, rnd);
+    const url = _pickGeneric(o.h, null, rnd, o.style);
     if (!url) {
       const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true, noRoofProps: true, windows: { scale: 0.65, faces: lite ? 2 : 4, minH: 2.5 } });
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
@@ -835,13 +894,15 @@ export function buildNyc(scene, world, opts, K) {
     const b = new K.Building(o.x, o.z, aw, ad, o.h, { skipWindows: true, color });
     b.layoutId = o.id;
     b._skipBodyIM = true;
-    if (L.onPier.has(o.id)) b.onWater = true; // a shed on a Hudson pier (the layout's water runs under the piers)
+    // a shed on a pier deck, or hanging over its edge: there on purpose (the
+    // water grid is 4u, the decks are notches in the river)
+    if (L.onPier.has(o.id) || (isWater(o.x, o.z) && pierPolys.some((q) => pointInPoly(o.x, o.z, q) || distToPolyline(o.x, o.z, q) < 4))) b.onWater = true;
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
     const cx = Math.floor(o.x / 24), cz = Math.floor(o.z / 24);
     const avoid = new Set();
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const u of picked.get((cx + i) + ':' + (cz + j)) || []) avoid.add(u);
-    const pick = _pickGeneric(o.h, avoid, rnd) || url;
+    const pick = _pickGeneric(o.h, avoid, rnd, o.style) || url;
     const k = cx + ':' + cz;
     if (!picked.has(k)) picked.set(k, []);
     picked.get(k).push(pick);
@@ -849,7 +910,7 @@ export function buildNyc(scene, world, opts, K) {
     // (read at the collapse: a fill row may have placed another kit piece than the pick)
     Object.defineProperty(b, 'debrisTint', { get() { return _stoneOf(this.glbUrl || pick); } });
     orient(b, o.w, o.d, o.rotY);
-    K.queueGLB({ url: pick, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: _bucketDefs(LK.bucket(o.h)).map((g) => g.url), stretch: 1.3, fill, lot: lotOf(o.w, o.d, o.rotY) });
+    K.queueGLB({ url: pick, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: _styled(_bucketDefs(LK.bucket(o.h)), o.style).map((g) => g.url), stretch: 1.3, fill, lot: lotOf(o.w, o.d, o.rotY), roof: roofFor(o, rnd) });
   };
   for (const o of L.buildings) if (!(lite && o.phoneSkip)) placeBlock(o);
 
@@ -1067,7 +1128,7 @@ export function buildNyc(scene, world, opts, K) {
         scene.add(lamp);
         if (!lite && Math.random() < 0.45) {
           const tx = net.nodes[e.a].x + e.dx * (t + lampEvery / 2) + e.dz * off, tz = net.nodes[e.a].z + e.dz * (t + lampEvery / 2) - e.dx * off;
-          if (t + lampEvery / 2 < e.len - 6 && !isWater(tx, tz) && !onRing(tx, tz)) tree(tx, tz, 0.75 + Math.random() * 0.3);
+          if (t + lampEvery / 2 < e.len - 6 && !isWater(tx, tz) && !onRing(tx, tz)) tree(tx, tz, 0.9 + Math.random() * 0.2, 'street');
         }
       }
     }
@@ -1136,7 +1197,7 @@ export function buildNyc(scene, world, opts, K) {
     const cc = new THREE.Color(), nn = new THREE.Vector3();
     // A box centred on (x, z), w along its local X, d along local Z, turned
     // by rot (three.js rotation.y: local X along (c, -s), local Z along (s, c))
-    const addBox = (x, z, w, h, d, rot, tint, roof) => {
+    const addBox = (x, z, w, h, d, rot, tint, roof, y0 = 0) => {
       const c = Math.cos(rot), s = Math.sin(rot), hw = w / 2, hd = d / 2;
       const P = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
       for (const [a, b, nl, fw] of [[[-hw, hd], [hw, hd], [0, 1], w], [[hw, hd], [hw, -hd], [1, 0], d], [[hw, -hd], [-hw, -hd], [0, -1], w], [[-hw, -hd], [-hw, hd], [-1, 0], d]]) {
@@ -1145,12 +1206,12 @@ export function buildNyc(scene, world, opts, K) {
         const i0 = pos.length / 3, u0 = (x * 0.37 + z * 0.61) / 6;
         const pa = P(a[0], a[1]), pb = P(b[0], b[1]);
         for (const [p, ly, uu] of [[pa, 0, 0], [pb, 0, fw], [pb, h, fw], [pa, h, 0]]) {
-          pos.push(p[0], ly, p[1]); uv.push(u0 + uu / 6, ly / 3.2); col.push(cc.r, cc.g, cc.b);
+          pos.push(p[0], y0 + ly, p[1]); uv.push(u0 + uu / 6, ly / 3.2); col.push(cc.r, cc.g, cc.b);
         }
         idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3);
       }
       const i0 = pos.length / 3;
-      for (const [lx, lz] of [[-hw, hd], [hw, hd], [hw, -hd], [-hw, -hd]]) { const p = P(lx, lz); pos.push(p[0], h, p[1]); uv.push(0.5, 0.03); col.push(roof.r, roof.g, roof.b); }
+      for (const [lx, lz] of [[-hw, hd], [hw, hd], [hw, -hd], [-hw, -hd]]) { const p = P(lx, lz); pos.push(p[0], y0 + h, p[1]); uv.push(0.5, 0.03); col.push(roof.r, roof.g, roof.b); }
       idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3);
     };
     // A flat patch on the grid (park lawn), just over the outer ground
@@ -1165,6 +1226,40 @@ export function buildNyc(scene, world, opts, K) {
     const ROOFS = [new THREE.Color(0x6e6a66), new THREE.Color(0x5b5f63), new THREE.Color(0x7d848a)];
     const GREEN = new THREE.Color(0x52703f);
     const onGround = (x, z) => x > RX0 && x < RX1 && z > RZ0 && z < RZ1;
+    // The Palisades: the New Jersey bluff rising from its foot line (surround
+    // palisades.footLine, 'west': land rises west of it) to ~55 m in a short
+    // wooded scarp, a plateau behind it; New Jersey's boxes behind the foot stand on top
+    const PAL = L.surround?.palisades, palH = PAL ? (PAL.heightMetres || 55) * S : 0, palRun = 14, palDeep = 400;
+    const palSide = PAL && PAL.side === 'east' ? -1 : 1;
+    // signed distance behind the foot line (+ = up on the bluff), or -1e9 off its ends
+    const behindFoot = (x, z) => {
+      let best = -1e9, bd = Infinity;
+      const fl = PAL.footLine;
+      for (let i = 0; i + 1 < fl.length; i++) {
+        const [ax, az] = fl[i], [bx, bz] = fl[i + 1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), px = ax + dx * t - x, pz = az + dz * t - z, d = Math.hypot(px, pz);
+        // (west of a north-going line is its left: (dz, -dx) points west when dz < 0)
+        if (d < bd) { bd = d; const l = Math.sqrt(l2), wx = dz / l, wz = -dx / l, sgn = (wx < 0 ? 1 : -1) * palSide; best = ((x - ax) * wx + (z - az) * wz) * sgn; }
+      }
+      return best;
+    };
+    if (PAL?.footLine?.length >= 2) {
+      const ROCK = new THREE.Color(0x6a6450), WOOD = new THREE.Color(0x4f6a3c), TOP = new THREE.Color(0x77745f);
+      const fl = PAL.footLine;
+      for (let i = 0; i + 1 < fl.length; i++) {
+        const [ax, az] = fl[i], [bx, bz] = fl[i + 1], l = Math.hypot(bx - ax, bz - az);
+        let wx = (bz - az) / l, wz = -(bx - ax) / l;
+        if ((wx < 0 ? 1 : -1) * palSide < 0) { wx = -wx; wz = -wz; } // (toward the high side)
+        const rows = [[0, 0, ROCK], [palRun * 0.5, palH * 0.75, WOOD], [palRun, palH, TOP], [palDeep, palH, TOP]];
+        for (let r = 0; r + 1 < rows.length; r++) {
+          const [o0, y0, c0] = rows[r], [o1, y1, c1] = rows[r + 1], i0 = pos.length / 3;
+          for (const [px, pz, py, c] of [[ax + wx * o0, az + wz * o0, y0, c0], [bx + wx * o0, bz + wz * o0, y0, c0], [bx + wx * o1, bz + wz * o1, y1, c1], [ax + wx * o1, az + wz * o1, y1, c1]]) {
+            pos.push(px, py, pz); uv.push(0.5, 0.03); col.push(c.r, c.g, c.b);
+          }
+          idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3, i0, i0 + 2, i0 + 1, i0, i0 + 3, i0 + 2); // (both windings: either way the line runs)
+        }
+      }
+    }
     // (phone LOW keeps the towers and the nearer low fabric)
     let k = 0;
     for (const [x, z, w, d, h, rot, cls] of L.surround?.boxes || []) {
@@ -1174,7 +1269,7 @@ export function buildNyc(scene, world, opts, K) {
       if (lite && cls !== 1 && dEdge > 200 && rnd(k * 1.7) < 0.5) continue;
       // towers glass or stone by height, low fabric brick or stone, New Jersey mixed
       const tint = cls === 1 ? pick(h > 30 ? GLASSY : rnd(k * 2.3) < 0.5 ? STONE : GLASSY, k) : pick(rnd(k * 6.7) < 0.55 ? BRICK : STONE, k * 3);
-      addBox(x, z, w, h, d, rot || 0, tint, ROOFS[k % 3]);
+      addBox(x, z, w, h, d, rot || 0, tint, ROOFS[k % 3], PAL && cls === 2 && behindFoot(x, z) > palRun * 0.6 ? palH : 0);
     }
     // Central Park on north past the bounds (the blocks either side are in the boxes)
     if (cpark) {

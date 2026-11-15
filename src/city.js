@@ -3142,8 +3142,8 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
 
 /** Every mesh of a placed building ([{ node, matrix }] from _Placed.nodes,
  *  world matrices) becomes a pending instance slot of the building. */
-function _bucketGLBNodes(nodes, url, building) {
-  building._glbSlots = [];
+function _bucketGLBNodes(nodes, url, building, append = false) {
+  if (!append) building._glbSlots = [];
   for (const { node: m, matrix } of nodes) {
     if (!m.isMesh) continue;
     const e = matrix.elements;
@@ -3155,8 +3155,31 @@ function _bucketGLBNodes(nodes, url, building) {
     if (!b) _glbBuckets.set(key, b = { geometry: m.geometry, material: m.material, cast: m.castShadow, recv: m.receiveShadow, items: [], lod1Only: !!building.lod1Only });
     b.items.push({ matrix: matrix.clone(), building });
   }
+  if (append) return;
   building.customMesh = _GLB_MARKER;
   building.glbUrl = url; // what stands there (smoke_test: no procedural fallbacks)
+}
+
+/** Rooftop kit on a placed building (entry.roof: [{ url, fx, fz, ry, s }], NYC's
+ *  water tanks): each piece at true scale s, at (fx, fz) of the lot's half
+ *  sizes in its own frame (entry.lot, else the axis box), on the roof (the
+ *  placed model's top less 2%), instanced with the building's own slots so it
+ *  falls with it. */
+function _placeRoofKit(entry) {
+  const b = entry.building;
+  if (b.destroyed || !b._glbSlots || !entry.roof) return;
+  const r = entry.lot ? entry.rotY || 0 : 0, c = Math.cos(r), sn = Math.sin(r);
+  const hw = (entry.lot ? entry.lot.w : b.w) / 2, hd = (entry.lot ? entry.lot.d : b.d) / 2;
+  for (const k of entry.roof) {
+    const tpl = _glbTemplates.get(k.url);
+    if (!tpl) continue;
+    const P = new _Placed(tpl.scene), top = P.top;
+    const lx = k.fx * hw, lz = k.fz * hd;
+    top.position.set(b.x + lx * c + lz * sn, b.h * 0.98, b.z - lx * sn + lz * c);
+    top.rotation.y = r + (k.ry || 0);
+    top.scale.setScalar(k.s || 1);
+    _bucketGLBNodes(P.nodes(), k.url, b, true);
+  }
 }
 
 // Repeat-fill never uses these (a row of them reads as residential)
@@ -3351,8 +3374,10 @@ export function flushPendingGLBBuildings(scene) {
       _placeTiledGLB(url, entry);
     } else if (url && entry.fill) {
       _placeFillGLB({ ...entry, url }, scene);
+      _placeRoofKit(entry);
     } else if (url) {
       placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0, entry.stretch || 1, !!entry.atOrigin, entry.lot || null);
+      _placeRoofKit(entry);
     } else if (!entry.building.destroyed) {
       _revealProceduralBody(entry.building);
       boxed++;
