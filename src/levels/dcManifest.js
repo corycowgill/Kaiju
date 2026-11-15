@@ -18,27 +18,27 @@ export const DC_LANDMARK_GLBS = [
   { id: 'lincoln_memorial', file: 'lincoln_memorial.glb', trueHeightM: 30.2, face: 'east', shiftM: 6.5, ready: true }, // 67.8 x 59.1 m incl. podium and east stair
   { id: 'jefferson_memorial', file: 'jefferson_memorial.glb', trueHeightM: 39.0, face: 'north', shiftM: 9.2, ready: true }, // 70 x 88.5 m incl. terrace and north stair; portico north
   { id: 'white_house', file: 'white_house.glb', trueHeightM: 21.9, face: 'north', ready: true }, // 52 x 48.5 m residence; north portico +Z, bowed south portico; wings not included
-  { id: 'natural_history_museum', file: 'natural_history_museum.glb', trueHeightM: 40.1, face: 'south', ready: true }, // 224 x 144 m; portico + dome on the Mall side
-  { id: 'air_and_space_museum', file: 'air_and_space_museum.glb', trueHeightM: 29.2, face: 'north', ready: true }, // 220 x 92 m
-  { id: 'national_gallery_west', file: 'national_gallery_west.glb', trueHeightM: 34.0, face: 'south', ready: true }, // 248 x 115 m; dome over the rotunda
-  { id: 'national_gallery_east', file: 'national_gallery_east.glb', trueHeightM: 33.0, face: 'west', ready: true }, // 97 x 134 m; +Z the west entrance toward the West Building
-  { id: 'nmaahc', file: 'nmaahc.glb', trueHeightM: 34.3, face: 'south', ready: true }, // 100 x 112 m incl. porch and plaza
+  { id: 'natural_history_museum', file: 'natural_history_museum.glb', trueHeightM: 40.1, face: 'south', stone: 0xc4c0b6, ready: true }, // 224 x 144 m; portico + dome on the Mall side
+  { id: 'air_and_space_museum', file: 'air_and_space_museum.glb', trueHeightM: 29.2, face: 'north', stone: 0xd2b8aa, ready: true }, // 220 x 92 m
+  { id: 'national_gallery_west', file: 'national_gallery_west.glb', trueHeightM: 34.0, face: 'south', stone: 0xd8c4b4, ready: true }, // 248 x 115 m; dome over the rotunda
+  { id: 'national_gallery_east', file: 'national_gallery_east.glb', trueHeightM: 33.0, face: 'west', stone: 0xd8c4b4, ready: true }, // 97 x 134 m; +Z the west entrance toward the West Building
+  { id: 'nmaahc', file: 'nmaahc.glb', trueHeightM: 34.3, face: 'south', stone: 0x8a6440, ready: true }, // 100 x 112 m incl. porch and plaza
   { id: 'hirshhorn_museum', file: 'hirshhorn_museum.glb', trueHeightM: 25.5, face: 'north', ready: true }, // 96 x 96 m incl. walled plaza; drum 70 m
-  { id: 'smithsonian_castle', file: 'smithsonian_castle.glb', trueHeightM: 44.3, face: 'north', ready: true }, // 139 x 40 m
+  { id: 'smithsonian_castle', file: 'smithsonian_castle.glb', trueHeightM: 44.3, face: 'north', stone: 0x86493e, ready: true }, // 139 x 40 m
   { id: 'national_archives', file: 'national_archives.glb', trueHeightM: 51.0, face: 'south', ready: true }, // 106 x 94 m; +Z the Constitution Ave (Mall) front
-  { id: 'old_post_office', file: 'old_post_office.glb', trueHeightM: 96.0, face: 'north', ready: true }, // 100 x 70 m; +Z the Pennsylvania Ave front with the clock tower
-  { id: 'treasury_building', file: 'treasury_building.glb', trueHeightM: 25.1, face: 'east', ready: true }, // 166 x 105 m; +Z the 15th St colonnade
+  { id: 'old_post_office', file: 'old_post_office.glb', trueHeightM: 96.0, face: 'north', stone: 0x928f88, ready: true }, // 100 x 70 m; +Z the Pennsylvania Ave front with the clock tower
+  { id: 'treasury_building', file: 'treasury_building.glb', trueHeightM: 25.1, face: 'east', stone: 0xbab8b0, ready: true }, // 166 x 105 m; +Z the 15th St colonnade
   { id: 'supreme_court', file: 'supreme_court.glb', trueHeightM: 28.8, face: 'west', ready: true }, // 96 x 164 m incl. the west plaza; model X = N-S
-  { id: 'library_of_congress', file: 'library_of_congress.glb', trueHeightM: 59.0, face: 'west', ready: true }, // 146 x 133 m; +Z the west front + stair toward the Capitol
+  { id: 'library_of_congress', file: 'library_of_congress.glb', trueHeightM: 59.0, face: 'west', stone: 0xbcbab2, ready: true }, // 146 x 133 m; +Z the west front + stair toward the Capitol
   { id: 'wwii_memorial', file: 'wwii_memorial.glb', trueHeightM: 16.8, face: 'east', ready: true }, // 93 x 148 m; +Z the 17th St entrance; pool material "water" for the game to replace
-  { id: 'eeob', file: 'eeob.glb', trueHeightM: 38.9, face: 'east', ready: true }, // tier A
-  { id: 'nmah', file: 'nmah.glb', trueHeightM: 26.0, face: 'south', ready: true }, // tier A
+  { id: 'eeob', file: 'eeob.glb', trueHeightM: 38.9, face: 'east', stone: 0xb9b7b0, ready: true }, // tier A
+  { id: 'nmah', file: 'nmah.glb', trueHeightM: 26.0, face: 'south', stone: 0xd2bfb2, ready: true }, // tier A
   { id: 'nmai', file: 'nmai.glb', trueHeightM: 32.0, face: 'east', ready: true }, // tier A
   { id: 'arts_industries', file: 'arts_industries.glb', trueHeightM: 24.0, face: 'north', ready: true }, // tier B
   { id: 'usbg_conservatory', file: 'usbg_conservatory.glb', trueHeightM: 24.4, face: 'north', ready: true }, // tier B
-  { id: 'union_station', file: 'union_station.glb', trueHeightM: 29.0, face: 'south', ready: true }, // tier B
-  { id: 'kennedy_center', file: 'kennedy_center.glb', trueHeightM: 32.0, face: 'west', ready: true }, // tier B
-  { id: 'watergate', file: 'watergate.glb', trueHeightM: 42.0, face: 'west', ready: true }, // tier B
+  { id: 'union_station', file: 'union_station.glb', trueHeightM: 29.0, face: 'south', stone: 0xd0ccc2, ready: true }, // tier B
+  { id: 'kennedy_center', file: 'kennedy_center.glb', trueHeightM: 32.0, face: 'west', stone: 0xdcd8ce, ready: true }, // tier B
+  { id: 'watergate', file: 'watergate.glb', trueHeightM: 42.0, face: 'west', stone: 0xc9c4b8, ready: true }, // tier B
   { id: 'fbi_hoover', file: 'fbi_hoover.glb', trueHeightM: 49.0, face: 'south', ready: true }, // tier B
   { id: 'holocaust_museum', file: 'holocaust_museum.glb', trueHeightM: 24.0, face: 'east', ready: true }, // tier B
   { id: 'grant_memorial', file: 'grant_memorial.glb', trueHeightM: 13.0, face: 'west', ready: true }, // tier B
@@ -65,7 +65,7 @@ export const DC_LANDMARK_GLBS = [
   { id: 'loc_madison', file: 'loc_madison.glb', trueHeightM: 34.1, face: 'north', ready: true }, // tier B
   { id: 'loc_adams', file: 'loc_adams.glb', trueHeightM: 25.4, face: 'west', ready: true }, // tier B
   { id: 'bep_main', file: 'bep_main.glb', trueHeightM: 29.6, face: 'west', ready: true }, // tier B
-  { id: 'usda_south', file: 'usda_south.glb', trueHeightM: 25.4, face: 'north', ready: true }, // tier B
+  { id: 'usda_south', file: 'usda_south.glb', trueHeightM: 25.4, face: 'north', stone: 0xb08a64, ready: true }, // tier B
   { id: 'freer', file: 'freer.glb', trueHeightM: 14, face: 'north', ready: true }, // tier B
 ];
 
@@ -80,7 +80,7 @@ export const DC_GENERIC_GLBS = [
   { file: 'dc_beaux_b.glb', bucket: 'short', trueM: [32, 37.7, 28], ready: true },
   { file: 'dc_beaux_c.glb', bucket: 'low', trueM: [50.4, 30.2, 30.4], ready: true },
   { file: 'dc_brick_corner_a.glb', bucket: 'low', maxH: 5.5, trueM: [24.6, 21.2, 19.9], ready: true },
-  { file: 'dc_brick_corner_b.glb', bucket: 'low', maxH: 5.5, trueM: [17.4, 18.4, 22], ready: true },
+  { file: 'dc_brick_corner_b.glb', bucket: 'low', maxH: 5.5, trueM: [17.4, 18.4, 22], stone: 0xc2a77e, ready: true },
   { file: 'dc_brick_corner_c.glb', bucket: 'low', maxH: 5.5, trueM: [31.4, 26.1, 18], ready: true },
   { file: 'dc_brick_row_a.glb', bucket: 'low', maxH: 3.5, trueM: [24.9, 13.5, 14.7], ready: true },
   { file: 'dc_brick_row_b.glb', bucket: 'low', maxH: 3.5, trueM: [13.1, 13.3, 16.7], ready: true },
@@ -98,11 +98,11 @@ export const DC_GENERIC_GLBS = [
   { file: 'dc_fedtri_b.glb', bucket: 'short', fedTri: true, share: 0, trueM: [66.2, 37.0, 46.2], ready: true },
   { file: 'dc_fedtri_c.glb', bucket: 'short', fedTri: true, share: 0, trueM: [86.2, 40.8, 42.8], ready: true },
   { file: 'dc_office_band_a.glb', bucket: 'short', trueM: [46, 47.3, 34], ready: true },
-  { file: 'dc_office_band_b.glb', bucket: 'short', trueM: [48, 49.9, 31.2], ready: true },
-  { file: 'dc_office_band_c.glb', bucket: 'short', trueM: [36.8, 47.8, 30.8], ready: true },
-  { file: 'dc_office_glass_a.glb', bucket: 'short', trueM: [45.1, 44, 33.1], ready: true },
-  { file: 'dc_office_glass_b.glb', bucket: 'short', trueM: [51.8, 44.6, 31.8], ready: true },
-  { file: 'dc_office_glass_c.glb', bucket: 'short', trueM: [40, 42.8, 36], ready: true },
+  { file: 'dc_office_band_b.glb', bucket: 'short', trueM: [48, 49.9, 31.2], stone: 0xa88e80, ready: true },
+  { file: 'dc_office_band_c.glb', bucket: 'short', trueM: [36.8, 47.8, 30.8], stone: 0x8c6054, ready: true },
+  { file: 'dc_office_glass_a.glb', bucket: 'short', trueM: [45.1, 44, 33.1], stone: 0xcdbfa4, ready: true },
+  { file: 'dc_office_glass_b.glb', bucket: 'short', trueM: [51.8, 44.6, 31.8], stone: 0xcdbfa4, ready: true },
+  { file: 'dc_office_glass_c.glb', bucket: 'short', trueM: [40, 42.8, 36], stone: 0xcdbfa4, ready: true },
 ];
 
 // Street props: { name, file, ready } (front +Z, metres)

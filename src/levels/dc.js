@@ -92,6 +92,19 @@ function _pickGeneric(h, avoid, rnd = Math.random, fedTri = false) {
   for (const g of list) { r -= share(g); if (r < 0) return g.url; }
   return list[list.length - 1]?.url || null;
 }
+// The stone a fallen building's debris and rubble take (city.js tints DC's
+// marble chunks with it): a manifest entry's `stone` (0xRRGGBB) when given,
+// else by the model's name
+const STONE = { marble: 0xd6d0c4, limestone: 0xcdbfa4, sandstone: 0x86493e, brick: 0x8a4a3a, concrete: 0xa9a397 };
+function _stoneOf(file) {
+  const all = [...DC_LANDMARK_GLBS, ...DC_GENERIC_GLBS, ...Object.values(DC_KIT_GLBS)];
+  const def = all.find((g) => g.file === file || DC_BASE + g.file === file);
+  if (def && def.stone != null) return def.stone;
+  const f = String(file);
+  return /castle|arts_industries/.test(f) ? STONE.sandstone : /brick|holocaust/.test(f) ? STONE.brick
+    : /brutal|office|hoover|labor|hirshhorn/.test(f) ? STONE.concrete
+    : /fedtri|fed_plain|beaux|archives|treasury|limestone|interior|state|commerce|epa|irs|doj|union|library|eeob|post_office/.test(f) ? STONE.limestone : STONE.marble;
+}
 /** A small seeded random from a string (mulberry32 on its hash). */
 function _seeded(key) {
   let t = 2166136261;
@@ -703,6 +716,7 @@ export function buildDc(scene, world, opts, K) {
       b.layoutId = o.id; b._skipBodyIM = true;
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
       scene.add(b.group); buildings.push(b); grid.add(b);
+      b.debrisTint = _stoneOf(own.file);
       K.queueGLB({ url: DC_BASE + own.file, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, stretch: 1.6 });
       return;
     }
@@ -742,6 +756,8 @@ export function buildDc(scene, world, opts, K) {
     if (!picked.has(k)) picked.set(k, []);
     picked.get(k).push(pick);
     const fill = o.h < 18;
+    // (read at the collapse: a fill row may have placed another kit piece than the pick)
+    Object.defineProperty(b, 'debrisTint', { get() { return _stoneOf(this.glbUrl || pick); } });
     K.queueGLB({ url: pick, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: _bucketDefs(LK.bucket(o.h), tri).map((g) => g.url), stretch: 1.3, fill });
   };
   for (const o of L.buildings) if (!(lite && o.phoneSkip)) placeBlock(o);
@@ -757,6 +773,7 @@ export function buildDc(scene, world, opts, K) {
     b.maxHp = hp; b.hp = hp;
     b.landmarkId = lm.id;
     b.landmarkName = lm.name; // "THROUGH THE LINCOLN MEMORIAL!" (wrestling callouts)
+    b.debrisTint = _stoneOf(_landmarkGLB(lm.id)?.file || lm.id);
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
     const def = _landmarkGLB(lm.id);
