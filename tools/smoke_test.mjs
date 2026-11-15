@@ -263,7 +263,7 @@ for (const [key, { model, portrait }] of Object.entries(MONSTERS)) {
   kaijuGLB[key] = await step(`kaiju ${key}`, () => loadKaijuModel(key));
 }
 if (Q.GLB_CONTENT) {
-  await step('building/debris/enemy templates', () => Promise.all([city.loadBuildingTemplates(undefined, level), city.loadDebrisTemplates(), enemies.loadEnemyTemplates()]));
+  await step('building/debris/enemy templates', () => Promise.all([city.loadBuildingTemplates(undefined, level), city.loadDebrisTemplates(level), enemies.loadEnemyTemplates()]));
   await step('flushPendingGLBBuildings', () => city.flushPendingGLBBuildings(scene));
 } else if (DATA) {
   // Chicago's and DC's buildings are GLB on every tier, the procedural-only phone LOW included (as game.js)

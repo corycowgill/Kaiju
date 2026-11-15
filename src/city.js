@@ -10,6 +10,7 @@ import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, as
 import { isMobile } from './quality.js';
 import { buildChicago, loadChicagoLayout, chicagoBuildingGLBs, chicagoPropGLBs, chicagoVehicleGLBs, chicagoLod1GLBs } from './levels/chicago.js';
 import { buildDc, loadDcLayout, dcBuildingGLBs, dcPropGLBs, dcVehicleGLBs, dcLod1GLBs } from './levels/dc.js';
+import { DC_DEBRIS_GLBS } from './levels/dcManifest.js';
 import { setArenaSite } from './levels/chicago_arena.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
@@ -2427,7 +2428,7 @@ export class Building {
       const rw = festival ? rand(.3, 1.1) : this.w * rand(0.3, 0.7);
       const rd = festival ? rand(.2, .7) : this.d * rand(0.3, 0.7);
       const rh = festival ? rand(.06, .18) : rand(1.2, 2.6);
-      _placeBoxRubble(world.scene, this.body.material.color, rw, rh, rd,
+      _placeBoxRubble(world.scene, _boxDebrisTint || this.body.material.color, rw, rh, rd,
         this.group.position.x + rand(-this.w / 4, this.w / 4),
         festival ? rh / 2 : rubSize * 0.15,
         this.group.position.z + rand(-this.d / 4, this.d / 4),
@@ -2487,7 +2488,7 @@ const _fxV = new THREE.Vector3();
 function _queueCollapseFx(world, b) {
   const t = typeof world.time === 'number' ? world.time : 0;
   const kp = world.kaijuPos; // chunks fly away from the kaiju
-  _fxJobs.push({ x: b.group.position.x, z: b.group.position.z, w: b.w, d: b.d, h: b.h, color: b.body.material.color, t,
+  _fxJobs.push({ x: b.group.position.x, z: b.group.position.z, w: b.w, d: b.d, h: b.h, color: _boxDebrisTint || b.body.material.color, t,
     fest: !!b.fest, fence: !!b.isFence, metal: b.destructionMaterial === 'metal', kx: kp ? kp.x : NaN, kz: kp ? kp.z : NaN });
   if (_fxInlineT !== t) { _fxInlineT = t; _fxInlineN = 0; }
   if (_fxJobs.length - _fxHead === 1 && _fxInlineN < _FX_INLINE) {
@@ -2703,19 +2704,33 @@ const DEBRIS_GLBS_FALLBACK = [
   DEBRIS_GLB_BASE + 'debris_concrete_3.glb',
   DEBRIS_GLB_BASE + 'debris_chunk_1.glb',
 ];
-const _debrisTemplates = [];  // array of { scene, box } after loading
+const _debrisTemplates = [];  // array of { scene, box, set } after loading
+// A level's own debris (DC: marble and limestone chunks), used there instead of
+// the concrete / rebar kit; set by buildCity
+const LEVEL_DEBRIS = { dc: DC_DEBRIS_GLBS };
+const _debrisLoaded = new Set(); // urls requested
+let _debrisSet = 'default';
+// Phone LOW's procedural chunks and rubble take the building's colour; a
+// level may tint them instead (DC: stone, not brick / glass)
+let _boxDebrisTint = null;
 
-export async function loadDebrisTemplates() {
-  await _loadDebrisList(DEBRIS_GLBS);
-  if (_debrisTemplates.length === 0) await _loadDebrisList(DEBRIS_GLBS_FALLBACK);
+/** The shared debris kit, plus the level's own (call again for a level picked later). */
+export async function loadDebrisTemplates(level = 'tokyo') {
+  if (!_debrisLoaded.has(DEBRIS_GLBS[0])) {
+    await _loadDebrisList(DEBRIS_GLBS);
+    if (!_debrisTemplates.some((t) => t.set === 'default')) await _loadDebrisList(DEBRIS_GLBS_FALLBACK);
+  }
+  if (LEVEL_DEBRIS[level]) await _loadDebrisList(LEVEL_DEBRIS[level], level);
 }
 
-function _loadDebrisList(list) {
+function _loadDebrisList(list, set = 'default') {
+  list = list.filter((u) => !_debrisLoaded.has(u));
+  for (const u of list) _debrisLoaded.add(u);
   return Promise.all(list.map((url) =>
     _cachedGLB(url).then((gltf) => {
       const s = gltf.scene;
       s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      _debrisTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s) });
+      _debrisTemplates.push({ scene: s, box: new THREE.Box3().setFromObject(s), set });
     }).catch((err) => {
       reportLoadError('DebrisGLB', url, err);
     })
@@ -2724,7 +2739,9 @@ function _loadDebrisList(list) {
 
 function _pickDebrisTemplate() {
   if (_debrisTemplates.length === 0) return null;
-  return _debrisTemplates[Math.floor(Math.random() * _debrisTemplates.length)];
+  const own = _debrisTemplates.filter((t) => t.set === _debrisSet);
+  const list = own.length ? own : _debrisTemplates.filter((t) => t.set === 'default');
+  return list[Math.floor(Math.random() * list.length)] || null;
 }
 
 // Flying chunks are reused: a chunk the game has dropped (expired, trimmed or
@@ -3336,6 +3353,8 @@ export function buildCity(scene, world, opts = {}) {
   _treeTint = usTrees ? new THREE.Color(0.62, 0.78, 0.55) : null;
   _treeExclude = new Set(usTrees ? ['./assets/trees/tree_sakura.glb', './assets/trees/tree_black_pine.glb', './assets/trees/tree_ginkgo.glb'] : []);
   _resetCollapseFx();
+  _debrisSet = LEVEL_DEBRIS[opts.level] ? opts.level : 'default';
+  _boxDebrisTint = opts.level === 'dc' ? new THREE.Color(0xd6d0c4) : null;
   // The ring stands on Hutchinson Field unless a level moves it (dc.js does)
   setArenaSite();
   const res = opts.level === 'chicago' ? buildChicago(scene, world, opts, CITY_KIT)
@@ -5537,7 +5556,7 @@ export function getTemplateStats(level = 'tokyo') {
   return {
     trees: { loaded: _treeTemplates.length, expected: TREE_GLBS.length },
     buildings: { loaded: [..._glbTemplates.keys()], expected: [...new Set(_levelBuildingGLBs(level))] },
-    debris: { loaded: _debrisTemplates.length, expected: DEBRIS_GLBS.length },
+    debris: { loaded: _debrisTemplates.length, expected: DEBRIS_GLBS.length + (LEVEL_DEBRIS[level] || []).length },
     cars: { loaded: _carTemplates.length, expected: _levelCars(level).length },
     props: { loaded: [..._propTemplates.keys()], expected: _levelProps(level).map((p) => p.name) },
     pedestrian: { loaded: _pedTemplate ? Object.keys(_pedTemplate.animations) : [], expected: Object.keys(PED_ANIMS) },

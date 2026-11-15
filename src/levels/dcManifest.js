@@ -131,3 +131,10 @@ export const DC_KIT_GLBS = {
   // Capitol and federal building kerbs
   dc_bollard_row: { file: 'dc_bollard_row.glb', len: 7.8, ready: true },
 };
+
+// Debris for wrecked DC buildings (dc-design, build_dc_debris.py): marble / limestone / painted-white chunks, one
+// material each, sized by the game like assets/debris/*. Use instead of the concrete-and-rebar set on DC.
+export const DC_DEBRIS_GLBS = [
+  'debris_dc_column_drum.glb', 'debris_dc_ashlar.glb', 'debris_dc_cornice.glb',
+  'debris_dc_slab.glb', 'debris_dc_wall_window.glb', 'debris_dc_capital.glb',
+].map((f) => DC_BASE + f);

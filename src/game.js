@@ -3293,7 +3293,7 @@ async function _startGameInner(key) {
           updateLoadingUI();
         }),
         loadBuildingTemplates(onBldgProgress, world.level),
-        loadDebrisTemplates(),
+        loadDebrisTemplates(world.level),
         loadEnemyTemplates((loaded, total, label) => {
           progress.enemyLoaded = loaded;
           progress.enemyTotal = total;
@@ -3308,7 +3308,7 @@ async function _startGameInner(key) {
     const bldgGLB = GLB_CONTENT || _dataLevel(world.level);
     if (bldgGLB && !_bldgLevelsLoaded.has(world.level)) {
       // First run on this level (another level's templates are already parsed)
-      await loadBuildingTemplates(onBldgProgress, world.level);
+      await Promise.all([loadBuildingTemplates(onBldgProgress, world.level), GLB_CONTENT ? loadDebrisTemplates(world.level) : null]);
       _bldgLevelsLoaded.add(world.level);
     }
     _kaijuCache = { key, glb };
