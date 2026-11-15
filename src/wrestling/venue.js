@@ -20,10 +20,10 @@ const VENUES = {
     home: { player: 'FROM THE DEPTHS OF THE HUDSON', rival: 'FROM THE WRECKAGE OF TIMES SQUARE' },
     swaps: [
       [/CHICAGO HEAVYWEIGHT/g, 'NEW YORK HEAVYWEIGHT'], [/Chicago Heavyweight/g, 'New York Heavyweight'],
-      [/LAKE MICHIGAN/g, 'THE HUDSON'], [/Lake Michigan/g, 'the Hudson'],
+      [/LAKE MICHIGAN/g, 'THE POND'], [/Lake Michigan/g, 'the Pond'], // (the water nearest the Sheep Meadow ring)
       [/GRANT PARK/g, 'CENTRAL PARK'], [/Grant Park/g, 'Central Park'],
       [/THE LOOP/g, 'MIDTOWN'], [/the Loop/g, 'Midtown'],
-      [/LAKE SHORE DRIVE/g, 'THE WEST SIDE HIGHWAY'], [/Lake Shore Drive/g, 'the West Side Highway'],
+      [/LAKE SHORE DRIVE/g, 'CENTRAL PARK SOUTH'], [/Lake Shore Drive/g, 'Central Park South'],
       [/MICHIGAN AVENUE/g, 'FIFTH AVENUE'], [/Michigan Avenue/g, 'Fifth Avenue'],
       [/INDIANA/g, 'NEW JERSEY'], [/Indiana/g, 'New Jersey'],
       [/CHICAGO/g, 'NEW YORK'], [/Chicago/g, 'New York'],

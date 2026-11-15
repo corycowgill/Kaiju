@@ -21,9 +21,13 @@ import { NYC_LOOK } from './nycLook.js';
 import { NYC_BASE, NYC_LANDMARK_GLBS, NYC_GENERIC_GLBS, NYC_PROP_GLBS, NYC_VEHICLE_GLBS, NYC_KIT_GLBS } from './nycManifest.js';
 
 // The cartographer's layout once delivered; the integrator's placeholder until then
-const LAYOUT_URL = './assets/levels/nyc_layout_placeholder.json';
-// The cartographer's tree survey ([x, z, kind, osm]: park / street; layout meta.trees: true)
+const LAYOUT_URL = './assets/levels/nyc_layout.json';
+// The cartographer's tree survey ([x, z, kind, osm]: elm / plane / street; layout meta.trees: false when there is none)
 const TREES_URL = './assets/levels/nyc_trees.json';
+// The city past the bounds from the footprint data (boxes, the rivers over the fetch area: cartographer)
+const SURROUND_URL = './assets/levels/nyc_surround.json';
+// Dressing detail: Times Square's sign faces, the High Line (cartographer)
+const DETAIL_URL = './assets/levels/nyc_detail.json';
 /** The Title Match belt on NYC (mat, banners, HUD). */
 export const NYC_TITLE = 'NEW YORK HEAVYWEIGHT CHAMPIONSHIP';
 
@@ -42,14 +46,24 @@ export async function loadNycLayout() {
   _layout.duel = raw.duel ? { a: pt(raw.duel.a), b: pt(raw.duel.b) } : null;
   _layout.soldier = pt(raw.soldier);
   _layout.gridRotationDeg = raw.meta?.gridRotationDeg ?? 29;
+  _layout.onPier = new Set((raw.buildings || []).filter((o) => o.onPier).map((o) => o.id));
+  _layout.rawBuildings = raw.buildings || []; // (the detail file's sign faces name layout rects)
   _layout.approaches = (raw.approaches || []).map((p) => (Array.isArray(p) ? [+p[0], +p[1]] : [+p.x, +p.z]));
-  // Optional: the parks are scattered procedurally without it (fetched only
-  // when the layout's meta names it, so a level without one logs no 404)
-  if (raw.meta?.trees) {
+  // Optional: the parks are scattered procedurally without it (meta.trees
+  // false: no survey, no fetch and no 404)
+  if (raw.meta?.trees !== false) {
     try {
       const tr = await fetch(TREES_URL, { cache: 'no-cache' });
       if (tr.ok) _layout.trees = (await tr.json()).trees || null;
     } catch (e) { /* no tree survey */ }
+  }
+  // (meta.surround / meta.detail false: none shipped, nothing fetched)
+  for (const [key, url] of [['surround', SURROUND_URL], ['detail', DETAIL_URL]]) {
+    if (raw.meta?.[key] === false) continue;
+    try {
+      const r = await fetch(url, { cache: 'no-cache' });
+      if (r.ok) _layout[key] = await r.json();
+    } catch (e) { /* optional */ }
   }
   return _layout;
 }
@@ -103,7 +117,7 @@ function _stoneOf(file) {
     : /concrete|brutal|garden/.test(f) ? STONE.concrete
     : /granite|cathedral|patrick/.test(f) ? STONE.granite : STONE.limestone;
 }
-/** poly ([[x, z], ...], convex) clipped to the half-planes [[nx, nz, c], ...] (nx*x + nz*z <= c). */
+/** poly ([[x, z], ...]) clipped to the convex region of the half-planes [[nx, nz, c], ...] (nx*x + nz*z <= c). */
 function clipPoly(poly, planes) {
   for (const [nx, nz, c] of planes) {
     const out = [], f = (p) => nx * p[0] + nz * p[1] - c;
@@ -163,6 +177,7 @@ function nycMats(M) {
   _D = {
     limestone: std(0xd2c6ae, 0.85), limeShade: std(0xb8ab94, 0.88), brick: std(0x9a6a52, 0.9), granite: std(0x8f8a82, 0.8),
     glass: std(0x3e5366, 0.3, 0.1), glassLight: std(0x8ea4b6, 0.32, 0.1), steel: std(0xb6bcc2, 0.35, 0.1),
+    steelDark: std(0x37403c, 0.6, 0.2), // (the High Line's painted girders and columns)
     copper: std(0x6c9c86, 0.7), roofDark: std(0x4a4c50, 0.85), slate: std(0x5c6066, 0.8),
     gravel: nycGround(new THREE.MeshStandardMaterial(), 'gravel'),
   };
@@ -287,6 +302,59 @@ const BUILDERS = {
     m.add(M.bronze, new THREE.CylinderGeometry(r, r * 0.55, h, 12, 1, true), 0, h / 2, 0);
     return m.build();
   },
+  rink(h, w, d, M, D) {
+    // A sunken rink or plaza (Wollman, Rockefeller): a granite rim round a pale floor
+    const m = new LK.Massing();
+    m.box(D.granite, w, h, d);
+    m.box(M.white, w * 0.86, h * 1.04, d * 0.86);
+    return m.build();
+  },
+  monument(h, w, d, M, D) {
+    // A statue, fountain or small kiosk: a granite plinth and a bronze piece
+    const m = new LK.Massing();
+    m.box(D.granite, w, Math.min(h * 0.45, 1), d);
+    m.box(M.bronze, Math.min(w, d) * 0.4, h - Math.min(h * 0.45, 1), Math.min(w, d) * 0.4, 0, Math.min(h * 0.45, 1));
+    return m.build();
+  },
+  steps(h, w, d, M, D) {
+    // The TKTS red steps: a glowing red stair rising toward the back (+Z)
+    const m = new LK.Massing();
+    for (let i = 0; i < 6; i++) m.box(M.red, w, h * (i + 1) / 6, d / 6, 0, 0, -d / 2 + d * (i + 0.5) / 6);
+    return m.build();
+  },
+  ship(h, w, d, M, D) {
+    // The Intrepid: a grey hull, the flight deck overhanging it, the island on the starboard side (long axis w)
+    const m = new LK.Massing();
+    m.box(D.slate, w * 0.92, h * 0.5, d * 0.7);
+    m.box(D.roofDark, w, h * 0.06, d, 0, h * 0.5);
+    m.box(D.slate, w * 0.12, h * 0.44, d * 0.16, w * 0.05, h * 0.56, d * 0.38);
+    return m.build();
+  },
+  lattice(h, w, d, M, D) {
+    // A steel lattice tower (the Roosevelt Island Tramway): four legs and a head frame
+    const m = new LK.Massing();
+    for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) m.box(D.steel, w * 0.12, h * 0.9, d * 0.12, sx * w * 0.38, 0, sz * d * 0.38);
+    m.box(D.steel, w, h * 0.1, d, 0, h * 0.9);
+    return m.build();
+  },
+  sign(h, w, d, M, D) {
+    // A rooftop sign on its frame (Pepsi-Cola): legs and a red board
+    const m = new LK.Massing();
+    for (const s of [-0.4, 0, 0.4]) m.box(D.steel, w * 0.03, h * 0.5, d * 0.5, s * w, 0);
+    m.box(M.red, w, h * 0.5, d * 0.4, 0, h * 0.5);
+    return m.build();
+  },
+  bridge(h, w, d, M, D) {
+    // The Queensboro: a road deck along w with cantilever truss towers rising to h over its piers
+    const m = new LK.Massing();
+    const deck = h * 0.36;
+    m.box(D.slate, w, h * 0.06, d, 0, deck);
+    for (const t of [-0.32, 0.18]) {
+      m.box(D.granite, d * 0.6, deck, d * 0.9, t * w, 0);
+      m.add(D.slate, new THREE.ConeGeometry(d * 0.5, h - deck, 4), t * w, deck + (h - deck) / 2, 0, Math.PI / 4);
+    }
+    return m.build();
+  },
   block(h, w, d, M, D) {
     // Pre-war masonry block: a base, the body, a cornice
     const m = new LK.Massing();
@@ -303,6 +371,9 @@ const BUILDER_ALIASES = [
   ['patrick', 'cathedral'], ['cathedral', 'cathedral'], ['madison_square_garden', 'arena'], ['msg', 'arena'],
   ['plaza_hotel', 'hotel'], ['waldorf', 'deco'], ['library', 'civic'], ['carnegie', 'civic'], ['radio_city', 'civic'],
   ['vessel', 'vessel'], ['penn_station', 'civic'], ['moynihan', 'civic'], ['farley', 'civic'],
+  ['rink', 'rink'], ['tkts', 'steps'], ['intrepid', 'ship'], ['tramway', 'lattice'], ['sign', 'sign'], ['queensboro', 'bridge'],
+  ['bethesda', 'civic'], ['tavern', 'block'], ['zoo', 'block'], ['fountain', 'monument'], ['monument', 'monument'], ['apple_cube', 'monument'],
+  ['clock', 'monument'], ['gapstow', 'monument'], ['columbus_circle', 'monument'],
 ];
 /** The massing builder for a landmark: by id, else by its height (a tower above ~60 m). */
 function _builderFor(id, h = 0) {
@@ -369,6 +440,9 @@ export function buildNyc(scene, world, opts, K) {
   const SW_TILE = K.TILE.SIDEWALK, ASPHALT_TILE = 2;
   const MAJOR_W = 6.9, SIDEWALK_W = 1.2, PS = 0.8;
   const ring = opts.mode === 'wrestling' && L.ring ? L.ring : null;
+  // Landmarks that stand: a district or an area with no structure of its own
+  // (Times Square, Bryant Park) is a name on the map, nothing is built there
+  const LMS = L.landmarks.filter((lm) => lm.kind !== 'district' && lm.h > 0.05);
   // A grandstand that would stand on a landmark is left out; standing room
   // takes that side (chicago_arena.js)
   const lmBox = (lm) => {
@@ -378,7 +452,7 @@ export function buildNyc(scene, world, opts, K) {
   const STAND_REL = { n: [-42, 14, -76, -50], s: [-42, 42, 50, 76] }; // x0, x1, z0, z1 from the ring centre
   const standsFree = (id) => {
     const [x0, x1, z0, z1] = STAND_REL[id];
-    return !L.landmarks.some((lm) => {
+    return !LMS.some((lm) => {
       if (lm.kind === 'prop' && lm.h < 4) return false; // small memorials and markers give way
       const [x, z, hw, hd] = lmBox(lm);
       return x + hw > ring.x + x0 && x - hw < ring.x + x1 && z + hd > ring.z + z0 && z - hd < ring.z + z1;
@@ -451,15 +525,16 @@ export function buildNyc(scene, world, opts, K) {
     return waterGrid[i * wcz + j] === 1;
   };
   let waterSplash = null;
-  // The rivers carry on past the bounds along the grid (the Hudson and the
-  // East River run with the avenues): a strip on each, from its bank in the
-  // crosstown coordinate out to the far shore, clipped to the outside of the
-  // play rectangle (convex pieces, so they never overlap the layout's water)
+  // The rivers carry on past the bounds: the surround file's Hudson and East
+  // River over the whole fetch area (else a strip along the grid from each
+  // bank), clipped to the outside of the play rectangle in four pieces, so
+  // they never overlap the layout's water
   const farWater = [];
-  for (const [v0, v1] of [[SHORE.hudson - SHORE.hudsonW, SHORE.hudson], [SHORE.east, SHORE.east + SHORE.eastW]]) {
-    const strip = [fromVU(v0, -FAR), fromVU(v1, -FAR), fromVU(v1, FAR), fromVU(v0, FAR)];
+  const farRivers = L.surround?.water?.length ? L.surround.water
+    : [[SHORE.hudson - SHORE.hudsonW, SHORE.hudson], [SHORE.east, SHORE.east + SHORE.eastW]].map(([v0, v1]) => [fromVU(v0, -FAR), fromVU(v1, -FAR), fromVU(v1, FAR), fromVU(v0, FAR)]);
+  for (const river of farRivers) {
     for (const region of OUTSIDE) {
-      const piece = clipPoly(strip, region);
+      const piece = clipPoly(river, region);
       if (piece.length >= 3) farWater.push(piece);
     }
   }
@@ -659,7 +734,7 @@ export function buildNyc(scene, world, opts, K) {
 
   // ---- parks: Central Park, Bryant Park, the plazas ----
   const onRoad = LK.roadIndex(roads, SIDEWALK_W, 2);
-  const lmBoxes = L.landmarks.map((lm) => {
+  const lmBoxes = LMS.map((lm) => {
     const c = Math.abs(Math.cos(lm.rotY || 0)), s = Math.abs(Math.sin(lm.rotY || 0));
     return [lm.x, lm.z, (lm.w * c + lm.d * s) / 2 + 2, (lm.w * s + lm.d * c) / 2 + 2];
   });
@@ -674,15 +749,17 @@ export function buildNyc(scene, world, opts, K) {
   const TREE_CAP = L.trees ? (!glb ? 700 : lite ? 1300 : 3200) : lite ? 260 : 900;
   const tree = (x, z, s, kind) => { if (trees < TREE_CAP) { scene.add(makeParkTree(x, z, s * PS, kind)); trees++; } };
   if (L.trees) {
-    const special = L.trees.filter((t) => t[2] === 'elm' || t[2] === 'cherry'), other = L.trees.filter((t) => t[2] !== 'elm' && t[2] !== 'cherry');
+    // (every elm: the Mall's allee in Central Park; plane and street trees thinned to the cap)
+    const special = L.trees.filter((t) => t[2] === 'elm'), other = L.trees.filter((t) => t[2] !== 'elm');
     const room = Math.max(0, TREE_CAP - special.length), step = other.length > room ? other.length / Math.max(1, room) : 1;
     const list = [...special];
     for (let i = 0; i < other.length && list.length < TREE_CAP; i += step) list.push(other[Math.floor(i)]);
-    const SIZE = { elm: [1.0, 0.18], cherry: [0.62, 0.12], park: [0.85, 0.35], street: [0.75, 0.2] };
+    // true sizes on DC's elm template (~22 m at 1.0): the Mall's elms, London planes ~18 m, Midtown's street trees (honey locust, pear) ~10 m
+    const SIZE = { elm: [1.0, 0.18], plane: [0.78, 0.18], park: [0.8, 0.3], street: [0.46, 0.14] };
     for (const [x, z, kind] of list) {
       if (isWater(x, z) || onRoad(x, z, 0.3) || onLandmark(x, z) || inRingBox(x, z)) continue;
       const [s0, sv] = SIZE[kind] || SIZE.park;
-      tree(x, z, s0 + Math.random() * sv, kind === 'cherry' ? 'cherry' : 'elm');
+      tree(x, z, s0 + Math.random() * sv, 'elm');
     }
   }
   for (const p of L.parks) {
@@ -719,6 +796,7 @@ export function buildNyc(scene, world, opts, K) {
     const c = Math.abs(Math.cos(o.rotY || 0)), s = Math.abs(Math.sin(o.rotY || 0));
     const aw = o.w * c + o.d * s, ad = o.w * s + o.d * c;
     if (inRingBox(o.x, o.z, aw / 2, ad / 2)) return; // the Title Match venue stands here
+    if (o.x < B.minX || o.x > B.maxX || o.z < B.minZ || o.z > B.maxZ) return; // (a lot whose centre lies past the edge)
     // A kit piece made for this very footprint (nycManifest layoutIds)
     const own = Object.values(NYC_KIT_GLBS).find((d) => d.ready && d.layoutIds && d.layoutIds.includes(o.id));
     if (own) {
@@ -757,6 +835,7 @@ export function buildNyc(scene, world, opts, K) {
     const b = new K.Building(o.x, o.z, aw, ad, o.h, { skipWindows: true, color });
     b.layoutId = o.id;
     b._skipBodyIM = true;
+    if (L.onPier.has(o.id)) b.onWater = true; // a shed on a Hudson pier (the layout's water runs under the piers)
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
     const cx = Math.floor(o.x / 24), cz = Math.floor(o.z / 24);
@@ -775,7 +854,7 @@ export function buildNyc(scene, world, opts, K) {
   for (const o of L.buildings) if (!(lite && o.phoneSkip)) placeBlock(o);
 
   // ---- landmarks ----
-  for (const lm of L.landmarks) {
+  for (const lm of LMS) {
     const c = Math.abs(Math.cos(lm.rotY || 0)), s = Math.abs(Math.sin(lm.rotY || 0));
     const aw = lm.w * c + lm.d * s, ad = lm.w * s + lm.d * c;
     if (onMat(lm.x, lm.z, aw / 2, ad / 2) || (lm.kind === 'prop' && lm.h < 4 && inRingBox(lm.x, lm.z))) { console.info('[nyc] landmark inside the ring venue, left out:', lm.id); continue; }
@@ -786,6 +865,7 @@ export function buildNyc(scene, world, opts, K) {
     b.maxHp = hp; b.hp = hp;
     b.landmarkId = lm.id;
     b.landmarkName = lm.name; // "THROUGH THE CHRYSLER BUILDING!" (wrestling callouts)
+    if (lm.kind === 'bridge' || /intrepid/.test(lm.id)) b.onWater = true; // (over or moored on the river on purpose)
     b.debrisTint = _stoneOf(_landmarkGLB(lm.id)?.file || lm.id);
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
@@ -823,6 +903,134 @@ export function buildNyc(scene, world, opts, K) {
     mesh.matrixAutoUpdate = false; mesh.updateMatrix();
     scene.add(mesh);
     b.customMesh = mesh;
+  }
+
+  // ---- Times Square: stacked LED screens and billboards on the faces round the bow-tie ----
+  // (nyc_detail.json timesSquare.signs: a layout building and the faces of its
+  // rect that look onto the square). One mesh per sign building, a child of
+  // its group so the screens come down with it; one shared unlit atlas whose
+  // offset steps every few seconds (the screens change together)
+  const signs = L.detail?.timesSquare?.signs || [];
+  if (signs.length) {
+    const TS = 512, cv = document.createElement('canvas'); cv.width = cv.height = TS;
+    const g2 = cv.getContext('2d');
+    const WORDS = ['KAIJU HAVOC', 'LIVE', 'BREAKING', 'FIGHT NIGHT', 'TONIGHT', 'NEWS 24', 'SALE', '怪獣', 'TITLE MATCH', 'NOW SHOWING', 'EVACUATE', 'MIDTOWN'];
+    const HUES = ['#e8202a', '#1c6cf2', '#f2c41c', '#18c27a', '#ff6a1a', '#b524e8', '#ffffff', '#0fd2e6'];
+    // 4 x 4 cells, each an ad: a gradient ground, a slogan, bars
+    for (let i = 0; i < 16; i++) {
+      const x = (i % 4) * 128, y = Math.floor(i / 4) * 128, a = HUES[i % HUES.length], b = HUES[(i * 5 + 3) % HUES.length];
+      const gr = g2.createLinearGradient(x, y, x + 128, y + 128); gr.addColorStop(0, a); gr.addColorStop(1, '#101018');
+      g2.fillStyle = gr; g2.fillRect(x, y, 128, 128);
+      g2.fillStyle = b; g2.fillRect(x + 6, y + 92, 116, 10);
+      g2.font = '900 26px Impact, "Arial Black", sans-serif'; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+      g2.fillStyle = '#ffffff'; g2.fillText(WORDS[i % WORDS.length], x + 64, y + 52, 116);
+      g2.strokeStyle = '#05050a'; g2.lineWidth = 4; g2.strokeRect(x + 2, y + 2, 124, 124);
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = 4;
+    const led = new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, fog: true });
+    led.userData.shared = true;
+    const raw = new Map((L.rawBuildings || []).map((o) => [o.id, o]));
+    for (const sg of signs) {
+      const o = raw.get(sg.id);
+      if (!o) continue;
+      // the Buildings standing on that lot (a long low lot is several), or the landmark
+      const owners = buildings.filter((b) => !b.destroyed && (sg.landmark ? b.landmarkId === sg.landmark : b.layoutId === sg.id));
+      if (!owners.length) continue;
+      const r = +o.rot || 0, c = Math.cos(r), s = Math.sin(r), hw = o.w / 2, hd = o.d / 2;
+      const top = Math.min(sg.signTopMetres * S, (o.height || 10) * 0.92), y0 = 1.2;
+      if (top < y0 + 1.5) continue;
+      const parts = new Map(); // owner -> [pos, uv, col, idx]
+      const rng = _seeded('ts:' + sg.id);
+      for (const f of sg.faces) {
+        // face frame: n the outward normal (local), t along the face, its half length
+        const ax = f[1] === 'x', sg1 = f[0] === '+' ? 1 : -1;
+        const nl = ax ? [sg1, 0] : [0, sg1], tl = ax ? [0, 1] : [1, 0], half = (ax ? hd : hw) + 0.6; // (wraps 0.6u round the corners)
+        const off = (ax ? hw : hd) + 0.14;
+        const N = [nl[0] * c + nl[1] * s, -nl[0] * s + nl[1] * c], T = [tl[0] * c + tl[1] * s, -tl[0] * s + tl[1] * c];
+        // the screens: columns 2.5-6u wide, rows 2-5u tall, the odd gap
+        for (let a = -half; a < half - 0.5;) {
+          const cw = Math.min(half - a, 2.5 + rng() * 3.5);
+          for (let y = y0; y < top - 0.8;) {
+            const rh = Math.min(top - y, 2 + rng() * 3);
+            if (rng() > 0.12) {
+              const mid = a + cw / 2, px = o.cx + N[0] * off + T[0] * mid, pz = o.cz + N[1] * off + T[1] * mid;
+              let best = owners[0], bd = Infinity;
+              for (const b of owners) { const d = Math.hypot(b.x - px, b.z - pz); if (d < bd) { bd = d; best = b; } }
+              if (!parts.has(best)) parts.set(best, [[], [], [], []]);
+              const [pos, uv, col, idx] = parts.get(best);
+              const i0 = pos.length / 3, cell = Math.floor(rng() * 16), u0 = (cell % 4) / 4, v0 = 1 - (Math.floor(cell / 4) + 1) / 4, k = 0.88 + rng() * 0.12;
+              for (const [ta, yy, uu, vv] of [[-cw / 2 + 0.08, y + 0.08, 0, 0], [cw / 2 - 0.08, y + 0.08, 1, 0], [cw / 2 - 0.08, y + rh - 0.08, 1, 1], [-cw / 2 + 0.08, y + rh - 0.08, 0, 1]]) {
+                // (wound so the face looks out along N)
+                const tt = sg1 * (ax ? -1 : 1) * ta;
+                pos.push(px + T[0] * tt - best.x, yy, pz + T[1] * tt - best.z); uv.push(u0 + uu / 4, v0 + vv / 4); col.push(k, k, k);
+              }
+              idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3);
+            }
+            y += rh;
+          }
+          a += cw;
+        }
+      }
+      for (const [b, [pos, uv, col, idx]] of parts) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+        g.setIndex(idx);
+        g.computeBoundingSphere();
+        const m = new THREE.Mesh(g, led);
+        m.matrixAutoUpdate = false; m.updateMatrix();
+        m.name = 'nyc_times_square_screens';
+        b.group.add(m);
+      }
+    }
+    let shown = 0;
+    animators.push({ update(dt, time) { const n = Math.floor(time / 3.5); if (n !== shown) { shown = n; tex.offset.set((n % 4) / 4, Math.floor(n / 4) % 4 / 4); } } });
+  }
+
+  // ---- the High Line: the planted deck on its girders and riveted columns, 9 m over the West Side ----
+  const hl = L.detail?.highLine;
+  if (hl?.polylines?.length) {
+    const yD = (hl.deckHeightMetres || 9) * S, hwD = (hl.widthMetres || 11) * S / 2, fascia = 0.45;
+    const deck = [], steel = [];
+    for (const pts0 of hl.polylines) {
+      const pts = pts0.filter((p) => !inRingBox(p[0], p[1]));
+      if (pts.length < 2) continue;
+      deck.push(ribbon(pts, -hwD, hwD, yD, 1 / 6));
+      // the girder fascia both sides, and a pair of columns every ~7u
+      const pos = [], idx = [];
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const [ax, az] = pts[i], [bx, bz] = pts[i + 1], l = Math.hypot(bx - ax, bz - az);
+        if (l < 0.05) continue;
+        const dx = (bx - ax) / l, dz = (bz - az) / l, rx = -dz, rz = dx;
+        for (const sd of [-1, 1]) {
+          const i0 = pos.length / 3, ox = rx * hwD * sd, oz = rz * hwD * sd;
+          pos.push(ax + ox, yD - fascia, az + oz, bx + ox, yD - fascia, bz + oz, bx + ox, yD + 0.02, bz + oz, ax + ox, yD + 0.02, az + oz);
+          if (sd > 0) idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3); else idx.push(i0, i0 + 2, i0 + 1, i0, i0 + 3, i0 + 2); // (facing out)
+        }
+        for (let t = 0; t < l; t += 7) for (const sd of [-0.8, 0.8]) {
+          const cx = ax + dx * t + rx * hwD * sd, cz = az + dz * t + rz * hwD * sd;
+          if (isWater(cx, cz)) continue;
+          steel.push(new THREE.BoxGeometry(0.28, yD - fascia, 0.28).translate(cx, (yD - fascia) / 2, cz).toNonIndexed());
+        }
+      }
+      const fg = new THREE.BufferGeometry();
+      fg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      fg.setIndex(idx);
+      steel.push(fg.toNonIndexed());
+    }
+    if (deck.length) {
+      const dm = addBatch(mergeGeometries(deck, false), D.gravel);
+      dm.castShadow = true;
+    }
+    if (steel.length) {
+      for (const g of steel) { g.deleteAttribute('uv'); g.deleteAttribute('normal'); }
+      const sg = mergeGeometries(steel, false);
+      sg.computeVertexNormals();
+      const sm = addBatch(sg, D.steelDark);
+      sm.castShadow = true;
+    }
   }
 
   // ---- the Title Match venue (wrestling mode only) ----
@@ -905,17 +1113,15 @@ export function buildNyc(scene, world, opts, K) {
     }
   }
 
-  // ---- the surround: the rest of Manhattan, New Jersey and Queens ----
+  // ---- the surround: the rest of Manhattan, New Jersey, Queens and Brooklyn ----
   // Out to the ground plane's edge (where the look layer's world-edge fade
-  // takes everything into the haze), laid out on the rotated grid: Manhattan
-  // between the rivers (pre-war blocks and towers up and down the island,
-  // Central Park running on north between 5th Ave and Central Park West),
-  // the Palisades and the Hudson County towns across the Hudson, Long Island
-  // City's towers and Roosevelt Island across the East River. One merged
+  // takes everything into the haze): the cartographer's surround boxes from
+  // the footprint data (cls 0: a tax block of low fabric as one mass, 1: a
+  // building of 40 m or more, One World Trade Center 5.5 km south among them,
+  // 2: New Jersey), and Central Park carried north past the bounds. One merged
   // UNLIT mesh with baked sun shading (one draw) plus the outer ground (one draw).
   const G = GROUND / 2, RX0 = cxB - G, RX1 = cxB + G, RZ0 = czB - G, RZ1 = czB + G;
-  const BU = 16, BV = 44, ST = 3.6; // a Manhattan block (~80 x 220 m) with its streets, in u
-  const wetFar = (x, z, pad = 0) => { const v = toV(x, z); return (v > SHORE.hudson - SHORE.hudsonW - pad && v < SHORE.hudson + pad) || (v > SHORE.east - pad && v < SHORE.east + SHORE.eastW + pad); };
+  const BU = 16, BV = 44, ST = 3.6; // a Manhattan block (~80 x 220 m) with its streets, in u (the outer ground's tile)
   const inPlay = (x, z, pad) => x > B.minX - pad && x < B.maxX + pad && z > B.minZ - pad && z < B.maxZ + pad;
   // Central Park past the bounds: the v range of the layout's park polygon, from its south edge north
   const cpark = (() => {
@@ -924,20 +1130,19 @@ export function buildNyc(scene, world, opts, K) {
     const vs = p.polygon.map(([x, z]) => toV(x, z)), us = p.polygon.map(([x, z]) => toU(x, z));
     return { v0: Math.min(...vs), v1: Math.max(...vs), u0: Math.min(...us) };
   })();
-  const inCPark = (v, u) => !!cpark && v > cpark.v0 && v < cpark.v1 && u > cpark.u0;
-  {
+  if (L.surround?.boxes?.length || cpark) {
     const sunL = new THREE.Vector3(0.55, 1.2, 0.65).normalize();
     const pos = [], uv = [], col = [], idx = [];
     const cc = new THREE.Color(), nn = new THREE.Vector3();
-    // A box on the grid: centre (v, u), wv crosstown by wu uptown, h tall
-    const addBox = (v, u, wv, h, wu, tint, roof) => {
-      const hv = wv / 2, hu = wu / 2;
-      const P = (dv, du) => fromVU(v + dv, u + du);
-      for (const [a, b, nl, fw] of [[[-hv, -hu], [hv, -hu], [0, -1], wv], [[hv, -hu], [hv, hu], [1, 0], wu], [[hv, hu], [-hv, hu], [0, 1], wv], [[-hv, hu], [-hv, -hu], [-1, 0], wu]]) {
-        const [nx, nz] = fromVU(nl[0], nl[1]);
-        nn.set(nx, 0, nz);
+    // A box centred on (x, z), w along its local X, d along local Z, turned
+    // by rot (three.js rotation.y: local X along (c, -s), local Z along (s, c))
+    const addBox = (x, z, w, h, d, rot, tint, roof) => {
+      const c = Math.cos(rot), s = Math.sin(rot), hw = w / 2, hd = d / 2;
+      const P = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
+      for (const [a, b, nl, fw] of [[[-hw, hd], [hw, hd], [0, 1], w], [[hw, hd], [hw, -hd], [1, 0], d], [[hw, -hd], [-hw, -hd], [0, -1], w], [[-hw, -hd], [-hw, hd], [-1, 0], d]]) {
+        nn.set(nl[0] * c + nl[1] * s, 0, -nl[0] * s + nl[1] * c);
         cc.copy(tint).multiplyScalar(Math.min(1, 0.6 + 0.5 * Math.max(0, nn.dot(sunL))) * 0.9);
-        const i0 = pos.length / 3, u0 = (v * 0.37 + u * 0.61) / 6;
+        const i0 = pos.length / 3, u0 = (x * 0.37 + z * 0.61) / 6;
         const pa = P(a[0], a[1]), pb = P(b[0], b[1]);
         for (const [p, ly, uu] of [[pa, 0, 0], [pb, 0, fw], [pb, h, fw], [pa, h, 0]]) {
           pos.push(p[0], ly, p[1]); uv.push(u0 + uu / 6, ly / 3.2); col.push(cc.r, cc.g, cc.b);
@@ -945,7 +1150,7 @@ export function buildNyc(scene, world, opts, K) {
         idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3);
       }
       const i0 = pos.length / 3;
-      for (const [dv, du] of [[-hv, -hu], [hv, -hu], [hv, hu], [-hv, hu]]) { const p = P(dv, du); pos.push(p[0], h, p[1]); uv.push(0.5, 0.03); col.push(roof.r, roof.g, roof.b); }
+      for (const [lx, lz] of [[-hw, hd], [hw, hd], [hw, -hd], [-hw, -hd]]) { const p = P(lx, lz); pos.push(p[0], h, p[1]); uv.push(0.5, 0.03); col.push(roof.r, roof.g, roof.b); }
       idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3);
     };
     // A flat patch on the grid (park lawn), just over the outer ground
@@ -954,73 +1159,29 @@ export function buildNyc(scene, world, opts, K) {
       for (const [vv, uu] of [[v0, u0], [v1, u0], [v1, u1], [v0, u1]]) { const p = fromVU(vv, uu); pos.push(p[0], 0.06, p[1]); uv.push(0.5, 0.03); col.push(tint.r, tint.g, tint.b); }
       idx.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3);
     };
-    // A sloped bank along the grid (the Palisades): a ramp from the shore up to h, w wide
-    const addBank = (vShore, w, h, u0, u1, tint) => {
-      const i0 = pos.length / 3;
-      const lit = tint.clone().multiplyScalar(0.95), top = tint.clone().multiplyScalar(0.8);
-      for (const [vv, y, c] of [[vShore, 0, lit], [vShore - w * 0.25, h, lit]]) for (const uu of [u0, u1]) { const p = fromVU(vv, uu); pos.push(p[0], y, p[1]); uv.push(0.5, 0.03); col.push(c.r, c.g, c.b); }
-      for (const uu of [u0, u1]) { const p = fromVU(vShore - w, uu); pos.push(p[0], h, p[1]); uv.push(0.5, 0.03); col.push(top.r, top.g, top.b); }
-      idx.push(i0, i0 + 1, i0 + 3, i0, i0 + 3, i0 + 2, i0 + 2, i0 + 3, i0 + 5, i0 + 2, i0 + 5, i0 + 4);
-    };
     const rnd = (k) => { const v = Math.sin(k * 12.9898) * 43758.5453; return v - Math.floor(v); };
     const STONE = [0xd8cfbd, 0xcbbfa8, 0xe0dacd, 0xb9ae9a], BRICK = [0x9a6452, 0x8c5c4c, 0xa87660, 0x7c5a4e, 0xb08a6e], GLASSY = [0x7f93a6, 0x6a7c8e, 0x9eabb6, 0x8a98a2];
     const pick = (arr, k) => new THREE.Color(arr[Math.floor(rnd(k) * arr.length) % arr.length]);
     const ROOFS = [new THREE.Color(0x6e6a66), new THREE.Color(0x5b5f63), new THREE.Color(0x7d848a)];
-    const GREEN = new THREE.Color(0x52703f), CLIFF = new THREE.Color(0x5e5a48);
-    // the grid's extent over the whole ground square
-    const corners = [[RX0, RZ0], [RX1, RZ0], [RX0, RZ1], [RX1, RZ1]];
-    const vMin = Math.min(...corners.map(([x, z]) => toV(x, z))), vMax = Math.max(...corners.map(([x, z]) => toV(x, z)));
-    const uMin = Math.min(...corners.map(([x, z]) => toU(x, z))), uMax = Math.max(...corners.map(([x, z]) => toU(x, z)));
+    const GREEN = new THREE.Color(0x52703f);
     const onGround = (x, z) => x > RX0 && x < RX1 && z > RZ0 && z < RZ1;
-    const uMid = toU(cxB, czB), lic = { v: SHORE.east + SHORE.eastW + 60, u: uMid + 40 }; // Long Island City's towers, by the Queensboro
-    const keep = lite ? 0.45 : 1;
+    // (phone LOW keeps the towers and the nearer low fabric)
     let k = 0;
-    for (let v = Math.floor(vMin / BV) * BV + BV / 2; v < vMax; v += BV) for (let u = Math.floor(uMin / BU) * BU + BU / 2; u < uMax; u += BU) {
+    for (const [x, z, w, d, h, rot, cls] of L.surround?.boxes || []) {
       k++;
-      const [x, z] = fromVU(v, u);
-      if (!onGround(x, z) || inPlay(x, z, BV / 2 + 2) || wetFar(x, z, ST)) continue;
-      const iv = BV - ST * 2, iu = BU - ST * 2;
-      const island = v > SHORE.hudson && v < SHORE.east;
-      if (island && inCPark(v, u)) { addFlat(v - BV / 2, v + BV / 2, u - BU / 2, u + BU / 2, GREEN); continue; }
+      if (!onGround(x, z) || inPlay(x, z, 1)) continue;
       const dEdge = Math.max(B.minX - x, x - B.maxX, B.minZ - z, z - B.maxZ, 0);
-      if (rnd(k * 1.7) > keep * (dEdge < 250 ? 0.97 : 0.75)) continue;
-      if (island) {
-        // Manhattan: lots along the block, pre-war 8-20 storeys, a glass tower here and there
-        const lots = 3;
-        for (let q = 0; q < lots; q++) {
-          if (rnd(k * 3.3 + q) < 0.08) continue;
-          const tall = rnd(k * 5.1 + q) < (dEdge < 200 ? 0.12 : 0.06);
-          const h = tall ? 25 + rnd(k * 7.3 + q) * 35 : 5 + rnd(k * 2.9 + q) * 12;
-          const lv = v - iv / 2 + iv * (q + 0.5) / lots;
-          const tint = tall ? pick(GLASSY, k + q) : pick(rnd(k * 6.7 + q) < 0.55 ? BRICK : STONE, k * 3 + q);
-          addBox(lv, u, iv / lots - 0.6, h, iu * (tall ? 0.8 : 1), tint, ROOFS[q % 3]);
-        }
-        continue;
-      }
-      if (v > SHORE.east) {
-        // Queens: Long Island City's glass towers by the bridge, low industry and walk-ups beyond
-        const dl = Math.hypot(v - lic.v, u - lic.u);
-        if (dl < 70 && rnd(k * 2.9) < 0.5) { addBox(v, u, iv * 0.5, 14 + rnd(k * 3.1) * 22 * (1 - dl / 90), iu * 0.8, pick(GLASSY, k), ROOFS[2]); continue; }
-        addBox(v, u, iv, 2 + rnd(k * 4.3) * 4, iu, pick(rnd(k * 6.1) < 0.5 ? BRICK : STONE, k + 7), ROOFS[k % 2]);
-        continue;
-      }
-      // New Jersey: the Palisades bluff (built separately) with low towns on top, a few towers by the water
-      if (v > SHORE.hudson - SHORE.hudsonW - 50) {
-        if (rnd(k * 2.3) < 0.25) addBox(v, u, iv * 0.5, 10 + rnd(k * 3.7) * 16, iu * 0.8, pick(GLASSY, k), ROOFS[2]);
-        continue;
-      }
-      addBox(v, u, iv, 10 + 1.5 + rnd(k * 4.3) * 4, iu, pick(rnd(k * 6.7) < 0.5 ? BRICK : STONE, k + 3), ROOFS[k % 2]);
+      if (lite && cls !== 1 && dEdge > 200 && rnd(k * 1.7) < 0.5) continue;
+      // towers glass or stone by height, low fabric brick or stone, New Jersey mixed
+      const tint = cls === 1 ? pick(h > 30 ? GLASSY : rnd(k * 2.3) < 0.5 ? STONE : GLASSY, k) : pick(rnd(k * 6.7) < 0.55 ? BRICK : STONE, k * 3);
+      addBox(x, z, w, h, d, rot || 0, tint, ROOFS[k % 3]);
     }
-    // The Palisades: a wooded bluff ~10u high just back from the New Jersey shore
-    addBank(SHORE.hudson - SHORE.hudsonW - 50, 30, 10, uMin, uMax, CLIFF);
-    // Roosevelt Island: a narrow green strip mid-river with a row of low blocks
-    {
-      const rv = SHORE.east + SHORE.eastW * 0.5, ru0 = toU(cxB, czB) - 20, ru1 = uMax;
-      for (let u = ru0; u < ru1; u += 4 * BU) {
-        const [x, z] = fromVU(rv, u);
-        if (!onGround(x, z) || inPlay(x, z, 8)) continue;
-        addFlat(rv - 9, rv + 9, u, u + 4 * BU, GREEN);
-        if (rnd(u) < 0.6) addBox(rv, u + 2 * BU, 10, 3 + rnd(u * 1.3) * 5, BU * 1.6, pick(BRICK, u), ROOFS[0]);
+    // Central Park on north past the bounds (the blocks either side are in the boxes)
+    if (cpark) {
+      const uTop = Math.max(...[[RX0, RZ0], [RX1, RZ0], [RX0, RZ1], [RX1, RZ1]].map(([x, z]) => toU(x, z)));
+      for (let u = cpark.u0; u < uTop; u += 4 * BU) {
+        const [x, z] = fromVU((cpark.v0 + cpark.v1) / 2, u + 2 * BU);
+        if (onGround(x, z) && !inPlay(x, z, -2)) addFlat(cpark.v0, cpark.v1, u, u + 4 * BU, GREEN);
       }
     }
     const geo = new THREE.BufferGeometry();

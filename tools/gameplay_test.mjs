@@ -863,6 +863,6 @@ test('Title Match on NYC: New York place names on screen, the booth gate as off 
   const ny = { world: { level: 'nyc' } };
   assert.ok(offChicago(ny));
   assert.equal(placeText(ny, 'Gorrak · CHICAGO HEAVYWEIGHT CHAMPION'), 'Gorrak · NEW YORK HEAVYWEIGHT CHAMPION');
-  assert.equal(placeText(ny, 'Into Lake Michigan! That wave will reach Indiana!'), 'Into the Hudson! That wave will reach New Jersey!');
+  assert.equal(placeText(ny, 'Into Lake Michigan! That wave will reach Indiana!'), 'Into the Pond! That wave will reach New Jersey!');
   assert.match(venueHome(ny, 'player', 'x'), /HUDSON/);
 });

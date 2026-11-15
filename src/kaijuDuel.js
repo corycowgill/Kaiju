@@ -70,7 +70,7 @@ export function findDuelSpawns(world) {
   const [first, second] = D && D.a && D.b ? [area(D.a), area(D.b)] : SPAWN_AREAS[world.level] || SPAWN_AREAS.tokyo;
   const player = findOpenSpawn(world, first);
   const rival = findOpenSpawn(world, second);
-  if (!player || !rival) throw new Error('No clear duel spawn in the selected arena');
+  if (!player || !rival) throw new Error(`No clear duel spawn in the selected arena (${!player ? 'player' : 'rival'} near ${Math.round((player ? second : first).x)}, ${Math.round((player ? second : first).z)})`);
   return {player, rival};
 }
 

@@ -809,7 +809,8 @@ if (DATA && res && res.bounds) {
   // Footprint centres (edge blocks may overhang the play limit a little)
   const outside = res.buildings.filter((b) => b.x < B.minX || b.x > B.maxX || b.z < B.minZ || b.z > B.maxZ);
   if (outside.length) fail(`${level}: ${outside.length} buildings outside bounds, e.g. (${outside[0].x.toFixed(1)}, ${outside[0].z.toFixed(1)})`);
-  const wet = res.buildings.filter((b) => !b.isBridge && b.h > 4 && res.isWater && res.isWater(b.x, b.z));
+  // (onWater: the level puts it there on purpose: NYC's pier sheds, the Intrepid, the Queensboro)
+  const wet = res.buildings.filter((b) => !b.isBridge && !b.onWater && b.h > 4 && res.isWater && res.isWater(b.x, b.z));
   if (wet.length) fail(`${level}: ${wet.length} buildings stand on water, e.g. (${wet[0].x.toFixed(1)}, ${wet[0].z.toFixed(1)})`);
   // The kaiju wades in from Lake Michigan: open water, nothing solid (shore,
   // breakwater, festival) within 10u of the spawn
