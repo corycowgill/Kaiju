@@ -8,7 +8,7 @@ const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const rand = (a, b) => a + Math.random() * (b - a);
 const count = n => Math.max(4, Math.round(n * Math.max(.3, QUALITY_PROFILE.particleMul)));
 
-class PowerEffect {
+export class PowerEffect {
   constructor(world, group, life, animate) {
     this.mesh = group; this.life = this.maxLife = life; this.dead = false;
     this.animate = animate; world.scene.add(group); animate(0, 0);
@@ -87,7 +87,7 @@ void main() {
 
 // Every puff in a layer is one instanced draw, with per-puff atlas frame,
 // rotation and opacity. A procedural wispy mask also works before load ends.
-function puffs(group, n, getTexture, { sheet = 'smoke_plume_8x8', hot = false, color = 0xffffff, textureWeight = 1 } = {}) {
+export function puffs(group, n, getTexture, { sheet = 'smoke_plume_8x8', hot = false, color = 0xffffff, textureWeight = 1, additive = false } = {}) {
   const base = new THREE.PlaneGeometry(1, 1);
   const g = new THREE.InstancedBufferGeometry().copy(base); base.dispose();
   const attr = (name, size) => {
@@ -103,11 +103,12 @@ function puffs(group, n, getTexture, { sheet = 'smoke_plume_8x8', hot = false, c
       sheet: { value: getTexture(sheet) || null }, hasSheet: { value: getTexture(sheet) ? 1 : 0 }, hot: { value: +hot }, textureWeight: {value:textureWeight},
     }]), vertexShader: PUFF_VS, fragmentShader: PUFF_FS,
     transparent: true, depthWrite: false, fog: true,
-    blending: hot ? THREE.AdditiveBlending : THREE.NormalBlending,
+    blending: hot || additive ? THREE.AdditiveBlending : THREE.NormalBlending,
   });
   const mesh = new THREE.Mesh(g, mat); mesh.frustumCulled = false; mesh.name = hot ? 'power_embers' : 'power_textured_matter'; group.add(mesh);
   return {
     n, mesh,
+    tint(i, hex) { c.setHex(hex); tint.setXYZ(i, c.r, c.g, c.b); tint.needsUpdate = true; },
     set(i, x, y, z, w, h, rotation, opacity, frame = 0) {
       center.setXYZ(i, x, y, z); shape.setXYZW(i, w, h, rotation, clamp(opacity)); state.setXY(i, frame, i * 2.31);
     },
@@ -151,15 +152,21 @@ void main() {
  if(gl_FragColor.a<.003) discard;
  #include <fog_fragment>
 }`;
-function trail(group, points, color, width, energy = 1) {
+// points: one polyline [[x,y,z], ...], or several ([[[x,y,z], ...], ...]) drawn as one mesh
+export function trail(group, points, color, width, energy = 1) {
   const pos = [], tangents = [], uv = [], sides = [], idx = [];
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i], a = points[Math.max(0, i - 1)], b = points[Math.min(points.length - 1, i + 1)];
-    for (let k = 0; k < 2; k++) {
-      pos.push(...p); tangents.push(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
-      uv.push(i / (points.length - 1), k); sides.push(k ? 1 : -1);
+  const strips = Array.isArray(points[0][0]) ? points : [points];
+  let base = 0;
+  for (const line of strips) {
+    for (let i = 0; i < line.length; i++) {
+      const p = line[i], a = line[Math.max(0, i - 1)], b = line[Math.min(line.length - 1, i + 1)];
+      for (let k = 0; k < 2; k++) {
+        pos.push(...p); tangents.push(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+        uv.push(i / (line.length - 1), k); sides.push(k ? 1 : -1);
+      }
+      if (i < line.length - 1) { const j = base + i * 2; idx.push(j, j + 1, j + 2, j + 1, j + 3, j + 2); }
     }
-    if (i < points.length - 1) { const j = i * 2; idx.push(j, j + 1, j + 2, j + 1, j + 3, j + 2); }
+    base += line.length * 2;
   }
   const g = new THREE.BufferGeometry();
   for (const [name, values, size] of [['position', pos, 3], ['tangent', tangents, 3], ['uv', uv, 2], ['side', sides, 1]]) g.setAttribute(name, new THREE.Float32BufferAttribute(values, size));
@@ -175,7 +182,7 @@ function trail(group, points, color, width, energy = 1) {
   return { mesh, uniforms };
 }
 
-function oriented(pos, dir) {
+export function oriented(pos, dir) {
   const g = new THREE.Group(); g.position.copy(pos);
   if (dir) g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().normalize());
   return g;
@@ -553,4 +560,4 @@ export function powerBuilders(getTexture, placeScorch = () => {}, lightBurst = (
   };
 }
 
-function randStable(i, a, b) { return a + (Math.sin(i * 12.9898 + 78.233) * 43758.5453 % 1 + 1) % 1 * (b - a); }
+export function randStable(i, a, b) { return a + (Math.sin(i * 12.9898 + 78.233) * 43758.5453 % 1 + 1) % 1 * (b - a); }

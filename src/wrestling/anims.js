@@ -25,6 +25,7 @@ import * as THREE from 'three';
 import { EV } from './events.js';
 import { buildRig, bakeClip, twoBone, eulerQuat } from './animRig.js';
 import { DEFS } from './animDefs.js';
+import { SIGNATURES } from './signatures.js';
 
 /** name -> { loop, hold, rootDriven, clips, dur, marks }.
  *  loop:  plays until stop() / the next play();
@@ -117,6 +118,47 @@ const GRIP = {
   'sig_b.mecha':    { L: ['Hips'], R: ['Hips'], t0: 0.15, t1: 1.2, fade: 0.12, out: 0.8, press: 3.5, wrap: 3 },
 };
 
+// The later six borrow an original's signature (signatures.js `pose` / `grip`):
+// its grip, with the windows moved onto their own beats; the generic lifts
+// ('vault' a press-slam, 'wheel' a back suplex) hold from the reach to the drop.
+const ORIGINALS = { godzilla: 1, ghidorah: 1, mecha: 1 };
+const LIFT_GRIP = {
+  vault: { L: ['Spine', 'Hips'], R: ['Spine', 'Hips'], fade: 0.12, out: 1, press: 4.5, split: true },
+  wheel: { L: ['Hips'], R: ['Hips'], fade: 0.12, out: 0.8, press: 3.5, wrap: 3 },
+};
+const _sigGrips = new Map();
+// The original each borrowed thrower pose comes from: [key, slot]
+const POSE_SRC = { chokeslam: ['godzilla', 0], bulldozer: ['godzilla', 1], rana: ['ghidorah', 0], ddt: ['ghidorah', 1], breaker: ['mecha', 0], piledriver: ['mecha', 1] };
+function sigGrip(name, key) {
+  const kn = name + '.' + key;
+  if (_sigGrips.has(kn)) return _sigGrips.get(kn);
+  const d = SIGNATURES[key] && SIGNATURES[key][name === 'sig_a' ? 0 : 1];
+  const src = d && POSE_SRC[d.pose];
+  let G = null;
+  if (d && LIFT_GRIP[d.pose]) {
+    // clip time = real seconds x 2 / dur (the 2 s clip is stretched to the move)
+    const k = 2 / d.dur;
+    G = { ...LIFT_GRIP[d.pose], t0: d.T.grip * 0.65 * k, t1: (d.T.hit + 0.05) * k };
+  } else if (src && GRIP[(src[1] === 0 ? 'sig_a.' : 'sig_b.') + src[0]]) {
+    const base = GRIP[(src[1] === 0 ? 'sig_a.' : 'sig_b.') + src[0]], o = SIGNATURES[src[0]][src[1]];
+    // Piecewise-linear map from the original's beats to these (same beat names)
+    const from = [0], to = [0];
+    for (const b of Object.keys(o.T)) if (d.T[b] !== undefined) { from.push(o.T[b]); to.push(d.T[b]); }
+    from.push(o.dur); to.push(d.dur);
+    const map = (c) => {
+      if (c >= 1e8) return c;
+      const sec = c * o.dur / 2;
+      let i = 1;
+      while (i < from.length - 1 && sec > from[i]) i++;
+      const u = (sec - from[i - 1]) / Math.max(1e-3, from[i] - from[i - 1]);
+      return (to[i - 1] + (to[i] - to[i - 1]) * u) * 2 / d.dur;
+    };
+    G = { ...base, t0: map(base.t0), t1: map(base.t1) };
+  }
+  _sigGrips.set(kn, G);
+  return G;
+}
+
 // ---- anchors: named points on a body for effects (W.anims.anchor) ----
 // name -> [bone, x, y, z]: an offset from the bone in rig space at the bind pose (u; +x the kaiju's left, +z forward), carried by the bone.
 // Measured by eye on the bind meshes: good to a couple of units.
@@ -124,6 +166,13 @@ const ANCHORS = {
   godzilla: { head: ['neck', 0, 3, 3], crown: ['neck', 0, 6.5, 1], mouth: ['neck', 0, 0, 6], chest: ['Spine', 0, -1, 6], back: ['Spine', 0, 2, -6] },
   ghidorah: { head: ['Head', 0, 3.5, 9], headL: ['Head', 5, 2.5, 9], headR: ['Head', -5, 2.5, 9], crown: ['Head', 0, 7.5, 6], mouth: ['Head', 0, 1.5, 13], chest: ['Spine', 0, -3, 4], back: ['Spine', 0, 1, -5] },
   mecha:    { head: ['Head', 0, 1, 6], crown: ['Head', 0, 2.8, 3], mouth: ['Head', 0, -0.5, 10], chest: ['Spine', 0, -3, 4.5], back: ['Spine', 0, 0, -5] },
+  // the TRELLIS six: measured on the rest-pose surface (devtools/trellis/bake)
+  cindervault: { head: ['Head', 0, 0.5, 2.1], crown: ['Head', 0, 5.6, 0.4], mouth: ['Head', 0, -2.2, 4.3], chest: ['Spine', 0, -2.1, 2.8], back: ['Spine', 0, -1.6, -8] },
+  brineveil:   { head: ['Head', 0, 0.5, 3.2], crown: ['Head', 0, 6.8, 0.2], mouth: ['Head', 0, 0.1, 6.4], chest: ['Spine', 0, -1.1, 4.8], back: ['Spine', 0, -0.7, -4] },
+  rimehorn:    { head: ['Head', 0, 0.5, 3.3], crown: ['Head', 0, 7.2, -2.7], mouth: ['Head', 0, 0.5, 6.6], chest: ['Spine', 0, -1.6, 3.4], back: ['Spine', 0, -0.9, -10.5] },
+  vesperax:    { head: ['Head', 0, 0.5, 1.2], crown: ['Head', 0, 4, 1.5], mouth: ['Head', 0, -0.3, 2.4], chest: ['Spine', 0, -1.8, 1.6], back: ['Spine', 0, -1.9, -3.4] },
+  thornwake:   { head: ['Head', 0, 0.5, 1.6], crown: ['Head', 0, 6.2, -1], mouth: ['Head', 0, -2, 3.3], chest: ['Spine', 0, -1.7, 1.5], back: ['Spine', 0, -0.7, -6.5] },
+  ferrumaw:    { head: ['Head', 0, 0.5, 5.3], crown: ['Head', 0, 5.2, 1.8], mouth: ['Head', 0, 0.2, 10.5], chest: ['Spine', 0, -2, 6], back: ['Spine', 0, -2, -5.6] },
 };
 const ANCHOR_ALIAS = { headL: 'head', headR: 'head' };
 
@@ -387,7 +436,7 @@ export function createAnims(ctx, W) {
   }
   function grips(st, dt) {
     const o = st.f.opponent;
-    const name = st.sub || st.anim, kn = GRIP[name] ? name : name + '.' + st.R.key, G = GRIP[kn];
+    const name = st.sub || st.anim, kn = GRIP[name] ? name : name + '.' + st.R.key, G = GRIP[kn] || (name.startsWith('sig_') ? sigGrip(name, st.R.key) : undefined);
     let wantL = 0, wantR = 0;
     const ost = o ? states[o.id] : null;
     if (G && ost && ost.B && o.root.visible !== false) {
@@ -399,7 +448,7 @@ export function createAnims(ctx, W) {
       if (on) { wantL = G.L ? (G.w || 1) : 0; wantR = G.R ? (G.w || 1) : 0; }
       st.gripName = kn;
     }
-    const H = G || GRIP[st.gripName];
+    const H = G || GRIP[st.gripName] || _sigGrips.get(st.gripName);
     const k = dt > 0 ? Math.min(1, dt / (H ? H.fade : 0.15)) : 0;
     st.gripL += Math.sign(wantL - st.gripL) * Math.min(Math.abs(wantL - st.gripL), k);
     st.gripR += Math.sign(wantR - st.gripR) * Math.min(Math.abs(wantR - st.gripR), k);
@@ -615,8 +664,14 @@ export function createAnims(ctx, W) {
     lockDist(a, b) { return ctx.bodyRadius(a.key) + ctx.bodyRadius(b.key) - 3; },
     /** Height (u above the lifter's root) for the centre of a body carried overhead so it rests on the lifter's raised hands. */
     carryY(lifter, victim) {
-      const st = stateOf(lifter);
-      return st.R ? st.R.shoulderY + st.R.armLen * 0.92 + 5.5 : 38;
+      const st = stateOf(lifter), R = st.R;
+      if (!R) return 38;
+      if (R.key in ORIGINALS) return R.shoulderY + R.armLen * 0.92 + 5.5;
+      // The later six: where their hands really get to under a held body (measured in the carry,
+      // devtools/newkaiju/press.mjs: 0.87 arm straight up, less for wide shoulders reaching in to the
+      // centre), plus the grip's press, so the body rests on the palms instead of floating over them
+      const up = 0.87 * R.armLen, wide = Math.max(0, R.shoulderX - 3.4);
+      return R.shoulderY + Math.sqrt(Math.max(up * up - wide * wide, up * up * 0.5)) + 4;
     },
     /** The wrestling anim last played on the fighter ('' after stop()). */
     current(fighter) { return fighter.animName; },

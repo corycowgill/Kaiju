@@ -13,8 +13,11 @@
 // OWNER: rival (with combat's grapple.js).
 import { EV } from './events.js';
 
-function elementalSignature(id, name, dur, cost, dmg, T, lift, reach, turn) {
-  return Object.freeze({ id, name, dur, cost, dmg, T: Object.freeze(T), lift, reach, turn });
+// The six later kaiju borrow a thrower pose from animDefs.js (`pose`: an original's move id, or the generic
+// 'vault' / 'wheel' lift) and its hand grips (`grip`: whose 'sig_a.<key>' entry in anims.js), and say which
+// element their effects are made of (`elem`, wrestling/vfx.js). T keeps the beat names that pose reads.
+function sig(id, name, dur, cost, dmg, T, pose, grip, elem) {
+  return Object.freeze({ id, name, dur, cost, dmg, T: Object.freeze(T), pose, grip, elem, lift: pose === 'vault' || pose === 'wheel' ? 1 : 0 });
 }
 
 /** Per kaiju: [sig 1 (RUN + toward), sig 2 (RUN + away)]. T = the beats (s), dur = the thrower's anim (s). */
@@ -32,28 +35,28 @@ export const SIGNATURES = Object.freeze({
     Object.freeze({ id: 'piledriver', name: 'SYSTEM CRASH', dur: 2.0, cost: 20, dmg: 28, T: Object.freeze({ invert: 0.5, hold: 0.85, jump: 1.0, spike: 1.12, topple: 1.45 }) }),
   ]),
   cindervault: Object.freeze([
-    elementalSignature('vault', 'CALDERA CHOKEBOMB', 2.0, 19, 28, { grip: .38, peak: .96, hit: 1.47 }, 26, 10, .3),
-    elementalSignature('wheel', 'BASALT BACKDROP', 2.05, 21, 27, { grip: .48, peak: .98, hit: 1.52 }, 19, 19, -.95),
+    sig('chokebomb', 'CALDERA CHOKEBOMB', 2.0, 19, 28, { grip: .38, lift: .92, hang: 1.24, drop: 1.5 }, 'chokeslam', 'godzilla', 'magma'),
+    sig('backdrop', 'BASALT BACKDROP', 2.05, 21, 27, { grip: .44, peak: .98, hit: 1.5 }, 'wheel', 'mecha', 'magma'),
   ]),
   brineveil: Object.freeze([
-    elementalSignature('vault', 'PRESSURE BOMB', 1.85, 17, 24, { grip: .25, peak: .82, hit: 1.35 }, 17, 12, .72),
-    elementalSignature('wheel', 'RIPTIDE SUPLEX', 1.95, 19, 26, { grip: .33, peak: .89, hit: 1.47 }, 23, 22, 1.14),
+    sig('powerbomb', 'PRESSURE BOMB', 1.85, 17, 24, { grip: .5, peak: .95, hit: 1.34 }, 'vault', 'godzilla', 'tide'),
+    sig('riptide', 'RIPTIDE SUPLEX', 1.95, 19, 26, { grip: .3, peak: .95, hit: 1.47 }, 'wheel', 'mecha', 'tide'),
   ]),
   rimehorn: Object.freeze([
-    elementalSignature('vault', 'PERMAFROST DROP', 2.12, 21, 29, { grip: .43, peak: 1.04, hit: 1.57 }, 22, 9, -.24),
-    elementalSignature('wheel', 'TUNDRA TOSS', 2.02, 20, 27, { grip: .42, peak: .93, hit: 1.52 }, 18, 25, .78),
+    sig('frostdrop', 'PERMAFROST DROP', 2.12, 21, 29, { grip: .43, peak: .95, freeze: 1.27, hit: 1.6 }, 'vault', 'godzilla', 'frost'),
+    sig('horntoss', 'TUNDRA TOSS', 2.02, 20, 27, { scoop: .42, run: 1.08, drop: 1.55 }, 'bulldozer', 'godzilla', 'frost'),
   ]),
   vesperax: Object.freeze([
-    elementalSignature('wheel', 'SCYTHE SUPLEX', 1.72, 16, 23, { grip: .26, peak: .74, hit: 1.26 }, 16, 20, -.92),
-    elementalSignature('vault', 'PRISM DRIVER', 1.83, 19, 26, { grip: .29, peak: .83, hit: 1.33 }, 27, 11, 1.2),
+    sig('scissors', 'SCYTHE SCISSORS', 1.72, 16, 23, { crouch: .24, leap: .55, flip: 1.0, topple: 1.3 }, 'rana', 'ghidorah', 'prism'),
+    sig('prismdriver', 'PRISM DRIVER', 1.83, 19, 26, { invert: .42, hold: .6, jump: .68, spike: 1.12, topple: 1.45 }, 'piledriver', 'mecha', 'prism'),
   ]),
   thornwake: Object.freeze([
-    elementalSignature('vault', 'ROOTLOCK SLAM', 2.1, 19, 28, { grip: .42, peak: 1.05, hit: 1.55 }, 16, 15, .4),
-    elementalSignature('wheel', 'TIMBER SUPLEX', 2.22, 21, 29, { grip: .52, peak: 1.05, hit: 1.69 }, 25, 21, -1.08),
+    sig('rootlock', 'ROOTLOCK SLAM', 2.1, 19, 28, { grip: .5, peak: 1.05, hit: 1.5 }, 'vault', 'godzilla', 'root'),
+    sig('timber', 'TIMBER SUPLEX', 2.22, 21, 29, { grip: .5, peak: 1.0, hit: 1.5, up: 2.0 }, 'wheel', 'mecha', 'root'),
   ]),
   ferrumaw: Object.freeze([
-    elementalSignature('wheel', 'COIL SUPLEX', 1.92, 18, 25, { grip: .35, peak: .83, hit: 1.46 }, 18, 17, 1.1),
-    elementalSignature('vault', 'IRON CLAMP', 2.05, 22, 29, { grip: .37, peak: .93, hit: 1.52 }, 24, 9, -.8),
+    sig('coil', 'COIL SUPLEX', 1.92, 18, 25, { grip: .35, peak: .7, hit: 1.4 }, 'wheel', 'mecha', 'metal'),
+    sig('clamp', 'IRON CLAMP', 2.05, 22, 29, { grip: .37, p1: .55, p2: .75, p3: .95, peak: 1.1, hit: 1.5 }, 'vault', 'mecha', 'metal'),
   ]),
 });
 /** Back damage a kaiju can carry (Mechra works it): each point takes fight out of its kick-outs (grapple.js pinStrength). */
@@ -76,7 +79,7 @@ const _pt = { x: 0, y: 0, z: 0 };
 export function createSignatures(ctx, W, K) {
   const bus = W.bus, hold = K.hold;
   // The move in progress: base position / facing captured at the start (the roots move with the move)
-  const s = { def: null, slot: 0, x: 0, z: 0, yaw: 0, aim: 0, d0: 0, beat: 0, count: 0, speed: 0, crowdT: 0, ended: false };
+  const s = { def: null, slot: 0, x: 0, z: 0, yaw: 0, aim: 0, d0: 0, beat: 0, count: 0, speed: 0, crowdT: 0, tossT: 0, ended: false };
 
   const defOf = (f, slot) => { const L = SIGNATURES[f.key]; return L ? L[slot - 1] || null : null; };
   function anim(f, name, dur, fade = 0.12) {
@@ -103,7 +106,7 @@ export function createSignatures(ctx, W, K) {
   // Put it down on its back where it lies now, and let the thrower go
   function finish(type, base, size, rec) {
     const A = hold.A, V = hold.V;
-    if (s.def.lift) ctx.world?.spawnKaijuPower?.(A.cfg, 'impact', V.pos, { extent: 26 + s.def.reach * .45 });
+    if (s.def.elem && ctx.world && ctx.world.spawnKaijuPower) ctx.world.spawnKaijuPower(A.cfg, 'impact', V.pos, { extent: 18 + 22 * size });
     K.endHold();
     s.def = null;
     K.impact(V, A, type, base, size, true);
@@ -125,6 +128,7 @@ export function createSignatures(ctx, W, K) {
     anim(A, slot === 1 ? 'sig_a' : 'sig_b', def.dur, 0.1);
     _opt.fade = 0.2; _opt.duration = undefined; _opt.commit = undefined;
     W.anims.play(V, def.id === 'bulldozer' ? 'carried' : 'sig_victim', _opt);
+    if (def.id === 'horntoss') s.aim = hold.yaw; // (straight on through the foe; the stick steers it, horntoss())
     if (def.id === 'bulldozer') {
       // Turn toward the stick (it is "away": back the way it came), or keep going the way it faces
       const it = A.intent;
@@ -136,6 +140,12 @@ export function createSignatures(ctx, W, K) {
 
   // ------------------------------------------------------------------ throw timelines
   // Each is (A, V, t, dt): t seconds since begin(); it calls finish() when the body is down.
+  // How high a lift raises the body's centre over its own standing height: onto the lifter's raised
+  // hands (anims.carryY, per rig), not a fixed height that floats a smaller lifter's foe over its palms
+  function liftTop(A, V, fallback) {
+    const y = W.anims && W.anims.carryY ? W.anims.carryY(A, V) : NaN;
+    return Number.isFinite(y) ? Math.max(10, y - V.hc) : fallback;
+  }
   function chokeslam(A, V, t) {
     const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI;
     if (t < T.grip) {
@@ -370,32 +380,425 @@ export function createSignatures(ctx, W, K) {
     }
   }
 
-  function elementalThrow(A, V, t) {
-    const { id, T, lift, reach, turn, dmg } = s.def;
-    const wheel = id === 'wheel', pitch = wheel ? 1.5 * PI : -HALF_PI;
-    const gy = K.groundY(A);
-    const grip = smooth(t / T.grip);
-    const rise = smooth((t - T.grip) / (T.peak - T.grip));
-    const drop = clamp01((t - T.peak) / (T.hit - T.peak)) ** 2;
-    const sweep = rise * (wheel ? .6 : .25) + drop * (wheel ? .4 : .75);
-    const yaw = s.yaw + turn * sweep * PI;
-    const fx = Math.sin(yaw), fz = Math.cos(yaw);
-    const distance = lerp(lerp(s.d0, s.d0 * .58, grip), reach, drop);
-    const x = s.x + fx * distance, z = s.z + fz * distance;
-    K.stand(A, s.x, s.z, yaw, .15 * grip - (wheel ? .42 : .24) * rise + .6 * drop);
-    _pt.x = x; _pt.z = z;
+  // ------------------------------------------------------------------ the six later kaiju
+  // V placed `along` the move's facing from its base (and `side` to A's left), centre height y.
+  function vAt(V, along, y, yaw, pitch, roll, side = 0) {
+    const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw);
+    V.setPose(s.x + fx * along - fz * side, y, s.z + fz * along + fx * side, yaw, pitch, roll);
+  }
+  // ...the same, kept inside the venue (moves that carry it a long way)
+  function vAtIn(V, along, y, yaw, pitch, roll) {
+    _pt.x = s.x + Math.sin(s.yaw) * along; _pt.z = s.z + Math.cos(s.yaw) * along;
     ctx.clampToBounds(_pt);
-    V.setPose(_pt.x, lerp(V.hc + gy + lift * rise, V.lieY, drop), _pt.z,
-      yaw + PI, pitch * (rise * .24 + drop * .76), wheel ? .45 * rise * (1 - drop) : 0);
-    if (t >= T.peak && s.beat === 0) {
-      s.beat = 1;
-      launchEv(wheel ? 'suplex' : 'slam', _pt.x, V.hc + gy + lift, _pt.z, fx, fz, lift / (T.hit - T.peak));
-      W.slowMo(.65, .22);
-    }
-    if (drop >= 1) finish(wheel ? 'suplex' : 'slam', dmg, wheel ? .74 : .88, wheel ? .45 : .57);
+    V.setPose(_pt.x, y, _pt.z, yaw, pitch, roll);
   }
 
-  const RUN = { chokeslam, bulldozer, rana, ddt, breaker, piledriver, vault: elementalThrow, wheel: elementalThrow };
+  // Cindervault, CALDERA CHOKEBOMB: by the throat, up, shaken like a rag; it jumps with it and lands on top
+  function chokebomb(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, top = liftTop(A, V, 25);
+    if (t < T.grip) {
+      const u = smooth(t / T.grip);
+      K.stand(A, s.x, s.z, s.yaw, 0.12 * u);
+      vAt(V, s.d0 - 4 * u, V.hc + gy, vy, -0.12 * u, 0.06 * u * Math.sin(t * 30));
+      return;
+    }
+    if (t < T.hang) {
+      const u = smooth((t - T.grip) / (T.lift - T.grip)), sh = t > T.lift ? 1 : 0;
+      if (s.beat < 1 && t >= T.lift) { s.beat = 1; W.slowMo(0.55, 0.3); ctx.shake(0.5, 0.25); }
+      K.stand(A, s.x, s.z, s.yaw, 0.12 - 0.26 * u);
+      vAt(V, s.d0 - 4 + sh * Math.sin(t * 26) * 0.8, V.hc + gy + top * u + sh * Math.sin(t * 31) * 1.1, vy, -0.12 - 0.12 * u, sh * 0.16 * Math.sin(t * 23));
+      return;
+    }
+    if (s.beat < 2) { s.beat = 2; launchEv('slam', V.pos.x, V.pos.y, V.pos.z, fx, fz, top / (T.drop - T.hang)); }
+    const u = clamp01((t - T.hang) / (T.drop - T.hang)), e = u * u, hop = 7 * Math.sin(PI * Math.min(1, u * 1.15));
+    A.root.position.set(s.x + fx * 2 * e, gy + hop, s.z + fz * 2 * e);
+    A.root.rotation.set(-0.14 + 0.75 * e, s.yaw, 0);
+    vAt(V, lerp(s.d0 - 4, s.d0 + 6, e), lerp(V.hc + gy + top, V.lieY, e), vy, lerp(-0.24, -HALF_PI, e), 0);
+    if (u >= 1) {
+      K.stand(A, s.x + fx * 2, s.z + fz * 2, s.yaw, 0.6);
+      finish('slam', s.def.dmg, 0.92, 0.62);
+    }
+  }
+
+  // Cindervault, BASALT BACKDROP: ducks under its chest, stands up straight under it, and lets it fall down its back
+  function backdrop(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, top = 30, dn = s.d0 - 6, hang = T.peak + 0.14;
+    if (t < T.grip) {
+      const u = smooth(t / T.grip);
+      K.stand(A, s.x, s.z, s.yaw, 0.38 * u);
+      vAt(V, lerp(s.d0, dn, u), V.hc + gy + 3 * u, vy, 0.3 * u, 0);
+      return;
+    }
+    if (t < hang) {
+      const u = smooth((t - T.grip) / (T.peak - T.grip));
+      if (s.beat < 1 && t >= T.peak) { s.beat = 1; W.slowMo(0.6, 0.25); }
+      K.stand(A, s.x, s.z, s.yaw, lerp(0.38, -0.3, u));
+      vAt(V, lerp(dn, -1, u), V.hc + gy + 3 + (top - 3) * u, vy, lerp(0.3, PI * 0.75, u), 0);
+      return;
+    }
+    if (s.beat < 2) { s.beat = 2; launchEv('suplex', V.pos.x, V.pos.y, V.pos.z, -fx, -fz, top / (T.hit - hang)); }
+    const u = clamp01((t - hang) / (T.hit - hang)), e = u * u;
+    K.stand(A, s.x, s.z, s.yaw, -0.3 - 0.25 * e);
+    vAt(V, lerp(-1, -(s.d0 + 3), e), lerp(V.hc + gy + top, V.lieY, e), vy, lerp(PI * 0.75, 1.5 * PI, e), 0);
+    if (u >= 1) {
+      vAt(V, -(s.d0 + 3), V.lieY, vy, -HALF_PI, 0);
+      finish('suplex', s.def.dmg, 0.84, 0.5);
+    }
+  }
+
+  // Brineveil, PRESSURE BOMB: it sinks out of sight under the foe, bursts up with it on its shoulders, and sits it down
+  function powerbomb(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI;
+    if (t < T.grip) {
+      const u = smooth(t / T.grip), sink = 9 * Math.sin(HALF_PI * u);
+      A.root.position.set(s.x + fx * 3 * u, gy - sink, s.z + fz * 3 * u);
+      A.root.rotation.set(0.5 * u, s.yaw, 0);
+      vAt(V, s.d0, V.hc + gy - 1.5 * u, vy, 0.12 * u, 0.08 * u * Math.sin(t * 12));
+      return;
+    }
+    const H = K.carryH(A, V) - 2;
+    if (t < T.peak) {
+      const u = smooth((t - T.grip) / (T.peak - T.grip)), surge = 5 * Math.sin(PI * u);
+      A.root.position.set(s.x + fx * 3 * (1 - u), gy - 9 * (1 - u) + surge, s.z + fz * 3 * (1 - u));
+      A.root.rotation.set(0.5 * (1 - u) - 0.15 * u, s.yaw, 0);
+      vAt(V, lerp(s.d0, 3, u), lerp(V.hc + gy - 1.5, H + gy, u) + surge, vy, lerp(0.12, -0.45, u), 0);
+      return;
+    }
+    if (s.beat < 1) { s.beat = 1; W.slowMo(0.6, 0.22); launchEv('slam', V.pos.x, V.pos.y, V.pos.z, fx, fz, H / (T.hit - T.peak)); }
+    const u = clamp01((t - T.peak) / (T.hit - T.peak)), e = u * u;
+    A.root.position.set(s.x, gy - 4 * e, s.z);
+    A.root.rotation.set(-0.15 - 0.2 * e, s.yaw, 0);
+    vAt(V, lerp(3, s.d0 + 3, e), lerp(H + gy, V.lieY, e), vy, lerp(-0.45, -HALF_PI, e), 0);
+    if (u >= 1) {
+      K.stand(A, s.x, s.z, s.yaw, -0.2);
+      vAt(V, s.d0 + 3, V.lieY, vy, -HALF_PI, 0);
+      finish('slam', s.def.dmg, 0.9, 0.55);
+    }
+  }
+
+  // Brineveil, RIPTIDE SUPLEX: a whirlpool turn with the foe flung out at the waist, then over the top behind it
+  function riptide(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, R = s.d0 - 3;
+    if (t < T.grip) {
+      const u = smooth(t / T.grip);
+      K.stand(A, s.x, s.z, s.yaw, 0.1 * u);
+      vAt(V, lerp(s.d0, R, u), V.hc + gy, vy, 0, 0);
+      return;
+    }
+    if (t < T.peak) {
+      const u = smooth((t - T.grip) / (T.peak - T.grip)), yaw = s.yaw + TAU * u;
+      K.stand(A, s.x, s.z, yaw, 0.1 - 0.22 * u);
+      V.setPose(s.x + Math.sin(yaw) * R, V.hc + gy + 9 * Math.sin(HALF_PI * u), s.z + Math.cos(yaw) * R, yaw + PI, -0.2 * u, 0.55 * Math.sin(PI * u));
+      return;
+    }
+    if (s.beat < 1) { s.beat = 1; launchEv('suplex', V.pos.x, V.pos.y, V.pos.z, -fx, -fz, PI * R / (T.hit - T.peak)); W.slowMo(0.65, 0.22); }
+    const u = clamp01((t - T.peak) / (T.hit - T.peak)), e = Math.pow(u, 1.3), th = e * PI;
+    K.stand(A, s.x, s.z, s.yaw, -0.12 - 0.35 * e);
+    V.setPose(s.x + fx * R * Math.cos(th), lerp(V.hc + 9, V.lieY, e) + Math.sin(th) * 22 + gy, s.z + fz * R * Math.cos(th), vy, lerp(-0.2, 1.5 * PI, e), 0);
+    if (u >= 1) {
+      vAt(V, -R, V.lieY, vy, -HALF_PI, 0);
+      finish('suplex', s.def.dmg, 0.76, 0.45);
+    }
+  }
+
+  // Rimehorn, PERMAFROST DROP: pressed overhead and held there, frozen stiff, then it falls on it like a glacier calving
+  function frostdrop(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, H = K.carryH(A, V);
+    if (t < T.grip) {
+      const u = smooth(t / T.grip);
+      K.stand(A, s.x, s.z, s.yaw, 0.15 * u);
+      vAt(V, lerp(s.d0, s.d0 - 3, u), V.hc + gy, vy, 0, 0);
+      return;
+    }
+    if (t < T.freeze) {
+      const u = smooth((t - T.grip) / (T.peak - T.grip));
+      if (s.beat < 1 && t >= T.peak) { s.beat = 1; W.slowMo(0.5, 0.4); }
+      K.stand(A, s.x, s.z, s.yaw, 0.15 - 0.25 * u);
+      vAt(V, lerp(s.d0 - 3, 2, u), lerp(V.hc, H, u) + gy, lerp(vy, s.yaw + HALF_PI, u), 0, HALF_PI * u);
+      return;
+    }
+    if (s.beat < 2) { s.beat = 2; launchEv('slam', V.pos.x, V.pos.y, V.pos.z, fx, fz, H / (T.hit - T.freeze)); }
+    const u = clamp01((t - T.freeze) / (T.hit - T.freeze)), e = u * u, out = s.d0 + 5;
+    A.root.position.set(s.x + fx * 3 * e, gy - 2 * e, s.z + fz * 3 * e);
+    A.root.rotation.set(-0.1 + 1.0 * e, s.yaw, 0);
+    vAt(V, lerp(2, out, e), lerp(H + gy, V.lieY, e), s.yaw + HALF_PI + HALF_PI * e, -HALF_PI * e, HALF_PI * (1 - e));
+    if (u >= 1) {
+      K.stand(A, s.x + fx * 3, s.z + fz * 3, s.yaw, 0.7);
+      vAt(V, out, V.lieY, vy, -HALF_PI, 0);
+      finish('slam', s.def.dmg, 0.95, 0.7);
+    }
+  }
+
+  // Rimehorn, TUNDRA TOSS: scooped onto the horns, a charge through whatever is in the way, and tossed over the top
+  function horntoss(A, V, t, dt) {
+    const T = s.def.T, H = A.height * 0.62 + 1, gy = K.groundY(A), it = A.intent;
+    // Steered by the stick once it is running, but never turned round onto its own heels (RUN + away started it)
+    if (t > T.scoop && t < T.run && it && Math.hypot(it.moveX, it.moveZ) > 0.3) {
+      const a = Math.atan2(it.moveX, it.moveZ);
+      if (Math.abs(angDiff(a, hold.yaw)) < 1.6) s.aim = a;
+    }
+    const d = angDiff(s.aim, s.yaw), step = (t < T.scoop ? 6 : 1.8) * dt;
+    s.yaw += Math.abs(d) <= step ? d : Math.sign(d) * step;
+    const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw);
+    if (t < T.scoop) {
+      const u = smooth(t / T.scoop);
+      K.stand(A, s.x, s.z, s.yaw, 0.45 * u);
+      vAt(V, lerp(s.d0, 5, u), lerp(V.hc, H, u) + gy, s.yaw + PI, lerp(0, 0.9, u), 0);
+      return;
+    }
+    if (t < T.run && !s.ended) {
+      s.speed = Math.min(75, Math.max(30, s.speed + 160 * dt));
+      const x0 = s.x, z0 = s.z;
+      s.x += fx * s.speed * dt; s.z += fz * s.speed * dt;
+      _pt.x = s.x; _pt.z = s.z;
+      ctx.clampToBounds(_pt);
+      if (_pt.x !== s.x || _pt.z !== s.z) s.ended = true;
+      s.x = _pt.x; s.z = _pt.z;
+      if (s.count < 1 && ctx.sweepBuildings) {
+        _sw.t = 2; _sw.b = null;
+        ctx.sweepBuildings(x0 + fx * 5, z0 + fz * 5, s.x + fx * 9, s.z + fz * 9, V.collideRadius, _swVisit);
+        if (_sw.b) {
+          const f = K.flightOf(V);
+          f.count = 0; f.mom = 0; f.impact = 0;
+          f.V = V; f.by = A; f.type = 'slam'; f.x = s.x + fx * 7; f.y = H; f.z = s.z + fz * 7;
+          K.smash(f, _sw.b, 85, true);
+          if (!_sw.b.fest && !_sw.b.isFence && _sw.b.h >= 5) { s.count++; s.ended = true; }
+        }
+      }
+      s.crowdT -= dt;
+      if (s.crowdT <= 0 && ctx.world && ctx.world.crowdHit) { s.crowdT = 0.12; ctx.world.crowdHit(s.x, s.z, 14 * 14); }
+      K.stand(A, s.x, s.z, s.yaw, 0.45);
+      V.setPose(s.x + fx * 5, H + gy + Math.sin(t * 20) * 0.8, s.z + fz * 5, s.yaw + PI, 0.9, 0);
+      if (!s.ended) return;
+    }
+    if (s.beat < 1) { s.beat = 1; s.tossT = t; launchEv('slam', V.pos.x, V.pos.y, V.pos.z, fx, fz, 50); W.slowMo(0.6, 0.25); }
+    const u = clamp01((t - s.tossT) / (T.drop - T.run)), e = u * u;
+    K.stand(A, s.x, s.z, s.yaw, lerp(0.45, -0.35, smooth(u * 1.6)));
+    vAtIn(V, lerp(5, 30, smooth(u)), lerp(H + gy, V.lieY, e) + Math.sin(PI * u) * 24, s.yaw + PI, lerp(0.9, -HALF_PI, smooth(u)), 0);
+    if (u >= 1) {
+      hold.yaw = s.yaw;
+      vAtIn(V, 30, V.lieY, s.yaw + PI, -HALF_PI, 0);
+      finish('slam', s.def.dmg + 4 * s.count, Math.min(1, 0.82 + 0.08 * s.count), 0.5);
+    }
+  }
+
+  // Vesperax, SCYTHE SCISSORS: onto the shoulders, legs scissored round the head, a corkscrew backflip that spikes it head first
+  function scissors(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, R = s.d0;
+    if (t < T.crouch) {
+      const u = smooth(t / T.crouch);
+      K.stand(A, s.x, s.z, s.yaw, 0.25 * u);
+      vAt(V, R, V.hc + gy, vy, 0, 0);
+      return;
+    }
+    if (t < T.leap) {
+      const u = smooth((t - T.crouch) / (T.leap - T.crouch)), c = lerp(A.hc * Math.sin(0.25), R - 6, u);
+      A.setPose(s.x + fx * c, A.hc * lerp(Math.cos(0.25), 1, u) + gy + 20 * Math.sin(u * HALF_PI) + 4 * Math.sin(u * PI), s.z + fz * c, s.yaw, lerp(0.25, -0.4, u), 0);
+      vAt(V, R, V.hc + gy, vy, -0.15 * u, 0.1 * u * Math.sin(t * 25));
+      return;
+    }
+    if (t < T.flip) {
+      if (s.beat < 1) { s.beat = 1; launchEv('suplex', V.pos.x, V.hc, V.pos.z, -fx, -fz, PI * R / (T.flip - T.leap)); W.slowMo(0.6, 0.25); }
+      // The flip twists half a turn, so it lands crouched and facing its prey
+      const u = clamp01((t - T.leap) / (T.flip - T.leap)), e = Math.pow(u, 1.25), th = e * PI, w = smooth(u);
+      A.setPose(s.x + fx * (R - 6) * (1 - w), A.hc + gy + 20 * (1 - w) + 10 * Math.sin(PI * u), s.z + fz * (R - 6) * (1 - w), s.yaw + PI * w, lerp(-0.4, -TAU, w), 0);
+      vAt(V, R * Math.cos(th), lerp(V.hc, V.hc + 1, e) + Math.sin(th) * 24 + gy, vy, e * PI, 0);
+      return;
+    }
+    if (s.beat < 2) { s.beat = 2; jolt(V, A, s.def.dmg * 0.55, 0.16, V.pos.x, 2, V.pos.z, 0.8); }
+    // Stood on its head for a beat, then over onto its back; the mantis crouched over it
+    const u = clamp01((t - T.flip) / (T.topple - T.flip)), e = u * u;
+    K.stand(A, s.x, s.z, s.yaw + PI, 0.32 * (1 - 0.4 * u));
+    vAt(V, lerp(-R, -R - 6, e), gy + lerp(V.hc + 1, V.lieY, e), vy, lerp(PI, 1.5 * PI, e), 0);
+    if (u >= 1) {
+      vAt(V, -R - 6, V.lieY, vy, -HALF_PI, 0);
+      hold.yaw = s.yaw + PI;
+      finish('suplex', s.def.dmg * 0.45, 0.7, 0.4);
+    }
+  }
+
+  // Vesperax, PRISM DRIVER: turned upside down, then a high corkscrew leap and down on its head
+  function prismdriver(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, dd = 7;
+    if (t < T.invert) {
+      const u = smooth(t / T.invert);
+      K.stand(A, s.x, s.z, s.yaw, 0.3 * Math.sin(PI * u));
+      vAt(V, lerp(s.d0, dd, u), gy + V.hc + 12 * Math.sin(PI * u) + 10.5 * u, vy, PI * u, 0);
+      return;
+    }
+    if (t < T.jump) {
+      if (s.beat < 1) {
+        s.beat = 1;
+        const e = bus.ev(EV.CROWD_POP);
+        e.kind = 'boo'; e.impact = 0.7; e.x = s.x; e.z = s.z;
+        bus.emit(EV.CROWD_POP);
+      }
+      K.stand(A, s.x, s.z, s.yaw, -0.06);
+      vAt(V, dd, gy + V.hc + 10.5 + Math.sin(t * 30) * 0.25, vy, PI, 0.04 * Math.sin(t * 11));
+      return;
+    }
+    if (t < T.spike) {
+      if (s.beat < 2) { s.beat = 2; W.slowMo(0.6, 0.3); launchEv('slam', V.pos.x, V.pos.y, V.pos.z, fx, fz, 40); }
+      const u = clamp01((t - T.jump) / (T.spike - T.jump)), hop = 22 * Math.sin(PI * Math.min(1, u * 1.05)), yaw = s.yaw + TAU * smooth(u);
+      A.root.position.set(s.x, gy + hop, s.z);
+      A.root.rotation.set(-0.1 * u, yaw, 0);
+      V.setPose(s.x + Math.sin(yaw) * dd, gy + V.hc + 10.5 + hop - 7.5 * u * u, s.z + Math.cos(yaw) * dd, yaw + PI, PI, 0);
+      return;
+    }
+    if (s.beat < 3) {
+      s.beat = 3;
+      jolt(V, A, s.def.dmg * 0.65, 0.22, V.pos.x, 2, V.pos.z, 1);
+      ctx.shake(2, 0.45);
+    }
+    const u = clamp01((t - T.spike) / (T.topple - T.spike)), e = u * u;
+    K.stand(A, s.x, s.z, s.yaw, -0.1 * (1 - smooth(u)));
+    vAt(V, lerp(dd, dd + 9, e), gy + lerp(V.hc + 3, V.lieY, e), vy, lerp(PI, 1.5 * PI, e), 0);
+    if (u >= 1) {
+      vAt(V, dd + 9, V.lieY, vy, -HALF_PI, 0);
+      finish('slam', s.def.dmg * 0.35, 0.62, 0.5);
+    }
+  }
+
+  // Thornwake, ROOTLOCK SLAM: the roots come up round it and hoist it high, then drag it down into the ground
+  function rootlock(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, top = liftTop(A, V, 26), at = s.d0 + 2;
+    if (t < T.grip) {
+      const u = smooth(t / T.grip);
+      K.stand(A, s.x, s.z, s.yaw, -0.12 * u);
+      vAt(V, lerp(s.d0, at, u), V.hc + gy - 2.5 * u, vy, 0, 0.1 * u * Math.sin(t * 20));
+      return;
+    }
+    if (t < T.peak) {
+      const u = smooth((t - T.grip) / (T.peak - T.grip));
+      K.stand(A, s.x, s.z, s.yaw, -0.12 - 0.12 * u);
+      vAt(V, at, V.hc + gy - 2.5 + (top + 2.5) * u, vy + 0.5 * Math.sin(PI * u), lerp(0, -1.2, u), 0.08 * Math.sin(t * 17));
+      return;
+    }
+    if (s.beat < 1) { s.beat = 1; W.slowMo(0.55, 0.3); launchEv('slam', V.pos.x, V.pos.y, V.pos.z, fx, fz, top / (T.hit - T.peak)); }
+    // (a beat at the top, then yanked: the drop is cubic)
+    const u = clamp01((t - T.peak) / (T.hit - T.peak)), e = u * u * u;
+    K.stand(A, s.x, s.z, s.yaw, lerp(-0.24, 0.5, e));
+    vAt(V, lerp(at, s.d0 + 4, e), lerp(V.hc + gy + top, V.lieY, e), vy, lerp(-1.2, -HALF_PI, e), 0.06 * (1 - e) * Math.sin(t * 17));
+    if (u >= 1) {
+      vAt(V, s.d0 + 4, V.lieY, vy, -HALF_PI, 0);
+      finish('slam', s.def.dmg, 0.92, 0.6);
+    }
+  }
+
+  // Thornwake, TIMBER SUPLEX: a bear hug, then it falls backwards stiff as a felled oak, and sits up out of the wreck
+  function timber(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), vy = s.yaw + PI, zf = s.d0 - 5, AMAX = 1.45;
+    const rise = Math.max(0, A.lieY - A.hc * Math.cos(AMAX)); // the root comes up as it falls, so it lands on its back, not through the mat
+    const behind = -(2 * A.hc + 4);
+    if (t < T.grip) {
+      const u = smooth(t / T.grip);
+      K.stand(A, s.x, s.z, s.yaw, 0.1 * u);
+      vAt(V, lerp(s.d0, zf, u), V.hc + gy + 4 * u, vy, -0.1 * u, 0);
+      return;
+    }
+    if (t < T.peak) {
+      const u = smooth((t - T.grip) / (T.peak - T.grip)), sway = 0.03 * Math.sin(t * 9);
+      K.stand(A, s.x, s.z, s.yaw, 0.1 - 0.18 * u + sway);
+      vAt(V, zf, V.hc + gy + 4 + 5 * u, vy, -0.1 - 0.1 * u, sway);
+      return;
+    }
+    if (t < T.hit) {
+      if (s.beat < 1) { s.beat = 1; launchEv('suplex', V.pos.x, V.pos.y, V.pos.z, -Math.sin(s.yaw), -Math.cos(s.yaw), 40); W.slowMo(0.6, 0.3); }
+      const u = clamp01((t - T.peak) / (T.hit - T.peak)), e = u * u, a = -0.08 - (AMAX - 0.08) * e, lift = rise * e;
+      A.root.position.set(s.x, gy + lift, s.z);
+      A.root.rotation.set(a, s.yaw, 0);
+      // V rides the falling trunk, then goes on over its head
+      const y0 = V.hc + 9, ca = Math.cos(a), sa = Math.sin(a);
+      const ry = y0 * ca - zf * sa + lift, rz = y0 * sa + zf * ca, k = smooth(clamp01((u - 0.45) / 0.55));
+      vAt(V, lerp(rz, behind, k), gy + lerp(ry, V.lieY, k), vy, lerp(0, 1.5 * PI, e), 0);
+      return;
+    }
+    if (s.beat < 2) {
+      s.beat = 2;
+      vAt(V, behind, V.lieY, vy, -HALF_PI, 0);
+      jolt(V, A, s.def.dmg * 0.7, 0.2, V.pos.x, 2, V.pos.z, 1);
+      ctx.shake(1.8, 0.4);
+    }
+    // It sits up out of the crater, the foe flat behind its head
+    const u = clamp01((t - T.hit) / (T.up - T.hit)), e = smooth(u);
+    A.root.position.set(s.x, gy + rise * (1 - e), s.z);
+    A.root.rotation.set(-AMAX * (1 - e), s.yaw, 0);
+    vAt(V, behind, V.lieY, vy, -HALF_PI, 0);
+    if (u >= 1) {
+      K.stand(A, s.x, s.z, s.yaw, 0);
+      finish('suplex', s.def.dmg * 0.3, 0.6, 0.4);
+    }
+  }
+
+  // Ferrumaw, COIL SUPLEX: it curls up round the foe like the pangolin it is and rolls over backwards, flinging it off at the bottom
+  function coil(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, zf = s.d0 - 7, L0 = 0.7;
+    if (t < T.grip) {
+      const u = smooth(t / T.grip);
+      K.stand(A, s.x, s.z, s.yaw, 0.12 * u);
+      vAt(V, lerp(s.d0, s.d0 - 5, u), V.hc + gy, vy, 0, 0);
+      return;
+    }
+    if (t < T.peak) {
+      const u = smooth((t - T.grip) / (T.peak - T.grip));
+      K.stand(A, s.x, s.z, s.yaw, lerp(0.12, L0, u));
+      vAt(V, lerp(s.d0 - 5, zf, u), V.hc + gy - 1.5 * u, vy, 0.25 * u, 0);
+      return;
+    }
+    if (s.beat < 1) {
+      s.beat = 1;
+      // How far back it can roll (the venue's edge)
+      _pt.x = s.x - fx * 18; _pt.z = s.z - fz * 18;
+      ctx.clampToBounds(_pt);
+      s.speed = Math.hypot(_pt.x - s.x, _pt.z - s.z);
+      launchEv('suplex', V.pos.x, V.pos.y, V.pos.z, -fx, -fz, 40);
+      W.slowMo(0.65, 0.25);
+    }
+    const L = s.speed, u = clamp01((t - T.peak) / (T.hit - T.peak)), e = smooth(u);
+    // A rolls once over backwards, its centre travelling back L
+    const pitch = lerp(L0, -TAU, e), cAlong = lerp(A.hc * Math.sin(L0), -L, e), cy = gy + lerp(A.hc * Math.cos(L0), A.hc, e) - A.hc * 0.4 * Math.sin(PI * e);
+    A.setPose(s.x + fx * cAlong, cy, s.z + fz * cAlong, s.yaw, pitch, 0);
+    // V rolls with it (on the outside of the ball), then comes off behind
+    const ph = pitch - L0, rf = zf - A.hc * Math.sin(L0), rh = (V.hc - 1.5) - A.hc * Math.cos(L0);
+    const cp = Math.cos(ph), sp = Math.sin(ph);
+    const ry = rh * cp - rf * sp, rz = rh * sp + rf * cp, k = smooth(clamp01((u - 0.5) / 0.5)), end = -L - (s.d0 + 2);
+    vAtIn(V, lerp(cAlong + rz, end, k), lerp(cy + ry, V.lieY, k), vy, lerp(-ph + 0.25, 1.5 * PI, k), 0);
+    if (u >= 1) {
+      s.x -= fx * L; s.z -= fz * L;
+      K.stand(A, s.x, s.z, s.yaw, 0);
+      vAtIn(V, -(s.d0 + 2), V.lieY, vy, -HALF_PI, 0);
+      finish('suplex', s.def.dmg, 0.8, 0.45);
+    }
+  }
+
+  // Ferrumaw, IRON CLAMP: crushed against its plates by three magnetic pulses, then the polarity flips and it is blown away
+  function clamp(A, V, t) {
+    const T = s.def.T, gy = K.groundY(A), fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), vy = s.yaw + PI, zc = s.d0 - 6;
+    if (t < T.grip) {
+      const u = smooth(t / T.grip);
+      K.stand(A, s.x, s.z, s.yaw, -0.1 * u);
+      vAt(V, lerp(s.d0, zc, u), V.hc + gy + 5 * u, vy, -0.1 * u, 0);
+      return;
+    }
+    if (t < T.peak) {
+      const n = t >= T.p3 ? 3 : t >= T.p2 ? 2 : t >= T.p1 ? 1 : 0;
+      if (s.beat < n) { s.beat = n; jolt(V, A, s.def.dmg * 0.12, 0.06, V.pos.x, V.pos.y, V.pos.z, 0.45); }
+      const q = s.beat > 0 ? Math.exp(-14 * (t - (s.beat === 3 ? T.p3 : s.beat === 2 ? T.p2 : T.p1))) : 0;
+      K.stand(A, s.x, s.z, s.yaw, -0.1 - 0.08 * q);
+      vAt(V, zc - 1.2 * q, V.hc + gy + 5 + 0.8 * q, vy, -0.1 - 0.25 * q, 0.05 * Math.sin(t * 40));
+      return;
+    }
+    if (s.beat < 4) { s.beat = 4; launchEv('slam', V.pos.x, V.pos.y, V.pos.z, fx, fz, 60); W.slowMo(0.6, 0.22); }
+    const u = clamp01((t - T.peak) / (T.hit - T.peak)), e = smooth(u);
+    K.stand(A, s.x, s.z, s.yaw, lerp(-0.1, -0.35, smooth(u * 2)));
+    vAtIn(V, lerp(zc, s.d0 + 24, e), lerp(V.hc + gy + 5, V.lieY, u * u) + Math.sin(PI * u) * 10, vy, lerp(-0.1, -HALF_PI, e), 0);
+    if (u >= 1) {
+      vAtIn(V, s.d0 + 24, V.lieY, vy, -HALF_PI, 0);
+      finish('slam', s.def.dmg * 0.64, 0.8, 0.5);
+    }
+  }
+
+  const RUN = { chokeslam, bulldozer, rana, ddt, breaker, piledriver, chokebomb, backdrop, powerbomb, riptide, frostdrop, horntoss, scissors, prismdriver, rootlock, timber, coil, clamp };
 
   return {
     begin,

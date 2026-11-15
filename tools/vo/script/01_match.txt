@@ -1,7 +1,7 @@
 # KAIJU HAVOC title match commentary, part 1: the show around the fight.
 # Format: "@ topic cond..." opens a block; each paragraph is one entry (one line, or an exchange).
 # M = Mike Brannigan (play-by-play, the straight man). V = Sterling Vance (colour, the heel's best friend).
-# Conds: a: / v: actor and victim kaiju (gorrak, mechra, tridon), aa: / va: their alignment (face, heel),
+# Conds: a: / v: actor and victim kaiju (gorrak, mechra, tridon, and the six of 05-10), aa: / va: their alignment (face, heel),
 #        mu: the match-up (fh face v heel, hh, ff), pair:x+y the two in the ring, lm: a landmark id, m: a move id.
 
 @ intro

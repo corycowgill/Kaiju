@@ -139,6 +139,8 @@ const _dmgOpt = { kind: 'aoe', src: 'rival', aerial: true };
 const _animOpt = { fade: 0.1, timeScale: 1, duration: undefined, commit: undefined };
 const _onceOpt = { duration: undefined, commit: undefined, hold: false };
 const _beam = { t: 1, b: null };
+// The original three's mean Havoc numbers (monsters.js), the reference for the later six's rival powers (_powerDef)
+const CLASSIC_REF = Object.freeze({ beam: { dmg: 240 }, roar: { dmg: 560 / 3, radius: 80 }, charge: { dmg: 700 / 3 } });
 function _beamVisit(b, t) { if (b.h > 6 && t < _beam.t) { _beam.t = t; _beam.b = b; } }
 const angDiff = (a, b) => { const d = a - b; return Math.atan2(Math.sin(d), Math.cos(d)); };
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
@@ -982,12 +984,7 @@ export class Fighter {
   _startPower(name) {
     const base = POWERS[name], foe = this.opponent;
     if (!base || this.cd[name] > 0 || this.momentum < base.cost) return false;
-    const classic = this.cfg.ultimateName && this.cfg[name];
-    const def = classic ? {
-      ...base,
-      dmg: base.dmg * classic.damage / 220,
-      radius: classic.radius ? classic.radius * .68 : base.radius,
-    } : base;
+    const def = this._powerDef(name, base);
     this.cd[name] = def.cd;
     if (name === 'ult') this.spendMomentum(); else this.momentum = this.momentum - def.cost;
     this.setState('attacking', def.windup + def.active + def.recover, null);
@@ -1014,6 +1011,17 @@ export class Fighter {
     e.radius = def.radius || 0; e.x = P.x; e.z = P.z;
     this.W.bus.emit(EV.POWER_TELEGRAPH);
     return true;
+  }
+  // The six later kaiju (cfg.ultimateName) scale beam / roar / charge by their own Havoc numbers, relative to the
+  // original three's average (CLASSIC_REF): a kaiju with average numbers gets exactly POWERS. The originals use
+  // POWERS as is. Built once per cfg, so firing a power allocates nothing.
+  _powerDef(name, base) {
+    const c = this.cfg, classic = c.ultimateName && c[name], ref = CLASSIC_REF[name];
+    if (!classic || !ref || !classic.damage) return base;
+    if (this._pdCfg !== c) { this._pdCfg = c; this._pd = {}; }
+    let d = this._pd[name];
+    if (!d) d = this._pd[name] = Object.freeze({ ...base, dmg: base.dmg * classic.damage / ref.dmg, radius: base.radius && classic.radius ? base.radius * classic.radius / ref.radius : base.radius });
+    return d;
   }
   _powerName(power) {
     const c = this.cfg;
@@ -1466,11 +1474,13 @@ export class Fighter {
   _setGlow(v) {
     if (!this._glow) {
       this._glow = [];
+      this._glowBase = [];
       this.root.traverse((o) => {
-        if (o.isMesh && o.material && o.material.emissive) this._glow.push(o.material);
+        if (o.isMesh && o.material && o.material.emissive) { this._glow.push(o.material); this._glowBase.push(o.material.emissive.clone()); }
       });
     }
-    for (let i = 0; i < this._glow.length; i++) this._glow[i].emissive.setScalar(v);
+    // On top of the body's own emissive (the later kaiju's glow maps run at emissive 1)
+    for (let i = 0; i < this._glow.length; i++) { const b = this._glowBase[i]; this._glow[i].emissive.setRGB(b.r + v, b.g + v, b.b + v); }
   }
 
   /** Undo everything this fighter did to its root / materials (mode dispose). */

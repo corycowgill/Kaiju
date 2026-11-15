@@ -1,0 +1,312 @@
+# Part 5: Cindervault, the Walking Caldera. Heel brawler: a basalt and magma gorilla out of a buried caldera.
+# Moves: CALDERA CHOKEBOMB (m:chokebomb), BASALT BACKDROP (m:backdrop), finisher CALDERA COLLAPSE.
+# Powers: MAGMA JET (beam), CALDERA BURST (roar), BASALT RAM (charge), EXTINCTION CALDERA (ult).
+
+@ entrance a:cindervault
+M: The ground is splitting open on Columbus Drive! Here comes Cindervault!
+V: The Walking Caldera! Ten thousand years under a mountain, and he came out angry!
+
+V: Smell that, Brannigan? Sulphur! That's the smell of a champion!
+M: That's the smell of the sewers boiling, Vance. Cindervault is here.
+
+M: Look at those fists! Those are glowing like a blast furnace!
+V: Finally, some heat in this city that doesn't come from a hot dog stand.
+
+M: Every step he takes is leaving a puddle of lava on the street!
+V: He's marking his territory. Classy. Very classy.
+
+V: Ladies and gentlemen, a living volcano! Cindervault! Bow or melt!
+M: Nobody is bowing, Vance. They are backing away from the heat.
+
+@ fall.end a:cindervault
+V: Cindervault takes the fall! The pressure was building, and it BLEW!
+M: He stole that one with brute force, folks.
+
+M: Cindervault takes the fall, and the mat underneath him is on fire.
+V: That mat had it coming. Everybody here had it coming.
+
+V: One fall for the volcano! I told you, Brannigan, you don't argue with a mountain!
+M: You don't argue with anything, Vance. You just cheer for whoever is cheating.
+
+@ match.over a:cindervault
+V: CINDERVAULT! The mountain wins! The world champion of geology!
+M: A volcano holds the title. Chicago, I am so sorry.
+
+V: Bring the belt! No, wait, don't hand it to him, it'll melt! Hand it to me!
+M: Cindervault is the champion. Somebody call the fire department. Every fire department.
+
+M: I can't believe it. That walking furnace is the heavyweight champion.
+V: Believe it! The Walking Caldera rules Chicago! Somebody build him a bigger crater!
+
+@ strike a:cindervault
+M: Cindervault slams a fist into him like a falling boulder!
+
+M: A molten right hand from Cindervault!
+V: Hand-forged. Literally.
+
+V: You can hear the rocks grinding on that one! Beautiful!
+
+M: Cindervault hammers him! Those fists are solid basalt!
+V: He doesn't punch, Brannigan. He erupts in your general direction.
+
+M: Cindervault clubs him across the back! Sparks everywhere!
+
+V: That's ten thousand years of bad temper in one forearm.
+M: He's hitting him like he owes him money.
+
+@ strike.big a:cindervault
+M: CINDERVAULT CRUSHES HIM! What a shot!
+V: Like getting hit by a mountain! Because he WAS!
+
+M: Both fists, overhead, like a falling cliff face! Good grief!
+
+V: That one cracked the bedrock! Somebody call a seismologist!
+M: I think the seismologist called us!
+
+@ strike.big v:cindervault
+M: He knocked a chunk of rock right off him! Cindervault is chipped!
+V: That's a scratch! A beauty mark! He's fine!
+
+M: Lava's leaking out of the cracks! He's hurt!
+V: That's how he cools off. It's a release valve. Totally normal.
+
+@ block a:cindervault
+M: Right off the basalt! That's like punching a mountainside!
+V: You hit the mountain, you break your hand. Science.
+
+M: Cindervault just covers up, and it's a wall of stone.
+
+@ reversal a:cindervault
+M: Cindervault catches it and throws it right back!
+V: You can't sneak up on a volcano, hero. It's been watching for ten thousand years.
+
+M: Reversal by the Walking Caldera! He's smarter than he looks!
+V: He looks plenty smart. He looks like a genius made of rock.
+
+@ grab a:cindervault
+M: Cindervault grabs him in those burning hands! He's sizzling!
+V: Medium rare, hero! Medium rare!
+
+M: Cindervault wraps him up! That has got to be scalding!
+
+@ grab.escape v:cindervault
+M: He slipped out! Probably because he could not stand the heat!
+V: Coward. If you can't take the heat, get out of the caldera.
+
+@ whip a:cindervault
+M: Cindervault flings him across the park! Like skipping a stone!
+
+@ suplex a:cindervault
+M: Cindervault heaves him up and over! Big gorilla suplex!
+V: Like a landslide, but on purpose!
+
+M: Up and over, and he leaves scorch marks where he landed!
+
+@ slam a:cindervault
+M: Cindervault lifts him high over his head! He's going to slam him like a boulder!
+V: Throw him into the lake! Make some steam!
+
+M: He presses him overhead, and those arms are glowing white hot!
+
+@ swing a:cindervault
+M: Cindervault is swinging him round and round! The lava is flying off in rings!
+V: Somebody's going to lose a car to that. Several somebodies.
+
+@ sig m:chokebomb
+M: By the throat! CALDERA CHOKEBOMB!
+V: Down into the crater! Ha ha!
+
+M: He's shaking him by the neck like a rag doll! Now he jumps! The Caldera Chokebomb!
+
+V: The Caldera Chokebomb! Up by the throat, a good shake, and a mountain lands on top of him!
+M: He jumped on him with all that rock, Vance!
+
+M: Up by the throat, and Cindervault comes down on him like an eruption! CHOKEBOMB!
+
+@ sig m:backdrop
+M: Cindervault throws him straight up! BASALT BACKDROP!
+
+V: The Basalt Backdrop! Straight up in the air, and straight down on his spine!
+M: I heard that one crack from up here!
+
+M: He launched him like a volcanic bomb, and he came down flat on his back! The Basalt Backdrop!
+V: What goes up comes down, kids. Usually on a mountain.
+
+@ power.beam a:cindervault
+M: Cindervault opens his mouth and there's MAGMA! MAGMA JET!
+
+V: Magma Jet! A firehose of melted rock! Isn't it gorgeous?
+M: It's melting the lamp posts, Vance!
+
+M: Molten rock right across the park! Look at the asphalt bubble!
+
+@ power.roar a:cindervault
+M: CALDERA BURST! The ground explodes all around him!
+V: That's a volcanic eruption with arms! Get in the bunker!
+
+M: Cindervault blows his top! Rock and fire in every direction!
+V: Somebody's car just landed on Lake Shore Drive. On its roof.
+
+@ power.charge a:cindervault
+M: BASALT RAM! He comes through him like a rockslide!
+
+V: Basalt Ram! Have you ever been hit by a cliff, Brannigan?
+M: I'm watching it happen to somebody right now!
+
+@ power.ult a:cindervault
+M: The ground is opening up! It's the EXTINCTION CALDERA!
+V: Say goodbye to the dinosaurs! Oh, wait, we already did that once!
+
+V: EXTINCTION CALDERA! This is what he crawled out of the earth to do!
+M: The whole park is turning into a volcano! Get out of there!
+
+M: Cindervault is erupting! Chicago, if you can hear me, head north!
+
+@ knockdown a:cindervault
+M: Cindervault flattens him! He fell like a toppled statue!
+V: Stay down there, hero. It's warmer than up here.
+
+V: Down he goes! You cannot stand up to a mountain!
+M: He's going to try, Vance!
+
+@ knockdown v:cindervault
+M: The volcano is DOWN! Cindervault hits the ground like an avalanche!
+V: He's just cooling off! He's meant to be horizontal sometimes! It's geology!
+
+M: Cindervault falls, and the impact knocked out power in three neighbourhoods!
+
+@ ko v:cindervault
+M: Cindervault is out! The volcano is dormant!
+V: Dormant is not extinct, Brannigan! He'll be back! They always come back!
+
+@ critical v:cindervault
+M: Cindervault is cracking all over! The fire's going out of him!
+V: Don't you write him off. Volcanoes do their best work under pressure.
+
+M: He's hurt! You can see the glow fading in those cracks!
+
+@ critical va:face a:cindervault
+V: Look at those fists heating up. Your hero's about to be a puddle.
+M: He's in big trouble, and that walking furnace knows it.
+
+@ comeback a:cindervault
+M: Cindervault is glowing brighter and brighter! He's about to blow!
+V: That's pressure, Brannigan! Ten thousand years of it! Run!
+
+V: The magma's rising! Hide your children and your Prius!
+M: Cindervault is erupting with rage!
+
+M: Look at the cracks open up! It's like a sunrise inside that thing!
+V: The most beautiful sunrise you'll ever see. The last one, too.
+
+@ ai.nosell a:cindervault
+M: He hit him with everything, and Cindervault didn't even move!
+V: You can't hurt a mountain! You just get tired!
+
+@ nosell a:cindervault
+V: Ha! Did you think a punch was going to hurt solid rock?
+M: Cindervault shrugged that off like it was a raindrop.
+
+@ finisher.start a:cindervault
+M: Cindervault has him up! This is the CALDERA COLLAPSE!
+V: Down into the volcano he goes! No return ticket!
+
+M: Up over his head, glowing like the sun! The Caldera Collapse is coming!
+
+V: Feel that heat, hero? That's the end of your career!
+M: Cindervault wants the Caldera Collapse! Somebody stop him!
+
+@ finisher.hit a:cindervault
+M: CALDERA COLLAPSE! He caved in the whole park!
+V: That's a crater now! Grant Park is a crater! I love it!
+
+M: The Caldera Collapse! There's smoke coming up out of the ground!
+V: They'll have to name a geological era after that one.
+
+M: He drove him straight down into the earth! Is he even still in there?
+
+@ finisher.hit v:cindervault
+M: He put the volcano down! Cindervault drove into the dirt!
+V: You can't kill a volcano! You just make it angry!
+
+@ taunt a:cindervault
+M: Cindervault beats his chest, and sparks are flying off him!
+V: Like a fireworks show, but meaner. Ooh! Aah!
+
+V: Look at him roar at the skyline. He's daring the city to stop him.
+M: The city is busy being on fire, Vance.
+
+@ taunt.hit v:cindervault
+M: Caught him showing off! Cindervault is staggered!
+V: Oh, he's allowed to celebrate! Can't a mountain celebrate?
+
+@ momentum a:cindervault
+M: Cindervault is boiling over! I've never seen him this hot!
+V: Pressure's at maximum, folks! Something's about to blow!
+
+@ prop.rip a:cindervault
+M: Cindervault tears that building right out of the ground!
+V: Like a rock pulling up a smaller rock. Nature is so beautiful.
+
+M: He's got a building, and the windows are melting where he's holding it!
+
+@ prop.throw a:cindervault
+V: Fastball! From the mound of a volcano!
+M: He hurls it! Look out below!
+
+@ prop.smash a:cindervault
+M: Cindervault smashes a building over his head! Rock on rock on rock!
+V: I've never seen anybody that beautiful commit that much property damage.
+
+@ prop.hit v:cindervault
+M: Right off the Walking Caldera! Bricks are bursting into flames!
+V: That's a fire hazard! The building is a fire hazard! Arrest the building!
+
+@ bldg.through a:cindervault
+M: Cindervault threw him through the building, and now the building is on fire!
+
+@ lm.any a:cindervault
+V: Cindervault wants a souvenir! Every great landmark needs a little scorching.
+M: Not that one! Vance, that one has been there a hundred years!
+
+@ water v:cindervault
+M: Cindervault goes into the lake! Look at the steam! Look at the STEAM!
+V: Oh no. Oh no no no. You're making a pumice stone out of a legend!
+
+M: The whole lakefront is fogged in! Cindervault's hissing like a kettle!
+
+@ water a:cindervault
+M: Cindervault throws him in the lake! The water's boiling around him!
+V: Fish soup! Free for everyone!
+
+@ pin.start a:cindervault
+M: Cindervault drops on him like a landslide! Kick out!
+V: Don't move, hero. You'll burn yourself.
+
+@ pin.start v:cindervault
+M: The volcano is on its back! Keep him down!
+V: You can't hold down magma! It finds a way out!
+
+@ pin.kick v:cindervault
+M: Cindervault blasts out of it!
+V: You can't pin a volcano, you fool!
+
+@ pin.near v:cindervault
+M: Oh! Cindervault got out at the very last instant!
+V: Ha! You see? Under pressure, he always comes up!
+
+@ tired v:cindervault
+M: Cindervault is slowing down! The fire is fading!
+V: He's cooling off on purpose. That's a strategy.
+
+@ guardbreak a:cindervault
+M: Cindervault smashes right through the guard! You can't block a rockslide!
+V: Your guard is made of sticks, hero. His fists are made of mountains.
+
+@ stall a:cindervault
+M: Cindervault is just standing there smoking!
+V: He's gathering heat. You don't rush a volcano.
+
+@ rally a:cindervault
+V: Listen to them chant for him! Wait, those are boos. Cindervault, those are boos.
+M: The whole city wants that volcano gone, Vance.

@@ -1,0 +1,320 @@
+# Part 7: Rimehorn, the Glacial Bastion. Face powerhouse: a glacier-armoured musk ox off the Arctic icefields.
+# Moves: PERMAFROST DROP (m:frostdrop), TUNDRA TOSS (m:horntoss), finisher AVALANCHE DRIVER.
+# Powers: RIME RAY (beam), WHITEOUT (roar), GLACIER RAM (charge), ICE AGE (ult).
+
+@ entrance a:rimehorn
+M: Feel that wind! The temperature just dropped twenty degrees! Here comes Rimehorn!
+V: Oh, wonderful. As if Chicago wasn't cold enough already.
+
+M: The Glacial Bastion! All the way from the Arctic icefields! Listen to this crowd!
+V: They're not cheering, Brannigan. Their teeth are chattering.
+
+M: Look at those horns! Look at that armour! That is a glacier with legs!
+V: It's a rug. It's a big, shaggy, frozen rug.
+
+M: Frost is spreading across the street with every step! Rimehorn is HERE!
+V: Somebody salt the sidewalks. Somebody's going to slip and sue.
+
+M: Chicago knows winter, folks, and this crowd knows Rimehorn!
+V: Chicago knows misery. That's not the same thing.
+
+@ fall.end a:rimehorn
+M: Rimehorn takes the fall! Slow and steady, like a glacier! You can't stop a glacier!
+V: Glaciers are retreating, Brannigan. Look it up.
+
+M: That's the fall for the Glacial Bastion! He would not be moved!
+V: He can't be moved. He's frozen to the street. That's not courage, that's ice.
+
+M: Rimehorn takes the fall! Chicago is going wild out there!
+V: It's so cold, they're jumping up and down to stay warm.
+
+@ match.over a:rimehorn
+M: RIMEHORN! The Glacial Bastion is the heavyweight champion of the world!
+V: Great. A frozen cow is the champion. I'm moving to Miami.
+
+M: He stood in front of everything they threw at him, and he never moved! Rimehorn wins!
+V: I want a thaw. I want a full investigation and a thaw.
+
+M: The champion from the top of the world! Rimehorn! Chicago, this one's yours!
+V: Chicago can keep him. Put him in the freezer with the rest of the leftovers.
+
+@ strike a:rimehorn
+M: Rimehorn with a big shot! Like getting hit by an iceberg!
+
+M: Rimehorn swings that head, and the horns catch him!
+V: Watch the horns, you brute! Somebody could lose an eye!
+
+M: A heavy hoof from Rimehorn! That sounded like ice cracking!
+
+V: He hits like a snowplough. Slow and stupid.
+M: Slow and steady, Vance. And it's working.
+
+M: Rimehorn plants his feet and drives a shoulder in!
+
+M: There's frost on his face where Rimehorn hit him!
+V: Frostbite! That's an injury! Somebody take a photo for the lawsuit!
+
+@ strike.big a:rimehorn
+M: RIMEHORN LEVELS HIM! A glacier of a shot!
+V: Oh, that's cold! That's really cold!
+
+M: Horns first! Right in the chest! That's an avalanche on legs!
+
+M: He hit him so hard the ice cracked off his own shoulder!
+V: Don't be proud of that! That's damage to himself, you fool!
+
+@ strike.big v:rimehorn
+M: He knocked the ice clean off Rimehorn's shoulder!
+V: Finally! Defrost the cow!
+
+M: Big shot to Rimehorn! He actually rocked him!
+V: The iceberg moved! Ha ha! Somebody tell the Titanic!
+
+@ block a:rimehorn
+M: Right off the glacier armour! Rimehorn did not even blink!
+V: Hiding behind his ice. Typical.
+
+M: Rimehorn lowers the horns and takes it! A wall of ice!
+
+M: Like punching a frozen lake! Rimehorn just stands there!
+
+@ reversal a:rimehorn
+M: Rimehorn saw it coming a mile away! He turned it right around!
+V: He's so slow, he had time to think it over.
+
+M: Reversal by the Bastion! Patience pays off!
+
+@ grab a:rimehorn
+M: Rimehorn hooks him with those horns!
+V: Watch the points! Those horns are a public menace!
+
+M: Rimehorn grabs hold, and the frost is spreading up his arms!
+
+@ grab.escape v:rimehorn
+M: He slipped out of Rimehorn's grip! It's icy in there!
+V: Of course he slipped. The whole thing's a skating rink.
+
+@ whip a:rimehorn
+M: Rimehorn sends him sliding across the park like a hockey puck!
+V: Score! Oh, wait. Wrong team.
+
+@ suplex a:rimehorn
+M: Rimehorn hauls him up and over! A massive suplex!
+V: There goes his back! Lift with your legs, you yak!
+
+M: Rimehorn picks him up like a snowman and drops him on his head!
+
+@ slam a:rimehorn
+M: Rimehorn presses him high over his horns! Look at that power!
+V: Show-off! He's showing off!
+
+M: Rimehorn holds him up there, steady as the polar ice cap!
+
+@ swing a:rimehorn
+M: Rimehorn hooks him on the horns and swings him round!
+V: He's using his face as a forklift!
+
+@ sig m:frostdrop
+M: Rimehorn presses him overhead and holds him there! PERMAFROST DROP!
+
+M: He's frozen him solid up there! Look at the ice! And DOWN he comes! The Permafrost Drop!
+V: He iced him over before he dropped him! That's two crimes at once!
+
+M: Held up high, frozen stiff, and dropped like a glacier calving! PERMAFROST DROP!
+V: That was disgusting. Somebody thaw him out.
+
+M: The Permafrost Drop! He came down like a block of ice off a roof!
+
+@ sig m:horntoss
+M: Rimehorn scoops him up on the horns! TUNDRA TOSS!
+
+M: He's got him on the horns, and he's charging! Through the buildings! The TUNDRA TOSS!
+V: He's using a whole kaiju as a snowplough! Have some respect!
+
+M: The Tundra Toss! He carried him across the park and threw him halfway to Wisconsin!
+V: Wisconsin doesn't want him either!
+
+V: The Tundra Toss. That's how musk oxen settle arguments. Pick you up and run you through a wall.
+M: Rimehorn ran him through everything in his path!
+
+@ power.beam a:rimehorn
+M: Rimehorn lowers his head! RIME RAY!
+
+M: The Rime Ray! It's freezing everything in its path!
+V: He froze a food truck! The hot dogs! Think of the hot dogs!
+
+M: The Rime Ray hits him, and he's covered in frost!
+V: That's a freezer burn, Brannigan. A full-body freezer burn.
+
+@ power.roar a:rimehorn
+M: WHITEOUT! A blizzard just came out of nowhere!
+V: I can't see! I can't see anything! Is my hair all right?
+
+M: Rimehorn calls up a Whiteout! Snow is blowing across the whole park!
+V: In the middle of a fight! Who brings a blizzard to a wrestling match?
+
+@ power.charge a:rimehorn
+M: GLACIER RAM! Rimehorn charges with the horns down!
+V: Get out of the way! Get out of the WAY!
+
+M: The Glacier Ram! He went through him like an icebreaker!
+
+@ power.ult a:rimehorn
+M: The sky is going white! It's the ICE AGE!
+V: Not again! We just got out of the last one!
+
+M: ICE AGE! Rimehorn is freezing the whole city solid!
+V: I'm frozen to my chair! Brannigan, I'm frozen to my chair!
+
+M: Rimehorn unleashes everything! Chicago is under the ice!
+
+@ knockdown a:rimehorn
+M: Rimehorn knocks him flat! He fell like a tree in a blizzard!
+V: That was a slippery spot! It's his ice! Unfair advantage!
+
+M: Rimehorn puts him down with one big shot! That's power!
+
+@ knockdown v:rimehorn
+M: Rimehorn is down! The glacier has fallen!
+V: Timber! Or whatever you say when a cow falls over!
+
+M: Rimehorn goes down, and the street cracks like a frozen pond!
+
+@ ko v:rimehorn
+M: Rimehorn is out! Come on, big fella! Get up!
+V: He's hibernating! Let him sleep till spring!
+
+@ critical v:rimehorn
+M: Rimehorn is hurting! The ice is cracking all over him!
+V: Spring has come for the cow, Brannigan. It always does.
+
+M: He's bleeding meltwater! Rimehorn's in real trouble!
+
+@ critical va:heel a:rimehorn
+M: Rimehorn is closing in, slow and steady, and there's nowhere to run!
+V: Run! Run, you fool! He's slow! Just run!
+
+@ comeback a:rimehorn
+M: The frost is spreading! Rimehorn is FIRING UP! Well, freezing up!
+V: Somebody stop him before he gets his second wind! It's a very cold wind!
+
+M: Rimehorn stamps the ground! Ice is cracking all around him! Here he comes!
+V: Oh no. The glacier is moving. Everybody move.
+
+M: You can push a glacier, folks, but sooner or later, it pushes back!
+
+@ rally a:rimehorn
+M: Rime-horn! Rime-horn! The whole city is stomping in the cold!
+V: They're stomping to keep their feet from freezing off.
+
+@ nosell a:rimehorn
+M: He hit him with everything, and Rimehorn just stood there!
+V: That's not toughness. That's brain freeze. He doesn't know he's been hit.
+
+@ ai.nosell a:rimehorn
+M: Rimehorn didn't even flinch! You can't move a glacier!
+V: Glaciers flinch! I've seen them flinch! Over thousands of years!
+
+@ ai.guard a:rimehorn
+M: Rimehorn just plants his feet behind the horns and waits.
+V: The world's biggest doorstop.
+
+@ finisher.start a:rimehorn
+M: Rimehorn has him up! This is the AVALANCHE DRIVER!
+V: No! Not the avalanche! Everybody off the mountain!
+
+M: Up on those massive shoulders! The Avalanche Driver is coming!
+
+M: Rimehorn's got him up there! Here comes the snow! Here comes the AVALANCHE!
+
+@ finisher.hit a:rimehorn
+M: AVALANCHE DRIVER! He buried him!
+V: He's going to be frozen in there for ten thousand years!
+
+M: The Avalanche Driver! It's like the whole mountain came down on him!
+V: Somebody get a Saint Bernard in there! With the little barrel!
+
+M: Rimehorn drove him through the ice! He's not getting up from that!
+
+@ finisher.hit v:rimehorn
+M: They put the glacier down! Rimehorn is buried!
+V: Melted! Melted like a snow cone in July!
+
+@ taunt a:rimehorn
+M: Rimehorn bellows across the lake! You can hear it in Indiana!
+V: Indiana's filing a noise complaint.
+
+M: Rimehorn paws the ground and lowers the horns! He wants more!
+V: He's a cow, Brannigan. He's just a very large, very angry cow.
+
+@ taunt.hit v:rimehorn
+M: Rimehorn got caught showing off! That's not like him!
+V: Ha! The cow was preening! Cows shouldn't preen!
+
+@ momentum a:rimehorn
+M: Rimehorn is building up a head of steam! Well, a head of frost!
+V: The cold front is moving in. Batten down the hatches.
+
+@ prop.rip a:rimehorn
+M: Rimehorn tears up a building! The whole thing's frosting over in his hands!
+V: That's a frozen asset now, Brannigan. Ha! Frozen asset!
+
+M: Rimehorn lifts a building on his horns! What power!
+
+@ prop.throw a:rimehorn
+M: Rimehorn hurls it! Look out!
+V: Incoming ice cube! A very large ice cube!
+
+@ prop.smash a:rimehorn
+M: Rimehorn breaks a building over his head! Snow and bricks everywhere!
+V: It's raining concrete and frost! That's a new kind of weather!
+
+@ prop.hit v:rimehorn
+M: Right off the horns! Rimehorn took a building and he's still standing!
+V: Somebody check if he's frozen. He might be dead and nobody's noticed.
+
+@ bldg.through a:rimehorn
+M: Rimehorn rammed him right through a building!
+
+@ lm.any a:rimehorn
+M: Rimehorn went right through it! He's an icebreaker, folks!
+V: That was a landmark! He's frosting landmarks now!
+
+@ water v:rimehorn
+M: Rimehorn goes in the lake! And the lake is freezing over!
+V: Great. Now the lake's a skating rink. Thanks a lot, cow.
+
+M: Rimehorn hits the water, and he loves it! He's right at home!
+V: He's floating like an iceberg. Nine tenths of him underwater, thank heavens.
+
+@ water a:rimehorn
+M: Rimehorn throws him in the lake, and the ice forms right around him!
+V: He's trapped! He's trapped in a frozen lake! That's kidnapping!
+
+@ pin.start a:rimehorn
+M: Rimehorn covers him with all that weight! He's not going anywhere!
+V: Get off of him! You're giving him frostbite!
+
+@ pin.start v:rimehorn
+M: Rimehorn's shoulders are down! Come on, big fella! Get up!
+V: Stay down, cow! Hibernate!
+
+@ pin.kick v:rimehorn
+M: Rimehorn powers out! He threw him off like a snowdrift!
+V: He's too heavy to pin! That's cheating! Being heavy is cheating!
+
+@ pin.near v:rimehorn
+M: RIMEHORN GOT OUT! At the last possible instant!
+V: No! The cow lives! Why does the cow always live?
+
+@ tired v:rimehorn
+M: Rimehorn is breathing hard! You can see his breath in the air!
+V: You can always see his breath. He's a walking freezer.
+
+@ stall a:rimehorn
+M: Rimehorn is waiting him out. He's not going to chase.
+V: Of course not. He can't chase. He's a glacier.
+
+@ guardbreak a:rimehorn
+M: Rimehorn smashed straight through the guard! You can't block a glacier!
+V: You can! You just need a very, very big wall!

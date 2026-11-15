@@ -13,6 +13,7 @@
 import { EV } from './events.js';
 import { VO_LINES } from './commentaryLines.js';
 import { alignOf, matchup } from './roster.js';
+import { SIGNATURES } from './signatures.js';
 
 export const BOOTH = Object.freeze({
   M: Object.freeze({ id: 'mike', name: 'MIKE BRANNIGAN', tag: 'BRANNIGAN' }),
@@ -27,8 +28,9 @@ export const VO_TUNE = {
   perChar: 0.062, minDur: 1.1,        // caption-only timing
   routine: { strike: 0.4, block: 0.2, whiff: 0.3, grab: 0.3, ropes: 0.35, power_hit: 0.4, bldg_down: 0.2 }, // chance a routine event is called at all
 };
-const SIG_ID = { 'TYRANT CHOKESLAM': 'chokeslam', 'LOOP BULLDOZER': 'bulldozer', 'STORM HURRICANRANA': 'rana', 'SKYFALL DDT': 'ddt', 'CIRCUIT BREAKER': 'breaker', 'SYSTEM CRASH': 'piledriver' };
 const AI_TOPIC = { cheap: 'ai.cheap', stomp: 'ai.stomp', work: 'ai.work', dive: 'ai.dive', ropes: 'ai.ropes', lazy: 'pin.lazy', guardFire: 'ai.guard', noSell: 'ai.nosell' };
+// a signature move's m: id in the script is its id in signatures.js (so a renamed move keeps its lines)
+const sigId = (key, name) => { const d = (SIGNATURES[key] || []).find((x) => x.name === name); return d ? d.id : ''; };
 const lmKey = (id) => (id || '').replace(/_(rear|twin|\d)$/, '');
 
 /** @returns {{ start, update, updateIdle, dispose, say, enabled, debug }} */
@@ -229,7 +231,7 @@ export function createCommentary(ctx, W) {
     on(EV.GRAB_ESCAPED, (e) => say('grab.escape', facts(e.who, e.target), 1));
     on(EV.GRAB_MOVE, (e) => {
       const f = facts(e.who, e.target);
-      if (e.sig) { f.m = SIG_ID[e.name] || ''; say(['sig', 'slam'], f, 3); return; }
+      if (e.sig) { f.m = sigId(f.a, e.name); say(['sig', 'slam'], f, 3); return; }
       if (e.type === 'whip') say('whip', f, 1);
       else if (e.type === 'suplex' || e.type === 'slam' || e.type === 'swing') say(e.type, f, 2);
     });

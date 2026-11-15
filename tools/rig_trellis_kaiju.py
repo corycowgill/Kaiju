@@ -20,7 +20,7 @@ from mathutils import Matrix, Vector
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from trellis_kaiju_motion import PROFILES, author_clips
+from trellis_kaiju_motion import PROFILES, STYLES, author_clips
 
 
 HEIGHT = 1.92
@@ -259,7 +259,7 @@ def main():
     joints = skeleton_points(points, profile, overrides)
     rig = make_rig(joints)
     bind_mesh(mesh, rig)
-    author_clips(rig, profile)
+    author_clips(rig, profile, STYLES[args.kaiju])
     bpy.context.scene.frame_set(1)
     bpy.context.view_layer.update()
     args.output.parent.mkdir(parents=True, exist_ok=True)

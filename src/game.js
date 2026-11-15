@@ -34,7 +34,7 @@ import { initAssetCache, getCacheStats, disposeInstance, markShared, reportLoadE
 import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, setQualityAndReload } from './quality.js';
 import { batchCars, batchMovers } from './carBatch.js';
 import { fireAtomicBreath, updateAtomicBlasts, resetAtomicBlasts } from './atomicBlast.js';
-import { KAIJU_POWERS, spawnKaijuPower } from './kaijuPowers.js';
+import { KAIJU_POWERS, spawnKaijuPower, updateKaijuPowers, resetKaijuPowers } from './kaijuPowers.js';
 import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk, waterDepth } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures, flipbooksReady } from './vfx.js';
 import { createWrestling } from './wrestling/index.js';
@@ -2029,7 +2029,7 @@ function updateLoneSoldier(dt) {
   lone.jumpRequested=false;
   followSoldierShadow(sun,soldierShadowAnchor,lone.pos,_sunOffset);
   world._fxSpawned = world._dbSpawned = 0;
-  vfx.tickParticles(dt); updateAtomicBlasts(dt);
+  vfx.tickParticles(dt); updateAtomicBlasts(dt); updateKaijuPowers(dt);
   for (let i=world.effects.length-1;i>=0;i--) { const e=world.effects[i];e.tick(dt);if(e.dead)world.effects.splice(i,1); }
   while(world.effects.length>MAX_EFFECTS) finishEffect(world.effects.shift());
   for(let i=world.debris.length-1;i>=0;i--) {
@@ -2935,7 +2935,7 @@ function restartInPlace() {
   clearDuel();
   lone?.dispose(); lone = null;
   _teardownScene();
-  resetAtomicBlasts();
+  resetAtomicBlasts(); resetKaijuPowers();
   if (state.kaiju && state.kaiju.mixer && !state.kaiju.glb) state.kaiju.mixer.stopAllAction();
   world.effects.length = 0;
   world.shells.length = 0;
@@ -4804,8 +4804,8 @@ function fireCharge() {
   const streakOrigin = startPos.clone(); streakOrigin.y += 11;
   if (profile) {
     const path = endPos.clone().sub(startPos);
-    world.spawnKaijuPower(state.monsterCfg, 'charge', streakOrigin, { direction: path, extent: path.length() });
-    world.spawnKaijuPower(state.monsterCfg, 'impact', endPos, { extent: profile.impact * .75 });
+    world.spawnKaijuPower(state.monsterCfg, 'charge', startPos, { direction: path, extent: Math.max(8, path.length()) });
+    world.spawnKaijuPower(state.monsterCfg, 'impact', endPos, { extent: profile.impact });
   } else {
     world.effects.push(makeWindStreaks(world, streakOrigin, forward, 0xffffff, 10));
   }
@@ -4877,8 +4877,7 @@ function fireUltimate() {
   waterImpact(world, center.x, center.z, 3, 'ult');
   if (profile) {
     const surface = center.clone().setY(Math.max(.3, center.y));
-    world.spawnKaijuPower(cfg, 'ult', surface, { extent: profile.ult });
-    world.spawnShockwave(surface, cfg.beam.color, profile.ult);
+    world.spawnKaijuPower(cfg, 'ult', surface, { extent: profile.ult }); // (its own shockwave, on its own beat)
     return;
   }
 
@@ -5730,6 +5729,7 @@ function updateWorld(dt, dtReal = dt) {
     if (world.effects[i].dead) world.effects.splice(i, 1);
   }
   updateAtomicBlasts(dt); // pooled breath bolts + detonations (not in world.effects: never trimmed)
+  updateKaijuPowers(dt); // the newer kaiju's powers (likewise)
   // Cap effect count -- splice once instead of shifting in a loop (O(n) vs O(n^2))
   if (world.effects.length > MAX_EFFECTS) {
     const drop = world.effects.length - MAX_EFFECTS;

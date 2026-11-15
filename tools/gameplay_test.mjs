@@ -14,7 +14,7 @@ globalThis.location = { search: '?q=high' };
 globalThis.localStorage = { getItem: () => null };
 const effects = await import('../src/effects.js');
 const vfx = await import('../src/vfx.js');
-const { KAIJU_POWERS, spawnKaijuPower } = await import('../src/kaijuPowers.js');
+const { KAIJU_POWERS, spawnKaijuPower, liveKaijuPowers, updateKaijuPowers, resetKaijuPowers } = await import('../src/kaijuPowers.js');
 const { MONSTERS } = await import('../src/monsters.js');
 const { SIGNATURES, createSignatures } = await import('../src/wrestling/signatures.js');
 const { createBus, EV } = await import('../src/wrestling/events.js');
@@ -231,79 +231,114 @@ test('combat VFX remain bounded and clean up their geometry on expiry or retirem
   }
 });
 
+test('a newer Kaiju power outlives a flood of other effects and is cleared by a reset', () => {
+  const world = { scene: new THREE.Scene(), effects: [], spawnExplosion() {}, spawnShockwave() {}, shake() {} };
+  assert.equal(spawnKaijuPower(world, MONSTERS.cindervault, 'ult', new THREE.Vector3(), { extent: 110 }), true);
+  const fx = liveKaijuPowers().at(-1);
+  for (let i = 0; i < 400; i++) world.effects.push({ dead: false, tick() {} });
+  world.effects.splice(0, world.effects.length - 180).forEach((e) => effects.finishEffect(e)); // (game.js's cap)
+  updateKaijuPowers(0.5);
+  assert.equal(fx.dead, false);
+  resetKaijuPowers();
+  assert.equal(fx.dead, true); assert.equal(fx.mesh.parent, null); assert.equal(liveKaijuPowers().length, 0);
+});
+
 test('all six new Kaiju powers initialize, animate, and release their resources', () => {
+  const extents = { beam: 200, roar: 85, charge: 30, ult: 130, impact: 35 };
   for (const key of Object.keys(KAIJU_POWERS)) {
     const cfg = MONSTERS[key];
     for (const move of ['beam', 'roar', 'charge', 'ult', 'impact']) {
-      const world = { scene: new THREE.Scene(), effects: [] };
+      const spawned = [];
+      const world = { scene: new THREE.Scene(), effects: [], spawnExplosion: () => spawned.push('explosion'), spawnShockwave: () => spawned.push('shockwave'), shake() {} };
       const direction = move === 'beam' || move === 'charge' ? new THREE.Vector3(1, .2, 1) : undefined;
-      assert.equal(spawnKaijuPower(world, cfg, move, new THREE.Vector3(), { direction, extent: 35 }), true);
-      const [fx] = world.effects;
-      let objects = 0, geometries = 0, materials = 0, instances = 0;
+      assert.equal(spawnKaijuPower(world, cfg, move, new THREE.Vector3(5, move === 'beam' ? 30 : 0, -5), { direction, extent: extents[move] }), true);
+      const fx = liveKaijuPowers().at(-1);
+      assert.ok(fx && !fx.dead && !world.effects.includes(fx), `${key} ${move}: a live power, outside world.effects (never trimmed by its cap)`);
+      let draws = 0, owned = 0, geometries = 0, materials = 0, instanced = 0, instances = 0;
       fx.mesh.traverse(object => {
         if (!object.isMesh) return;
-        objects++;
-        object.geometry.addEventListener('dispose', () => geometries++);
+        draws++;
+        if (!object.geometry.userData.keep) { owned++; object.geometry.addEventListener('dispose', () => geometries++); }
         object.material.addEventListener('dispose', () => materials++);
-        if (object.isInstancedMesh) object.addEventListener('dispose', () => instances++);
+        if (object.isInstancedMesh) { instanced++; object.addEventListener('dispose', () => instances++); }
+        // only the shared effect programs: the puff / ribbon shaders and the fragments' standard material
+        assert.ok(object.material.isShaderMaterial || (object.material.isMeshStandardMaterial && object.isInstancedMesh && !object.material.transparent && !object.instanceColor),
+          `${key} ${move}: ${object.material.type} would need a program of its own`);
       });
-      fx.tick(.3);
-      fx.mesh.traverse(object => {
-        if (object.isInstancedMesh) assert.ok(object.instanceMatrix.array.every(Number.isFinite));
-        if (object.isMesh) assert.ok(object.geometry.attributes.position.array.every(Number.isFinite));
-      });
-      assert.ok(objects <= 7, `${key} ${move}: ${objects} draw calls`);
+      assert.ok(draws >= 3 && draws <= 12, `${key} ${move}: ${draws} draw calls`);
+      for (let t = 0; t < 1.2; t += 1 / 30) {
+        updateKaijuPowers(1 / 30);
+        fx.mesh.traverse(object => {
+          if (object.isInstancedMesh) assert.ok(object.instanceMatrix.array.every(Number.isFinite), `${key} ${move}: finite matter`);
+          if (object.isMesh) assert.ok(object.geometry.attributes.position.array.every(Number.isFinite));
+        });
+      }
       if (move === 'beam') effects.finishEffect(fx);
-      else fx.tick(3);
-      assert.equal(world.scene.children.length, 0);
-      assert.equal(geometries, objects);
-      assert.equal(materials, objects);
-      assert.equal(instances, 1);
+      else updateKaijuPowers(6);
+      assert.equal(fx.dead, true);
+      updateKaijuPowers(0);
+      assert.equal(liveKaijuPowers().length, 0, 'dead powers leave the live list');
+      assert.equal(fx.mesh.parent, null);
+      for (const other of world.effects) if (other !== fx) { other.tick(6); other.tick(1); }
+      assert.equal(world.scene.children.filter((o) => !o.isLight).length, 0, `${key} ${move}: everything it spawned is gone`);
+      assert.equal(geometries, owned);
+      assert.equal(materials, draws);
+      assert.equal(instances, instanced);
+      effects.finishEffect(fx);
+      assert.equal(materials, draws, 'retirement is idempotent');
     }
   }
 });
 
-test('both wrestling signatures of each new Kaiju release and damage the target once', () => {
+test('both wrestling signatures of each new Kaiju play through, deal their damage, release and leave the foe lying', () => {
   for (const key of Object.keys(KAIJU_POWERS)) {
     for (const slot of [1, 2]) {
+      const def = SIGNATURES[key][slot - 1];
       const bus = createBus();
-      let impacts = 0, releases = 0, launches = 0, fx = 0;
+      let impacts = 0, releases = 0, launches = 0, fx = 0, dealt = 0;
       bus.on(EV.THROW_LAUNCH, () => launches++);
+      const finite = (...v) => assert.ok(v.every(Number.isFinite), `${key} ${def.id}: non-finite pose`);
+      const root = { position: new THREE.Vector3(), rotation: { set(x, y, z) { finite(x, y, z); } } };
+      root.position.set = function (x, y, z) { finite(x, y, z); this.x = x; this.y = y; this.z = z; return this; };
       const attacker = {
-        id: 'player', key, cfg: MONSTERS[key], pos: new THREE.Vector3(), stamina: 100,
+        id: 'player', key, cfg: MONSTERS[key], pos: root.position, root, stamina: 100, hc: 13.5, height: 30, radius: 12, lieY: 5, dmgMult: 1,
+        intent: { moveX: 0, moveZ: 0 },
         spend(value) { this.stamina -= value; }, gainMomentum() {},
+        setPose(x, y, z, yaw, pitch, roll) { finite(x, y, z, yaw, pitch, roll); },
       };
       const target = {
-        id: 'rival', hc: 13, lieY: 5, pos: new THREE.Vector3(0, 13, 16),
-        setPose(x, y, z, yaw, pitch, roll) {
-          assert.ok([x, y, z, yaw, pitch, roll].every(Number.isFinite));
-          this.pos.set(x, y, z);
-        },
+        id: 'rival', hc: 13, lieY: 5, collideRadius: 10, pos: new THREE.Vector3(0, 13, 16),
+        setPose(x, y, z, yaw, pitch, roll) { finite(x, y, z, yaw, pitch, roll); this.pos.set(x, y, z); },
+        applyDamage(amount) { dealt += amount; return amount; },
       };
       const hold = { A: attacker, V: target, yaw: 0, d0: 16, t: 0 };
-      const ctx = { clampToBounds() {}, world: { spawnKaijuPower() { fx++; } } };
-      const wrestling = { bus, anims: { play() { return true; } }, slowMo() {} };
+      const ctx = { clampToBounds() {}, shake() {}, world: { spawnKaijuPower() { fx++; } } };
+      const wrestling = { bus, anims: { play() { return true; } }, slowMo() {}, hitStop() {} };
       const grapple = {
-        hold, stand() {}, groundY() { return 0; }, endHold() { hold.phase = ''; },
+        hold, stand(f, x, z, yaw, lean = 0) { finite(x, z, yaw, lean); }, groundY() { return 0; }, carryH() { return 38; },
+        endHold() { hold.phase = ''; },
         impact(v, a, type, damage) {
           assert.equal(v, target);
           assert.equal(a, attacker);
-          assert.equal(damage, SIGNATURES[key][slot - 1].dmg);
+          dealt += damage;
           impacts++;
         },
         releaseThrower() { releases++; },
+        flightOf() { return {}; }, smash() {},
         emit2(event, a, v) { const e = bus.ev(event); e.who = a.id; e.target = v.id; return e; },
       };
       const signature = createSignatures(ctx, wrestling, grapple);
       assert.equal(signature.begin(slot), true);
       assert.equal(hold.phase, 'sig');
-      for (let i = 0; i < 150; i++) {
+      for (let i = 0; i < 150 && hold.phase === 'sig'; i++) {
         hold.t = i / 60;
         signature.update(1 / 60);
       }
-      assert.deepEqual([impacts, releases, launches, fx], [1, 1, 1, 1]);
+      assert.deepEqual([impacts, releases, fx], [1, 1, 1], `${key} ${def.id}`);
+      assert.ok(launches >= 1, `${key} ${def.id}: no throw:launch`);
+      assert.ok(Math.abs(dealt - def.dmg) < 1e-6, `${key} ${def.id}: dealt ${dealt} of ${def.dmg}`);
       assert.equal(hold.phase, '');
-      assert.equal(target.pos.y, target.lieY);
+      assert.equal(target.pos.y, target.lieY, `${key} ${def.id}: not lying at the end`);
     }
   }
 });

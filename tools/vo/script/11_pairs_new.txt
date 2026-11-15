@@ -1,0 +1,652 @@
+# Part 11: the new six against each other. Intros, banter, and the results by name.
+# Faces: Rimehorn, Thornwake, Ferrumaw. Heels: Cindervault, Brineveil, Vesperax.
+# The big ones get the most: fire against ice (Cindervault, Rimehorn), fire against forest (Cindervault, Thornwake),
+# the furnace against the foundry (Cindervault, Ferrumaw), salt water against iron (Brineveil, Ferrumaw),
+# the blade against the tree (Vesperax, Thornwake).
+
+# ---------------------------------------------------------------- Cindervault v Rimehorn: fire and ice
+@ intro pair:cindervault+rimehorn
+M: Fire against ice, folks! The Walking Caldera against the Glacial Bastion!
+V: Somebody's going to melt, Brannigan, and I've got a feeling it's the cow.
+
+M: Cindervault came up from under the earth. Rimehorn came down from the top of the world. Tonight they meet in the middle!
+V: The middle is Chicago. Bad luck, Chicago.
+
+M: Steam is already rising off the lake, and they haven't even touched!
+V: Every weatherman in the Midwest just called in sick.
+
+M: Magma against glacier! This is the match the planet has been waiting ten thousand years for!
+V: The planet should have waited a little longer, if you ask me.
+
+@ banter pair:cindervault+rimehorn
+V: Do the maths, Brannigan. Lava melts ice. That's science. Science is on our side.
+M: Ice puts out fire, Vance. That's also science.
+
+M: It's ninety degrees on one side of the ring and ten below on the other!
+V: I'm sweating and freezing at the same time. It's like my honeymoon.
+
+V: Every time they hit each other, the whole park disappears in steam.
+M: I can't see a thing, folks! I'm calling this by the sound!
+
+M: Rimehorn is trying to put out a volcano with his bare hands!
+V: Hooves. He has hooves. That makes it even more ridiculous.
+
+V: When this is over, Brannigan, there's going to be either a puddle or a rock.
+M: Or a champion, Vance.
+
+M: You know what you get when you mix lava and ice, Vance?
+V: A lawsuit, Brannigan. From the parks department.
+
+V: I've got Cindervault as the favourite. A glacier's just a slow volcano that gave up.
+M: That makes no sense at all.
+V: Neither does a cow made of ice.
+
+M: Rimehorn has frost all down one side, and scorch marks all down the other!
+V: He looks like a baked Alaska. Delicious.
+
+@ fall.end a:cindervault v:rimehorn
+V: The ice melts! The volcano takes the fall! I told you, Brannigan! Science!
+M: Rimehorn is lying in a puddle of his own armour. That's hard to watch.
+
+V: Meltdown! Ha ha! The glacier is a slushie!
+M: Cindervault takes the fall, and the steam is still rising.
+
+@ fall.end a:rimehorn v:cindervault
+M: Rimehorn puts out the fire! He takes the fall!
+V: Cindervault's been extinguished! Somebody relight him!
+
+M: Ice over fire! Rimehorn froze the volcano solid!
+V: That's not a fall, that's a cold snap! It doesn't last!
+
+@ match.over a:cindervault v:rimehorn
+V: The fire wins! The glacier melts! Somebody mop up the former champion!
+M: Rimehorn gave everything, and Cindervault melted him down. A dark night.
+
+@ match.over a:rimehorn v:cindervault
+M: Rimehorn put out the volcano! The Glacial Bastion is the champion!
+V: Extinguished. My volcano. Extinguished by a frozen cow. I'm going to need a minute.
+
+@ strike.big a:rimehorn v:cindervault
+M: Rimehorn hits him, and the lava hardens into rock right where he hit him!
+V: He's freezing his magma! That's assault and refrigeration!
+
+@ strike.big a:cindervault v:rimehorn
+M: Cindervault hits him, and the ice just explodes into steam!
+V: Defrost setting! Ha ha!
+
+@ finisher.hit a:cindervault v:rimehorn
+V: He melted him into the ground! There's nothing left but a puddle and some horns!
+M: Rimehorn is down, and there's steam rising off him!
+
+@ finisher.hit a:rimehorn v:cindervault
+M: The avalanche buried the volcano! Cindervault is frozen solid!
+V: Somebody get a blowtorch! A big one!
+
+@ water v:cindervault a:rimehorn
+M: Rimehorn threw the volcano in the lake! Look at the STEAM! You can't see the skyline!
+V: That's cruelty! That's cruelty to geology!
+
+# ---------------------------------------------------------------- Cindervault v Thornwake: fire and forest
+@ intro pair:cindervault+thornwake
+M: The Uprooted Forest against the Walking Caldera! Folks, a tree is fighting a volcano!
+V: This is going to be the shortest match in history, Brannigan. Have you ever seen a tree win against fire?
+
+M: Thornwake has stood for a thousand years. Tonight he stands against the one thing every forest fears!
+V: A volcano. Or a lumberjack. But mostly a volcano.
+
+M: Thornwake versus Cindervault! Fire against wood! The fire department is on standby!
+V: Standing by to watch. Nobody's stepping in there with a hose.
+
+@ banter pair:cindervault+thornwake
+V: I brought marshmallows, Brannigan. Just in case.
+M: That is disgusting, Vance.
+
+M: Thornwake is fighting a volcano, and he's still got all his leaves!
+V: Give it a minute. It's going to be autumn real fast.
+
+V: You know what they call a tree that fights a volcano?
+M: What?
+V: Charcoal.
+
+M: Every time Cindervault hits him, the bark smokes! But Thornwake keeps coming!
+V: He's not brave. He's just too slow to know he's on fire.
+
+V: Somebody's going to have to explain to the park service why they have one less tree.
+M: Thornwake isn't going anywhere, Vance.
+
+M: You know, a forest grows back after a fire, Vance.
+V: Sure. In about four hundred years. I'll wait.
+
+M: Smoke over Grant Park, and through it, I can see Thornwake still standing!
+V: Standing and smouldering, Brannigan. That's not the same as winning.
+
+@ fall.end a:cindervault v:thornwake
+V: Burn, baby, burn! The volcano takes the fall!
+M: Thornwake is scorched black, and the crowd has gone quiet.
+
+V: Ha! Firewood! He's going in the fireplace!
+M: Cindervault takes the fall. Thornwake just couldn't take the heat.
+
+@ fall.end a:thornwake v:cindervault
+M: The forest takes the fall! Thornwake buried the volcano under his roots!
+V: How? How does a tree beat fire? It's against nature!
+
+M: Thornwake smothered the fire! He takes the fall!
+V: Cindervault's been composted! This is a humiliation!
+
+@ match.over a:cindervault v:thornwake
+V: The forest burns! Cindervault is the champion! Somebody save me a log!
+M: A sad night for Chicago's City in a Garden. Cindervault wins it.
+
+@ match.over a:thornwake v:cindervault
+M: The forest beat the fire! Thornwake is the heavyweight champion!
+V: Trees don't beat volcanoes. I want a geologist and a botanist in this booth right now.
+
+@ strike.big a:cindervault v:thornwake
+M: Cindervault hits him, and the bark bursts into flames!
+V: Ooh! Toasty! He's toasty now!
+
+@ strike.big a:thornwake v:cindervault
+M: Thornwake swings a smouldering branch right into his face! He's burning, and he's still swinging!
+V: He's using his own fire against him! That's cheating! Wait, can a tree cheat?
+
+@ prop.smash a:thornwake v:cindervault
+M: Thornwake smashes a building over the volcano! Roots and rubble everywhere!
+V: That's not fair! The building wasn't even on fire yet!
+
+# ---------------------------------------------------------------- Cindervault v Ferrumaw: the furnace and the foundry
+@ intro pair:cindervault+ferrumaw
+M: The Polarity Beast against the Walking Caldera! Iron against fire!
+V: Fire melts iron, Brannigan. That's how they make your hero in the first place.
+
+M: Ferrumaw grew up in a foundry. Folks, this kaiju is not afraid of heat!
+V: He's never met heat like this. This is volcano heat. Foundry heat is for amateurs.
+
+M: Cindervault against Ferrumaw! Two of the heaviest hitters in the sport!
+V: One of them is a mountain. The other one is a toaster with legs.
+
+@ banter pair:cindervault+ferrumaw
+V: You know what happens when you put iron in a volcano, Brannigan?
+M: You get steel, Vance. You get tougher.
+V: You get a puddle!
+
+M: Ferrumaw's scales are glowing red hot, and he's still punching!
+V: That's called smelting. He's being smelted. Live on television.
+
+V: Ferrumaw's from the foundry. He should feel right at home in the furnace.
+M: He looks right at home, Vance. He's winning.
+
+M: Every time Cindervault hits him, sparks fly off like a blacksmith's anvil!
+V: And every time Ferrumaw hits back, rocks fall off. Nobody's going to be pretty after this.
+
+M: The heat out there is incredible, folks! Ferrumaw's scales are turning orange!
+V: Somebody tell the foundry their worker's on fire.
+
+@ fall.end a:cindervault v:ferrumaw
+V: Melted down! Ferrumaw is scrap! The volcano takes the fall!
+M: Cindervault takes it. Ferrumaw went in the furnace and didn't come out.
+
+@ fall.end a:ferrumaw v:cindervault
+M: Ferrumaw takes the fall! He worked that rock like a foundry hammer!
+V: He forged a fall out of nothing! That's not wrestling, that's metallurgy!
+
+@ match.over a:cindervault v:ferrumaw
+V: The furnace wins! Ferrumaw has been melted down for parts! Ha!
+M: Cindervault is the champion. Ferrumaw went into the fire and couldn't come back out.
+
+@ match.over a:ferrumaw v:cindervault
+M: Ferrumaw beat the furnace! Forged in fire, and now he's the champion!
+V: Tempered steel. I hate it. I hate tempered steel.
+
+@ strike.big a:ferrumaw v:cindervault
+M: Ferrumaw hammers him like an anvil! Rock chips flying everywhere!
+V: That's my mountain! Stop chipping my mountain!
+
+# ---------------------------------------------------------------- Cindervault v Brineveil
+@ intro pair:brineveil+cindervault
+V: Two of my very favourite people, Brannigan! The Walking Caldera and the Light of the Trench!
+M: A volcano against a deep sea monster. Somebody has to lose, Vance, and I'll be happy either way.
+
+M: Cindervault from under the mountain, Brineveil from under the ocean! Two things that should have stayed buried!
+V: That's what they said about my career, and look at me now.
+
+M: The heat of the earth against the cold of the deep!
+V: Underwater volcanoes, Brannigan. It's been done. And it was beautiful.
+
+@ banter pair:brineveil+cindervault
+V: You know, there are volcanoes at the bottom of the ocean. These two might be cousins.
+M: They're fighting like cousins.
+
+M: Every time Brineveil gets close, there's a hiss of steam!
+V: He's being poached. Ever had poached fish, Brannigan? Lovely.
+
+V: No heroes in this one, Brannigan. Just a volcano and a light bulb with teeth.
+M: You love them both.
+V: I love them both!
+
+M: Brineveil is circling, and Cindervault is just standing there smoking.
+V: Two kinds of patience, Brannigan. Pressure and heat. Breathtaking.
+
+@ match.over a:cindervault v:brineveil
+V: The volcano wins! Brineveil goes back to the deep, cooked!
+M: Cindervault is the champion. Brineveil is steamed.
+
+@ match.over a:brineveil v:cindervault
+V: The light of the trench beats the walking caldera! Pressure beats heat!
+M: Brineveil is the champion. I need a lifeguard and a fire extinguisher.
+
+# ---------------------------------------------------------------- Cindervault v Vesperax
+@ intro pair:cindervault+vesperax
+V: Vesperax against Cindervault! The Amethyst Blade against the Walking Caldera! Oh, I'm weak at the knees!
+M: Two heels, Vance. No good guys at all tonight.
+
+M: Vesperax came out of the caverns. Cindervault came out of the caldera. Folks, it's an underground fight!
+V: Gemstones are made in volcanoes, Brannigan. It's a family reunion.
+
+M: Vesperax, the fastest in the sport, against Cindervault, the strongest! One of them is going to be very surprised!
+V: Neither of them is surprised by anything. That's what I love about them.
+
+@ banter pair:cindervault+vesperax
+V: Did you know amethyst forms inside volcanic rock, Brannigan? That's a father and son out there.
+M: Then the father's about to get carved up.
+
+M: Vesperax is trying to slice up a mountain!
+V: And the mountain is trying to swat a dragonfly. It's art. Two kinds of art.
+
+V: I couldn't pick a side, Brannigan. So I picked both. I'll be insufferable either way.
+M: You're insufferable already, Vance.
+
+M: Vesperax's blades keep sparking off that basalt!
+V: Sharpening themselves, Brannigan. Free maintenance.
+
+@ match.over a:cindervault v:vesperax
+V: The volcano wins! A mountain is champion! I love a mountain!
+M: Cindervault is the champion. Vesperax is in pieces, and so is Chicago.
+
+@ match.over a:vesperax v:cindervault
+V: The blade carved the mountain! Vesperax is the champion!
+M: Vesperax wins it. Somebody sweep up the rocks.
+
+# ---------------------------------------------------------------- Brineveil v Rimehorn
+@ intro pair:brineveil+rimehorn
+M: The Glacial Bastion against the Light of the Trench! The ice above against the dark below!
+V: Brineveil lives under seven miles of water. A little ice cube doesn't scare him.
+
+M: Rimehorn comes from the frozen top of the world. Brineveil from the bottom of the deepest sea!
+V: And they meet in Lake Michigan, which is frankly beneath both of them.
+
+M: Rimehorn against Brineveil! The Arctic against the abyss!
+V: The cold against the colder. I hope you brought a jacket.
+
+@ banter pair:brineveil+rimehorn
+V: Brineveil eats things like Rimehorn for breakfast, Brannigan. Well, not this big. But the idea is the same.
+M: He'd break every tooth he has on that ice.
+
+M: Brineveil is trying to sneak up on him, and Rimehorn just stands there and waits!
+V: Patience against patience. This could take all night.
+
+V: Rimehorn floats, you know. Like an iceberg. Brineveil hunts from below. Like a shark.
+M: That's how you get the Titanic, Vance.
+V: Exactly!
+
+M: Every time Brineveil lunges, he gets a mouth full of glacier!
+V: Brain freeze! Poor thing!
+
+@ fall.end a:rimehorn v:brineveil
+M: Rimehorn takes the fall! He froze the fish!
+V: Fish sticks! He made fish sticks out of a legend!
+
+@ fall.end a:brineveil v:rimehorn
+V: Brineveil takes the fall! He pulled the iceberg under!
+M: Brineveil got him from below. I hate it.
+
+@ match.over a:rimehorn v:brineveil
+M: Rimehorn is the champion! He put the deep sea on ice!
+V: Frozen fish. My beautiful anglerfish, frozen like a supermarket special.
+
+@ match.over a:brineveil v:rimehorn
+V: Brineveil sinks the iceberg! The Light of the Trench is the champion!
+M: Brineveil wins it. Rimehorn is on the bottom of the lake somewhere, folks.
+
+# ---------------------------------------------------------------- Brineveil v Vesperax
+@ intro pair:brineveil+vesperax
+V: An anglerfish and a mantis! Two of nature's most elegant killers! Is it my birthday?
+M: Two heels, two ambushers, and not a decent bone between them.
+
+M: Brineveil lures, Vesperax slices. Which one strikes first?
+V: Whichever one does, it'll be from behind. That's what makes it special.
+
+M: Light of the Trench against the Amethyst Blade! The crowd doesn't know who to boo louder!
+V: They can boo both. There's enough to go around.
+
+@ banter pair:brineveil+vesperax
+V: Look at that, Brannigan. A glowing lure and a glowing gemstone. The prettiest match of the night.
+M: It's two predators trying to eat each other, Vance.
+V: Like I said. Pretty.
+
+M: They're both waiting for the other one to make a mistake!
+V: Two ambushers in one ring. It's like watching two cats stare at each other.
+
+V: Vesperax is trying not to look at the lure. Smart. Very smart.
+M: That's the first smart thing a mantis ever did.
+
+M: Brineveil darts in, Vesperax darts out. This is a chess match with teeth!
+V: And blades. Chess with teeth and blades. My kind of chess.
+
+@ match.over a:brineveil v:vesperax
+V: The fish beats the bug! Brineveil is the champion!
+M: Brineveil wins it. I'll say this, Vance. The right villain won. There isn't one.
+
+@ match.over a:vesperax v:brineveil
+V: Sashimi! The blade carves the fish! Vesperax is the champion!
+M: Vesperax wins it. Somebody get that anglerfish back in the water.
+
+# ---------------------------------------------------------------- Brineveil v Thornwake
+@ intro pair:brineveil+thornwake
+M: The Uprooted Forest against the Light of the Trench! Roots against the deep!
+V: A tree versus a fish. What's next, a rock against a sandwich?
+
+M: Thornwake grew a thousand years in the sun. Brineveil has never seen it!
+V: He doesn't need the sun. He brought his own light. Who's the smart one now?
+
+M: Thornwake against Brineveil! The forest has come to fight for Chicago!
+V: The fish has come to eat Chicago. With a side of salad.
+
+@ banter pair:brineveil+thornwake
+V: You know, Brannigan, Brineveil's lure is a light, and plants love light. This tree's going to walk right into it.
+M: Thornwake's smarter than that, Vance.
+V: He's a tree.
+
+M: Brineveil bit him, and he got a mouth full of splinters!
+V: Every fish has a bad meal now and then.
+
+V: Thornwake keeps getting pulled toward the lure. It's photosynthesis, Brannigan. He can't help himself.
+M: That's not how any of this works.
+
+M: Thornwake's roots are holding him steady. Brineveil can't drag him anywhere!
+V: Give it time. Fish are patient. Trees are slow. It's a long night.
+
+@ match.over a:thornwake v:brineveil
+M: Thornwake is the champion! The forest has beaten the deep!
+V: Lost to a tree. He's going to be the laughing stock of the trench.
+
+@ match.over a:brineveil v:thornwake
+V: The fish eats the forest! Brineveil is the champion!
+M: Brineveil wins it, and there are splinters in the lake.
+
+# ---------------------------------------------------------------- Brineveil v Ferrumaw: salt water and iron
+@ intro pair:brineveil+ferrumaw
+M: The Polarity Beast against the Light of the Trench!
+V: Salt water against iron, Brannigan. You know what that makes? Rust!
+
+M: Ferrumaw is a creature of the foundry! Brineveil, a creature of the deep salt sea!
+V: Brineveil's going to dissolve that tin can like a nail in a glass of cola.
+
+M: Ferrumaw versus Brineveil! The working man against the thing in the dark!
+V: The rusting man against the beauty of the deep! I'll take the beauty.
+
+@ banter pair:brineveil+ferrumaw
+V: Every time Brineveil drips on him, Ferrumaw rusts a little more. Look at him, he's already orange!
+M: That's the glow from the lure, Vance.
+
+M: Ferrumaw is pulling the lure toward him with the magnets!
+V: That's a violation! The lure is a sacred organ!
+
+V: Salt water, Brannigan. Ferrumaw's worst nightmare. Every ship on the bottom of the ocean is proof.
+M: Ferrumaw isn't a ship, Vance.
+V: Not yet!
+
+M: Brineveil can't sneak up on him! Ferrumaw can feel every bit of iron in his teeth!
+V: He has iron in his teeth? I didn't know that.
+M: Neither did I, but it's working!
+
+M: Ferrumaw is shaking off the salt water, and the sparks are flying!
+V: Short circuit! Short circuit! Pour more on him!
+
+@ fall.end a:brineveil v:ferrumaw
+V: Brineveil takes the fall! Rust never sleeps, Brannigan!
+M: Ferrumaw is soaked, and he couldn't keep the fish off him.
+
+@ fall.end a:ferrumaw v:brineveil
+M: Ferrumaw takes the fall! The magnet reeled in the fish!
+V: Caught! On a magnet! Like a paper clip! The shame!
+
+@ match.over a:brineveil v:ferrumaw
+V: The salt sea wins! Ferrumaw is rusted solid! Brineveil is the champion!
+M: Brineveil wins it, and Ferrumaw is going to need a lot of oil.
+
+@ match.over a:ferrumaw v:brineveil
+M: Ferrumaw is the champion! He hauled that thing out of the deep and beat it!
+V: Rust or no rust, I hate this. I hate it with every fibre.
+
+# ---------------------------------------------------------------- Rimehorn v Vesperax
+@ intro pair:rimehorn+vesperax
+M: The Glacial Bastion against the Amethyst Blade! The strongest wall against the sharpest blade!
+V: Ice cracks, Brannigan. Crystal cuts. Do the maths.
+
+M: Rimehorn never moves. Vesperax never stops moving. Something has to give!
+V: The ice, Brannigan. It always gives. Every spring.
+
+M: Vesperax against Rimehorn! Speed against power!
+V: Grace against a cow! Beauty against a beast!
+
+@ banter pair:rimehorn+vesperax
+V: Vesperax is carving that glacier like an ice sculptor at a wedding.
+M: And Rimehorn's still standing there, Vance.
+
+M: Vesperax is fast, but every time he gets close, those horns are waiting!
+V: He's measuring the horns, Brannigan. Sizing them up for a trophy.
+
+V: You know, they both sparkle. I'd call it a tie, but only one of them is dignified.
+M: Rimehorn is plenty dignified.
+V: He's a cow.
+
+M: Every strike Vesperax lands is bouncing off that ice!
+V: He's chipping away! Little by little! It's like the Ice Age, but in reverse!
+
+@ match.over a:rimehorn v:vesperax
+M: Rimehorn is the champion! He stood up to the blade, and the blade broke!
+V: My beautiful mantis, flattened by a refrigerator. This is barbaric.
+
+@ match.over a:vesperax v:rimehorn
+V: The Amethyst Blade carves up the glacier! Vesperax is the champion! Ice sculpture, anyone?
+M: Vesperax wins it. Rimehorn fought like a lion, and it wasn't enough.
+
+# ---------------------------------------------------------------- Rimehorn v Thornwake
+@ intro pair:rimehorn+thornwake
+M: Two of the toughest, most stubborn kaiju in the world! Rimehorn against Thornwake!
+V: A frozen cow against a tree. This is a nature documentary, Brannigan. A boring one.
+
+M: The Glacial Bastion against the Uprooted Forest! Neither one of them knows how to back down!
+V: Neither one of them knows how to move. This could take till spring.
+
+M: Two good guys tonight! Chicago doesn't know which way to cheer!
+V: Whichever way, they're wrong.
+
+@ banter pair:rimehorn+thornwake
+V: A tree in the snow, Brannigan. It's a Christmas card. A violent Christmas card.
+M: It's a heck of a fight, Vance.
+
+M: Rimehorn's frost is spreading up Thornwake's branches!
+V: He's going dormant! Look at him! He's hibernating! It's a tree thing!
+
+V: Two good guys, playing nice. I'd rather watch paint dry.
+M: Paint doesn't do Timber Suplexes, Vance.
+
+M: Neither one of them will take a step back! Toe to toe, root to hoof!
+V: I'm exhausted just looking at them.
+
+@ match.over a:rimehorn v:thornwake
+M: Rimehorn is the champion! What a fight! Thornwake gave him everything!
+V: Frost kills the garden. Every gardener knows that.
+
+@ match.over a:thornwake v:rimehorn
+M: Thornwake is the champion! The forest outlasted the ice!
+V: Spring always comes, Brannigan. That's the most boring sentence I've ever said.
+
+# ---------------------------------------------------------------- Rimehorn v Ferrumaw
+@ intro pair:ferrumaw+rimehorn
+M: Rimehorn against Ferrumaw! Two good guys, two of the hardest heads in the sport!
+V: Ice against iron. Whoever wins, I'm going to need a hot water bottle.
+
+M: The Glacial Bastion against the Polarity Beast! A wall against a hammer!
+V: Two working-class heroes. How touching. Somebody pass me a tissue.
+
+M: Ferrumaw and Rimehorn! The crowd is cheering for both, and so am I!
+V: You would. You cheer for everything with a heartbeat.
+
+@ banter pair:ferrumaw+rimehorn
+V: You know what happens to iron in the cold, Brannigan? It gets brittle. It cracks.
+M: Ferrumaw's not cracking, Vance.
+
+M: Rimehorn keeps freezing those scales, and Ferrumaw keeps cracking the ice off!
+V: It's a defrosting contest. The most exciting thing in this sport.
+
+V: Every time Ferrumaw pulls him close, Rimehorn freezes to his scales! They're stuck together!
+M: Like a tongue on a flagpole!
+V: That's the first good joke you've told in years.
+
+M: They're both just walking straight through each other's best shots!
+V: Neither one of them has the sense to fall down.
+
+@ match.over a:ferrumaw v:rimehorn
+M: Ferrumaw is the champion! He broke through the ice!
+V: The magnet beats the cow. Whatever. Wake me when there's a villain.
+
+@ match.over a:rimehorn v:ferrumaw
+M: Rimehorn is the champion! He froze the metal solid!
+V: Frozen solid. Like my heart, Brannigan. Like my heart.
+
+# ---------------------------------------------------------------- Vesperax v Thornwake: the blade and the tree
+@ intro pair:thornwake+vesperax
+M: The Uprooted Forest against the Amethyst Blade! A tree against a scythe!
+V: Pruning season, Brannigan! Pruning season is open!
+
+M: Thornwake has stood a thousand years. Vesperax wants to cut him down in one night!
+V: A thousand years is a very long time to go without a haircut.
+
+M: A praying mantis against a tree! Folks, in nature, the mantis sits on the tree!
+V: And tonight, the mantis is going to chop it up for firewood.
+
+M: Vesperax against Thornwake! The forest has come to Grant Park to fight the blade!
+V: And the blade has come to give the forest a trim.
+
+@ banter pair:thornwake+vesperax
+V: You know, mantises live in trees. Vesperax knows every weak spot on that trunk.
+M: Then why does he keep getting tangled in the branches?
+
+M: Vesperax is hacking at those branches, and they keep growing back!
+V: That's a weed problem. You need to get the root.
+
+V: Trim it! Trim the hedges! Shape it into something nice!
+M: You're cheering for a mantis to cut down a tree, Vance.
+V: I'm cheering for landscaping!
+
+M: Every time Vesperax swings, a branch comes off, and every time, Thornwake grabs him with another one!
+V: How many arms does that thing have?
+M: It's a tree, Vance. Hundreds.
+
+M: Thornwake caught Vesperax in the vines! The mantis is stuck in the tree!
+V: Like a kite! Like a beautiful purple kite!
+
+V: Bark is no match for amethyst, Brannigan. Crystal is harder than anything that grows.
+M: Then why is he still standing?
+
+@ fall.end a:vesperax v:thornwake
+V: Timber! The blade takes the fall! He cut the tree down!
+M: Vesperax chopped him down. Thornwake is lying there like a felled oak.
+
+V: Pruned! Pruned to the stump! Ha ha!
+M: Vesperax takes the fall, and it's a lumber yard out there.
+
+@ fall.end a:thornwake v:vesperax
+M: Thornwake takes the fall! He caught the mantis in his branches and wouldn't let go!
+V: Caught in a tree! Like a cat! A beautiful crystal cat!
+
+M: The forest takes the fall! You can't chop down a thousand years in one night!
+V: You can if you try hard enough!
+
+@ match.over a:vesperax v:thornwake
+V: The blade beats the tree! Vesperax is the champion! The finest lumberjack in the world!
+M: Vesperax is the champion, and Thornwake is in pieces all over Grant Park.
+
+@ match.over a:thornwake v:vesperax
+M: Thornwake is the champion! The tree beat the axe!
+V: Not an axe! A blade! An AMETHYST blade! And it lost to a SHRUB!
+
+@ strike.big a:vesperax v:thornwake
+M: Vesperax hacks into the trunk! The bark is flying!
+V: Timber! Okay, not yet. But soon! TIMBER SOON!
+
+@ strike.big a:thornwake v:vesperax
+M: Thornwake swats the mantis right out of the air!
+V: Not like a bug! Don't swat him like a bug!
+
+@ prop.smash a:thornwake v:vesperax
+M: Thornwake crushes the mantis under a building!
+V: He stepped on him like a bug! Like an ordinary bug!
+
+# ---------------------------------------------------------------- Vesperax v Ferrumaw: crystal and steel
+@ intro pair:ferrumaw+vesperax
+M: The Polarity Beast against the Amethyst Blade! Iron against crystal!
+V: Steel is common, Brannigan. Amethyst is precious. That's the whole match in a sentence.
+
+M: Ferrumaw is built like a bank vault. Vesperax wants to crack him open!
+V: And find nothing inside but pocket change.
+
+M: Vesperax against Ferrumaw! The working man against the jewel thief!
+V: Not a thief! A connoisseur!
+
+@ banter pair:ferrumaw+vesperax
+V: Vesperax is carving up those iron scales like a can opener!
+M: And he's chipped both blades doing it!
+
+M: The blades keep sparking off those scales! It's like a sword fight with an anvil!
+V: He's sharpening his blades on the hero. Waste not.
+
+V: You can't pull amethyst with a magnet, Brannigan. Vesperax is immune! Immune!
+M: Then why does he keep getting dragged in?
+V: He wants to be close! It's tactics!
+
+M: Ferrumaw rolled into a ball, and Vesperax is just bouncing off!
+V: He's hiding! Like a coward! A round coward!
+
+@ match.over a:ferrumaw v:vesperax
+M: Ferrumaw is the champion! Iron breaks crystal!
+V: You shattered the most beautiful thing in the sport. I hope you're happy.
+
+@ match.over a:vesperax v:ferrumaw
+V: The jewel beats the junk! Vesperax is the champion!
+M: Vesperax wins it. Ferrumaw is in pieces, and so is my heart.
+
+# ---------------------------------------------------------------- Thornwake v Ferrumaw: nature and industry
+@ intro pair:ferrumaw+thornwake
+M: The Uprooted Forest against the Polarity Beast! Nature against industry, and they're both good guys!
+V: Ugh. Two heroes. Wake me when somebody cheats.
+
+M: Thornwake from the old forest, Ferrumaw from the foundry! Chicago grew up between the two!
+V: Chicago grew up on a swamp, Brannigan, and it shows.
+
+M: Thornwake and Ferrumaw! Two kaiju who would give the shirt off their backs for this city!
+V: They don't have shirts. One has bark and the other has a rash of scrap metal.
+
+@ banter pair:ferrumaw+thornwake
+V: The tree against the factory. Brannigan, this is the most political match I've ever seen.
+M: It's a fight, Vance. A great one.
+
+M: Ferrumaw can't pull Thornwake in! There's no metal in him!
+V: Except the nails. Every tree in this city has a nail in it somewhere.
+
+V: Thornwake's roots are wrapped round Ferrumaw's legs, and Ferrumaw's pulling every lamp post toward the tree.
+M: It's a tug of war! The tree against the magnet!
+
+M: Two good guys, and neither one is giving an inch!
+V: That's what's wrong with good guys. No cunning. No initiative.
+
+@ match.over a:thornwake v:ferrumaw
+M: Thornwake is the champion! Nature wins the day!
+V: The tree beats the toaster. I've never cared less about anything.
+
+@ match.over a:ferrumaw v:thornwake
+M: Ferrumaw is the champion! The foundry has its hero!
+V: Industry beats nature. That's the only part of this I like.

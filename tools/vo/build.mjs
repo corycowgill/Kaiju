@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
-const KEY = { gorrak: 'godzilla', mechra: 'mecha', tridon: 'ghidorah' };
+const KEY = { gorrak: 'godzilla', mechra: 'mecha', tridon: 'ghidorah', cindervault: 'cindervault', brineveil: 'brineveil', rimehorn: 'rimehorn', vesperax: 'vesperax', thornwake: 'thornwake', ferrumaw: 'ferrumaw' };
 const SPEAKER = { M: 'mike', V: 'vance' };
 
 /** What the voice model is given for a caption: names it would misread respelled, shouting toned down to sentence case. */
@@ -20,6 +20,7 @@ export function spoken(text) {
   s = s.replace(/\b([A-Z][A-Z'’]+)\b/g, (w) => (w.length > 1 && !/^(OK|TV|II|III)$/.test(w) ? w[0] + w.slice(1).toLowerCase() : w));
   s = s.replace(/\bD\.D\.T\./gi, 'D D T').replace(/\bL tracks?\b/g, 'El tracks').replace(/\bL train\b/g, 'El train');
   s = s.replace(/\bMechra\b/gi, 'Meckra').replace(/\bTridon\b/gi, 'Try-don').replace(/\bGorrak\b/gi, 'Gorrack').replace(/Gor-rak/gi, 'Gor-rack');
+  s = s.replace(/\bBrineveil\b/gi, 'Brine-veil').replace(/\bFerrumaw\b/gi, 'Ferrum-awe');
   s = s.replace(/\bAon\b/g, 'A-on').replace(/\bShedd\b/g, 'Shed').replace(/\bPritzker\b/g, 'Pritsker');
   return s;
 }

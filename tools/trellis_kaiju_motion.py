@@ -26,13 +26,28 @@ class Profile:
 
 
 PROFILES = {
-    'cindervault': Profile(.47, .25, .106, .77, 1.12, .855, .55, .79, .94, .18, 68, .92, .29),
-    'brineveil': Profile(.51, .285, .103, .72, .97, .827, .52, .84, 1.05, .14, 60, 1.16, -.40),
-    'rimehorn': Profile(.48, .27, .117, .73, 1.08, .810, .51, .81, .81, .23, 73, .77, .12),
-    'vesperax': Profile(.54, .31, .122, .76, 1.05, .851, .55, .76, 1.19, .11, 55, 1.25, .51),
-    'thornwake': Profile(.47, .26, .116, .72, 1.13, .833, .52, .81, .85, .09, 69, 1.25, -.17),
-    'ferrumaw': Profile(.50, .28, .104, .75, 1.05, .860, .52, .81, .92, .19, 63, .87, -.47, True),
+    'cindervault': Profile(.47, .25, .106, .77, 1.12, .855, .55, .79, .94, .18, 79, .92, .29),
+    'brineveil': Profile(.51, .285, .103, .72, .97, .827, .52, .84, 1.05, .14, 74, 1.16, -.40),
+    'rimehorn': Profile(.48, .27, .117, .73, 1.08, .810, .51, .81, .81, .23, 78, .77, .12),
+    'vesperax': Profile(.54, .31, .122, .76, 1.05, .851, .55, .76, 1.19, .11, 80, 1.25, .51),
+    'thornwake': Profile(.47, .26, .116, .72, 1.13, .833, .52, .81, .85, .09, 80, 1.25, -.17),
+    'ferrumaw': Profile(.50, .28, .104, .75, 1.05, .860, .52, .81, .92, .19, 74, .87, -.47, True),
 }
+
+# How each one carries its arms at rest and on the move. reach: upper arm
+# forward (rad); elbow: forearm bend (rad); swing: arm swing in the gait;
+# breathe: idle chest / shoulder heave; sway: idle weight shift.
+# Vesperax holds its blades up like a mantis, Ferrumaw its claws in front.
+STYLES = {
+    'cindervault': dict(reach=.38, elbow=.55, swing=1.0, breathe=1.3, sway=1.0),
+    'brineveil': dict(reach=.42, elbow=.80, swing=.9, breathe=1.0, sway=1.3),
+    'rimehorn': dict(reach=.30, elbow=.50, swing=.9, breathe=1.2, sway=.8),
+    'vesperax': dict(reach=.62, elbow=1.85, swing=.25, breathe=.8, sway=1.2),
+    'thornwake': dict(reach=.24, elbow=.42, swing=.8, breathe=.9, sway=.9),
+    'ferrumaw': dict(reach=.52, elbow=1.0, swing=.6, breathe=1.0, sway=1.0),
+}
+DEFAULT_STYLE = dict(reach=.23, elbow=.37, swing=1.0, breathe=1.0, sway=1.0)
+MAX_DROP = math.radians(86)
 
 FPS = 30
 AXIS_X = Vector((1, 0, 0))
@@ -41,8 +56,9 @@ AXIS_Z = Vector((0, 0, 1))
 
 
 class Puppet:
-    def __init__(self, rig):
+    def __init__(self, rig, style=DEFAULT_STYLE):
         self.rig = rig
+        self.style = style
         self.bones = rig.pose.bones
         self.rest = {bone.name: bone.bone.matrix_local.to_quaternion() for bone in self.bones}
         self.inverse = {name: q.inverted() for name, q in self.rest.items()}
@@ -118,13 +134,18 @@ def curve(t, *points):
 
 
 def baseline(puppet, profile, pulse=0, sway=0):
+    style = puppet.style
     drop = math.radians(profile.arm_drop)
-    puppet.hips(up=.009 * pulse)
-    puppet.torso(profile.lean, .035 * sway)
-    puppet.head(-.5 * profile.lean + .045 * pulse, .04 * sway, .10 * sway)
+    breathe = style['breathe'] * pulse
+    shift = style['sway'] * sway
+    # Breath lifts the chest and shoulders; the weight rolls from foot to foot
+    puppet.hips(up=.012 * breathe, roll=.022 * shift)
+    puppet.torso(profile.lean - .035 * breathe, .015 * shift)
+    puppet.head(-.5 * profile.lean + .05 * breathe, .04 * shift, .10 * sway)
     for side in (1, -1):
-        puppet.arm(side, drop + .045 * pulse, .23 + .06 * side * sway, .37 + .045 * pulse, .04 * side * sway)
-        puppet.leg(side)
+        puppet.arm(side, min(MAX_DROP, drop - .04 * breathe), style['reach'] + .05 * side * sway,
+                   style['elbow'] + .06 * breathe, .04 * side * sway)
+        puppet.leg(side, 0, .025 * max(0, side * shift), 0)
     puppet.tail(.18 * sway, .10 * pulse)
 
 
@@ -152,8 +173,10 @@ def gait_pose(puppet, profile, t, amount, turn=0, reverse=False):
         knee = (0.06 + lift * .87) * gait
         ankle = thigh - knee + .26 * gait * lift
         puppet.leg(side, thigh, knee, ankle)
-        drop = math.radians(profile.arm_drop) + .145 * gait
-        puppet.arm(side, drop, .21 - swing * .45 * gait, .41 + .22 * lift, -.12 * swing)
+        style = puppet.style
+        drop = min(MAX_DROP, math.radians(profile.arm_drop) + .1 * gait)
+        puppet.arm(side, drop, style['reach'] - swing * .45 * gait * style['swing'],
+                   style['elbow'] + (.04 + .22 * lift) * min(1, style['swing'] * 2), -.12 * swing)
     puppet.tail(-.58 * step - turn * .21, .15 * load)
 
 
@@ -259,10 +282,10 @@ def physical_pose(puppet, profile, t, kind):
 HEIGHT_DEATH = .59
 
 
-def author_clips(rig, profile):
+def author_clips(rig, profile, style=DEFAULT_STYLE):
     scene = bpy.context.scene
     scene.render.fps = FPS
-    puppet = Puppet(rig)
+    puppet = Puppet(rig, style)
     clips = {
         'idle': (2.8, lambda t: idle_pose(puppet, profile, t)),
         'idle2': (3.4, lambda t: idle_pose(puppet, profile, t, inspect=True)),

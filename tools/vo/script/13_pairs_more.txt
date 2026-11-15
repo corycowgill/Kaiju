@@ -1,0 +1,89 @@
+# Part 13: more for the match-ups heard most. Gorrak is the default player, so his falls against the new six are
+# called by name both ways; the heel-against-heel pairs with the original two get another round of banter.
+
+@ fall.end a:gorrak v:vesperax
+M: Gorrak takes the fall! He caught the blade and snapped it!
+V: He grabbed a scythe with his bare hands! Who does that? A lunatic, that's who!
+
+@ fall.end a:vesperax v:gorrak
+V: Vesperax takes the fall! Sliced and diced! The lizard is in ribbons!
+M: Gorrak never saw half of those coming. That mantis is fast, folks.
+
+@ fall.end a:gorrak v:rimehorn
+M: Gorrak takes the fall! And look, he's helping Rimehorn up! What sportsmanship!
+V: Don't help him up! Stomp on him! Nobody in this match knows how to win!
+
+@ fall.end a:rimehorn v:gorrak
+M: Rimehorn takes the fall! He froze Gorrak in his tracks!
+V: The lizard on ice. Finally, something in this city that keeps.
+
+@ fall.end a:gorrak v:thornwake
+M: Gorrak takes the fall! He brought the big oak down!
+V: Timber. A friendly timber. The worst kind.
+
+@ fall.end a:thornwake v:gorrak
+M: Thornwake takes the fall! He wrapped up Gorrak and planted him!
+V: Gorrak got beaten by a houseplant. Write that one down.
+
+@ fall.end a:gorrak v:ferrumaw
+M: Gorrak takes the fall! What a battle with Ferrumaw!
+V: Two good guys, and one of them had to lose. The only good news all night.
+
+@ fall.end a:ferrumaw v:gorrak
+M: Ferrumaw takes the fall! He pulled Gorrak in and put him away!
+V: The lizard was stuck to him! Like a fridge magnet! Pathetic!
+
+@ banter pair:brineveil+tridon
+M: Tridon is trying to keep all three heads out of the water!
+V: Three heads to keep dry, Brannigan. That's a lot of towels.
+
+@ banter pair:brineveil+mechra
+V: Brineveil lives at a thousand atmospheres, Brannigan. Mechra's hull is rated for about four.
+M: So who's winning, Vance?
+V: The lawyers.
+
+@ banter pair:cindervault+tridon
+V: Somebody check the airspace, Brannigan. There's a dragon in a cloud of volcanic ash.
+M: The airport is closed, Vance! Every flight out of O'Hare is grounded!
+V: Good. Nobody's leaving until this is over.
+
+@ banter pair:cindervault+mechra
+M: Cindervault just picked up Mechra's arm and it's glowing red hot!
+V: Don't touch the arm! That's the cannon arm! You'll void the warranty!
+
+@ banter pair:ferrumaw+tridon
+M: Ferrumaw's pulling every metal roof in the Loop into the air, and Tridon is flying right through them!
+V: Showers of steel, lightning everywhere, and three heads screaming. Chicago, you're welcome.
+
+@ banter pair:rimehorn+tridon
+V: Wet wings in the cold, Brannigan. Every time Tridon lands, he's got icicles on his chin. All three chins.
+M: Rimehorn is grounding the storm!
+
+@ banter pair:mechra+vesperax
+M: Mechra's targeting system can't keep up with Vesperax!
+V: Nothing can, Brannigan. He's faster than light. Well, he is purple light. It's complicated.
+
+@ banter pair:brineveil+cindervault
+V: The heat of the earth and the cold of the deep, Brannigan. This is how the oceans were made.
+M: And tonight they're unmaking Chicago, Vance.
+
+@ banter pair:mechra+rimehorn
+V: Mechra just turned up the heat sinks. Sorry, hero. The cold's not going to work tonight.
+M: Rimehorn is freezing it anyway!
+
+@ banter pair:ferrumaw+gorrak
+M: Folks, Ferrumaw and Gorrak have both spent their whole lives protecting this town!
+V: And now they're tearing it down together. Isn't friendship wonderful?
+
+@ banter pair:gorrak+rimehorn
+M: Gorrak's breath is melting the frost right off Rimehorn's shoulders!
+V: And the steam is ruining my hair. Thank you both.
+
+@ banter pair:gorrak+vesperax
+M: Gorrak's tail just swept the legs right out from under that mantis!
+V: Six legs, Brannigan, and he still fell over. That's embarrassing for everybody.
+
+@ banter pair:gorrak+thornwake
+V: You know, Gorrak's been sitting under this tree's branches for a thousand years.
+M: Gorrak lives in the lake, Vance.
+V: Then the tree's been watching him swim. Creepy.

@@ -1,0 +1,318 @@
+# Part 8: Vesperax, the Amethyst Blade. Heel duelist: an amethyst praying mantis out of the amethyst caverns.
+# Moves: SCYTHE SCISSORS (m:scissors), PRISM DRIVER (m:prismdriver), finisher AMETHYST GUILLOTINE.
+# Powers: PRISM CUTTER (beam), CHITIN SHRIEK (roar), SCYTHE DASH (charge), AMETHYST TEMPEST (ult).
+
+@ entrance a:vesperax
+V: En garde, Chicago! The Amethyst Blade has arrived! Vesperax!
+M: Listen to the boos for Vesperax! This crowd knows exactly what that thing is!
+
+M: Look at those forearms! Those are two scythes, folks, sharpened to a point!
+V: Exquisite. Like a jewellery box with a temper.
+
+V: All the way from the amethyst caverns! A living gemstone, and every facet is cruel!
+M: You say that like it's a good thing, Vance.
+
+M: Vesperax is walking in with the arms folded, like he's praying.
+V: He is praying, Brannigan. He's praying for his opponent.
+
+M: The light is catching every crystal on him! The whole park is glowing purple!
+V: That's class, Brannigan. You wouldn't recognise it.
+
+@ fall.end a:vesperax
+V: Vesperax takes the fall! Touché! A clean cut!
+M: There was nothing clean about it, Vance.
+
+M: Vesperax takes the fall. Fast, precise, and nasty.
+V: The three finest words in the language.
+
+V: Ha! He sliced him to ribbons! Sliced and diced!
+M: I hate to admit it. That bug can fight.
+
+@ match.over a:vesperax
+V: VESPERAX! The Amethyst Blade is the champion of the world! Bow to the jewel!
+M: A praying mantis is the heavyweight champion. Somebody get the bug spray.
+
+V: Cut the ribbon! With a scythe! Vesperax wins!
+M: Vesperax is the champion, and I've never been so disgusted.
+
+M: The fastest thing in the sport just carved up the title. Vesperax wins it.
+V: I want that belt set with amethysts, Brannigan! Every inch of it!
+
+@ strike a:vesperax
+M: Vesperax slashes him across the chest!
+V: Ooh! Fencing! Pure fencing!
+
+M: A quick jab with that scythe arm! In and out!
+
+V: Did you even see that one, Brannigan? I barely did, and I see everything.
+
+M: Vesperax slices him! He's too fast!
+
+M: A snap kick from Vesperax! Those legs are like spring steel!
+V: He's lighter than a mantis has any right to be.
+
+M: Vesperax picks his shot and takes it! Precision!
+
+@ strike.combo a:vesperax
+M: Slash, slash, slash! Vesperax is carving him up!
+V: Fillet the hero! Fillet him!
+
+M: Left blade! Right blade! Left again! He can't keep up!
+V: Fastest hands in the sport. Fastest everything.
+
+@ strike.big a:vesperax
+M: VESPERAX CUTS HIM DOWN! Like a sickle through wheat!
+V: Harvest time, hero! Harvest time!
+
+M: Both blades at once! Right across the face!
+V: That's the coup de grace, Brannigan. Look it up.
+
+@ strike.big v:vesperax
+M: He cracked the crystal! There's a chip in Vesperax's armour!
+V: No! Not the amethyst! That's flawless! That WAS flawless!
+
+M: He knocked Vesperax sideways! That bug is light, folks!
+V: Lithe! He's lithe! It's not the same thing!
+
+@ block a:vesperax
+M: Vesperax crosses those scythes and blocks it!
+V: Parry! That's called a parry, Brannigan!
+
+M: Turned away on the blade! What reflexes!
+
+@ reversal a:vesperax
+V: Riposte! Ha! You don't attack a duelist, hero!
+M: Vesperax counters! He was waiting for that the whole time!
+
+M: Vesperax reads it and turns it back! That was a trap!
+V: Everything is a trap. That's what makes it beautiful.
+
+@ grab a:vesperax
+M: Vesperax hooks him with those spiked arms!
+V: Like a mantis on a grasshopper, Brannigan! Nature!
+
+M: Vesperax clamps on! Those forelegs have spikes on them!
+
+@ grab.escape v:vesperax
+M: He slipped out of the scythes! He got loose!
+V: Run, little grasshopper. He'll catch you again.
+
+@ whip a:vesperax
+M: Vesperax flicks him away with a twist of the wrist!
+
+@ suplex a:vesperax
+M: Vesperax arches all the way back! A bridging suplex!
+V: Grace! Elegance! A ten from the European judge!
+
+@ slam a:vesperax
+M: Vesperax lifts him up! He's stronger than he looks!
+V: He's a bug, Brannigan. Bugs lift fifty times their own weight.
+
+@ swing a:vesperax
+M: Vesperax is spinning him like a pinwheel!
+V: Pirouette! Ha ha! Ballet with a body!
+
+@ sig m:scissors
+M: Vesperax leaps up and scissors his head! SCYTHE SCISSORS!
+
+M: The Scythe Scissors! A corkscrew flip, and he spiked him right on his head!
+V: Snip, snip! Ha ha! A little off the top!
+
+V: The Scythe Scissors! Legs round the neck, a twist in the air, and head first into Chicago! Ballet!
+M: That was vicious, and I hate that it was beautiful!
+
+M: Vesperax corkscrews through the air and drives him down head first! SCYTHE SCISSORS!
+
+@ sig m:prismdriver
+M: He's got him upside down! PRISM DRIVER!
+
+M: Vesperax turns him upside down, leaps, and corkscrews! The Prism Driver!
+V: Every colour of the rainbow, all at once, right on his skull!
+
+V: Prism Driver! Upside down, a spin in the air, and he's seeing the world through a crystal!
+M: That's not pretty, Vance. That's a concussion.
+
+M: A corkscrew piledriver! Vesperax spiked him! The PRISM DRIVER!
+
+@ power.beam a:vesperax
+M: The crystals are lighting up! PRISM CUTTER!
+
+V: Prism Cutter! A laser made of amethyst! Can you even imagine?
+M: I'm watching it, Vance! It just cut a lamp post in half!
+
+M: The Prism Cutter slices across the park! Everything it touches is falling apart!
+
+@ power.roar a:vesperax
+M: CHITIN SHRIEK! My ears! Oh, my ears!
+V: That's the sound of crystal singing, Brannigan! It's opera!
+
+M: The Chitin Shriek is shattering every window in the Loop!
+V: Glass is so fragile. Not like amethyst.
+
+@ power.charge a:vesperax
+M: SCYTHE DASH! Did you see him move? I didn't!
+
+V: Scythe Dash! Faster than the eye! Faster than your cameraman!
+M: He went right through him!
+
+M: Vesperax darts in with the Scythe Dash! He's a purple blur!
+
+@ power.ult a:vesperax
+M: The sky's turning purple! It's the AMETHYST TEMPEST!
+V: A storm of blades! A thousand blades! It's the most beautiful thing I've ever seen!
+
+V: AMETHYST TEMPEST! Hide your eyes, Brannigan, it's too gorgeous for a man like you!
+M: Crystal shards are raining down all over Grant Park!
+
+M: Vesperax is slicing up the whole skyline! Get down!
+
+@ knockdown a:vesperax
+M: Vesperax cuts him down! He dropped like a tree to the axe!
+V: Touché! Point to the Blade!
+
+V: Down he goes! You don't stand in front of a scythe, hero!
+M: Get up! He's going to come for you again!
+
+@ knockdown v:vesperax
+M: Vesperax is down! The mantis is on his back!
+V: He's posing! It's a pose! He meant to do that!
+
+M: Down goes the Blade! And he's flailing like a beetle on its back!
+V: He is not a beetle! How dare you!
+
+@ ko v:vesperax
+M: Vesperax is out! The bug is out cold!
+V: He's meditating! Mantises meditate! It's in the name! Praying!
+
+@ critical v:vesperax
+M: Vesperax is cracking! The crystal is splintering all over!
+V: Easy! He's a gemstone! You don't hit a gemstone that hard!
+
+M: He's slowing down! Vesperax has lost a step!
+
+@ critical va:face a:vesperax
+V: Watch the blades come up. He's sizing up the neck.
+M: He's hurt, and Vesperax is stalking him. I don't like this.
+
+@ comeback a:vesperax
+M: Vesperax is glowing purple from head to toe! He's furious!
+V: You've insulted the Blade, hero! Now you'll answer for it!
+
+V: Look at the blades come up! Here's where it gets beautiful!
+M: Vesperax is fired up, and those scythes are moving faster than ever!
+
+@ ai.dive a:vesperax
+M: Vesperax springs off the corner! The mantis is airborne!
+V: Look at him fly! Like a dragonfly, but with knives!
+
+@ ai.ropes a:vesperax
+M: Vesperax is running the ropes! He's picking up speed!
+V: Here comes the lunge!
+
+@ ai.cheap a:vesperax
+M: Vesperax slashes him behind the back! That was cheap!
+V: It's called finding an opening, Brannigan. Every duelist does it.
+
+@ whiff a:vesperax
+M: Vesperax misses! He slashed right through thin air!
+V: That was a feint! A feint, Brannigan!
+
+M: The blades come down on nothing! Now's your chance!
+V: He's testing the range. Duelists do that.
+
+@ finisher.start a:vesperax
+M: Vesperax has him up! This is the AMETHYST GUILLOTINE!
+V: Off with his head! Off with his head!
+
+M: Up in the air, and the blades are coming down! The Amethyst Guillotine!
+
+V: The guillotine is raised, Brannigan! Somebody cue the drums!
+M: No! Not the Guillotine! Get out of there!
+
+@ finisher.hit a:vesperax
+M: AMETHYST GUILLOTINE! He cut him down!
+V: Executed! Cleanly! With a flourish!
+
+M: The Amethyst Guillotine! The blades and the ground at the same time!
+V: That's a ten! That's a perfect ten from every judge in France!
+
+M: That's the most vicious thing I've seen in this sport! The Amethyst Guillotine!
+
+@ finisher.hit v:vesperax
+M: He drove Vesperax down and the crystals shattered!
+V: No! He's a precious stone! Pick up the pieces! Every piece!
+
+@ taunt a:vesperax
+M: Vesperax is sharpening those blades against each other in front of the crowd.
+V: Scrape, scrape. Music to my ears.
+
+V: Look at the bow! A duelist's bow! He's saluting his victim!
+M: He's mocking him, Vance.
+
+M: Vesperax is turning his head all the way around to look at the crowd!
+V: He can do that! It's a mantis thing! Isn't it marvellous?
+
+@ taunt.hit v:vesperax
+M: Caught him bowing! Vesperax got clocked mid-flourish!
+V: You never hit a duelist during the salute! That's barbaric!
+
+@ momentum a:vesperax
+M: Vesperax is moving faster and faster!
+V: He's in the zone, Brannigan! The killing zone!
+
+@ prop.rip a:vesperax
+M: Vesperax slices a building off at the base! Like cutting cake!
+V: Clean cut! Look at that cut! A surgeon couldn't do better!
+
+M: Vesperax hooks a building with those blades and lifts it up!
+
+@ prop.throw a:vesperax
+V: Catch, hero! Catch it! Oh, you can't! Ha!
+M: He flings it with a flick of the scythes!
+
+@ prop.smash a:vesperax
+M: Vesperax brings a building down right on his head!
+V: That's a statement. The statement is: the Blade does what he likes.
+
+@ prop.hit v:vesperax
+M: Right off the crystal! Vesperax got hit by the building!
+V: Mind the finish! The finish, you vandal!
+
+@ water v:vesperax
+M: Vesperax goes in the lake! Can that thing swim?
+V: He's skimming! He's skimming the water like a pond skater! Get him out!
+
+M: The mantis is in the drink! He's thrashing around in there!
+V: You don't put a precious stone in water! It ruins the setting!
+
+@ water a:vesperax
+M: Vesperax kicks him into the lake!
+V: Go cool off, hero. Think about what you did.
+
+@ pin.start a:vesperax
+M: Vesperax pins him with the blades on his throat! Kick out!
+V: Lie still, or he trims your beard!
+
+@ pin.start v:vesperax
+M: Vesperax is down on his back! Keep those legs pinned!
+V: There are six of them! Pin them all? Impossible!
+
+@ pin.kick v:vesperax
+M: Vesperax springs out of it! Like a coiled spring!
+V: Fast hands! Fast feet! Fast everything!
+
+@ pin.near v:vesperax
+M: VESPERAX JUST BARELY GOT OUT! He was a heartbeat away!
+V: I wasn't worried! Okay, I was a little worried!
+
+@ tired v:vesperax
+M: Vesperax is gassed! All that speed, and now he's paying for it!
+V: Sprinters need to breathe, Brannigan. It's called interval training.
+
+@ stall a:vesperax
+M: Vesperax is circling with the blades up. He's in no hurry.
+V: A duelist chooses the moment. A brute just swings.
+
+@ guardbreak a:vesperax
+M: Vesperax slashed right through the guard! He found the gap!
+V: There's always a gap, hero. The Blade always finds it.

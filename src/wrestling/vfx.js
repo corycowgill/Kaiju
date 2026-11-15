@@ -33,6 +33,7 @@ import { registerBuilder, acquirePooledLight } from '../vfx.js';
 import { fireAtomicBreath } from '../atomicBlast.js';
 import { isMobile, Q_HIGH, Q_LOW } from '../quality.js';
 import { setKaijuGlow, setLookFxDip } from '../look.js';
+import { SIGNATURES } from './signatures.js';
 
 const FULL = !isMobile && !Q_LOW;                 // desktop MED / HIGH: every layer
 const PM = !isMobile ? (Q_HIGH ? 1 : Q_LOW ? 0.35 : 0.6) : (Q_LOW ? 0.2 : 0.35); // particle count multiplier
@@ -350,7 +351,9 @@ registerBuilder('wrestlingFx', (opts) => {
 // ---- Palette -------------------------------------------------------------------
 
 // [main (the beam colour when the config has one), accent]
-const SIG = { godzilla: [0x66ff66, 0xc8ff7a], ghidorah: [0xffee66, 0x66ccff], mecha: [0xff3366, 0xff8800] };
+const SIG = { godzilla: [0x66ff66, 0xc8ff7a], ghidorah: [0xffee66, 0x66ccff], mecha: [0xff3366, 0xff8800],
+  cindervault: [0xff6627, 0xffb347], brineveil: [0x39dfd7, 0x5eafff], rimehorn: [0x73baff, 0xe7faff],
+  vesperax: [0xbe62ff, 0xf4ccff], thornwake: [0xa4c653, 0xd8b45a], ferrumaw: [0xff6589, 0x8fb0ff] };
 const C = (r, g, b) => new THREE.Color(r, g, b);
 const WHITE = C(1, 1, 1), GOLD = C(1, 0.8, 0.28), GUARD = C(0.5, 0.78, 1), STARY = C(1, 0.88, 0.25), DANGER = C(1, 0.22, 0.1);
 const DUST = C(0.52, 0.45, 0.37), EARTH = C(0.13, 0.105, 0.08), GRASS = C(0.12, 0.19, 0.07), CONCRETE = C(0.56, 0.54, 0.51);
@@ -359,7 +362,8 @@ const STEAM = C(0.82, 0.85, 0.9), WATER = C(0.62, 0.76, 0.9), CHAR = C(0.03, 0.0
 const rnd = Math.random;
 const rr = (a, b) => a + rnd() * (b - a);
 const cnt = (n) => Math.max(1, Math.round(n * PM));
-const TAU = Math.PI * 2;
+const TAU = Math.PI * 2, HALF_PI = Math.PI / 2;
+const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
 
 /** @returns {{ start, update, updateIdle, dispose, stats }} */
 export function createVfx(ctx, W) {
@@ -1177,7 +1181,8 @@ export function createVfx(ctx, W) {
     while (fin.acc2 >= 1) {
       fin.acc2 -= 1;
       const a = rnd() * TAU, r = rr(8, 34);
-      if (fin.key === 'mecha') {
+      if (ELEM[fin.key]) elemFinTick(ELEM[fin.key], A, p, col);
+      else if (fin.key === 'mecha') {
         // thrusters: exhaust hammering down around the feet
         P(T_FLAME, M_BILL, p.x + Math.cos(a) * 8, p.y + rr(4, 10), p.z + Math.sin(a) * 8, Math.cos(a) * 14, -26, Math.sin(a) * 14, 0.4, rr(5, 8), 2, alt, 1.1, 1, 0, 0, Math.PI, 0, 0.6, 0, 0.2, 1);
         P(T_PUFF, M_BILL, p.x + Math.cos(a) * 12, 2, p.z + Math.sin(a) * 12, Math.cos(a) * 30, 4, Math.sin(a) * 30, 1, 4, 13, DUST, 0.45, 0, 2.5, -1, rnd() * TAU, 0, 1, 0.1, 0.2, 1);
@@ -1235,7 +1240,8 @@ export function createVfx(ctx, W) {
     }
     // apex (and any beat not named above): the pose at the top, in the kaiju's own element
     st[A.id].trail.on = false;
-    if (A.key === 'ghidorah') {
+    if (ELEM[A.key]) elemFinApex(ELEM[A.key], A, p, col, alt);
+    else if (A.key === 'ghidorah') {
       skyBolt(_b.x, _b.z, alt, 1.2, 0);
       bolt(_b.x + rr(-20, 20), 190, _b.z + rr(-20, 20), _b.x, _b.y, _b.z, 6, 8, 6, col, 1.6, 0.25, 0.05);
       P(T_BURST, M_BILL, _b.x, _b.y, _b.z, 0, 0, 0, 0.22, 16, 50, alt, 1.1, 1, 0, 0, rnd() * TAU);
@@ -1280,7 +1286,12 @@ export function createVfx(ctx, W) {
     shockLater(0, x, z, R, col.getHex());
     shockLater(0.18, x, z, R * 0.6, alt.getHex());
     flashLight(x, 14, z, col, 16, 0.7);
-    if (A && ctx.world.spawnKaijuPower?.(A.cfg, 'ult', new THREE.Vector3(x, .3, z), { extent: R })) return;
+    if (ELEM[key]) {
+      // the six later kaiju: their element in the crater, then their own ultimate's burst (kaijuPowers.js)
+      elemFinImpact(ELEM[key], x, z, R, col);
+      if (A && ctx.world.spawnKaijuPower) ctx.world.spawnKaijuPower(A.cfg, 'ult', new THREE.Vector3(x, .3, z), { extent: R });
+      return;
+    }
     emitter(E_SMOLDER, x, 0, z, 9, col, R * 0.35, 0.6);
     emitter(E_EMBERS, x, 0, z, 6, col, R * 0.5, 0.2);
     if (key === 'ghidorah') {
@@ -1462,6 +1473,275 @@ export function createVfx(ctx, W) {
     if (w > 0.8) flashLight(e.x, e.y, e.z, col, 8, 0.3);
   }
 
+
+  // ---- the six later kaiju: their signature grapples and finishers in their own element ----
+  // ELEM by key; sigFx[id] is the signature `id` started (grab:move, type 'signature') until its last throw:land.
+  // tickSig runs the move's own continuous effect from the grapple's read-only hold clock; elemImpact is the landing.
+  const ELEM = { cindervault: 'magma', brineveil: 'tide', rimehorn: 'frost', vesperax: 'prism', thornwake: 'root', ferrumaw: 'metal' };
+  const MAGMA = C(1, 0.42, 0.1), LAVA = C(1, 0.72, 0.3), BASALT = C(0.09, 0.07, 0.065), SEA = C(0.25, 0.85, 0.85), DEEP = C(0.12, 0.38, 0.52),
+    ICE = C(0.68, 0.86, 1), FROST = C(0.9, 0.97, 1), AMETH = C(0.74, 0.4, 1), PRISMW = C(0.96, 0.86, 1), BARK = C(0.3, 0.2, 0.11),
+    LEAF = C(0.33, 0.55, 0.14), ROOT = C(0.42, 0.3, 0.14), MAGNET = C(0.45, 0.62, 1);
+  const mkSig = () => ({ def: null, elem: '', t: 0, acc: 0, acc2: 0, last: -1 });
+  const sigFx = { player: mkSig(), rival: mkSig() };
+  function due(s, dt, rate) { s.acc += dt * rate * (FULL ? 1 : 0.45); const n = s.acc | 0; s.acc -= n; return n; }
+  function sigStart(e) {
+    const s = sigFx[e.who], A = fighter(e.who);
+    if (!s || !A) return;
+    const L = SIGNATURES[A.key], d = L ? L[(e.sig || 1) - 1] : null;
+    s.def = d && d.elem ? d : null; s.elem = s.def ? s.def.elem : ''; s.t = 0; s.acc = 0; s.acc2 = 0; s.last = -1;
+    if (!s.def) return;
+    // the grip: a flash of the element where the hands close
+    const V = fighter(e.target);
+    if (!V) return;
+    chest(A, _a); chest(V, _b);
+    const x = (_a.x + _b.x) / 2, y = (_a.y + _b.y) / 2, z = (_a.z + _b.z) / 2, col = colOf(e.who);
+    if (s.elem === 'metal') for (let i = 0; i < 3; i++) bolt(_a.x, _a.y + rr(-4, 4), _a.z, _b.x, _b.y + rr(-4, 4), _b.z, 4, 2.5, 2, i ? MAGNET : col, 1.4, 0.18, i * 0.05);
+    else if (s.elem === 'frost') { P(T_GLINT, M_BILL, x, y, z, 0, 0, 0, 0.35, 34, 8, FROST, 1.3, 1, 0, 0, 0.5, 2); chips(x, y, z, 0, 0, cnt(8), 6, 18, 6, 20, ICE, 0.6, 1.4, 0.9); }
+    else if (s.elem === 'magma') sparks(x, y, z, 0, 0.5, 0, cnt(14), 20, 60, 1.2, LAVA, 1.2, 0.5, 50);
+    else if (s.elem === 'prism') P(T_GLINT, M_BILL, x, y, z, 0, 0, 0, 0.3, 40, 8, AMETH, 1.4, 1, 0, 0, 0.8, 3);
+  }
+  /** The move's own effect while it runs. */
+  function tickSig(id, dt) {
+    const s = sigFx[id];
+    if (!s.def) return;
+    s.t += dt;
+    const h = W.grapple && W.grapple.hold;
+    if (s.t > 5) { s.def = null; return; }
+    if (!h || h.phase !== 'sig' || h.who !== id) return;
+    const A = h.A, V = h.V, t = h.t, T = s.def.T, col = colOf(id), alt = (pal[id] || pal.player).alt;
+    switch (s.def.id) {
+      case 'chokebomb': {   // molten drips off the throat-hand while it hangs there
+        if (t < T.grip) break;
+        headPos(V, _b);
+        for (let n = due(s, dt, 40); n > 0; n--) P(T_GLOW, M_BILL, _b.x + rr(-3, 3), _b.y - rr(2, 6), _b.z + rr(-3, 3), rr(-4, 4), rr(-6, 4), rr(-4, 4), rr(0.5, 0.9), rr(1.2, 2.2), 0.4, rnd() < 0.4 ? LAVA : MAGMA, 1.3, 1, 0.2, 70);
+        LV(T_GLOW, M_BILL, _b.x, _b.y - 3, _b.z, 18, MAGMA, 0.45, 1);
+        break;
+      }
+      case 'backdrop': {    // a cinder trail off the body going over
+        if (t < T.grip) break;
+        chest(V, _b);
+        for (let n = due(s, dt, 36); n > 0; n--) P(T_FLAME, M_BILL, _b.x + rr(-5, 5), _b.y + rr(-4, 4), _b.z + rr(-5, 5), rr(-3, 3), rr(4, 12), rr(-3, 3), rr(0.35, 0.6), rr(4, 7), 1.5, MAGMA, 1.0, 1, 0.5, -4, rnd() * TAU, 0, 0.7, 0, 0.2, 1);
+        break;
+      }
+      case 'powerbomb': {   // sunk under the foe: the ground boils; then the surge
+        const p = A.pos;
+        if (t < T.grip) {
+          for (let n = due(s, dt, 30); n > 0; n--) { const a = rnd() * TAU, r = rr(4, 18); P(T_GLOW, M_BILL, p.x + Math.cos(a) * r, 1, p.z + Math.sin(a) * r, 0, rr(10, 26), 0, rr(0.5, 0.9), rr(1.5, 3), 0.6, rnd() < 0.5 ? SEA : FROST, 0.9, 1, 0.3, -6); }
+          if (s.last < 0) { s.last = 0; gring(p.x, p.z, 50, 8, T.grip, SEA, 0.9, T_RIPPLE); gring(p.x, p.z, 36, 6, T.grip * 0.8, alt, 0.7, T_RING, 0.1); }
+        } else if (s.last < 1) {
+          s.last = 1;
+          column(p.x, 0.3, p.z, 70, 10, 24, 0.9, SEA, 0.75, 0, 4, 1);
+          column(p.x, 0.3, p.z, 50, 5, 9, 0.6, FROST, 0.5, 1, 5, 1);
+          dustRing(p.x, p.z, cnt(14), 6, 24, 44, 5, 13, 1.2, STEAM, 0.45);
+        }
+        break;
+      }
+      case 'riptide': {     // the whirlpool round its feet while it turns
+        if (t < T.grip || t > T.peak) break;
+        const p = A.pos;
+        for (let n = due(s, dt, 50); n > 0; n--) {
+          const a = rnd() * TAU, r = rr(10, 30), sp = rr(30, 60);
+          P(T_GLOW, M_BILL, p.x + Math.cos(a) * r, rr(1, 6), p.z + Math.sin(a) * r, -Math.sin(a) * sp, rr(8, 20), Math.cos(a) * sp, rr(0.4, 0.7), rr(1.2, 2.4), 0.5, rnd() < 0.5 ? SEA : WATER, 1, 1, 1, 30);
+        }
+        if (s.last < 0) { s.last = 0; gring(p.x, p.z, 8, 46, T.peak - T.grip, SEA, 0.8, T_RIPPLE); gring(p.x, p.z, 6, 34, 0.5, alt, 0.6, T_RIPPLE, 0.25); }
+        LV(T_RIPPLE, M_FLAT, p.x, 0.4, p.z, 70, SEA, 0.5, 1, -T * 6);
+        break;
+      }
+      case 'frostdrop': {   // frozen stiff up there: ice grows over it, cold mist pours off
+        if (t < T.peak || t > T.freeze + 0.05) break;
+        chest(V, _b);
+        const k = clamp01((t - T.peak) / (T.freeze - T.peak));
+        LV(T_GLOW, M_BILL, _b.x, _b.y, _b.z, 26 + 10 * k, ICE, 0.35 + 0.35 * k, 1);
+        for (let n = due(s, dt, 34); n > 0; n--) P(T_GLINT, M_BILL, _b.x + rr(-9, 9), _b.y + rr(-5, 5), _b.z + rr(-9, 9), 0, 0, 0, rr(0.3, 0.6), rr(4, 8), 2, FROST, 1.2, 1, 0, 0, rnd(), 2);
+        s.acc2 += dt * (FULL ? 12 : 5);
+        while (s.acc2 >= 1) { s.acc2 -= 1; P(T_PUFF, M_BILL, _b.x + rr(-8, 8), _b.y - 4, _b.z + rr(-8, 8), rr(-3, 3), rr(-14, -6), rr(-3, 3), 1.2, 4, 12, STEAM, 0.35, 0, 1, 3, rnd() * TAU, 0, 1, 0.1, 0.2, 1); }
+        break;
+      }
+      case 'horntoss': {    // snow thrown up behind the charge
+        if (t < T.scoop) break;
+        const p = A.pos;
+        for (let n = due(s, dt, 26); n > 0; n--) P(T_PUFF, M_BILL, p.x + rr(-8, 8), 2, p.z + rr(-8, 8), rr(-10, 10), rr(8, 20), rr(-10, 10), rr(0.8, 1.3), 5, 14, FROST, 0.55, 0, 2, 0, rnd() * TAU, 0, 1, 0.08, 0.2, 1);
+        break;
+      }
+      case 'scissors': {    // blade-light crescents scything round the flip
+        if (t < T.leap || t > T.flip) break;
+        chest(A, _a);
+        for (let n = due(s, dt, 14); n > 0; n--) P(T_ARC, M_PLANE, _a.x, _a.y, _a.z, Math.sin(A.root.rotation.y + HALF_PI), 0, Math.cos(A.root.rotation.y + HALF_PI), 0.25, 10, 34, rnd() < 0.5 ? AMETH : PRISMW, 1.1, 1, 0, 0, rnd() * TAU, 6, 1, 0, 0.2);
+        break;
+      }
+      case 'prismdriver': { // the corkscrew throws prism light round it
+        if (t < T.jump || t > T.spike) break;
+        chest(V, _b);
+        for (let n = due(s, dt, 40); n > 0; n--) { const a = rnd() * TAU; P(T_GLINT, M_BILL, _b.x + Math.cos(a) * 12, _b.y + rr(-6, 10), _b.z + Math.sin(a) * 12, -Math.sin(a) * 30, rr(-5, 5), Math.cos(a) * 30, rr(0.3, 0.5), rr(6, 11), 2, rnd() < 0.5 ? AMETH : PRISMW, 1.3, 1, 1, 0, rnd(), 3); }
+        break;
+      }
+      case 'rootlock': {    // roots burst up round it and haul it into the air
+        if (t > T.hit) break;
+        const q = V.pos;
+        s.acc2 += dt * (FULL ? 18 : 8);
+        while (s.acc2 >= 1) {
+          s.acc2 -= 1;
+          const a = rnd() * TAU, r = rr(6, 14), x = q.x + Math.cos(a) * r, z = q.z + Math.sin(a) * r, h = Math.max(6, q.y + rr(-4, 4));
+          P(T_COL, M_BEAM, x, 0.2, z, (q.x - x) * 0.6, h, (q.z - z) * 0.6, 0.45, rr(2.5, 4), rr(1, 2), rnd() < 0.3 ? LEAF : ROOT, 0.9, 0, 1.2, 0, 0, 0, 1, 0, 0.3, 1);
+        }
+        if (s.last < 0) { s.last = 0; chips(q.x, 1, q.z, 0, 0, cnt(16), 8, 26, 20, 46, EARTH, 0.9, 2.2); dustRing(q.x, q.z, cnt(10), 8, 16, 30, 5, 12, 1.2, DUST, 0.5); }
+        for (let n = due(s, dt, 10); n > 0; n--) P(T_CHIP, M_BILL, q.x + rr(-8, 8), q.y + rr(-6, 6), q.z + rr(-8, 8), rr(-6, 6), rr(-4, 8), rr(-6, 6), rr(1.2, 1.8), 1.4, 1.4, LEAF, 1, 0, 0.6, 18, rnd() * TAU, rr(-6, 6), rr(0.6, 1.2), 0, 0.7);
+        break;
+      }
+      case 'timber': {      // the felled trunk sheds bark and leaves on the way down
+        if (t < T.peak || t > T.hit) break;
+        headPos(A, _a);
+        for (let n = due(s, dt, 30); n > 0; n--) P(T_CHIP, M_BILL, _a.x + rr(-6, 6), _a.y + rr(-4, 4), _a.z + rr(-6, 6), rr(-8, 8), rr(0, 10), rr(-8, 8), rr(1.2, 1.8), rr(1, 2), rr(1, 2), rnd() < 0.5 ? LEAF : BARK, 1, 0, 0.6, 30, rnd() * TAU, rr(-8, 8), rr(0.6, 1.3), 0, 0.7);
+        break;
+      }
+      case 'coil': {        // the rolling ball throws sparks off its plates
+        if (t < T.peak) break;
+        chest(A, _a); chest(V, _b);
+        for (let n = due(s, dt, 60); n > 0; n--) { const a = rnd() * TAU; P(T_STREAK, M_VEL, A.pos.x + Math.cos(a) * 6, 1.5, A.pos.z + Math.sin(a) * 6, Math.cos(a) * rr(30, 70), rr(20, 50), Math.sin(a) * rr(30, 70), rr(0.25, 0.45), 1, 0.3, SPARK, 1.5, 1, 1.5, 60, 0, 0, 6); }
+        s.acc2 += dt * (FULL ? 10 : 5);
+        while (s.acc2 >= 1) { s.acc2 -= 1; bolt(_a.x, _a.y, _a.z, _b.x, _b.y, _b.z, 3, 3, 1.8, rnd() < 0.5 ? MAGNET : col, 1.3, 0.1); }
+        break;
+      }
+      case 'clamp': {       // the magnetic field holding it
+        if (t < T.grip || t > T.peak) break;
+        chest(V, _b);
+        LV(T_RING, M_BILL, _b.x, _b.y, _b.z, 30 + 4 * Math.sin(T * 30), MAGNET, 0.55, 1, T * 4);
+        s.acc2 += dt * (FULL ? 9 : 4);
+        while (s.acc2 >= 1) { s.acc2 -= 1; chest(A, _a); bolt(_a.x, _a.y + rr(-5, 5), _a.z, _b.x + rr(-5, 5), _b.y + rr(-5, 5), _b.z + rr(-5, 5), 3, 2.5, 1.6, MAGNET, 1.2, 0.1); }
+        break;
+      }
+    }
+  }
+  /** A blow mid-move (jolt: the spike, the squeeze) from a move with an element. */
+  function elemJolt(id, x, y, z) {
+    const s = sigFx[id];
+    if (!s || !s.def) return;
+    const col = colOf(id);
+    switch (s.elem) {
+      case 'metal':
+        P(T_RING, M_BILL, x, y, z, 0, 0, 0, 0.3, 6, 40, MAGNET, 1.2, 1, 0, 0, 0, 0, 1, 0, 0.2);
+        for (let i = 0; i < 3; i++) { const a = rnd() * TAU; bolt(x, y, z, x + Math.cos(a) * 18, y + rr(-6, 10), z + Math.sin(a) * 18, 3, 3, 2, i ? MAGNET : col, 1.4, 0.14); }
+        sparks(x, y, z, 0, 0.6, 0, cnt(14), 30, 90, 1.2, SPARK, 1, 0.4, 60);
+        break;
+      case 'prism':
+        for (let i = 0; i < cnt(14); i++) { const a = rnd() * TAU, sp = rr(30, 80); P(T_GLINT, M_BILL, x, y + 2, z, Math.cos(a) * sp, rr(20, 60), Math.sin(a) * sp, rr(0.4, 0.7), rr(5, 9), 1, rnd() < 0.5 ? AMETH : PRISMW, 1.3, 1, 1.4, 60, rnd(), 3); }
+        P(T_ARC, M_FLAT, x, 0.4, z, 0, 0, 0, 0.35, 20, 60, AMETH, 1.1, 1, 0, 0, rnd() * TAU, 0, 1, 0, 0.2);
+        break;
+      case 'root':
+        elemImpact(id, x, z, 0.6);
+        break;
+    }
+  }
+  /** The landing of an element signature (the last throw:land), on top of the stock slam. */
+  function elemImpact(id, x, z, w) {
+    const s = sigFx[id];
+    const elem = s && s.elem, col = colOf(id), alt = (pal[id] || pal.player).alt;
+    if (!elem || ctx.isWater(x, z)) return;
+    const R = 14 + 18 * w;
+    switch (elem) {
+      case 'magma': {       // the mat splits and the caldera shows through
+        P(T_CRACK, M_FLAT, x, 0.24, z, 0, 0, 0, 2.6, R * 1.9, R * 2.2, MAGMA, 1.1, 1, 0, 0, rnd() * TAU, 0, 1, 0, 0.15);
+        column(x, 0.3, z, 50 + 30 * w, 8, 18, 0.7, MAGMA, 0.7, 1, 6, 1);
+        for (let i = 0; i < cnt(18 + 14 * w); i++) { const a = rnd() * TAU, sp = rr(14, 40); P(T_FLAME, M_BILL, x + Math.cos(a) * 4, 2, z + Math.sin(a) * 4, Math.cos(a) * sp, rr(30, 70), Math.sin(a) * sp, rr(0.4, 0.7), rr(5, 9), 2, rnd() < 0.3 ? LAVA : MAGMA, 1.2, 1, 1.2, 30, rnd() * TAU, 0, 0.7, 0, 0.2, 1); }
+        chips(x, 1, z, 0, 0, cnt(16 + 10 * w), 10, 40, 30, 70, BASALT, 1.2, 2.8, 1.8);
+        emitter(E_EMBERS, x, 0, z, 2.5, MAGMA, R * 0.6);
+        break;
+      }
+      case 'tide': {        // the pressure lets go: a burst of the trench
+        column(x, 0.3, z, 46 + 30 * w, 9, 22, 1.2, SEA, 0.8, 0, 4, 1);
+        gring(x, z, 6, R * 2.6, 0.9, SEA, 0.9, T_RIPPLE);
+        gring(x, z, R * 2, 4, 0.45, alt, 0.8, T_RING); // (the implosion ring, closing in)
+        for (let i = 0; i < cnt(24 + 14 * w); i++) { const a = rnd() * TAU, sp = rr(14, 44); P(T_GLOW, M_BILL, x, 1.5, z, Math.cos(a) * sp, rr(28, 70), Math.sin(a) * sp, rr(1, 1.6), rr(1.2, 2.6), 0.5, rnd() < 0.5 ? SEA : WATER, 0.9, 0, 0.3, 75); }
+        dustRing(x, z, cnt(12), 6, 18, 40, 6, 15, 1.4, STEAM, 0.45);
+        break;
+      }
+      case 'frost': {       // it shatters: ice shards, a frost ring, a cold cloud
+        for (let i = 0; i < cnt(26 + 14 * w); i++) {
+          const a = rnd() * TAU, o = rr(10, 50), sz = rr(1.2, 3.2);
+          P(T_CHIP, M_BILL, x + Math.cos(a) * 3, 2, z + Math.sin(a) * 3, Math.cos(a) * o, rr(30, 80), Math.sin(a) * o, rr(1.2, 1.8), sz, sz, rnd() < 0.5 ? ICE : FROST, 1, 0, 0.5, 70, rnd() * TAU, rr(-9, 9), rr(0.4, 0.9), 0, 0.7);
+        }
+        P(T_RING, M_FLAT, x, 0.3, z, 0, 0, 0, 1.6, R, R * 3.2, FROST, 0.9, 1, 0, 0, rnd() * TAU, 0, 1, 0, 0.3);
+        D(T_CRACK, x, z, R * 2, ICE, 0.35, 20, rnd() * TAU);
+        P(T_GLINT, M_BILL, x, 6, z, 0, 0, 0, 0.35, 50, 10, FROST, 1.4, 1, 0, 0, 0.5, 2);
+        dustRing(x, z, cnt(16), R * 0.4, 30, 60, 6, 18, 1.8, FROST, 0.6);
+        break;
+      }
+      case 'prism': {       // the amethyst splinters out of the ground
+        for (let i = 0, n = cnt(8 + 6 * w); i < n; i++) {
+          const a = i / n * TAU + rr(-0.2, 0.2), r = R * rr(0.4, 0.9);
+          // a crystal spike: a streak standing still (M_VEL: length = size x aspect along its velocity)
+          const h = rr(4, 7);
+          P(T_STREAK, M_VEL, x + Math.cos(a) * r, h * 2.2, z + Math.sin(a) * r, Math.cos(a) * 0.08, 0.3, Math.sin(a) * 0.08, 1.4, h, h * 0.8, rnd() < 0.3 ? PRISMW : AMETH, 1.2, 1, 0, 0, 0, 0, 4.5, 0, 0.6);
+        }
+        P(T_ARC, M_FLAT, x, 0.4, z, 0, 0, 0, 0.4, 20, R * 3, PRISMW, 1.2, 1, 0, 0, rnd() * TAU, 0, 1, 0, 0.2);
+        for (let i = 0; i < cnt(18); i++) { const a = rnd() * TAU, sp = rr(30, 90); P(T_GLINT, M_BILL, x, 3, z, Math.cos(a) * sp, rr(20, 60), Math.sin(a) * sp, rr(0.4, 0.8), rr(5, 10), 1, rnd() < 0.5 ? AMETH : PRISMW, 1.3, 1, 1.4, 60, rnd(), 3); }
+        break;
+      }
+      case 'root': {        // the roots tear up the lawn around it
+        for (let i = 0, n = cnt(9 + 7 * w); i < n; i++) {
+          const a = i / n * TAU + rr(-0.25, 0.25), r = R * rr(0.5, 1.1), lean = rr(6, 14);
+          P(T_COL, M_BEAM, x + Math.cos(a) * r, 0.2, z + Math.sin(a) * r, Math.cos(a) * lean, rr(16, 30), Math.sin(a) * lean, rr(1, 1.5), rr(3, 5), rr(1.5, 3), rnd() < 0.25 ? LEAF : ROOT, 0.95, 0, 2, 0, 0, 0, 1, 0, 0.4, 1, rr(0, 0.1));
+        }
+        chips(x, 1, z, 0, 0, cnt(18 + 10 * w), 10, 40, 24, 60, LEAF, 1, 2, 2);
+        chips(x, 1, z, 0, 0, cnt(10), 8, 30, 20, 50, BARK, 1, 2.4, 1.6);
+        break;
+      }
+      case 'metal': {       // steel on steel: a shower of sparks, the field discharging into the ground
+        sparks(x, 2, z, 0, 1, 0, cnt(30 + 20 * w), 40, 120, 1.1, SPARK, 1.2, 0.6, 70);
+        for (let i = 0; i < (FULL ? 6 : 3); i++) { const a = rnd() * TAU; bolt(x, 3, z, x + Math.cos(a) * R * 1.4, 0.5, z + Math.sin(a) * R * 1.4, 4, 4, 2.4, i % 2 ? MAGNET : col, 1.4, 0.16, i * 0.04); }
+        gring(x, z, 4, R * 2.2, 0.4, MAGNET, 1, T_RING);
+        chips(x, 1, z, 0, 0, cnt(12), 8, 30, 20, 50, STEEL, 0.8, 1.8, 1.4);
+        break;
+      }
+    }
+    flashLight(x, 8, z, col, 7 + 4 * w, 0.35);
+  }
+  // Finishers of the six: the charge drawn in, the pose at the top, and the crater, in the element
+  function elemFinTick(elem, A, p, col) {
+    const a = rnd() * TAU, r = rr(8, 34);
+    if (elem === 'magma') P(T_FLAME, M_BILL, p.x + Math.cos(a) * r, 0.5, p.z + Math.sin(a) * r, 0, rr(20, 40), 0, rr(0.6, 1), rr(4, 7), 1.5, MAGMA, 1.1, 1, 0.4, -4, rnd() * TAU, 0, 0.7, 0, 0.2, 1);
+    else if (elem === 'tide') P(T_GLOW, M_BILL, p.x + Math.cos(a) * r, 0.5, p.z + Math.sin(a) * r, -Math.cos(a) * 20, rr(14, 30), -Math.sin(a) * 20, rr(0.8, 1.3), rr(1.5, 3), 0.6, SEA, 1, 1, 0.3, -5);
+    else if (elem === 'frost') P(T_GLINT, M_BILL, p.x + Math.cos(a) * r, rr(1, 20), p.z + Math.sin(a) * r, 0, rr(4, 12), 0, rr(0.4, 0.8), rr(4, 8), 2, FROST, 1.1, 1, 0, 0, rnd(), 2);
+    else if (elem === 'prism') P(T_GLINT, M_BILL, p.x + Math.cos(a) * r, rr(1, 24), p.z + Math.sin(a) * r, -Math.sin(a) * 30, 0, Math.cos(a) * 30, rr(0.4, 0.7), rr(5, 9), 2, rnd() < 0.5 ? AMETH : PRISMW, 1.2, 1, 0, 0, rnd(), 3);
+    else if (elem === 'root') P(T_COL, M_BEAM, p.x + Math.cos(a) * r, 0.2, p.z + Math.sin(a) * r, 0, rr(12, 26), 0, 0.6, rr(2, 3.5), 1, rnd() < 0.3 ? LEAF : ROOT, 0.9, 0, 1.5, 0, 0, 0, 1, 0, 0.3, 1);
+    else if (elem === 'metal') { chest(A, _a); bolt(p.x + Math.cos(a) * r, 0.8, p.z + Math.sin(a) * r, _a.x, _a.y, _a.z, 3, 3, 1.8, rnd() < 0.5 ? MAGNET : col, 1.2, 0.12); }
+  }
+  function elemFinApex(elem, A, p, col, alt) {
+    chest(fighter(fin.target) || A, _b);
+    if (elem === 'magma') { column(p.x, 0.3, p.z, 140, 14, 30, 0.8, MAGMA, 0.75, 1, 6, 1); P(T_BURST, M_BILL, _b.x, _b.y, _b.z, 0, 0, 0, 0.22, 16, 50, LAVA, 1.0, 1, 0, 0, rnd() * TAU); }
+    else if (elem === 'tide') { column(p.x, 0.3, p.z, 120, 18, 36, 1.0, SEA, 0.7, 0, 4, 1); gring(p.x, p.z, 70, 8, 0.45, alt, 0.9, T_RIPPLE); }
+    else if (elem === 'frost') { P(T_GLINT, M_BILL, _b.x, _b.y, _b.z, 0, 0, 0, 0.4, 70, 12, FROST, 1.3, 1, 0, 0, 0.5, 2); gring(p.x, p.z, 6, 60, 0.6, FROST, 0.9); }
+    else if (elem === 'prism') { for (let i = 0; i < 6; i++) P(T_ARC, M_PLANE, _b.x, _b.y, _b.z, Math.cos(i), 0.2, Math.sin(i), 0.35, 16, 70, i % 2 ? AMETH : PRISMW, 1.1, 1, 0, 0, i, 4, 1, 0, 0.2); }
+    else if (elem === 'root') { for (let i = 0; i < cnt(10); i++) { const a = rnd() * TAU, r = rr(6, 20); P(T_COL, M_BEAM, p.x + Math.cos(a) * r, 0.2, p.z + Math.sin(a) * r, (_b.x - p.x) * 0.2, _b.y * 0.9, (_b.z - p.z) * 0.2, 0.6, rr(3, 5), 1.5, rnd() < 0.3 ? LEAF : ROOT, 0.9, 0, 1, 0, 0, 0, 1, 0, 0.3, 1); } }
+    else if (elem === 'metal') { for (let i = 0; i < 5; i++) { const a = rnd() * TAU; bolt(_b.x, _b.y, _b.z, p.x + Math.cos(a) * 30, 0.5, p.z + Math.sin(a) * 30, 5, 4, 2.4, i % 2 ? MAGNET : col, 1.4, 0.2); } P(T_RETICLE, M_BILL, _b.x, _b.y, _b.z, 0, 0, 0, 0.5, 60, 30, MAGNET, 1.1, 1, 0, 0, 0, 3, 1, 0, 0.4); }
+  }
+  function elemFinImpact(elem, x, z, R, col) {
+    if (elem === 'magma') {
+      P(T_CRACK, M_FLAT, x, 0.26, z, 0, 0, 0, 4, R * 1.4, R * 1.6, MAGMA, 1.1, 1, 0, 0, rnd() * TAU, 0, 1, 0, 0.1);
+      column(x, 0.3, z, 200, 18, 44, 1.1, MAGMA, 0.75, 1, 7, 1);
+      chips(x, 1, z, 0, 0, cnt(30), 20, 80, 50, 130, BASALT, 1.6, 3.6, 2.4);
+      emitter(E_EMBERS, x, 0, z, 6, MAGMA, R * 0.5, 0.2);
+    } else if (elem === 'tide') {
+      column(x, 0.3, z, 160, 20, 50, 1.6, SEA, 0.85, 0, 4, 1);
+      gring(x, z, R * 1.6, 8, 0.6, FROST, 0.9, T_RING);
+      for (let i = 0; i < cnt(40); i++) { const a = rnd() * TAU, sp = rr(20, 70); P(T_GLOW, M_BILL, x, 2, z, Math.cos(a) * sp, rr(40, 110), Math.sin(a) * sp, rr(1.2, 2), rr(1.5, 3.5), 0.6, rnd() < 0.5 ? SEA : WATER, 0.9, 0, 0.3, 75); }
+    } else if (elem === 'frost') {
+      for (let i = 0; i < cnt(44); i++) { const a = rnd() * TAU, o = rr(20, 90), sz = rr(1.6, 4); P(T_CHIP, M_BILL, x, 2, z, Math.cos(a) * o, rr(40, 110), Math.sin(a) * o, rr(1.4, 2.2), sz, sz, rnd() < 0.5 ? ICE : FROST, 1, 0, 0.5, 70, rnd() * TAU, rr(-9, 9), rr(0.4, 0.9), 0, 0.7); }
+      P(T_RING, M_FLAT, x, 0.3, z, 0, 0, 0, 2.2, R * 0.6, R * 2.4, FROST, 0.9, 1, 0, 0, rnd() * TAU, 0, 1, 0, 0.3);
+      dustRing(x, z, cnt(24), R * 0.3, 50, 90, 10, 26, 2.4, FROST, 0.6);
+    } else if (elem === 'prism') {
+      for (let i = 0, n = cnt(14); i < n; i++) { const a = i / n * TAU, r = R * rr(0.3, 0.9), h = rr(7, 12); P(T_STREAK, M_VEL, x + Math.cos(a) * r, h * 2.2, z + Math.sin(a) * r, Math.cos(a) * 0.1, 0.3, Math.sin(a) * 0.1, 2, h, h * 0.8, rnd() < 0.3 ? PRISMW : AMETH, 1.3, 1, 0, 0, 0, 0, 4.5, 0, 0.6); }
+      for (let i = 0; i < 4; i++) P(T_ARC, M_FLAT, x, 0.5, z, 0, 0, 0, 0.5, 30, R * 2.6, i % 2 ? AMETH : PRISMW, 1.1, 1, 0, 0, rnd() * TAU, 2, 1, 0, 0.2, 0, i * 0.08);
+    } else if (elem === 'root') {
+      for (let i = 0, n = cnt(18); i < n; i++) { const a = i / n * TAU + rr(-0.2, 0.2), r = R * rr(0.4, 1.0), lean = rr(8, 20); P(T_COL, M_BEAM, x + Math.cos(a) * r, 0.2, z + Math.sin(a) * r, Math.cos(a) * lean, rr(30, 60), Math.sin(a) * lean, rr(1.6, 2.4), rr(4, 7), rr(2, 4), rnd() < 0.25 ? LEAF : ROOT, 0.95, 0, 2, 0, 0, 0, 1, 0, 0.4, 1, rr(0, 0.25)); }
+      chips(x, 1, z, 0, 0, cnt(30), 14, 60, 40, 100, LEAF, 1.2, 2.4, 2.6);
+    } else if (elem === 'metal') {
+      sparks(x, 3, z, 0, 1, 0, cnt(60), 60, 180, 1.1, SPARK, 1.4, 0.8, 70);
+      for (let i = 0; i < (FULL ? 10 : 5); i++) { const a = rnd() * TAU, r = rr(0.4, 1) * R; bolt(x, 4, z, x + Math.cos(a) * r, 0.5, z + Math.sin(a) * r, 5, 5, 3, i % 2 ? MAGNET : col, 1.5, 0.2, i * 0.05); }
+      emitter(E_ARCS, x, 0, z, 3, MAGNET, R * 0.5, 0.2);
+    }
+  }
+
   // ---- landmark set pieces (spots.js) and foreign objects ----
   const ELEC = C(0.55, 0.8, 1), GRANITE = C(0.78, 0.52, 0.5), GLASS = C(0.7, 0.88, 1);
   function fxSpot(e) {
@@ -1563,6 +1843,7 @@ export function createVfx(ctx, W) {
     for (const e of ems) e.on = false;
     for (const q of later) q.t = -1;
     fin.on = false; lock = false; lockAcc = 0; lastSlamT = -9; dip = 0; setLookFxDip(0);
+    sigFx.player.def = null; sigFx.rival.def = null;
     for (const id of ['player', 'rival']) { st[id].glow = 0; if (W[id]) setKaijuGlow(W[id].root, 0, 0); }
     if (light.l && light.l._seq === light.seq) { light.l.intensity = 0; light.l.distance = 60; light.l.color.setHex(0xffaa33); }
     light.l = null;
@@ -1577,6 +1858,7 @@ export function createVfx(ctx, W) {
       }
       tickFighter(a, st.player, dt); tickFighter(b, st.rival, dt);
       tickLock(dt); tickTeles(dt); tickFinisher(dt);
+      if (dt > 0) { tickSig('player', dt); tickSig('rival', dt); }
     }
     tickLight(dt);
     if (dip > 0) { if (!fin.on || fin.hit) dip = Math.max(0, dip - dt * 0.3); setLookFxDip(dip); }
@@ -1613,6 +1895,7 @@ export function createVfx(ctx, W) {
       on(EV.STRIKE_LANDED, (e) => {
         const f = fighter(e.who);
         if (f) st[f.id].tele.on = false;
+        if (sigFx[e.who] && sigFx[e.who].def) elemJolt(e.who, e.x, e.y, e.z); // a blow inside a signature (the spike, the squeeze)
         if (e.kind === 'splash' || e.kind === 'stomp') { fxSlam(e.x, e.z, 0.7 + 0.5 * e.impact, colOf(e.who), e.kind === 'splash' ? 1 : 0); return; }
         fxStrike(e, e.kind === 'weapon' ? 1.3 : 1);
         if (e.kind === 'weapon') fxWeaponHit(e, false);
@@ -1642,9 +1925,12 @@ export function createVfx(ctx, W) {
         const f = fighter(e.who);
         if (!f || !ctx.world.spawnKaijuPower) return;
         const radial = e.power === 'roar' || e.power === 'ult';
-        const pos = new THREE.Vector3(e.x, radial ? f.pos.y : e.y, e.z);
+        // (roar / ult / charge: from its feet, on whatever it stands on; the beam: from its mouth)
+        const pos = new THREE.Vector3(e.x, e.power === 'beam' ? e.y : f.pos.y, e.z);
         const direction = radial ? undefined : new THREE.Vector3(e.dirX, 0, e.dirZ);
-        ctx.world.spawnKaijuPower(f.cfg, e.power, pos, { extent: radial ? e.radius : e.range, direction });
+        if (!ctx.world.spawnKaijuPower(f.cfg, e.power, pos, { extent: radial ? e.radius : e.range, direction })) return;
+        // the beam's far end: where a building stopped it, or where it ran out
+        if (e.power === 'beam') ctx.world.spawnKaijuPower(f.cfg, 'impact', pos.set(e.x + e.dirX * e.range, Math.max(1, e.y * 0.5), e.z + e.dirZ * e.range), { extent: 16 });
       });
       on(EV.POWER_HIT, fxPower);
       on(EV.STAGGER, fxStagger);
@@ -1693,6 +1979,12 @@ export function createVfx(ctx, W) {
       on(EV.THROW_LAND, (e) => {
         const V = fighter(e.target);
         if (V) st[V.id].trail.on = false;
+        const sf = sigFx[e.who], hd = W.grapple && W.grapple.hold;
+        if (sf && sf.def && !(hd && hd.phase === 'sig' && hd.who === e.who)) {
+          // the signature is down: its element on top of the slam
+          if (e.surface !== 'water') elemImpact(e.who, e.x, e.z, Math.min(1.25, 0.45 + (e.impact || 0.5) * 0.8));
+          sf.def = null;
+        }
         if (e.surface === 'building' || e.surface === 'ropes') return; // building:impact / rope:rebound draw those
         const w = Math.min(1.25, 0.45 + (e.impact || 0.5) * 0.8);
         if (e.surface === 'water') { lastSlamT = T; lastSlamX = e.x; lastSlamZ = e.z; waterBurst(e.x, e.z, w); }
@@ -1721,6 +2013,7 @@ export function createVfx(ctx, W) {
         // the holder commits: a quick tightening ring so the move out of the lock-up has a beat to read
         const a = fighter(e.who);
         if (!a) return;
+        if (e.type === 'signature') sigStart(e);
         chest(a, _a);
         P(T_RING, M_BILL, _a.x, _a.y + 4, _a.z, 0, 0, 0, Math.max(0.15, Math.min(0.5, e.dur || 0.3)), 34, 6, colOf(e.who), 0.9, 1, 0, 0, 0, 0, 1, 0.3, 0.6);
       });

@@ -1,0 +1,690 @@
+# Part 12: the new six against the original three (Gorrak face; Mechra and Tridon heels).
+# The big ones: the magnet against the machine (Ferrumaw, Mechra), the lake against the ocean (Gorrak, Brineveil),
+# lightning against the tree (Tridon, Thornwake), the machine against nature (Mechra, Thornwake), two brawlers
+# (Gorrak, Cindervault), two showmen (Tridon, Vesperax), two good guys from the cold and the lake (Gorrak, Rimehorn).
+
+# ================================================================ GORRAK
+# ---------------------------------------------------------------- Gorrak v Cindervault: two brawlers
+@ intro pair:cindervault+gorrak
+M: The pride of Lake Michigan against the Walking Caldera! Gorrak versus Cindervault!
+V: Atomic breath against a volcano. Brannigan, somebody is going to set the lake on fire.
+
+M: Two of the hardest hitters who ever lived! Nobody is going to be backing up tonight!
+V: Nobody's going to be standing up tonight, either. This one's going to end in a crater.
+
+M: Gorrak defends his city against a mountain that walked here!
+V: He walked all the way from a buried caldera. Show some respect for the commute.
+
+@ banter pair:cindervault+gorrak
+V: Gorrak's got a reactor inside him. Cindervault's got the centre of the earth. Reactors are a fad.
+M: The centre of the earth isn't very good at wrestling, Vance.
+
+M: These two are just standing there trading bombs!
+V: No technique. No finesse. I love it. Don't tell anyone.
+
+V: Gorrak's spines against basalt. He's going to snap every one of them.
+M: Gorrak's been hitting rocks since he was a hatchling, Vance.
+
+M: The heat coming off this one! Gorrak's breath against Cindervault's magma!
+V: I've lost my eyebrows. Both of them. Live on television.
+
+@ fall.end a:gorrak v:cindervault
+M: Gorrak takes the fall! He put out the volcano with his bare hands!
+V: He threw lake water on it! That's cheating! You can't throw lakes!
+
+@ fall.end a:cindervault v:gorrak
+V: Down goes the lizard! Cindervault takes the fall! Somebody check if he's cooked!
+M: Gorrak took everything that volcano had, and it finally got him.
+
+@ match.over a:gorrak v:cindervault
+M: Gorrak beats the volcano! The pride of Lake Michigan is the champion!
+V: He doused my volcano! I demand a hearing!
+
+@ match.over a:cindervault v:gorrak
+V: The volcano buries the lizard! Cindervault is the champion! Hot! Hot! HOT!
+M: Gorrak is down in the crater. Chicago has lost its hero tonight.
+
+@ strike.big a:cindervault v:gorrak
+M: Cindervault hit Gorrak so hard his spines went dark for a second!
+V: Lights out, cactus! Ha!
+
+@ strike.big a:gorrak v:cindervault
+M: Gorrak cracks the basalt! There's lava pouring out of that rock!
+V: You broke a mountain! Who breaks a mountain?
+
+# ---------------------------------------------------------------- Gorrak v Brineveil: the lake and the ocean
+@ intro pair:brineveil+gorrak
+M: Lake Michigan's own against a monster from the bottom of the ocean! Fresh water against salt!
+V: Gorrak's from a lake, Brannigan. Brineveil's from the deepest trench on earth. That's a puddle against a planet.
+
+M: Gorrak has guarded these shores his whole life, and tonight something has come up out of the deep for him!
+V: A lake monster against a sea monster. One of them is a professional.
+
+M: Brineveil swam all the way from the Pacific to fight Gorrak! How did he even get here?
+V: Through the Saint Lawrence Seaway, Brannigan. Like a gentleman.
+
+M: The guardian of the lake against the thing in the dark water! Gorrak versus Brineveil!
+V: Nobody guards the deep, Brannigan. The deep guards itself.
+
+@ banter pair:brineveil+gorrak
+V: Gorrak's never been more than a few hundred feet down, Brannigan. Brineveil's been seven miles.
+M: Gorrak doesn't need to go down. He's fighting up here.
+
+M: Brineveil is trying to drag him toward the lake! He wants to fight him in the water!
+V: Smart. Make the lizard fight in the deep end.
+
+V: You know what they call a lake creature in the ocean? Lunch.
+M: Gorrak's nobody's lunch, Vance.
+
+M: Gorrak keeps swatting at that lure! He's not falling for it!
+V: He's hypnotised and he doesn't know it yet.
+
+V: Look at this, Brannigan. Salt water against fresh. The ocean against the pond.
+M: That pond is the fifth largest lake in the world, Vance!
+V: Pond.
+
+M: Gorrak is lighting up those spines, and Brineveil's lure is glowing right back! It's a light show in Grant Park!
+V: Two night lights, fighting. Charming.
+
+@ fall.end a:gorrak v:brineveil
+M: Gorrak takes the fall! He beat the deep sea monster on dry land!
+V: It's the air! Brineveil can't fight in this air! I want an underwater rematch!
+
+M: The guardian of the lake takes the fall! Brineveil is beached!
+V: Somebody throw him back in! Throw him back!
+
+@ fall.end a:brineveil v:gorrak
+V: Brineveil takes the fall! The deep has spoken! The lake monster is drowned!
+M: He lured Gorrak in, and he got him. Chicago is silent.
+
+@ match.over a:gorrak v:brineveil
+M: Gorrak saves the lake! The pride of Lake Michigan beats the monster from the deep!
+V: Fresh water. Beaten by fresh water. Brineveil is going to need years of therapy.
+
+@ match.over a:brineveil v:gorrak
+V: The ocean beats the pond! Brineveil is the champion! Bow to the deep!
+M: Gorrak is down, and Brineveil has the title. The lake has never felt so dark.
+
+@ water v:brineveil a:gorrak
+M: Gorrak throws him into HIS lake! You're in my house now, fish!
+V: It's a puddle! He'll be fine! He's from the ocean!
+
+@ water v:gorrak a:brineveil
+M: Brineveil dragged Gorrak into the lake! That's Gorrak's home water!
+V: Not tonight it isn't. Tonight it's Brineveil's buffet!
+
+# ---------------------------------------------------------------- Gorrak v Rimehorn: two good guys
+@ intro pair:gorrak+rimehorn
+M: Gorrak against Rimehorn! Two of the good guys, and Chicago loves them both!
+V: Wonderful. A lizard and a cow. Somebody wake me when it's over.
+
+M: The pride of Lake Michigan against the Glacial Bastion! Folks, the lake freezes over every winter, and now we know why!
+V: That's not why, Brannigan. It's called January.
+
+M: Two of the toughest, most honourable kaiju in the world, and neither of them will ever back down!
+V: Honour. Ugh. The most boring word in the language.
+
+@ banter pair:gorrak+rimehorn
+V: Gorrak breathes atomic fire. Rimehorn's made of ice. This is a cocktail, Brannigan.
+M: A heck of a fight, is what it is.
+
+M: Two good guys, and they shook hands before the bell!
+V: I saw. I nearly lost my lunch.
+
+V: You know, Gorrak spends every winter frozen in that lake. Maybe Rimehorn's his landlord.
+M: That's the dumbest thing you've said all night, Vance.
+V: The night is young.
+
+M: The lake effect, folks! Rimehorn's bringing it with every blow!
+V: And Gorrak's thawing him out with every breath. They're making weather.
+
+@ match.over a:gorrak v:rimehorn
+M: Gorrak is the champion! What a fight! Rimehorn gave him everything he had!
+V: The lizard beats the cow. Big deal. Hand me the remote.
+
+@ match.over a:rimehorn v:gorrak
+M: Rimehorn is the champion! He beat Gorrak, and Gorrak is the first to congratulate him!
+V: Look at them hug. It's like a greeting card exploded.
+
+# ---------------------------------------------------------------- Gorrak v Vesperax
+@ intro pair:gorrak+vesperax
+M: Gorrak against the Amethyst Blade! The hometown hero against a mantis with knives for arms!
+V: A brute against a fencer, Brannigan. Muscle against art.
+
+M: Vesperax came all the way from the amethyst caverns to cut Gorrak down to size!
+V: There's a lot to cut, Brannigan. He's a large lizard.
+
+M: Vesperax is the fastest thing in the sport. Gorrak is the toughest. Something's got to give!
+V: Gorrak's going to give. Everywhere. In slices.
+
+@ banter pair:gorrak+vesperax
+V: Vesperax is fencing, and Gorrak is swinging like he's mad at a door.
+M: And he's still landing, Vance.
+
+M: Vesperax keeps slicing at those spines!
+V: He's giving him a trim. Gorrak's been overdue for years.
+
+V: You know what a praying mantis does to a lizard, Brannigan?
+M: I don't want to know, Vance.
+V: You really don't.
+
+M: Gorrak just caught one of those scythes in his teeth!
+V: Disgusting. No manners at all.
+
+@ match.over a:gorrak v:vesperax
+M: Gorrak breaks the blade! The pride of Lake Michigan is the champion!
+V: He shattered a gemstone. A priceless gemstone. Philistine.
+
+@ match.over a:vesperax v:gorrak
+V: The Blade cuts down the lizard! Vesperax is the champion!
+M: Gorrak is down, and Vesperax has the title. I can't watch him bow.
+
+# ---------------------------------------------------------------- Gorrak v Thornwake
+@ intro pair:gorrak+thornwake
+M: Gorrak against Thornwake! Chicago's own against the Uprooted Forest! Two good guys!
+V: A lizard against a tree. This is a pet shop, Brannigan, not a main event.
+
+M: Gorrak grew up in that lake, and Thornwake grew up in the woods that used to be around it!
+V: And they've been neighbours for a thousand years, and tonight they finally settle the fence dispute.
+
+M: Two of the most beloved kaiju in the world! Chicago's going to cheer for every single blow!
+V: Chicago's going to need a lumberjack and a vet.
+
+@ banter pair:gorrak+thornwake
+V: Gorrak breathes fire, Brannigan. He's fighting a tree. I don't understand why this isn't over.
+M: Gorrak would never burn the park, Vance.
+V: That's his problem. No ambition.
+
+M: Thornwake's got Gorrak wrapped up in the branches!
+V: Like a lizard in a hedge. Very undignified.
+
+V: Two heroes, hugging it out between punches. I'm going to need a bucket.
+M: It's called sportsmanship, Vance.
+
+M: Gorrak just pulled a branch off and swung it right back at him!
+V: Using the other guy's arm as a weapon. Finally, some creativity.
+
+@ match.over a:gorrak v:thornwake
+M: Gorrak is the champion! And Thornwake is the first to shake his hand!
+V: Of course he is. Revolting.
+
+@ match.over a:thornwake v:gorrak
+M: Thornwake is the champion! He took everything Gorrak had and kept on growing!
+V: A tree. Champion. I need to lie down in a dark room.
+
+# ---------------------------------------------------------------- Gorrak v Ferrumaw
+@ intro pair:ferrumaw+gorrak
+M: Gorrak against Ferrumaw! The lake against the foundry! Two heroes of Chicago!
+V: The two biggest boy scouts in the sport. I've never been less excited.
+
+M: Ferrumaw grew up working the mills on the South Side. Gorrak guarded the lake. Both of them fight for this city!
+V: Both of them are going to wreck this city. They're very fair about it.
+
+M: The Atomic Tyrant against the Polarity Beast! What a match!
+V: An armadillo and a cactus. It's a desert, Brannigan. A desert of talent.
+
+@ banter pair:ferrumaw+gorrak
+V: Ferrumaw keeps pulling him in. Gorrak's not even metal, is he?
+M: He's got iron in his blood, Vance, like everybody in this town!
+
+M: Gorrak hit him and the whole foundry district heard the clang!
+V: Like a church bell. A very ugly church bell.
+
+V: Two good guys trading punches. Nobody's cheating. Nobody's lying. This is torture.
+M: This is wrestling, Vance.
+
+M: Ferrumaw just pulled a semi truck off the street and put it right in Gorrak's path!
+V: Finally, some initiative!
+
+@ match.over a:gorrak v:ferrumaw
+M: Gorrak is the champion! Ferrumaw fought like a hero, and he goes down like one!
+V: Enjoy it, Brannigan. It's a good-guy hug-fest out there.
+
+@ match.over a:ferrumaw v:gorrak
+M: Ferrumaw is the champion! The foundry beats the lake!
+V: The magnet beats the lizard. I'll be in my car. If it's still there.
+
+# ================================================================ MECHRA
+# ---------------------------------------------------------------- Mechra v Ferrumaw: the magnet and the machine
+@ intro pair:ferrumaw+mechra
+M: The Polarity Beast against the Iron Executioner! A magnet against a machine!
+V: Do not stand anywhere near Mechra with that thing, Brannigan. Those are delicate circuits.
+
+M: Ferrumaw came out of the foundries that built half the steel in this city! Tonight he faces a machine!
+V: Mechra was built by geniuses. Ferrumaw was poured by a union.
+
+M: Folks, Mechra is forty thousand tons of metal, and Ferrumaw is the biggest magnet on earth!
+V: I have a very bad feeling about this, and I never have bad feelings.
+
+M: The Iron Executioner against the Polarity Beast! Every scrapyard in the Midwest is watching!
+V: Every scrapyard in the Midwest is hoping. Vultures.
+
+@ banter pair:ferrumaw+mechra
+V: Mechra calculated his chances against a magnet, Brannigan. The screen just says error.
+M: That's not a good sign, Vance.
+
+M: Ferrumaw is pulling Mechra across the park without even touching him!
+V: That's assault on a machine! That's illegal! Is anything illegal? Nothing is illegal! I hate this!
+
+V: Every time Ferrumaw gets close, Mechra's targeting system goes haywire!
+M: I can see the visor flickering from up here!
+
+M: Mechra's plating is starting to peel off toward Ferrumaw!
+V: Those are warranty-voiding conditions! Somebody stop him!
+
+V: You know what a magnet does to a hard drive, Brannigan? It wipes it. He's going to wipe Mechra's memory!
+M: Mechra won't even remember losing.
+V: He won't lose! Probably!
+
+M: The missiles are curving in the air! Ferrumaw is bending them away!
+V: That's tampering with ordnance! Somebody call the Pentagon!
+
+@ fall.end a:ferrumaw v:mechra
+M: Ferrumaw takes the fall! He pulled that machine apart!
+V: Mechra's systems were scrambled! That one shouldn't stand! I don't care if there's no rules!
+M: There are no rules, Vance.
+
+M: The magnet beats the machine! Ferrumaw takes the fall!
+V: Magnetic interference! I want a full diagnostic!
+
+@ fall.end a:mechra v:ferrumaw
+V: Mechra takes the fall! Insulated! Shielded! Prepared! I told you, Brannigan!
+M: Ferrumaw got too close, and the machine made him pay.
+
+V: Ha! Scrap metal pinned by a superior machine! Exactly as designed!
+M: Mechra takes the fall. Ferrumaw's scales are scattered all over the park.
+
+@ match.over a:ferrumaw v:mechra
+M: Ferrumaw is the champion! He took the Iron Executioner apart, bolt by bolt!
+V: My machine. My beautiful machine. Demagnetised and disgraced.
+
+@ match.over a:mechra v:ferrumaw
+V: The machine beats the magnet! Mechra is the champion! Precision beats polarity!
+M: Mechra wins it, and Ferrumaw is lying in a pile of his own scales.
+
+@ strike.big a:ferrumaw v:mechra
+M: Ferrumaw pulls him in and puts a fist right through the chest plate!
+V: Those are the sensors! He's hitting the sensors!
+
+@ strike.big a:mechra v:ferrumaw
+M: Mechra hammers him, and the scales go flying everywhere!
+V: Scrap! Scrap on the ground! The machine is recycling him!
+
+@ finisher.hit a:ferrumaw v:mechra
+M: The Polarity Crash on the machine! Mechra is flat, and his circuits are sparking!
+V: Somebody reboot him! Turn him off and on again!
+
+@ prop.smash a:ferrumaw v:mechra
+M: Ferrumaw brought a steel building down on the machine, and now they're welded together!
+V: That's two kinds of scrap, Brannigan! Two kinds!
+
+@ spot.ltracks v:ferrumaw
+M: Ferrumaw's on the third rail! He's sparking like a transformer!
+V: Electromagnet! Ha! Somebody shut off the power before he gets stronger!
+
+# ---------------------------------------------------------------- Mechra v Thornwake: the machine and nature
+@ intro pair:mechra+thornwake
+M: The machine against the forest! Mechra versus Thornwake!
+V: A chainsaw against a tree, Brannigan. This is a nature documentary, and I know how it ends.
+
+M: Thornwake has stood for a thousand years! Mechra was built last Tuesday!
+V: And it's already better at everything. That's called progress.
+
+M: Steel against wood! Circuits against roots! The City in a Garden against the Iron Executioner!
+V: The Iron Executioner against an overgrown shrub.
+
+@ banter pair:mechra+thornwake
+V: Mechra is running a deforestation protocol. It's very thorough.
+M: It isn't working, Vance!
+
+M: Thornwake's roots are getting into Mechra's joints!
+V: Weeds in the machinery! Somebody get the weed killer!
+
+V: You know what Mechra thinks of trees, Brannigan? Raw materials.
+M: Thornwake's not paper, Vance.
+V: Not yet.
+
+M: Thornwake wrapped a vine right around the cannon! Mechra can't aim!
+V: Ivy in the barrel! That's sabotage! That's organic sabotage!
+
+M: Every bolt Mechra fires, the branches grow back!
+V: That's not fair. Machines can't grow back. That's a design flaw in nature.
+
+@ fall.end a:thornwake v:mechra
+M: Thornwake takes the fall! The forest beat the machine!
+V: Roots in the gears! It's a malfunction! I want a mechanic!
+
+@ fall.end a:mechra v:thornwake
+V: Mechra takes the fall! The machine cut down the forest! Progress!
+M: Thornwake fought it every step, but Mechra just kept coming.
+
+@ match.over a:thornwake v:mechra
+M: Thornwake is the champion! Nature beat the machine!
+V: Mechra lost to a tree. A tree! Melt it down and start again!
+
+@ match.over a:mechra v:thornwake
+V: The machine clears the forest! Mechra is the champion!
+M: Mechra wins it. There's sawdust all over Grant Park, folks.
+
+# ---------------------------------------------------------------- Mechra v Rimehorn
+@ intro pair:mechra+rimehorn
+M: The Glacial Bastion against the Iron Executioner! Rimehorn versus Mechra!
+V: Mechra's rated for extreme temperatures, Brannigan. All of them.
+
+M: Rimehorn has never taken a step back in his life! Mechra has never had an expression on its face!
+V: That's called composure. You should try it.
+
+M: The coldest thing on four legs against the coldest thing on two!
+V: Mechra isn't cold, Brannigan. It's calculated.
+
+@ banter pair:mechra+rimehorn
+V: Mechra's cooling fans have never had it so easy.
+M: Rimehorn is freezing the joints, Vance! Look at it seize up!
+
+M: There's ice forming all over Mechra's armour!
+V: Anti-icing systems engaged. Probably. I didn't read that part of the manual.
+
+V: You know what a machine does to a glacier, Brannigan? Drills it.
+M: Rimehorn doesn't drill easy.
+
+M: Rimehorn just took a Plasma Cannon to the chest and he's still walking!
+V: The plasma just melted his top layer. He's got about ninety more. Darn it.
+
+@ match.over a:rimehorn v:mechra
+M: Rimehorn is the champion! He froze the machine solid!
+V: Frozen solid. Mechra's going to need a jump start and a lawyer.
+
+@ match.over a:mechra v:rimehorn
+V: The machine beats the iceberg! Mechra is the champion!
+M: Mechra wins it. Rimehorn's lying in a puddle of his own armour.
+
+# ---------------------------------------------------------------- Mechra v Cindervault
+@ intro pair:cindervault+mechra
+V: The Iron Executioner against the Walking Caldera! Two of my favourite villains in one ring! I'm going to cry!
+M: Two monsters, and no good guy to cheer for. Chicago is just going to hide.
+
+M: A machine against a volcano! Folks, this one's going to get hot!
+V: Mechra's heat shielding is rated to three thousand degrees. Cindervault runs at about three thousand and one.
+
+M: Mechra against Cindervault! The future against the deep past!
+V: Whoever wins, the city loses. My favourite kind of match.
+
+@ banter pair:cindervault+mechra
+V: Mechra is running hot, Brannigan. Not because it's angry. Because it's standing next to a volcano.
+M: The paint's bubbling off that armour!
+
+M: Cindervault is just walking straight into the cannon fire!
+V: You can't shoot a mountain, Brannigan. It doesn't mind.
+
+V: No heroes tonight, Brannigan. Just a toaster and an oven.
+M: You love it, don't you, Vance?
+V: Every second.
+
+@ match.over a:cindervault v:mechra
+V: The volcano melts the machine! Cindervault is the champion! Glorious!
+M: Cindervault wins it. Mechra is a puddle of metal on Columbus Drive.
+
+@ match.over a:mechra v:cindervault
+V: The machine conquers the mountain! Mechra is the champion! Engineering wins!
+M: Mechra wins it. Cindervault is cooling off in a crater.
+
+# ---------------------------------------------------------------- Mechra v Brineveil
+@ intro pair:brineveil+mechra
+V: Brineveil against Mechra! The deep sea against deep learning! What a night!
+M: Two heels, folks. Whichever one wins, Chicago is in trouble.
+
+M: A machine against a monster from the bottom of the ocean!
+V: Mechra's waterproof, Brannigan. Mostly. Let's not test it.
+
+M: Mechra's sensors against Brineveil's lure! Can a machine be hypnotised?
+V: If anybody can do it, it's Brineveil. That light is very persuasive.
+
+@ banter pair:brineveil+mechra
+V: Brineveil keeps dripping salt water on Mechra, Brannigan. That's corrosive. That's chemical warfare.
+M: It's a fish, Vance. They're wet.
+
+M: Mechra's tracking Brineveil, but he keeps vanishing into the dark!
+V: Low light, Brannigan. Mechra's night vision is a paid upgrade.
+
+V: Mechra just looked right at the lure. Its visor is going round in circles!
+M: The machine is hypnotised!
+V: It's rebooting! Rebooting is not the same thing!
+
+@ match.over a:brineveil v:mechra
+V: The deep beats the machine! Brineveil is the champion! Short circuit! Ha!
+M: Brineveil wins it, and Mechra is sitting in a puddle of salt water, sparking.
+
+@ match.over a:mechra v:brineveil
+V: The machine nets the fish! Mechra is the champion!
+M: Mechra wins it. Somebody put Brineveil back in the lake.
+
+# ---------------------------------------------------------------- Mechra v Vesperax
+@ intro pair:mechra+vesperax
+V: The Iron Executioner against the Amethyst Blade! Steel against crystal! Precision against precision!
+M: Two cold-blooded heels, folks. Hold your children close.
+
+M: Mechra calculates everything. Vesperax feels everything. Which one is faster?
+V: Both, Brannigan. That's the beauty of it.
+
+M: Mechra against Vesperax! A machine against a mantis!
+V: The finest blade in the sport against the finest engineering. I've never been happier.
+
+@ banter pair:mechra+vesperax
+V: Vesperax is cutting into Mechra's armour like a laser cutter.
+M: And Mechra's tracking every single move!
+
+M: Every time those blades hit the armour, sparks fly!
+V: That's sharpening, Brannigan. Mechra is sharpening the blade it's fighting. Very generous.
+
+V: Two artists. One of steel, one of stone. Brannigan, this is the Louvre.
+M: This is Grant Park, Vance.
+
+@ match.over a:mechra v:vesperax
+V: The machine beats the blade! Mechra is the champion! Steel over stone!
+M: Mechra wins it. Vesperax is in pieces, and a few of them are sparkling.
+
+@ match.over a:vesperax v:mechra
+V: The blade beats the machine! Vesperax is the champion! He cut through titanium!
+M: Vesperax wins it, and the scrap metal is piled up all over Grant Park.
+
+# ================================================================ TRIDON
+# ---------------------------------------------------------------- Tridon v Thornwake: lightning and the tree
+@ intro pair:tridon+thornwake
+M: The Three-Headed Storm against the Uprooted Forest! Tridon versus Thornwake!
+V: Lightning against a tree, Brannigan. This is the one fight in nature that never goes the tree's way.
+
+M: Thornwake has been struck by lightning a hundred times in a thousand years, and he's still standing!
+V: A hundred and one tonight. And then he's a stump.
+
+M: Thornwake defends the City in a Garden against the storm!
+V: Three heads, Brannigan. Three heads, and all of them want to burn the garden.
+
+@ banter pair:tridon+thornwake
+V: Tridon's thinking about the Volt Beam, Brannigan. All three heads are. You can tell. They're smiling.
+M: Thornwake is ready for him!
+
+M: Thornwake's wrapped up all three necks in the branches!
+V: That's a hostage situation! Three hostages!
+
+V: Do you know what lightning does to an oak, Brannigan?
+M: I've seen it, Vance.
+V: Then you know how this ends.
+
+M: Tridon is flying circles around him, and Thornwake is just waiting with the branches up!
+V: He's not waiting. He's a tree. He's just standing there.
+
+M: There's a fire burning on one of his branches, and Thornwake just put it out with his own hand!
+V: Show-off. A humble show-off. The worst kind.
+
+@ fall.end a:tridon v:thornwake
+V: Struck by lightning! Tridon takes the fall! Timber!
+M: The storm got the tree. Thornwake's smoking out there.
+
+@ fall.end a:thornwake v:tridon
+M: Thornwake takes the fall! He caught all three heads in the branches!
+V: Three heads, tangled up in a tree like Christmas lights! This is humiliating!
+
+@ match.over a:thornwake v:tridon
+M: Thornwake is the champion! The forest weathered the storm!
+V: The storm lost to a tree. All three heads are going to need counselling. Separately.
+
+@ match.over a:tridon v:thornwake
+V: The storm fells the forest! Tridon is the champion! All three of him!
+M: Tridon wins it. Thornwake is scorched from the roots up.
+
+@ power.beam a:tridon v:thornwake
+M: The Volt Beam right into Thornwake! The bark is on fire!
+V: Lightning meets tree! Nature's oldest story!
+
+# ---------------------------------------------------------------- Tridon v Ferrumaw: lightning and iron
+@ intro pair:ferrumaw+tridon
+M: The Three-Headed Storm against the Polarity Beast! Tridon versus Ferrumaw!
+V: Lightning and a big lump of iron, Brannigan. That's called a lightning rod.
+
+M: Ferrumaw is going to pull Tridon right out of the sky!
+V: He can't pull Tridon! Tridon's not made of metal. He's made of royalty.
+
+M: Electricity against magnetism, folks! Somebody call a physics teacher!
+V: Somebody call an electrician. Ferrumaw's about to be wired.
+
+@ banter pair:ferrumaw+tridon
+V: Every bolt Tridon throws goes straight into those iron scales, Brannigan!
+M: And Ferrumaw is soaking it up! He's getting stronger!
+V: That's not how electricity works!
+M: That's exactly how this electricity works, Vance!
+
+M: Ferrumaw's scales are humming from the Volt Beam!
+V: He's a toaster! Plug him in! Ha ha!
+
+V: Three heads, Brannigan. Ferrumaw can only pull one at a time.
+M: He's pulling the middle one!
+V: Not the smart one! Never the smart one!
+
+@ match.over a:ferrumaw v:tridon
+M: Ferrumaw is the champion! He grounded the storm!
+V: Grounded! He grounded royalty! Like a teenager!
+
+@ match.over a:tridon v:ferrumaw
+V: The storm fries the magnet! Tridon is the champion!
+M: Tridon wins it. Ferrumaw is still smoking.
+
+# ---------------------------------------------------------------- Tridon v Rimehorn
+@ intro pair:tridon+rimehorn
+M: The Glacial Bastion against the Three-Headed Storm! Tridon versus Rimehorn!
+V: Thunder and ice, Brannigan. That's a hailstorm. A really nasty hailstorm.
+
+M: Rimehorn has stood in the worst blizzards on earth! Can he stand up to Tridon?
+V: Three heads, and none of them are scared of a cow.
+
+M: The storm against the glacier!
+V: The storm always wins, Brannigan. Ask any glacier. Oh, wait, you can't. They're all melting.
+
+@ banter pair:tridon+rimehorn
+V: Rimehorn's horns against three heads. That's two horns for three necks. Maths, Brannigan.
+M: He only needs one, Vance.
+
+M: Tridon is flying in circles, and Rimehorn just turns to face him every time!
+V: Like a weathervane. A large, cranky weathervane.
+
+V: There's sleet coming down on Grant Park! Sleet!
+M: Tridon's storm and Rimehorn's cold! They're making their own weather!
+
+@ match.over a:rimehorn v:tridon
+M: Rimehorn is the champion! He weathered the storm!
+V: The storm lost to a cow. Three kings, beaten by livestock.
+
+@ match.over a:tridon v:rimehorn
+V: Thunder over the glacier! Tridon is the champion!
+M: Tridon wins it. Rimehorn stood in that storm as long as he could.
+
+# ---------------------------------------------------------------- Tridon v Vesperax: two showmen
+@ intro pair:tridon+vesperax
+V: The Three-Headed Storm against the Amethyst Blade! The two most beautiful creatures in the sport! Together!
+M: Two of the biggest show-offs in the world, and they're both going to want the camera.
+
+M: Tridon has three heads. Vesperax has two blades. Somebody is going to get cut!
+V: Somebody is going to look absolutely fabulous doing it.
+
+M: Two heels, two showmen, and a crowd that just wants them both to lose!
+V: The crowd has no taste, Brannigan. None.
+
+@ banter pair:tridon+vesperax
+V: Look at this. Every head is posing for a different camera, and Vesperax is posing for the fourth.
+M: Somebody's going to have to actually wrestle, Vance.
+
+M: Vesperax is slashing at all three necks!
+V: That's a lot of necks, Brannigan. He's only got two blades. He has to prioritise.
+
+V: I've never had to choose between two of my children before, Brannigan.
+M: You don't have children, Vance.
+V: Royalty and a jewel. Those are my children.
+
+M: Both of them just stopped to taunt at the same time!
+V: Showmanship! They have showmanship! Something you'll never understand.
+
+@ match.over a:tridon v:vesperax
+V: The storm beats the blade! Long live the kings! All three of them!
+M: Tridon wins it. Vesperax is going to want a rematch, and a mirror.
+
+@ match.over a:vesperax v:tridon
+V: The blade cuts down the storm! Vesperax is the champion! A jewel among kings!
+M: Vesperax wins it. All three heads look miserable, and so do I.
+
+# ---------------------------------------------------------------- Tridon v Cindervault
+@ intro pair:cindervault+tridon
+V: The Three-Headed Storm against the Walking Caldera! A volcano and a thunderstorm! The sky is going to be on fire!
+M: Two heels in the ring, folks. Chicago is going to hide in the basement.
+
+M: Tridon from the sky, Cindervault from under the earth! They meet in Grant Park!
+V: Halfway between heaven and hell. That's Chicago in a nutshell.
+
+M: Lightning against lava!
+V: Volcanic lightning, Brannigan! It's a real thing! And it's coming to a park near you!
+
+@ banter pair:cindervault+tridon
+V: Lightning, lava, and three heads. I've never been so happy in my life.
+M: You're happy because there's nobody to cheer against.
+
+M: Tridon keeps flying out of reach, and Cindervault keeps throwing rocks at him!
+V: Volcanic bombs, Brannigan. He's a natural.
+
+V: All three heads are coughing! The ash is getting in their noses!
+M: That's six nostrils full of volcano, Vance.
+
+@ match.over a:cindervault v:tridon
+V: The volcano grounds the storm! Cindervault is the champion!
+M: Cindervault wins it. Tridon is buried in ash.
+
+@ match.over a:tridon v:cindervault
+V: The storm beats the volcano! Tridon is the champion! Lightning over lava!
+M: Tridon wins it. Cindervault is cracked open in a crater.
+
+# ---------------------------------------------------------------- Tridon v Brineveil
+@ intro pair:brineveil+tridon
+V: The Three-Headed Storm against the Light of the Trench! The sky against the abyss!
+M: Two of the nastiest heels in the sport, folks. Hold on to your hats.
+
+M: Tridon has never been to the bottom of the sea, and Brineveil has never seen the sky!
+V: Tonight, they introduce each other to their worlds. Painfully.
+
+M: Lightning against the deep!
+V: Lightning and water, Brannigan. Somebody's going to get a shock.
+
+@ banter pair:brineveil+tridon
+V: Three heads, and every single one of them is staring at the lure. They're hypnotised! All three!
+M: That's the first time all three of them agreed on anything!
+
+M: Tridon's lightning hits the water, and Brineveil is lighting up like a Christmas tree!
+V: That's the lure, Brannigan. It's supposed to do that. Probably.
+
+V: Brineveil's going to try to drag him into the lake. Wet wings don't fly.
+M: Tridon's too smart to go in there!
+V: Which head?
+
+@ match.over a:brineveil v:tridon
+V: The deep beats the storm! Brineveil is the champion!
+M: Brineveil wins it, and all three heads are soaked.
+
+@ match.over a:tridon v:brineveil
+V: The storm strikes the sea! Tridon is the champion!
+M: Tridon wins it, and Brineveil is floating belly up in the lake.

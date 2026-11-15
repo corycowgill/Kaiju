@@ -1,0 +1,299 @@
+# Part 10: Ferrumaw, the Polarity Beast. Face bruiser: a magnetic metal pangolin out of the foundry district.
+# Moves: COIL SUPLEX (m:coil), IRON CLAMP (m:clamp), finisher POLARITY CRASH.
+# Powers: RAIL BURST (beam), POLARITY SURGE (roar), COIL CRASH (charge), IRON MAELSTROM (ult).
+
+@ entrance a:ferrumaw
+M: Every car on Michigan Avenue is sliding toward him! Here comes Ferrumaw!
+V: My car! Brannigan, that's MY car stuck to his back!
+
+M: Out of the foundry district! Steel in his scales and steel in his spine! Ferrumaw!
+V: An armadillo with a fridge magnet problem. That's what this city cheers for.
+
+M: The Polarity Beast! A working-class hero, and Chicago loves him!
+V: He's got a lunch pail, Brannigan. A kaiju with a lunch pail.
+
+M: Look at the scales on him! Every one of them is a sheet of iron!
+V: And every parking meter in the Loop is stuck to it.
+
+M: The street lights are bending toward him! The whole city can feel that pull!
+V: My fillings can feel it. Make it stop.
+
+@ fall.end a:ferrumaw
+M: Ferrumaw takes the fall! He put in a full shift and he got it done!
+V: He punched the clock. Big deal. Anyone can punch a clock.
+
+M: That's the fall for the Polarity Beast! Steel city strength!
+V: Steel city? This is Chicago, Brannigan. You're thinking of Pittsburgh.
+
+M: Ferrumaw takes the fall, and every bolt in the park is rattling!
+V: That's my cufflinks rattling. They're trying to escape.
+
+@ match.over a:ferrumaw
+M: FERRUMAW! The Polarity Beast is the heavyweight champion of the world!
+V: The magnet wins. Great. I'm never getting my watch back.
+
+M: From the foundry floor to the top of the world! Ferrumaw is the champion!
+V: Somebody check him for stolen cars. I want a full inventory.
+
+M: A blue-collar champion for a blue-collar town! Ferrumaw wins it!
+V: Blue collar. Look at him. He doesn't even have a collar. He has scales.
+
+@ strike a:ferrumaw
+M: Ferrumaw slams him with an iron fist!
+V: Rusty! A rusty iron fist!
+
+M: Ferrumaw hits him like a forge hammer!
+
+M: Right in the chest with those steel knuckles!
+
+V: He fights like a factory. Loud and dirty.
+M: Hard working, Vance. Hard working.
+
+M: Ferrumaw rolls into him with those armoured shoulders!
+
+M: A big iron forearm from Ferrumaw! You can hear the clang!
+V: It's like a church bell with bad intentions.
+
+@ strike.big a:ferrumaw
+M: FERRUMAW FLATTENS HIM! An iron hammer of a shot!
+V: That's metal fatigue! That's what that is!
+
+M: He pulled him in with the magnets and nailed him! What a combination!
+V: That's cheating! The magnets are cheating! Oh, right, no rules. Darn it!
+
+M: Like getting hit by a steel girder! Ferrumaw is laying in the leather!
+
+@ strike.big v:ferrumaw
+M: Big shot! He knocked a scale clean off Ferrumaw!
+V: Scrap! Sell it for scrap! I'll take a cut!
+
+M: Ferrumaw is rattled! You can hear the scales ringing!
+V: Like a bag full of pots and pans. Ha!
+
+@ block a:ferrumaw
+M: Ferrumaw curls up! Right off the iron scales!
+V: He rolled into a ball! Coward! Coward ball!
+
+M: Right off the armour! That's like punching a bank vault!
+
+@ reversal a:ferrumaw
+M: Ferrumaw flips the polarity and throws him right back!
+V: That's physics abuse! Somebody call a physicist!
+
+M: Reversal by Ferrumaw! He pushed him away without even touching him!
+
+@ grab a:ferrumaw
+M: Ferrumaw pulls him in with the magnets! He's stuck to him!
+V: That's not a grapple! That's a refrigerator door!
+
+M: Ferrumaw clamps on! Iron claws locked tight!
+
+@ grab.escape v:ferrumaw
+M: He broke free! He reversed the pull!
+V: You can't hold a man with a magnet! Unless he's made of metal! Which is everyone, I guess!
+
+@ whip a:ferrumaw
+M: Ferrumaw repels him across the park! Like two magnets pushing apart!
+V: Opposites attract, Brannigan. That was rejection.
+
+@ suplex a:ferrumaw
+M: Ferrumaw hoists him up and over! Industrial strength!
+V: He's a forklift with a grudge!
+
+M: Up and over, and Ferrumaw's scales clang on the landing!
+
+@ slam a:ferrumaw
+M: Ferrumaw lifts him high! He's holding him up like a steel beam!
+V: Put it down! You don't have a crane licence!
+
+@ swing a:ferrumaw
+M: Ferrumaw is swinging him round like a wrecking ball!
+V: He's demolishing him and the neighbourhood at the same time!
+
+@ sig m:coil
+M: Ferrumaw curls up with him! COIL SUPLEX!
+
+M: The Coil Suplex! He rolled into a ball and took him with him, backwards over and over!
+V: That's not wrestling! That's a bowling ball with a passenger!
+
+M: Ferrumaw rolls back with him like an iron wheel! The COIL SUPLEX!
+V: Round and round on the scales. He'll be picking iron out of his back for a week.
+
+@ sig m:clamp
+M: He's locked in! IRON CLAMP!
+
+M: One squeeze! Two! THREE! And the magnets blow him away! The Iron Clamp!
+V: That's a vice! He's using a vice! Like in shop class!
+
+M: The Iron Clamp! Three magnetic crushes, and then he repels him clean across the park!
+V: That's how they bend steel in the foundry, Brannigan. Squeeze, squeeze, squeeze, and throw it away.
+
+@ power.beam a:ferrumaw
+M: The scales are sparking! RAIL BURST!
+
+M: The Rail Burst! He's firing scrap metal at railgun speed!
+V: That was a parking meter! He shot a parking meter!
+
+M: Ferrumaw opens fire! Bolts and girders flying across the park!
+V: Somebody's getting their fence back in a million pieces.
+
+@ power.roar a:ferrumaw
+M: POLARITY SURGE! Everything metal in the park is flying!
+V: My watch! My watch is gone! It was a gift!
+
+M: The Polarity Surge! He threw him across the park without laying a hand on him!
+V: That's witchcraft. Magnetic witchcraft.
+
+@ power.charge a:ferrumaw
+M: COIL CRASH! He rolls into a ball and comes in like a cannonball!
+
+V: Coil Crash! A bowling ball made of iron!
+M: Strike! He bowled him right over!
+
+@ power.ult a:ferrumaw
+M: Every piece of metal in Chicago is lifting off the ground! It's the IRON MAELSTROM!
+V: The cars! The cars are flying! The desk! THE DESK IS METAL!
+
+M: IRON MAELSTROM! A tornado of steel around the Polarity Beast!
+V: Brannigan, hold on to something wooden! Hold on to something WOODEN!
+
+M: Ferrumaw is pulling the whole city in! Hold on, Chicago!
+
+@ knockdown a:ferrumaw
+M: Ferrumaw knocks him flat! Iron on bone!
+V: That was a dirty magnetic trick!
+
+M: Down he goes! Ferrumaw is pounding him like a foundry press!
+
+@ knockdown v:ferrumaw
+M: Ferrumaw is down! The Polarity Beast hits the street with a clang!
+V: Like dropping a toolbox down the stairs! Ha!
+
+M: Ferrumaw goes down, and every car he pulled in comes down with him!
+
+@ ko v:ferrumaw
+M: Ferrumaw is out! He's curled up in a ball!
+V: Somebody demagnetise him and give me back my keys!
+
+@ critical v:ferrumaw
+M: Ferrumaw's scales are falling off! He's in trouble!
+V: He's rusting! He's rusting before our very eyes!
+
+M: The Polarity Beast is hurting! He's barely holding together!
+
+@ critical va:heel a:ferrumaw
+M: Ferrumaw is pulling him in, and there's no getting away now!
+V: Reverse the polarity! Somebody reverse the polarity!
+
+@ comeback a:ferrumaw
+M: The scales are standing up on end! Ferrumaw is FIRING UP!
+V: Oh no. Everything metal in a mile is shaking. Everybody take off your jewellery.
+
+M: Ferrumaw is charged up! The sparks are flying off him!
+V: He's a lightning rod! Somebody hit him with lightning! It's better than nothing!
+
+M: You can't keep a working man down, folks! Ferrumaw is back on the clock!
+
+@ rally a:ferrumaw
+M: Ferrumaw! Ferrumaw! The whole South Side is chanting!
+V: They're chanting because they're stuck to him.
+
+@ nosell a:ferrumaw
+M: Ferrumaw took it on the scales and kept on coming!
+V: Like hitting a mailbox! You just hurt your hand!
+
+@ finisher.start a:ferrumaw
+M: Ferrumaw pulls him up! This is the POLARITY CRASH!
+V: No! Not the magnets! Not the magnets!
+
+M: He's levitating him! Ferrumaw is going for the Polarity Crash!
+
+M: Up he goes, held by pure magnetism! The Polarity Crash is coming!
+
+@ finisher.hit a:ferrumaw
+M: POLARITY CRASH! He slammed him into the ground like a steel beam!
+V: He magnetised him to the earth's core! He's stuck to the planet!
+
+M: The Polarity Crash! Every car in the park bounced!
+
+M: He drove him down so hard, the compass on my desk is spinning!
+V: You have a compass on your desk? Of course you do.
+
+@ finisher.hit v:ferrumaw
+M: They crushed the Polarity Beast! Ferrumaw is scrap!
+V: Scrap! Sell him by the pound!
+
+@ taunt a:ferrumaw
+M: Ferrumaw is pumping his fist, and the crowd is going wild!
+V: He's waving a car around. He's waving my car around.
+
+M: Ferrumaw curls up and rolls a lap of honour!
+V: He's a bowling ball. A shiny, smug bowling ball.
+
+@ taunt.hit v:ferrumaw
+M: Caught him showing off! Ferrumaw took one on the chin!
+V: That's what you get for juggling cars!
+
+@ momentum a:ferrumaw
+M: Ferrumaw is fully charged! Look at those sparks!
+V: Somebody unplug him! Somebody find the outlet!
+
+@ prop.rip a:ferrumaw
+M: Ferrumaw pulls a building out of the ground without even touching it!
+V: He's not lifting it! He's attracting it! That's not the same thing!
+
+M: Ferrumaw rips up a building, and the steel frame comes with him like a magnet!
+
+@ prop.throw a:ferrumaw
+M: Ferrumaw fires it like a railgun!
+V: Return to sender!
+
+@ prop.smash a:ferrumaw
+M: Ferrumaw smashes a building over his head! Rebar everywhere!
+V: That's twenty floors of rebar! He'll be stuck to that forever!
+
+@ prop.hit v:ferrumaw
+M: The building hit Ferrumaw, and now it's stuck to him!
+V: Wear it! Wear it like a hat!
+
+@ bldg.through a:ferrumaw
+M: Ferrumaw threw him right through the steel frame of a building!
+
+@ lm.any a:ferrumaw
+M: Ferrumaw is pulling the steel right out of the skyline!
+V: That steel was holding things up, you oaf!
+
+@ water v:ferrumaw
+M: Ferrumaw's in the lake! He's sinking like an anchor!
+V: He's going to rust! He's going to rust solid! Ha!
+
+M: Ferrumaw goes into the water, and the whole lake is fizzing!
+V: Electrolysis! He's a battery now!
+
+@ water a:ferrumaw
+M: Ferrumaw hurls him into the lake!
+V: Throw a magnet in the water, you get a lot of interesting junk.
+
+@ pin.start a:ferrumaw
+M: Ferrumaw drops on him like an iron plate! Kick out!
+V: He's stuck! He's magnetised to the mat!
+
+@ pin.start v:ferrumaw
+M: Ferrumaw's shoulders are down! Come on, big fella!
+V: Hold him there! He's stuck! Finally, the magnet's working for us!
+
+@ pin.kick v:ferrumaw
+M: Ferrumaw blasts out of it! He reversed the polarity!
+V: That's not kicking out! That's repelling! Different thing!
+
+@ pin.near v:ferrumaw
+M: FERRUMAW KICKED OUT! At the very last instant!
+V: Why? Why won't the metal man stay down?
+
+@ tired v:ferrumaw
+M: Ferrumaw is drained! The scales are drooping!
+V: Low battery! Put him on the charger!
+
+@ stall a:ferrumaw
+M: Ferrumaw is keeping his distance and drawing in scrap metal.
+V: He's stockpiling. Like a raccoon. A raccoon made of iron.

@@ -1,0 +1,292 @@
+# Part 6: Brineveil, Light of the Trench. Heel ambusher: an anglerfish up from the hadal trenches, with a glowing lure.
+# Moves: PRESSURE BOMB (m:powerbomb), RIPTIDE SUPLEX (m:riptide), finisher HADAL CRUSHER.
+# Powers: ABYSSAL LANCE (beam), PRESSURE WAVE (roar), RIPTIDE LUNGE (charge), HADAL IMPLOSION (ult).
+
+@ entrance a:brineveil
+M: The lights have gone out in Grant Park! All but one! Here comes Brineveil!
+V: Light of the Trench! Seven miles down, where the sun has never been, and he made it to the big show!
+
+M: Look at that lure swinging in front of him! Do not look at the light, folks!
+V: Look at the light. Look right at it. It's lovely. You're getting sleepy.
+
+V: All the way up from the bottom of the ocean, just to be booed by Chicago! What an honour!
+M: Brineveil, ladies and gentlemen. Hold your noses.
+
+M: Those teeth! Every one of them is the size of a city bus!
+V: And not one cavity. He flosses with submarines.
+
+M: Brineveil slides up out of the harbour, and there's a glow on the water like a ghost ship!
+V: Ghost ship? That's a star, Brannigan. A star of the deep.
+
+@ fall.end a:brineveil
+V: Brineveil takes the fall! He lured him in, and he reeled him in!
+M: Hook, line and sinker. I hate it, but that was a trap from the start.
+
+M: Brineveil takes the fall. He waited in the dark all fall long, and he got him.
+V: Patience, Brannigan! The deep sea teaches patience!
+
+V: Ha! He never saw it coming! Nobody ever sees it coming at the bottom of the ocean!
+M: That's because there's no light down there, Vance, except for the one that eats you.
+
+@ match.over a:brineveil
+V: BRINEVEIL! The champion of the deep! Seven miles down and on top of the world!
+M: An anglerfish holds the heavyweight title. I have to go lie down.
+
+V: Light of the Trench! Light of my LIFE! Somebody bring this man a bucket of salt water!
+M: Brineveil wins it, and Chicago smells like low tide.
+
+M: He lured them all in and swallowed the title whole. Brineveil is the champion.
+V: Every hero who looked at that light is going home in a bucket!
+
+@ strike a:brineveil
+M: Brineveil darts in and bites him!
+V: A little nibble! He's tasting him first!
+
+M: A quick snap of those jaws! Brineveil is in and out!
+
+V: Did you see where that came from? Neither did he!
+
+M: Brineveil lashes him with that fin!
+V: Like being slapped with a wet canoe.
+
+M: Out of nowhere, Brineveil strikes! He was lurking the whole time!
+
+@ strike.big a:brineveil
+M: Brineveil CHOMPS DOWN! Those jaws closed like a bear trap!
+V: Ha ha! Snack time! Bon appetit!
+
+M: He swung that whole head into him like a wrecking ball!
+V: It's mostly mouth, Brannigan. It's a very effective design.
+
+@ strike.big v:brineveil
+M: He smashed the lure! The light is flickering!
+V: Don't touch the lure! That is a delicate instrument!
+
+M: Big shot right to the jaw! Brineveil's teeth are rattling!
+V: Get him a dentist! A very brave dentist!
+
+@ block a:brineveil
+M: Brineveil turns his head and takes it on the jaw! There's armour on that thing!
+V: Bone plates, Brannigan. You need them when the water's that heavy.
+
+@ reversal a:brineveil
+M: Brineveil slips it and comes back with the bite!
+V: You don't fight an ambusher on his terms, hero. He's got all the terms.
+
+M: Like a trap snapping shut! Brineveil reverses!
+
+@ grab a:brineveil
+M: Brineveil wraps him up in those fins! He's dragging him in!
+V: Into the deep, hero! Come on down!
+
+M: Brineveil's got him by the shoulder, and he's not letting go!
+
+@ grab.escape v:brineveil
+M: He wriggled free! He got away from that mouth!
+V: The one that got away! He'll be back for you!
+
+@ whip a:brineveil
+M: Brineveil sends him off like a riptide!
+
+@ suplex a:brineveil
+M: Brineveil arches back and drops him! What a suplex for a fish!
+V: Don't call him a fish! He's an apex predator!
+
+@ slam a:brineveil
+M: Brineveil hoists him up! I didn't know he could do that!
+V: Seven miles of water on your back every day, you get strong!
+
+@ swing a:brineveil
+M: Brineveil spins him like a whirlpool!
+V: Around and around and down the drain!
+
+@ sig m:powerbomb
+M: Brineveil sinks into the ground! Where did he go? He bursts up underneath him! PRESSURE BOMB!
+
+M: Up from below like a submarine surfacing, and down with the sit-out bomb! The Pressure Bomb!
+V: That's an ambush, Brannigan! From under the ground! Glorious!
+
+V: Pressure Bomb! Brannigan, that's a thousand atmospheres of pain!
+M: He sat him down right through the street!
+
+M: Out of the depths! The PRESSURE BOMB!
+
+@ sig m:riptide
+M: Brineveil spins him round like a whirlpool! RIPTIDE SUPLEX!
+
+M: The Riptide Suplex! A full turn of the whirlpool, and over the top he goes!
+V: You don't fight the riptide, hero. You go where it takes you. Down!
+
+V: Round and round and over! The Riptide Suplex! Down the drain!
+M: Brineveil sucked him in and spat him out! What a move!
+
+@ power.beam a:brineveil
+M: The lure is glowing! ABYSSAL LANCE!
+
+V: Abyssal Lance! A beam of pure ocean darkness! Somehow it glows!
+M: How does darkness glow, Vance?
+V: Ask the fish, Brannigan!
+
+M: Brineveil fires the Abyssal Lance right across the park!
+
+@ power.roar a:brineveil
+M: PRESSURE WAVE! It's like the ocean just fell on Chicago!
+V: That's the bottom of the sea, delivered! No charge!
+
+M: The Pressure Wave sends him flying! I felt it in my ears up here!
+V: Pop your ears, Brannigan. Swallow. It helps.
+
+@ power.charge a:brineveil
+M: RIPTIDE LUNGE! He came out of nowhere!
+V: Lurk, lurk, lurk, LUNGE! That's the whole playbook, and it works!
+
+M: Brineveil lunges with those jaws wide open! The Riptide Lunge!
+
+@ power.ult a:brineveil
+M: The lure is burning white! HADAL IMPLOSION!
+V: The whole trench, all at once! Pressure! PRESSURE!
+
+V: Hadal Implosion! You're about to find out what the bottom of the ocean feels like!
+M: Everything's getting pulled in! Hold on to something, Chicago!
+
+M: Brineveil crushes the whole park! It's like he brought the deep sea up with him!
+
+@ knockdown a:brineveil
+M: Brineveil drops him! He never saw it coming!
+V: That's the beauty of an ambush, Brannigan. Nobody ever does.
+
+V: Down he goes! Dragged to the bottom!
+M: Get up! Don't stay down there with that thing!
+
+@ knockdown v:brineveil
+M: Brineveil is down! Flopping like a fish on a dock!
+V: He's not flopping! He's resting on his side! Fish do that!
+
+M: Down goes Brineveil, and the lure just went dim!
+
+@ ko v:brineveil
+M: Lights out for Brineveil! Literally! The lure's gone dark!
+V: He's in a deep sleep! It's a deep sea thing! He'll wake up!
+
+@ critical v:brineveil
+M: Brineveil is in trouble! He's gasping up here!
+V: It's the air, Brannigan! Too thin! Chicago's air is too thin for a gentleman of the deep!
+
+M: Brineveil's flickering! He's running out of everything!
+
+@ critical va:face a:brineveil
+V: Look at the lure. Look at it. Swaying. Your hero's already hypnotised.
+M: He's hurt, and that thing is circling like a shark.
+
+@ comeback a:brineveil
+M: The lure is blazing! Brineveil is coming back to life!
+V: The light of the trench shines brightest in the dark! Poetry!
+
+V: Uh oh, hero. He's hungry now.
+M: Brineveil is fired up! Look at the size of that mouth!
+
+@ ai.dive a:brineveil
+M: Brineveil leaps off the corner like a fish out of water!
+V: Flying fish, Brannigan! Majestic!
+
+@ ai.cheap a:brineveil
+M: Brineveil flashes that lure right in his eyes! That's a cheap shot!
+V: It's a light. He's allowed to have a light. Is he supposed to fight in the dark?
+
+@ finisher.start a:brineveil
+M: Brineveil has him up! Here comes the HADAL CRUSHER!
+V: Down to the bottom! Seven miles straight down!
+
+M: He's pulling him under! This is the Hadal Crusher!
+
+V: The lure goes bright, and that means good night!
+M: Brineveil is going for the Hadal Crusher!
+
+@ finisher.hit a:brineveil
+M: HADAL CRUSHER! He crushed him like a submarine at the bottom of the sea!
+V: Flattened! Like a flounder! A flat little flounder!
+
+M: The Hadal Crusher connects! The whole lakefront shook!
+
+V: That's the full weight of the ocean, right on his chest!
+M: I don't think he's moving, folks!
+
+@ finisher.hit v:brineveil
+M: He put the anglerfish on the dock! Brineveil is crushed!
+V: Somebody put him back in the water! Throw him back! He's undersized!
+
+@ taunt a:brineveil
+M: Brineveil is swinging that lure in front of the crowd!
+V: Look at them. Hypnotised. Look at the woman in the front row, drooling.
+
+M: Brineveil opens his jaws as wide as they go and screams at the skyline!
+V: Smile for the camera! All four hundred teeth!
+
+@ taunt.hit v:brineveil
+M: Gotcha! He caught Brineveil swinging that silly light around!
+V: It's not silly! It's bioluminescent!
+
+@ momentum a:brineveil
+M: Brineveil is glowing brighter and brighter!
+V: The tide's turning, Brannigan! The tide's coming in!
+
+@ prop.rip a:brineveil
+M: Brineveil has a building in his jaws! In his jaws!
+V: He's carrying it like a dog with a newspaper. Adorable!
+
+M: Brineveil rips a building up, and he's dragging it along behind him!
+
+@ prop.throw a:brineveil
+V: Incoming from the deep! Look out!
+M: He spits the building out at him!
+
+@ prop.smash a:brineveil
+M: Brineveil smashes a building over his head! Out of nowhere!
+V: That's an ambush, Brannigan, with architecture!
+
+@ prop.hit v:brineveil
+M: Right on the snout! Brineveil takes a building to the face!
+V: Not the face! He's got nothing BUT face!
+
+@ water v:brineveil
+M: Brineveil's in the lake, and he looks right at home!
+V: It's fresh water, Brannigan. He hates fresh water. It's like tap water to a sommelier.
+
+M: Brineveil goes into the lake and vanishes! Where did he go?
+V: Into the dark. Where he's strongest. You should be very afraid.
+
+@ water a:brineveil
+M: Brineveil drags him into the lake! That's his world down there!
+V: Welcome to the deep end, hero! Hold your breath!
+
+@ pin.start a:brineveil
+M: Brineveil sprawls on him! Get out of there!
+V: Lie still. He's just tasting you.
+
+@ pin.start v:brineveil
+M: Brineveil is pinned like a fish on a cutting board!
+V: Don't you filet him! Don't you dare!
+
+@ pin.kick v:brineveil
+M: Brineveil slips out of it! Slippery as an eel!
+V: You can't hold a deep sea creature! He's too slimy! It's a compliment!
+
+@ pin.near v:brineveil
+M: Brineveil wriggled out at the very last instant!
+V: Slippery! I told you! Pressure-tested and slippery!
+
+@ tired v:brineveil
+M: Brineveil's gasping! He's out of breath!
+V: He doesn't breathe air, Brannigan. You'd be gasping too.
+
+@ whiff a:brineveil
+M: The jaws snap shut on nothing! He missed!
+V: He's just warming up the hinges.
+
+@ stall a:brineveil
+M: Brineveil is circling. Just circling, out of reach.
+V: That's what a predator does! You think a shark sends an invitation?
+
+@ ai.ropes a:brineveil
+M: Brineveil is swimming the ropes! Here he comes!
+V: Riding the current!

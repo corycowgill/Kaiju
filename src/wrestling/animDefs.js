@@ -886,13 +886,15 @@ function signaturePose(t, P, R, slot) {
   stance(P, R);
   const d = (SIGNATURES[R.key] || SIGNATURES.godzilla)[slot];
   const time = t * d.dur / 2;
-  if (!d.lift) {
-    const poses = slot === 0 ? SIG_A : SIG_B;
-    (poses[R.key] || poses.godzilla)(time, P, R, d.T, d.dur);
+  // The later six borrow an original's thrower pose by move id (signatures.js `pose`), or the generic 'vault' / 'wheel' lift
+  const pose = d.pose || '';
+  if (pose !== 'vault' && pose !== 'wheel') {
+    const own = (slot === 0 ? SIG_A : SIG_B)[R.key], lent = BORROWED[pose];
+    (own || (lent ? lent[0][lent[1]] : (slot === 0 ? SIG_A : SIG_B).godzilla))(time, P, R, d.T, d.dur);
     return;
   }
   const { grip, peak, hit } = d.T;
-  const wheel = d.id === 'wheel';
+  const wheel = pose === 'wheel';
   blend(P, R, 1 - ramp(time, grip * .65, grip), K.tieUp);
   blend(P, R, pulse(time, grip * .65, grip, grip + .1, (grip + peak) * .5), K.liftSquat);
   blend(P, R, pulse(time, grip, peak, peak + .05, hit), wheel ? K.heaveBack : K.liftTop);
@@ -1019,4 +1021,10 @@ const SIG_B = {
     });
     P.hy += 0.8 * wobble(s, T.spike, 30, 10);
   },
+};
+
+// An original's signature by its move id (signatures.js `pose`): [table, key]
+const BORROWED = {
+  chokeslam: [SIG_A, 'godzilla'], bulldozer: [SIG_B, 'godzilla'], rana: [SIG_A, 'ghidorah'],
+  ddt: [SIG_B, 'ghidorah'], breaker: [SIG_A, 'mecha'], piledriver: [SIG_B, 'mecha'],
 };

@@ -1,0 +1,311 @@
+# Part 9: Thornwake, the Uprooted Forest. Face grappler: a walking old-growth oak, roots and bark and thorns.
+# Moves: ROOTLOCK SLAM (m:rootlock), TIMBER SUPLEX (m:timber), finisher OLD GROWTH BREAKER.
+# Powers: THORN VOLLEY (beam), ROOT ERUPTION (roar), TIMBER RUSH (charge), WILDWOOD REVOLT (ult).
+
+@ entrance a:thornwake
+M: The trees in Grant Park are bowing! Here comes Thornwake!
+V: Oh, good. A tree. We came all this way to watch a tree.
+
+M: Urbs in horto, folks! City in a Garden! And tonight, the garden fights back!
+V: The garden is not supposed to walk, Brannigan. That's the whole point of a garden.
+
+M: The Uprooted Forest! A thousand years old and still standing tall! Thornwake!
+V: A thousand years old. And still no driver's licence.
+
+M: Look at those roots tearing up the pavement with every step!
+V: The city's going to bill him for that sidewalk. And I'm going to help.
+
+M: Birds are flying out of his branches! Squirrels are cheering! Thornwake is here!
+V: Those squirrels are evacuating, Brannigan. Smart squirrels.
+
+@ fall.end a:thornwake
+M: Thornwake takes the fall! He wrapped him up and he never let go!
+V: He's a weed. You can't get rid of a weed.
+
+M: That's the fall! The oak stands tall in Grant Park!
+V: Somebody get me a chainsaw and a lawyer.
+
+M: Thornwake takes the fall! Strong roots, folks! Strong roots!
+V: Strong roots. Thick head. Same thing with a tree.
+
+@ match.over a:thornwake
+M: THORNWAKE! The Uprooted Forest is the heavyweight champion of the world!
+V: A tree. A tree is the champion. I am going to plant myself in the lake.
+
+M: A thousand years in the making! Thornwake is the champion!
+V: I want somebody to check his rings! He's younger than he says!
+
+M: The forest wins! Chicago, City in a Garden, and the garden is champion!
+V: I'm going home and I'm paving my lawn.
+
+@ strike a:thornwake
+M: Thornwake swings a branch like a club!
+V: That's not a fist! That's a log!
+M: It's his arm, Vance. He's a tree.
+
+M: A big thorny forearm from Thornwake!
+
+M: Thornwake drives a knotted fist into him!
+V: Splinters! He'll be picking splinters out for a month!
+
+M: Thornwake whips a vine across his chest!
+
+V: He hits like he's falling over. Because he is. He's a tree.
+M: A tree that's winning, Vance.
+
+M: Bark against bone, and the bark is winning!
+
+@ strike.big a:thornwake
+M: THORNWAKE FELLS HIM! Like a mighty oak coming down!
+V: That's a log to the face! A log!
+
+M: Both limbs at once! That was a whole tree trunk to the chest!
+
+M: He hit him so hard the leaves came off!
+V: It's autumn, Brannigan. They were coming off anyway.
+
+@ strike.big v:thornwake
+M: Big shot to Thornwake! Bark is flying everywhere!
+V: Ha! Kindling! Get the marshmallows!
+
+M: He split the bark wide open! Thornwake is hurt!
+V: Somebody call a tree surgeon! Actually, don't.
+
+@ block a:thornwake
+M: Right off the bark! A thousand years of hardwood!
+V: Hiding behind the bark. Typical tree behaviour.
+
+M: Thornwake just takes it! Like punching the trunk of an oak!
+
+@ reversal a:thornwake
+M: Thornwake caught it in his branches and turned it around!
+V: He got lucky! Trees get lucky! Lightning hits them all the time!
+
+M: Reversal by Thornwake! He's a grappler, folks, and he loves it in close!
+
+@ grab a:thornwake
+M: Thornwake wraps him up in those branches! He's tangled!
+V: He's being strangled by a hedge! It's humiliating!
+
+M: Vines everywhere! Thornwake's got him wrapped up tight!
+
+M: Thornwake ties him up like ivy on a wall!
+V: Somebody call a gardener! Bring the big clippers!
+
+@ grab.escape v:thornwake
+M: He tore loose from the branches!
+V: Pruned! Ha! He pruned the tree!
+
+@ whip a:thornwake
+M: Thornwake slings him away like a falling acorn!
+
+@ suplex a:thornwake
+M: Thornwake bends back like a tree in a storm! What a suplex!
+V: Lucky he didn't snap in half.
+
+M: He lifts him with every root and drops him right on his head!
+
+@ slam a:thornwake
+M: Thornwake hoists him up into the branches! He's way up there!
+V: Like a cat stuck in a tree! Get down from there!
+
+M: Thornwake plants his roots and presses him overhead!
+
+@ swing a:thornwake
+M: Thornwake is swinging him round on a vine!
+V: Tarzan! It's Tarzan with splinters!
+
+@ sig m:rootlock
+M: The roots are coming up! ROOTLOCK SLAM!
+
+M: The roots have lifted him right off the ground, and now they're yanking him down! The Rootlock Slam!
+V: He's going to need a backhoe to get out of that!
+
+M: Up on the roots, and down into the dirt! The ROOTLOCK SLAM!
+V: Somebody water him. Ha! He's planted now!
+
+M: The Rootlock Slam! The ground grabbed him and pulled him under!
+
+@ sig m:timber
+M: TIMBER! The TIMBER SUPLEX!
+
+M: The Timber Suplex! He fell back like a giant redwood!
+V: You're supposed to yell timber BEFORE the tree falls!
+M: I did, Vance!
+
+V: The Timber Suplex. A thousand years of wood falling on one man. Brutal.
+M: Down like a felled tree, and he took him with him!
+
+@ power.beam a:thornwake
+M: THORN VOLLEY! A hail of thorns across the park!
+
+M: The Thorn Volley! He's firing thorns like a machine gun!
+V: Like the rose bush in my mother's garden, but worse!
+
+M: Thousands of thorns! He's turning him into a pincushion!
+
+@ power.roar a:thornwake
+M: ROOT ERUPTION! The whole street is coming up!
+V: There goes the road! There goes the road and every pipe in it!
+
+M: The Root Eruption! Roots are bursting up out of the ground everywhere!
+V: That's going to cost the city a fortune. I'm thrilled.
+
+@ power.charge a:thornwake
+M: TIMBER RUSH! Thornwake charges like a falling forest!
+
+V: Timber Rush! A tree, at full speed! I didn't know they came in fast!
+M: He ran him right over!
+
+@ power.ult a:thornwake
+M: The whole forest is waking up! It's the WILDWOOD REVOLT!
+V: The trees! The trees in the park are moving! Brannigan, the trees are moving!
+
+M: WILDWOOD REVOLT! Every tree in Chicago is fighting for Thornwake!
+V: This is an uprising! This is a vegetable uprising!
+
+M: The forest is taking the city back! Look at it!
+
+@ knockdown a:thornwake
+M: Thornwake puts him down! Felled like a sapling!
+V: Clubbed with a branch! That's caveman stuff!
+
+M: He flattens him! Thornwake is taking over!
+
+@ knockdown v:thornwake
+M: TIMBER! Thornwake is down!
+V: Ha! Timber! I've been waiting all night to say that!
+
+M: Thornwake is down, and the whole street shook!
+V: Trees aren't supposed to fall over! That's a design flaw!
+
+@ ko v:thornwake
+M: Thornwake is out! He's not moving!
+V: He's a tree. He never moves. How can you tell?
+
+@ critical v:thornwake
+M: Thornwake is splintering! The bark is cracking all over!
+V: Firewood! Get the axe! Somebody get the axe!
+
+M: Thornwake is hurt, and the leaves are falling!
+
+@ critical va:heel a:thornwake
+M: Thornwake is closing in, and those branches are reaching for him!
+V: Run! Run before he gets the roots in you!
+
+@ comeback a:thornwake
+M: Thornwake is sprouting! New leaves are bursting out of him! He's FIRING UP!
+V: How does a tree get a second wind? How?
+
+M: The roots are digging in! Thornwake is fighting back!
+V: Oh no. Spring has come. Spring has come for us all.
+
+M: You can cut down a tree, folks, but those roots go deep!
+
+@ rally a:thornwake
+M: Thorn-wake! Thorn-wake! The whole park is chanting for the big oak!
+V: Tree huggers. A hundred thousand tree huggers.
+
+@ nosell a:thornwake
+M: Thornwake just stood there and took it like an old oak in a storm!
+V: He didn't feel it! He's wood! There's nobody home in there!
+
+@ finisher.start a:thornwake
+M: Thornwake has him up in the branches! The OLD GROWTH BREAKER!
+V: No! Get out of the tree! Get out of the tree!
+
+M: High in the canopy! This is the Old Growth Breaker!
+
+M: A thousand years of strength, all in one move! Here comes the OLD GROWTH BREAKER!
+
+@ finisher.hit a:thornwake
+M: OLD GROWTH BREAKER! He broke him like a branch!
+V: That's a felony! That is felony gardening!
+
+M: The Old Growth Breaker! Roots and all, he drove him into the ground!
+
+M: He snapped him in half! Thornwake brings him down with the whole forest behind him!
+V: Somebody plant a tree in his honour. Oh, wait.
+
+@ finisher.hit v:thornwake
+M: They felled the oak! Thornwake is down!
+V: Chop chop! Ha! Stack him by the fireplace!
+
+@ taunt a:thornwake
+M: Thornwake raises those branches to the sky, and the crowd goes wild!
+V: Look at him. He thinks he's photosynthesising. He's showing off.
+
+M: Thornwake is shaking his branches at the crowd, and it's raining leaves on Grant Park!
+V: Who's going to rake all that? Not me.
+
+@ taunt.hit v:thornwake
+M: Caught him waving to the crowd! Thornwake got chopped!
+V: That's what happens when you stand still too long. Ha! Lumberjack!
+
+@ momentum a:thornwake
+M: Thornwake is in full bloom! He's taking over!
+V: Somebody spray him! Weed killer! Anything!
+
+@ prop.rip a:thornwake
+M: Thornwake rips up a building, roots and all!
+V: He's gardening with skyscrapers! Weeding the city!
+
+M: The roots are wrapped around a whole building! He's pulling it right out of the ground!
+
+@ prop.throw a:thornwake
+M: Thornwake hurls the building!
+V: That's not throwing! That's falling with direction!
+
+@ prop.smash a:thornwake
+M: Thornwake crashes a building down on him! Roots and bricks everywhere!
+V: The city in a garden is a city in a ditch!
+
+@ prop.hit v:thornwake
+M: Thornwake took the building right in the branches!
+V: Bird's nest! He knocked out a bird's nest! Animal cruelty!
+
+@ bldg.through a:thornwake
+M: Thornwake threw him through the building! Roots and all!
+
+@ lm.any a:thornwake
+M: Thornwake is taking back the city, one landmark at a time!
+V: That's not conservation, that's demolition!
+
+@ water v:thornwake
+M: Thornwake goes into the lake! He's floating!
+V: Of course he floats. He's wood. Somebody make a raft out of him.
+
+M: Thornwake's in the water, and he is soaking it all up!
+V: Oh great. Now he's watered. He's going to get bigger.
+
+@ water a:thornwake
+M: Thornwake tosses him into the lake!
+V: Littering! He's littering in Lake Michigan!
+
+@ pin.start a:thornwake
+M: Thornwake covers him, and the roots are pinning him to the ground!
+V: Get those roots off of him! He's not a flower pot!
+
+@ pin.start v:thornwake
+M: Thornwake is down on his back! Come on, big tree! Get up!
+V: Stay down, lumber! You're furniture now!
+
+@ pin.kick v:thornwake
+M: Thornwake bursts out of it! Strong roots!
+V: How do you keep a tree down? With a saw, that's how!
+
+@ pin.near v:thornwake
+M: THORNWAKE IS STILL ALIVE! He got out at the very end!
+V: How? How?! He's a tree! Trees don't kick out!
+
+@ tired v:thornwake
+M: Thornwake is drooping! He's running out of steam!
+V: He needs water and sunshine, Brannigan. It's night. Ha!
+
+@ stall a:thornwake
+M: Thornwake is planting his feet, waiting for him to come in close.
+V: He's not waiting. He's rooted. He literally can't move.
+
+@ ai.guard a:thornwake
+M: Thornwake stands firm, wide stance, branches up.
+V: It's a tree, Brannigan. That's just how trees stand.

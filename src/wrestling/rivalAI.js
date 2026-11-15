@@ -38,6 +38,7 @@ import { EV } from './events.js';
 import { MOVES, POWERS, TUNE } from './fighter.js';
 import { GRAPPLE } from './grapple.js';
 import { SIGNATURES } from './signatures.js';
+import { alignOf } from './roster.js';
 
 const HALF_PI = Math.PI / 2;
 const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
@@ -102,8 +103,8 @@ const { godzilla: bruiser, ghidorah: showman, mecha: technician } = BASE_PERSONA
 export const PERSONAS = Object.freeze({
   ...BASE_PERSONAS,
   cindervault: {
-    ...bruiser, id: 'cindervault', space: 8, noSell: .31, bldg: 1.7,
-    w: { ...bruiser.w, heavy: 1.6, rush: .7 }, sig: [3.9, 2.2],
+    ...bruiser, id: 'cindervault', space: 11, react: 1.05, noSell: .31, bldg: 1.7,
+    w: { ...bruiser.w, heavy: 1.25, rush: .7 }, sig: [3.9, 2.2],
     pw: { beam: .65, roar: 1.75, charge: 1.15, stomp: .75 },
     tells: 'Closes the gap, trades heavy strikes and looks for a Caldera Chokebomb out of a lock-up.',
   },
@@ -113,19 +114,19 @@ export const PERSONAS = Object.freeze({
     tells: 'Circles outside striking distance, then closes for Riptide Suplex or fires Abyssal Lance.',
   },
   rimehorn: {
-    ...bruiser, id: 'rimehorn', space: 14, react: 1.28, guard: .8, noSell: .32, sprint: .07,
+    ...bruiser, id: 'rimehorn', space: 14, react: 1.15, guard: .8, noSell: .32, sprint: .07,
     w: { ...bruiser.w, string: .7, grab: 1.65, feint: .05 }, sig: [3.4, 2.5],
     pw: { beam: 1.2, roar: 1.55, charge: .5, stomp: .85 },
     tells: 'Plants its feet, guards and counters an approach with a Whiteout or a Permafrost Drop.',
   },
   vesperax: {
-    ...showman, id: 'vesperax', react: .8, space: 16, sprint: .8, ender: .4, ropeRun: 1.6, dive: 2.2,
+    ...showman, id: 'vesperax', react: .9, space: 16, sprint: .8, ender: .4, ropeRun: 1.6, dive: 2.2,
     w: { ...showman.w, string: 1.4, rush: 1.65 }, sig: [3.6, 2.9],
     pw: { beam: .45, roar: .55, charge: 1.85, stomp: .45 },
     tells: 'Darts in with short strings and Scythe Dash. A missed dash opens a counter.',
   },
   thornwake: {
-    ...bruiser, id: 'thornwake', space: 12, guard: .68, showHold: .65, bldg: .85,
+    ...bruiser, id: 'thornwake', space: 12, react: 1.0, guard: .5, showHold: .65, bldg: .85,
     lock: { ...bruiser.lock, swing: 1.3, slam: 2 }, sig: [3.8, 2.8],
     pw: { beam: .9, roar: 1.5, charge: .6, stomp: 1.0 },
     tells: 'Works from a wide stance, then takes the fight to the ground with Rootlock Slam.',
@@ -189,6 +190,51 @@ const VOICE = Object.freeze({
     bldg: ['{0} rips up a building from long range!', 'Calculated: {0} brought artillery.'],
     guardFire: ['{0} covers up and waits it out!', 'Cold as steel: {0} weathers the storm.'],
   },
+  // The six later kaiju (heels: Cindervault, Brineveil, Vesperax; faces: Rimehorn, Thornwake, Ferrumaw)
+  cindervault: {
+    noSell: ['{0} just absorbs it like a lava flow!', 'That barely cooled {0} down!', '{0} laughs that off!'],
+    building: ['{0} is going to bury somebody in the skyline!', '{0} wants to put you through a tower!'],
+    taunt: ['{0} pounds the chest! Sparks are flying off it!', '{0} is mocking the whole park!', 'Listen to them boo {0}!'],
+    bldg: ['{0} tore a building right out of the ground!', 'Molten fists and a whole building! Look out!'],
+    fire: ['{0} is ERUPTING!', 'The caldera is boiling over! {0} is furious!'],
+    sig: ['{0} has you by the throat!', 'This is where {0} gets nasty!'],
+  },
+  brineveil: {
+    ropes: ['{0} slips off the ropes like a riptide!', 'Here comes {0} off the cables!'],
+    dive: ['{0} is climbing the post! From the deep to the sky!', '{0} is going up top to ambush you!'],
+    lazy: ['A lazy cover from {0}! The crowd hates it!', '{0} thinks it already won!'],
+    taunt: ['{0} flashes that lure at the crowd!', 'That light is hypnotic, and {0} knows it!', 'They are booing {0} out of the park!'],
+    bldg: ['{0} hauls a building up from the depths!', 'Out of nowhere, {0} has a building!'],
+    sig: ['{0} drags you under!', 'The pressure is crushing! {0} has it locked in!'],
+  },
+  rimehorn: {
+    noSell: ['{0} is a glacier! That did nothing!', 'Solid ice! {0} will not move!'],
+    building: ['{0} lowers those horns! It is going through the block!', 'Head down! {0} is charging through Chicago!'],
+    taunt: ['{0} stamps the turf! The crowd loves it!', 'Listen to Chicago cheer {0}!'],
+    bldg: ['{0} is lifting a whole building!', 'The powerhouse has a skyscraper!'],
+    fire: ['{0} is digging in! Here comes the avalanche!', 'You cannot stop a glacier! {0} is fired up!'],
+    sig: ['{0} is going for the big one!', 'Raw power from {0}!'],
+  },
+  vesperax: {
+    ropes: ['{0} skates off the ropes!', 'Off the cables, {0} is a blur!'],
+    dive: ['{0} is perched on the post like a mantis!', 'Up top! {0} is going to strike from above!'],
+    lazy: ['One claw on the chest? Disrespectful, {0}!', '{0} is toying with you!'],
+    taunt: ['{0} sharpens those scythes for the crowd!', 'They are booing {0}, and it loves it!'],
+    sig: ['{0} strikes like a blade!', 'Precision from {0}!'],
+  },
+  thornwake: {
+    noSell: ['{0} is rooted! That did nothing!', 'You cannot knock down a forest!'],
+    taunt: ['{0} raises its branches to the crowd!', 'Chicago is behind {0}!'],
+    bldg: ['{0} uproots a building like a sapling!', 'Roots and all! {0} has a building!'],
+    fire: ['The forest is waking up! {0} is fired up!', '{0} is growing stronger!'],
+    sig: ['The roots have you now!', '{0} is going to take you down to the ground!'],
+  },
+  ferrumaw: {
+    guardFire: ['{0} curls up behind its plates!', 'Armour plating! {0} waits it out!'],
+    taunt: ['{0} rattles those scales for the crowd!', 'Chicago loves {0}!'],
+    bldg: ['{0} pulls a building in with magnetism!', 'Steel girders and all! {0} has a building!'],
+    sig: ['Magnetic grip! {0} will not let go!', '{0} has you locked in its coils!'],
+  },
 });
 const SIDE_YAW = { e: HALF_PI, w: -HALF_PI, s: 0, n: Math.PI };
 const _scan = { t: 2, b: null };
@@ -203,7 +249,7 @@ export function createRivalAI(ctx, W) {
   const offs = [];
   // Everything the brain remembers (reset per fall)
   const S = {
-    key: '', k: 0, lead: 0, cocky: 0, desperate: 0,
+    key: '', heel: false, k: 0, lead: 0, cocky: 0, desperate: 0,
     // perception
     thr: false, thrKind: '', thrHitAt: 0, thrActAt: 0, thrDo: 0,   // an incoming strike and what it decided to do about it: 0 eat it, 1 block, 2 reversal, 3 step back
     gthr: false, gthrAt: 0, gthrSeen: 0, gthrDo: 0,                // an incoming grab: 0 nothing, 1 step back
@@ -238,6 +284,9 @@ export function createRivalAI(ctx, W) {
   const note = (tag, a, b) => { if (ai.onNote) ai.onNote(tag, a, b); };
   const react = () => sk(T.react) * P.react * (now < S.rockedUntil ? 1.6 : 1) * (0.85 + 0.3 * rnd());
   const hpF = (f) => Math.max(0, f.hp) / Math.max(1, f.maxHp);
+  // Heel tricks (cheap shots, boo-bait stomps, gloating reversals) are for the heels (roster.js): a face with a high
+  // `cheap` number is a sharp opportunist, never a cheat
+  const heelP = () => (S.heel ? P.cheap : Math.min(P.cheap, 0.45));
   // The persona speaks: a ticker line (at most one every 4 s), a big callout (one every 3 s), the crowd's answer
   function voice(key, tone) {
     const L = VOICE[S.key] && VOICE[S.key][key];
@@ -306,6 +355,7 @@ export function createRivalAI(ctx, W) {
   function usePersona(me) {
     if (S.key === me.key) return;
     S.key = me.key;
+    S.heel = alignOf(me.key) === 'heel';
     P = PERSONAS[me.key] || PERSONAS.godzilla;
     S.wantGap = P.space;
   }
@@ -445,13 +495,17 @@ export function createRivalAI(ctx, W) {
   }
   function onGetup(e) {
     // The heel decides now whether to be waiting when it stands
-    if (e.who === 'player') S.cheapGo = P.cheap > 0.5 && rnd() < P.cheap * lerp(0.25, 0.75, S.k);
+    if (e.who === 'player') S.cheapGo = heelP() > 0.5 && rnd() < heelP() * lerp(0.25, 0.75, S.k);
   }
   function onRivalBeat(e) {
     // The persona's answer to its own big moments
     const ev = e.event;
-    if (ev === EV.TAUNT_START && e.who === 'rival' && rnd() < 0.6) voice('taunt');
-    else if ((ev === EV.STRIKE_REVERSED || ev === EV.GRAB_REVERSED) && e.who === 'rival' && P.cheap > 0.5) voice('reversal');
+    if (ev === EV.TAUNT_START && e.who === 'rival') {
+      if (rnd() < 0.6) voice('taunt');
+      // The crowd takes its side: a heel gloating is booed, a face playing to them is cheered
+      if (S.key !== 'godzilla' && S.key !== 'ghidorah' && S.key !== 'mecha') crowd(S.heel ? 'boo' : 'pop', 0.5);
+    }
+    else if ((ev === EV.STRIKE_REVERSED || ev === EV.GRAB_REVERSED) && e.who === 'rival' && heelP() > 0.5) voice('reversal');
     else if (ev === EV.PIN_START && e.who === 'rival' && S.lazyPin) { S.lazyPin = false; shout('LAZY COVER!'); voice('lazy', 'shock'); crowd('boo', 0.6); }
     else if (ev === EV.BUILDING_IMPACT && e.by === 'rival') S.bldgT = now;
   }
@@ -681,10 +735,12 @@ export function createRivalAI(ctx, W) {
     return true;
   }
   // Gorrak's run with the foe on its shoulder: the best building within reach of the charge (sets S.dozerYaw)
-  function dozerAim(me) {
+  function dozerAim(me, front = false) {
     let best = 0;
     for (let i = 0; i < 12; i++) {
-      const yaw = -Math.PI + i * (Math.PI / 6), sc = scoreDir(me.pos.x, me.pos.z, yaw, 100, '') * (1 + (rnd() - 0.5) * lerp(1, 0.2, S.k));
+      const yaw = -Math.PI + i * (Math.PI / 6);
+      if (front && Math.abs(angDiff(yaw, me.yaw)) > 1.3) continue; // (the horn toss runs on through the foe: only what is ahead of it)
+      const sc = scoreDir(me.pos.x, me.pos.z, yaw, front ? 70 : 100, '') * (1 + (rnd() - 0.5) * lerp(1, 0.2, S.k));
       if (sc > best) { best = sc; S.dozerYaw = yaw; }
     }
     return best > 0 && rnd() < sk(T.useEnv) + 0.2;
@@ -1062,7 +1118,7 @@ else {
       if (gg > 16) toward(me, it, _m.x, _m.z, 1, gg > 40 && P.sprint > 0.1);
       if (now < S.gAt || foe.falling > 0) return;
       const est = g.pinStrength(foe) + (rnd() - 0.5) * 2 * sk(T.pinNoise);
-      const heel = P.cheap > 0.5 ? 1 : 0; // (the heel stays on a downed foe one shot longer)
+      const heel = heelP() > 0.5 ? 1 : 0; // (the heel stays on a downed foe one shot longer)
       const mercy = S.chain >= T.mercyChain + heel || S.foeLockT > T.mercyLock + 2 * heel, long = S.foeLockT > T.mercyLock * 0.6;
       const second = S.gActs > 0;
       const G = P.ground;
@@ -1091,9 +1147,9 @@ else {
       }
       S.gPlan = choose() || 'wait';
       S.planT = 0; S.diveStage = 0;
-      S.lazyPin = S.gPlan === 'pin' && est >= 0.5 && P.cockyPin > 0.5;
+      S.lazyPin = S.gPlan === 'pin' && est >= 0.5 && P.cockyPin > 0.5 && S.heel; // (a face covers properly)
       if (S.gPlan === 'bldg') { S.gPlan = 'done'; setPlan('bldg', 7); note('bldg', 'ground', ''); }
-      if (S.gPlan === 'stomp' && P.cheap > 0.5) { crowd('boo', 0.5); voice(foe.worked ? 'work' : 'stomp', 'neutral'); }
+      if (S.gPlan === 'stomp' && heelP() > 0.5) { crowd('boo', 0.5); voice(foe.worked ? 'work' : 'stomp', 'neutral'); }
       note('ground', S.gPlan, '');
       if (S.gPlan !== 'taunt' && S.gPlan !== 'wait') S.chain++;
     }
@@ -1318,13 +1374,15 @@ else {
         // The signatures (RUN + toward / away, signatures.js): the persona's favourites, saved for when they mean something.
         // Gorrak's LOOP BULLDOZER wants a building to run the foe through.
         const sg = SIGNATURES[me.key], sigOk = !!sg && !!P.sig && now >= S.sigCd && me.stamina > 34 && !me.tired;
-        S.dozerOn = sigOk && sg[1].id === 'bulldozer' && dozerAim(me);
+        const charger = sigOk && (sg[1].id === 'bulldozer' || sg[1].id === 'horntoss');
+        S.dozerOn = charger && dozerAim(me, sg[1].id === 'horntoss');
         opt('sig1', sigOk ? P.sig[0] * (0.6 + hurt) * lerp(0.7, 1, S.k) * (1 + 1.6 * env) : 0);
-        opt('sig2', sigOk ? P.sig[1] * (0.6 + hurt) * lerp(0.7, 1, S.k) * (1 + 1.6 * env) * (sg[1].id !== 'bulldozer' ? 1 : S.dozerOn ? 2.5 : 0.6) : 0);
+        opt('sig2', sigOk ? P.sig[1] * (0.6 + hurt) * lerp(0.7, 1, S.k) * (1 + 1.6 * env) * (!charger ? 1 : S.dozerOn ? 2.5 : 0.6) : 0);
         S.holdMove = choose() || 'slam';
         if (S.holdMove === 'sig1' || S.holdMove === 'sig2') {
           S.sigCd = now + 7 + rnd() * 5;
           if (S.holdMove === 'sig2' && S.dozerOn) voice('building');
+          else voice('sig');
         } else S.dozerOn = false;
         S.holdAt = Math.min(G.lockAuto - 0.08, G.lockMin + 0.05 + sk(T.lockDelay) * (0.5 + rnd())); // (left any longer, the core makes it the lift)
         S.turns = Math.max(1, P.swingTurns - (rnd() < 0.4 ? 1 : 0));
@@ -1492,7 +1550,7 @@ else {
         if (S.fireTry === 0) S.fireTry = rnd() < P.fireUp * lerp(0.55, 1, S.k) ? 0.3 + rnd() * 0.5 : -6;
         else if (S.fireTry > 0) {
           S.fireTry -= dt;
-          if (S.fireTry <= 0) { S.fireTry = -6; it.taunt = true; if (S.key === 'godzilla') voice('fire'); note('fire-up', '', ''); }
+          if (S.fireTry <= 0) { S.fireTry = -6; it.taunt = true; voice('fire'); note('fire-up', '', ''); }
         } else if ((S.fireTry += dt) >= 0) S.fireTry = 0;
       } else if (S.fireTry > 0) S.fireTry = 0;
       else if (S.fireTry < 0) S.fireTry = Math.min(0, S.fireTry + dt);

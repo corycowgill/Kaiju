@@ -90,6 +90,10 @@ export function flipbooksReady() {
 
 /** Every effect texture loaded so far (flipbook sheets, the noise texture),
  *  for uploading behind the loading screen instead of on first use. */
+/** A loaded flipbook sheet by name (null until it has loaded). */
+export function flipTexture(name) { return _flipTex[name] || null; }
+/** A ground scorch decal (pooled; fades over 30 s). */
+export function placeScorch(world, pos, radius) { _placeScorch(world, pos, radius); }
 export function effectTextures() { return [...Object.values(_flipTex), NOISE_TEX]; }
 
 export function tick(_dt) {

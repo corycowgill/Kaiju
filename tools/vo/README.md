@@ -11,7 +11,7 @@ Which kaiju is a face or a heel is in `src/wrestling/roster.js`.
 
 1. Edit `script/*.txt`. `@ topic cond...` opens a block; each paragraph is one entry: one line, or an exchange
    (`M:` / `V:` lines said back to back). Conditions: `a:` / `v:` (who does it / who it is done to: gorrak,
-   mechra, tridon), `aa:` / `va:` (their alignment: face, heel), `mu:` (fh, hh, ff), `pair:x+y`, `lm:` (a landmark
+   mechra, tridon, cindervault, brineveil, rimehorn, vesperax, thornwake, ferrumaw), `aa:` / `va:` (their alignment: face, heel), `mu:` (fh, hh, ff), `pair:x+y`, `lm:` (a landmark
    id), `m:` (a signature move id). The topics and what fires them are in `subscribe()` in commentary.js.
 2. `node tools/vo/build.mjs` writes `src/wrestling/commentaryLines.js` and `out/utterances.json`.
 3. `python tools/vo/tts.py` voices what is new into `assets/vo/` (needs a CUDA GPU; see the header of tts.py),
@@ -22,7 +22,13 @@ A line that has no clip is shown as a caption only.
 ## A new kaiju
 
 Add it to `roster.js` with its alignment. Lines that only depend on alignment work at once; to be named on air it
-needs its own lines (`a:` / `v:` / `pair:`) and a key in `KEY` in build.mjs.
+needs its own lines (`a:` / `v:` / `pair:`) and a key in `KEY` in build.mjs. Its signature moves need an `m:` id in `SIG_ID` in commentary.js
+(keyed by the move's name in signatures.js; finishers are called by `finisher.start a:` / `finisher.hit a:`), and a
+name the voice model misreads gets a respelling in `spoken()` in build.mjs (check by Whisper's transcript).
+
+The kaiju on air: Gorrak (face), Tridon and Mechra (heels), from script/01-04; Cindervault, Brineveil, Vesperax
+(heels) and Rimehorn, Thornwake, Ferrumaw (faces), one file each in script/05-10, with every match-up in
+script/11 (new against new) and script/12 (new against the original three).
 
 ## Voices
 
