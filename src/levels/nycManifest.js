@@ -35,7 +35,7 @@ export const NYC_LANDMARK_GLBS = [
   { id: 'st_patricks_cathedral', file: 'st_patricks_cathedral.glb', trueHeightM: 100.6, face: 'west', stone: 0xd8d4ca, ready: true }, // 50 x 123 m incl. the Lady Chapel; +Z the Fifth Ave twin-spire front
   { id: 'plaza_hotel', file: 'plaza_hotel.glb', trueHeightM: 85.5, face: 'east', stone: 0xd4d0c4, ready: true }, // 75.6 x 97 m; +Z the Fifth Ave front over Grand Army Plaza; copper mansard
   { id: 'carnegie_hall', file: 'carnegie_hall.glb', trueHeightM: 63.0, face: 'north', stone: 0x9a6448, ready: true }, // 48.6 x 65.7 m incl. the 57th St studio wing; +Z the 57th St front
-  { id: 'radio_city_music_hall', file: 'radio_city_music_hall.glb', trueHeightM: 140.0, face: 'west', stone: 0xc8bca4, ready: true }, // 65 x 74 m block incl. 1270 Sixth Ave (140 m) behind; +Z Sixth Ave, the marquee corner on the 50th St side (+X = downtown)
+  { id: 'radio_city_music_hall', file: 'radio_city_music_hall.glb', trueHeightM: 41.0, face: 'west', stone: 0xc8bca4, ready: true }, // 66 x 75.5 m block: the Music Hall, auditorium and fly tower (41 m), marquee + RADIO CITY blade on the Sixth / 50th corner; 1270 Sixth Ave is the separate layout building b320
   { id: 'un_general_assembly', file: 'un_general_assembly.glb', trueHeightM: 32.8, face: 'north', stone: 0xd6d2c8, offsetM: [-28, -28], ready: true }, // 55 x 135 m; +Z the north visitors' glass wall
   { id: 'madison_square_garden', file: 'madison_square_garden.glb', trueHeightM: 48.0, face: 'east', stone: 0xb8b2a6, offsetM: [6.4, 0], ready: true }, // 126 x 187 m (drum 124 m, Chase Square pavilion toward +Z Seventh Ave, service block at the back)
   { id: 'columbus_circle', file: 'columbus_circle.glb', trueHeightM: 23.2, face: 'south', stone: 0xc8c4bc, ready: true }, // 72 m round plaza island with the Columbus column; place at the circle centre (fits inside the inner kerb)
@@ -74,6 +74,30 @@ export const NYC_LANDMARK_GLBS = [
   { id: 'sony_building', file: 'sony_building.glb', trueHeightM: 196.0, face: 'east', stone: 0xb8a0a0, ready: true }, // tier B; Madison Ave
   { id: 'madison_383', file: 'madison_383.glb', trueHeightM: 230.0, face: 'west', stone: 0x9cb0c4, ready: true }, // tier B; Madison Ave
   { id: 'park_425', file: 'park_425.glb', trueHeightM: 262.0, face: 'west', stone: 0x9cb0c4, ready: true }, // tier B; Park Ave
+  // nyc-design pass-2 helper (tools/build_intrepid.py, build_p2_buildings.py, build_p2_park.py ARGS=<id>)
+  { id: 'intrepid', file: 'intrepid.glb', trueHeightM: 50.0, face: 'west', stone: 0x6a7078, ready: true }, // carrier 266 x 51 m, bow at +Z (WNW); z = 0 is the WATERLINE (freeboard ~17 m, nothing below): seat it at the water surface, not on the pier
+  { id: 'javits_center', file: 'javits_center.glb', trueHeightM: 46.0, face: 'east', stone: 0x8ea0b0, ready: true }, // 305 x 242 m, green roof; +Z Eleventh Ave
+  { id: 'moynihan_train_hall', file: 'moynihan_train_hall.glb', trueHeightM: 32.3, face: 'east', stone: 0xc8c0b0, ready: true }, // 119 x 228 m (the Farley Post Office: colonnade + steps on Eighth Ave, skylit train hall)
+  { id: 'port_authority_bus_terminal', file: 'port_authority_bus_terminal.glb', trueHeightM: 40.0, face: 'east', stone: 0x7c7e84, ready: true }, // 141 x 249 m; +Z Eighth Ave
+  { id: 'macys_herald_square', file: 'macys_herald_square.glb', trueHeightM: 101.0, face: 'east', stone: 0x8a5444, ready: true }, // 64 x 220 m block; +Z Broadway / Herald Sq, red awnings
+  { id: 'the_shed', file: 'the_shed.glb', trueHeightM: 43.9, face: 'east', stone: 0xc8ccd0, ready: true }, // 39 x 81.5 m incl. the shell on its rails; +Z the Hudson Yards plaza
+  { id: 'lincoln_center_met_opera', file: 'lincoln_center_met_opera.glb', trueHeightM: 53.0, face: 'east', stone: 0xd0c8b8, ready: true }, // 64 x 139 m; +Z the plaza (five arches)
+  { id: 'st_bartholomews', file: 'st_bartholomews.glb', trueHeightM: 50.0, face: 'west', stone: 0xb06848, ready: true }, // 61 x 68 m incl. terrace; +Z Park Ave; dome 50 m
+  { id: 'daily_news_building', file: 'daily_news_building.glb', trueHeightM: 146.8, face: 'south', stone: 0xc8c4bc, ready: true }, // 100 x 60 m; +Z 42nd St
+  { id: 'central_synagogue', file: 'central_synagogue.glb', trueHeightM: 37.0, face: 'west', stone: 0x9a5a40, ready: true }, // 34 x 42 m; +Z Lexington Ave; onion domes
+  { id: 'rockefeller_rink', file: 'rockefeller_rink.glb', trueHeightM: 9.2, face: 'east', stone: 0xc0a060, ready: true }, // 32 x 41 m sunken rink + gilded Prometheus + flag ring; +Z the Channel Gardens
+  { id: 'tkts_red_steps', file: 'tkts_red_steps.glb', trueHeightM: 6.0, face: 'south', stone: 0xb03028, ready: true }, // 19 x 14 m red steps (Duffy Sq); emissive red
+  { id: 'pulitzer_fountain', file: 'pulitzer_fountain.glb', trueHeightM: 9.0, face: 'west', stone: 0xc8c4bc, ready: true }, // 19 m round basin; Grand Army Plaza
+  { id: 'sherman_monument', file: 'sherman_monument.glb', trueHeightM: 8.7, face: 'south', stone: 0xb08a40, ready: true }, // 7 x 5 m gilded equestrian on its pink granite pedestal
+  { id: 'bethesda_terrace', file: 'bethesda_terrace.glb', trueHeightM: 8.1, face: 'north', stone: 0xc0a888, ready: true }, // 60 x 69 m terrace, arcade and the Angel fountain; +Z the Lake
+  { id: 'wollman_rink', file: 'wollman_rink.glb', trueHeightM: 9.5, face: 'south', stone: 0xd0d4d8, ready: true }, // 70 x 50 m rink with its pavilion; +Z the skyline side
+  { id: 'gapstow_bridge', file: 'gapstow_bridge.glb', trueHeightM: 4.2, face: 'north', stone: 0x8a8680, ready: true }, // 23 x 6 m schist arch over the Pond
+  { id: 'tavern_on_the_green', file: 'tavern_on_the_green.glb', trueHeightM: 14.2, face: 'west', stone: 0x8a4a3a, ready: true }, // 57 x 55 m; +Z Central Park West
+  { id: 'central_park_zoo', file: 'central_park_zoo.glb', trueHeightM: 18.9, face: 'west', stone: 0x8a5a48, ready: true }, // 118 x 117 m incl. the sea-lion pool court
+  { id: 'pepsi_cola_sign', file: 'pepsi_cola_sign.glb', trueHeightM: 17.2, face: 'west', stone: 0x8a2420, ready: true }, // 38 m steel-frame sign on the LIC shore reading QUEENS COLA (invented); +Z faces Manhattan
+  { id: 'apple_cube', file: 'apple_cube.glb', trueHeightM: 10.3, face: 'west', stone: 0xc0ccd4, ready: true }, // 14 m glass cube entrance (no logo), Fifth Ave GM plaza
+  { id: 'roosevelt_island_tramway', file: 'roosevelt_island_tramway.glb', trueHeightM: 76.1, face: 'east', stone: 0x808890, ready: true }, // tower + red cabin, 76 m
+  { id: 'new_york_life_clock_paramount', file: 'new_york_life_clock_paramount.glb', trueHeightM: 8.5, face: 'north', stone: 0xb8b4a8, ready: true }, // small bell-ringer clock monument
 ];
 
 // Generic blocks by height bucket (game units: low < 7, short 7-18,

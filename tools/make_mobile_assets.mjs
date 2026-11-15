@@ -25,7 +25,10 @@ const PINNED = new Set([
   'buildings/chicago/soldier_field_lod1.glb', // its matching LOD1
 ]);
 const PHONE = { texelsPerUnit: 10, floor: 128, heroCap: 1024 };
-const capFor = (rel) => (/^enemies\/mech\//.test(rel) ? 1024 : 512);
+const capFor = (rel) => (/^enemies\/mech\//.test(rel) || NYC_KIT.test(rel) ? 1024 : 512);
+// The NYC generic kit keeps desktop density on phones (its windows read at kaiju eye; +0.55 MB, lead 2026-11-15)
+const NYC_KIT = /^buildings\/nyc\/nyc_(tenement|brownstone|prewar|deco|whitebrick|glassslab|glasstower|limestone)_[a-d](_lod1)?\.glb$/;
+const tpuFor = (rel) => (NYC_KIT.test(rel) ? 20 : PHONE.texelsPerUnit);
 
 function walk(dir, rel = '') {
   const out = [];
@@ -52,7 +55,7 @@ for (const rel of walk(A).filter((r) => r.endsWith('.glb')).sort()) {
     continue;
   }
   doc.setLogger(new Logger(Logger.Verbosity.WARN));
-  const log = await optimizeTextures(doc, rel, { ...PHONE, cap: capFor(rel) });
+  const log = await optimizeTextures(doc, rel, { ...PHONE, texelsPerUnit: tpuFor(rel), cap: capFor(rel) });
   const out = `${OUT}/${rel}`;
   if (!log.some((l) => / -> \d+x\d+ .*\((density|cap|constant)/.test(l))) { fs.rmSync(out, { force: true }); continue; } // nothing resized: serve the original
   await compressGeometry(doc, rel);

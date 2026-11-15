@@ -3085,7 +3085,7 @@ class _Placed {
 // generic block fills its footprint and reaches its height (Chicago kit)
 // atOrigin: put the model's own origin (not its bbox centre) on the
 // building position, for models authored around a meaningful centre
-function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, stretch = 1, atOrigin = false, lot = null) {
+function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, stretch = 1, atOrigin = false, lot = null, y0 = null) {
   const tpl = _glbTemplates.get(url);
   if (!tpl || building.destroyed) return;
 
@@ -3131,7 +3131,8 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
   building._grid?.expandBounds(building);
   building.h = boxScaled.max.y - boxScaled.min.y;
 
-  const yOffset = Math.abs(boxScaled.min.y) > 0.5 ? -boxScaled.min.y : 0;
+  // (y0: the model's origin goes to that height as it is, e.g. a ship's waterline on the river)
+  const yOffset = y0 != null ? y0 : Math.abs(boxScaled.min.y) > 0.5 ? -boxScaled.min.y : 0;
   const centerX = (boxScaled.min.x + boxScaled.max.x) / 2;
   const centerZ = (boxScaled.min.z + boxScaled.max.z) / 2;
   if (atOrigin) root.position.set(building.x, yOffset, building.z);
@@ -3376,7 +3377,7 @@ export function flushPendingGLBBuildings(scene) {
       _placeFillGLB({ ...entry, url }, scene);
       _placeRoofKit(entry);
     } else if (url) {
-      placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0, entry.stretch || 1, !!entry.atOrigin, entry.lot || null);
+      placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0, entry.stretch || 1, !!entry.atOrigin, entry.lot || null, entry.y0 ?? null);
       _placeRoofKit(entry);
     } else if (!entry.building.destroyed) {
       _revealProceduralBody(entry.building);

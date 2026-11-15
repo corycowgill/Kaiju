@@ -206,8 +206,36 @@ function nycMats(M) {
     copper: std(0x6c9c86, 0.7), roofDark: std(0x4a4c50, 0.85), slate: std(0x5c6066, 0.8),
     gravel: nycGround(new THREE.MeshStandardMaterial(), 'gravel'),
   };
+  // nyc-design's tiling fallback facades (assets/textures/nyc_fallback_*): glass curtain wall,
+  // limestone ashlar, tan brick; UVs are world-tiled per face by _tileUVs (tile in u)
+  const tl = new THREE.TextureLoader(), tex = (f, srgb) => {
+    const t = tl.load(assetURL('./assets/textures/' + f));
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  for (const [kind, mats, tint, tile] of [['glass', ['glass', 'glassLight'], [0xffffff, 0xdfe8f0], [9.12, 17.08]], ['stone', ['limestone', 'limeShade', 'granite'], [0xffffff, 0xe0d8cc, 0xb8b4ae], [8, 8]], ['brick', ['brick'], [0xffffff], [9.6, 13.4]]]) {
+    const map = tex(`nyc_fallback_${kind}_color.jpg`, true), normalMap = tex(`nyc_fallback_${kind}_normal.jpg`, false);
+    mats.forEach((k, i) => { Object.assign(_D[k], { map, normalMap }); _D[k].color.setHex(tint[i]); _D[k].userData.tile = [tile[0] * 0.2, tile[1] * 0.2]; });
+  }
   for (const m of Object.values(_D)) m.userData.shared = true;
   return _D;
+}
+/** World-tiled UVs on a procedural massing group (a box projection per vertex
+ *  by its normal: the side faces run u along the wall, v up; tops in plan),
+ *  each mesh at its material's tile size (userData.tile, u). */
+function _tileUVs(group) {
+  group.traverse((o) => {
+    const t = o.isMesh && o.material.userData.tile;
+    if (!t) return;
+    const g = o.geometry, p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
+    if (!p || !n || !uv) return;
+    for (let i = 0; i < p.count; i++) {
+      const nx = Math.abs(n.getX(i)), ny = Math.abs(n.getY(i)), nz = Math.abs(n.getZ(i));
+      if (ny > nx && ny > nz) uv.setXY(i, p.getX(i) / t[0], p.getZ(i) / t[0]);
+      else uv.setXY(i, (nx > nz ? p.getZ(i) : p.getX(i)) / t[0], p.getY(i) / t[1]);
+    }
+    uv.needsUpdate = true;
+  });
 }
 
 // --------------- procedural landmark massing ---------------
@@ -399,6 +427,8 @@ const BUILDER_ALIASES = [
   ['rink', 'rink'], ['tkts', 'steps'], ['intrepid', 'ship'], ['tramway', 'lattice'], ['sign', 'sign'], ['queensboro', 'bridge'],
   ['bethesda', 'civic'], ['tavern', 'block'], ['zoo', 'block'], ['fountain', 'monument'], ['monument', 'monument'], ['apple_cube', 'monument'],
   ['clock', 'monument'], ['gapstow', 'monument'], ['columbus_circle', 'monument'],
+  ['macys', 'block'], ['daily_news', 'deco'], ['port_authority', 'block'], ['javits', 'slab'], ['the_shed', 'slab'],
+  ['met_opera', 'civic'], ['lincoln_center', 'civic'], ['synagogue', 'cathedral'], ['bartholomew', 'cathedral'],
 ];
 /** The massing builder for a landmark: by id, else by its height (a tower above ~60 m). */
 function _builderFor(id, h = 0) {
@@ -967,9 +997,11 @@ export function buildNyc(scene, world, opts, K) {
         b.group.position.set(b.x, 0, b.z); b.group.updateMatrix();
         grid.add(b);
       }
-      if (def.exact) K.queueGLB({ url, h: def.trueHeightM * S, building: b, maxW: 0, maxD: 0, rotY, landmark: true, atOrigin: !!def.atOrigin });
+      // (models whose z0 is the waterline or a bank: intrepid, gapstow_bridge sit at the water surface, not lifted to their keel)
+      const y0 = /^(intrepid|gapstow_bridge)$/.test(lm.id) ? 0.2 : def.y0 != null ? def.y0 * S : undefined;
+      if (def.exact) K.queueGLB({ url, h: def.trueHeightM * S, building: b, maxW: 0, maxD: 0, rotY, landmark: true, atOrigin: !!def.atOrigin, y0 });
       else if (def.fit === 'footprint') K.queueGLB({ url, h: lm.h * (def.maxH || 1.6), building: b, maxW: aw, maxD: ad, rotY, landmark: true, stretch: def.stretch || 1.3, lot: lotOf(lm.w, lm.d, lm.rotY) });
-      else K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY, landmark: true });
+      else K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY, landmark: true, y0 });
       continue;
     }
     // Procedural massing until the GLB is ready, at true height (spire
@@ -978,6 +1010,7 @@ export function buildNyc(scene, world, opts, K) {
     const bld = _builderFor(lm.id, lm.h);
     const mesh = (bld || BUILDERS.block)(hTrue, lm.w, lm.d, M, D, lm.h);
     mesh.userData.procedural = true;
+    _tileUVs(mesh);
     const pend = NYC_LANDMARK_GLBS.find((g) => !g.ready && (g.ids ? g.ids.includes(lm.id) : g.id === lm.id));
     // (listed by the smoke test as pending, not failed)
     b.pendingGLB = pend ? pend.file : lm.id + ' (procedural)';
@@ -1369,7 +1402,9 @@ export function buildNyc(scene, world, opts, K) {
       const dEdge = Math.max(B.minX - x, x - B.maxX, B.minZ - z, z - B.maxZ, 0);
       if (lite && cls !== 1 && dEdge > 200 && rnd(k * 1.7) < 0.5) continue;
       // towers glass or stone by height, low fabric brick or stone, New Jersey mixed
-      const tint = cls === 1 ? pick(h > 30 ? GLASSY : rnd(k * 2.3) < 0.5 ? STONE : GLASSY, k) : pick(rnd(k * 6.7) < 0.55 ? BRICK : STONE, k * 3);
+      // (inside Central Park: the Met, the Arsenal, the boathouses: pale stone, not brick)
+      const inPark = cpark && toV(x, z) > cpark.v0 && toV(x, z) < cpark.v1 && toU(x, z) > cpark.u0;
+      const tint = inPark ? pick(STONE, k) : cls === 1 ? pick(h > 30 ? GLASSY : rnd(k * 2.3) < 0.5 ? STONE : GLASSY, k) : pick(rnd(k * 6.7) < 0.55 ? BRICK : STONE, k * 3);
       addBox(x, z, w, h, d, rot || 0, tint, ROOFS[k % 3], PAL && cls === 2 && behindFoot(x, z) > palRun * 0.6 ? palH : 0);
     }
     // Central Park on north past the bounds (the blocks either side are in the boxes)
