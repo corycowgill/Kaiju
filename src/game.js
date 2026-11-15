@@ -76,8 +76,12 @@ function trySetHighScore(s) {
 // ?level= wins (testing), then the saved menu pick, then Tokyo.
 const LEVELS = {
   tokyo:   { name: 'TOKYO',   jp: '東京', tag: 'NEON DUSK · SHINJUKU', h2: 'TOKYO DESTRUCTION', h2jp: '東京破壊' },
-  chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'GOLDEN HOUR · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊', arena: true },
+  chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'GOLDEN HOUR · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊', arena: true, data: true, title: 'CHICAGO HEAVYWEIGHT TITLE' },
+  dc: { name: 'WASHINGTON DC', jp: 'ワシントン', tag: 'LATE MORNING · THE NATIONAL MALL', h2: 'WASHINGTON DC DESTRUCTION', h2jp: 'ワシントン破壊', arena: true, data: true, title: 'NATIONAL MALL HEAVYWEIGHT TITLE' },
 };
+// data: built from a map layout (src/levels/<level>.js): GLB buildings on
+// every tier, the look layer, open water, explicit bounds and spawns
+const _dataLevel = (lv) => !!(LEVELS[lv] && LEVELS[lv].data);
 // The game mode a run on `level` plays: 'waves', the city-destruction loop
 // (Kaiju Havoc, and the classic city that VS and Lone Soldier play on), or
 // 'wrestling', the Title Match, picked from the menu's MODE list
@@ -1104,7 +1108,7 @@ if (GLB_CONTENT) {
   window.__dbg && window.__dbg('DBG · LOW phone: skipping tree/ped GLB preload');
   // Chicago on phone LOW still gets its GLB vehicles: one mesh a car (the
   // procedural fallback car is ~6 draws, the level's biggest draw cost there)
-  if (selectedLevel === 'chicago') {
+  if (_dataLevel(selectedLevel)) {
     try {
       await initAssetCache();
       await loadCarTemplates(undefined, selectedLevel);
@@ -1156,6 +1160,15 @@ const _CHICAGO_LOOK = {
   // the threshold so only real light sources bloom
   bloom: bloomPass && { threshold: 1.05, strength: bloomPass.strength * 0.7 },
 };
+// Washington DC: clear late morning held all match (look.js DC_KEY writes
+// the light every frame; these stand until its first write)
+const _DC_LOOK = {
+  ..._CHICAGO_LOOK,
+  bg: 0xb4c9e0, fog: 0xb4c9e0, fogDensity: 0.0006,
+  sky: { horizon: [0.74, 0.83, 0.92], midCol: [0.45, 0.65, 0.88], zenith: [0.20, 0.42, 0.77], sunRim: [1.0, 0.97, 0.9] },
+  sunOffset: [95, 145, 165],
+};
+const _LAYER_LOOKS = { chicago: _CHICAGO_LOOK, dc: _DC_LOOK };
 // Sun position relative to the kaiju (shadow camera follows it). Tokyo's
 // low west rake; levels may override (see sunOffset in the looks above)
 const _TOKYO_SUN = [-100, 100, 45];
@@ -1174,13 +1187,17 @@ function applyLevelLook(level) {
   // (1600u square centred 200u west of the map)
   resetLookClock();
   setLookLevel(level);
-  buildLookMap(world, level === 'chicago' ? { x: world.center.x - 200, z: world.center.z, r0: 520, r1: 775 } : null);
-  if (level === 'chicago') sun.position.copy(_sunOffset); // until a kaiju exists to follow
+  // (DC: centred on the map, fading out past its ground plane's 500u margin)
+  buildLookMap(world, level === 'chicago' ? { x: world.center.x - 200, z: world.center.z, r0: 520, r1: 775 }
+    : level === 'dc' ? { x: world.center.x, z: world.center.z, r0: _dcEdge(world.bounds, 60), r1: _dcEdge(world.bounds, 470) } : null);
+  if (_LAYER_LOOKS[level]) sun.position.copy(_sunOffset); // until a kaiju exists to follow
   if (changed && Q_HIGH) _captureEnv();
 }
+/** Radius from the map centre to its corner plus `pad` (DC's world-edge fade). */
+function _dcEdge(b, pad) { return Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + pad; }
 function _applyLevelStatics(level) {
   _lookLevel = level;
-  const L = level === 'chicago' ? _CHICAGO_LOOK : _TOKYO_LOOK;
+  const L = _LAYER_LOOKS[level] || _TOKYO_LOOK;
   scene.background.setHex(L.bg);
   scene.fog.color.setHex(L.fog); scene.fog.density = L.fogDensity;
   hemi.color.setHex(L.hemiSky); hemi.groundColor.setHex(L.hemiGround); hemi.intensity = L.hemiI;
@@ -1212,14 +1229,14 @@ function _applyLevelStatics(level) {
   // The Tokyo backdrop ring/mountains/barrier would stand in Lake Michigan
   for (const o of _horizon) o.visible = level === 'tokyo';
   // Chicago's dome follows the camera (look.js); Tokyo's stays at the origin
-  sky.material = level === 'chicago' ? _chiSkyMat : skyMat;
+  sky.material = _LAYER_LOOKS[level] ? _chiSkyMat : skyMat;
   sky.position.set(0, 0, 0);
   rimLight.position.set(80, 70, -60); // Tokyo's; Chicago's fill sits opposite its sun
   renderer.toneMappingExposure = 1.15; // Tokyo's; Chicago's is written per frame
   // IBL strength lives on the materials (three r160 has no scene-level
   // control). Tokyo: the level's own value. Chicago: 1, the look layer scales
   // its IBL in the shader (look.js ENV) and was tuned against full strength.
-  scene.userData.envStrength = level === 'chicago' ? 1 : L.env;
+  scene.userData.envStrength = _LAYER_LOOKS[level] ? 1 : L.env;
   applyEnvironmentStrength(scene, scene.userData.envStrength);
 }
 
@@ -1245,6 +1262,17 @@ function buildWorldCity() {
   bindWater(world);
   world.landPoint = res.landPoint || null;
   world.mapWater = res.mapWater || null;
+  // Layout spawns beyond the player's (DC: VS pair, Lone Soldier start, the ring site)
+  world.duelSpawns = res.duelSpawns || null;
+  world.soldierSpawn = res.soldierSpawn || null;
+  world.enemySpawns = res.enemySpawns || null;
+  // The title belt's plate names the level's championship (the arc fits ~19 letters at 14 px)
+  const beltName = document.getElementById('wr-belt-name');
+  if (beltName) {
+    const t = (LEVELS[res.level] && LEVELS[res.level].title || 'CHICAGO HEAVYWEIGHT TITLE').replace(/ TITLE$/, '');
+    beltName.textContent = t;
+    beltName.parentNode.setAttribute('font-size', String(Math.min(14, Math.round(14 * 19 / t.length * 10) / 10)));
+  }
   window.__barrier = res.barrier || _tokyoBarrier;
   applyLevelLook(res.level);
 }
@@ -2403,8 +2431,10 @@ function _showMobileDataWarning() {
     // trailer video only streams if played). Re-measure when assets change.
     // 2026-11, after tools/optimize_assets.mjs: desktop Chicago 64.7 / Tokyo 73.9,
     // phone MED 37.0 / 28.5, phone LOW 31.7 / 10.3 MB.
-    const chi = selectedLevel === 'chicago';
-    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? (chi ? '~37 MB' : '~29 MB') : (chi ? '~32 MB' : '~10 MB')) : (chi ? '~65 MB' : '~74 MB');
+    // Washington DC (2026-11-15, every response counted incl. code and audio,
+    // 30 s of play): desktop 38.4, phone MED 24.9, phone LOW 19.6 MB.
+    const chi = selectedLevel === 'chicago', dc = selectedLevel === 'dc';
+    if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? (chi ? '~37 MB' : dc ? '~25 MB' : '~29 MB') : (chi ? '~32 MB' : dc ? '~20 MB' : '~10 MB')) : (chi ? '~65 MB' : dc ? '~38 MB' : '~74 MB');
     warn.classList.remove('hidden');
     warn.style.display = 'flex';
     const okBtn = document.getElementById('data-warn-ok');
@@ -2841,7 +2871,7 @@ async function _settleGpu(extraRoots = [], timeoutMs = 8000) {
     if (tkLine) tkLine.textContent = 'There is the bell! We are under way in Chicago, a hundred thousand strong in Grant Park, and what a night it is going to be for the heavyweight title!';
     if (call && call.children.length >= 3) {
       call.className = 'wr-call t-result'; call.style.opacity = '1';
-      call.children[1].textContent = 'FIGHT!'; call.children[2].textContent = 'CHICAGO HEAVYWEIGHT TITLE';
+      call.children[1].textContent = 'FIGHT!'; call.children[2].textContent = (LEVELS[world.level] && LEVELS[world.level].title) || 'CHICAGO HEAVYWEIGHT TITLE';
     }
     await _steadyFrames(1500, 3500, true);
     if (ticker) ticker.className = was.tk;
@@ -3276,7 +3306,7 @@ async function _startGameInner(key) {
       _bldgLevelsLoaded.add(world.level);
     }
     // Chicago's buildings are GLB on every tier (phone LOW included)
-    const bldgGLB = GLB_CONTENT || world.level === 'chicago';
+    const bldgGLB = GLB_CONTENT || _dataLevel(world.level);
     if (bldgGLB && !_bldgLevelsLoaded.has(world.level)) {
       // First run on this level (another level's templates are already parsed)
       await loadBuildingTemplates(onBldgProgress, world.level);
@@ -7094,7 +7124,7 @@ function tick(now) {
     // When the sun is behind the camera the screen-pos is off-screen
     // and the god-ray contribution naturally fades to zero.
     // (Chicago: the sun disc's direction, a far point along it)
-    if (_lookLevel === 'chicago') _tmpSun.copy(lookSunDir()).multiplyScalar(1200).add(camera.position).project(camera);
+    if (_LAYER_LOOKS[_lookLevel]) _tmpSun.copy(lookSunDir()).multiplyScalar(1200).add(camera.position).project(camera);
     else _tmpSun.copy(sun.position).project(camera);
     window.__cinePass.uniforms.sunPos.value.set(
       (_tmpSun.x + 1) * 0.5,
@@ -7103,7 +7133,7 @@ function tick(now) {
     // Cull god rays when sun is well off-screen (clip space outside +/-1.4)
     const off = Math.max(Math.abs(_tmpSun.x), Math.abs(_tmpSun.y)) > 1.4 || _tmpSun.z > 1;
     // (Chicago: fading out as its sun sets; lit windows would streak instead)
-    window.__cinePass.uniforms.godStr.value = off ? 0.0 : (Q_HIGH ? 0.55 : 0.30) * (_lookLevel === 'chicago' ? lookSunUp() * 0.8 : 1);
+    window.__cinePass.uniforms.godStr.value = off ? 0.0 : (Q_HIGH ? 0.55 : 0.30) * (_LAYER_LOOKS[_lookLevel] ? lookSunUp() * 0.8 : 1);
   }
   vfx.tick(dt);
   // Behind the title/monster menu, loading screen and pause overlay the

@@ -44,7 +44,13 @@ for (const rel of walk(A).filter((r) => r.endsWith('.glb')).sort()) {
     if (fs.existsSync(`${OUT}/${rel}`)) variants.push(rel);
     continue;
   }
-  const doc = await io.read(`${A}/${rel}`);
+  let doc;
+  try { doc = await io.read(`${A}/${rel}`); } catch (e) {
+    // e.g. a GLB with external, ?v=-versioned images (festival people): keep any existing copy as is
+    console.warn(`${rel}: unreadable (${String(e.message).split(/\n/)[0]}), existing phone copy kept`);
+    if (fs.existsSync(`${OUT}/${rel}`)) variants.push(rel);
+    continue;
+  }
   doc.setLogger(new Logger(Logger.Verbosity.WARN));
   const log = await optimizeTextures(doc, rel, { ...PHONE, cap: capFor(rel) });
   const out = `${OUT}/${rel}`;

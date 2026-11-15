@@ -32,24 +32,50 @@ import * as LOOK from '../look.js';
  *  Shore Dr. ropeY are the three cable heights, postH the top turnbuckle
  *  (the towers themselves go on up to their floodlights at towerH),
  *  clearHalf the half-size of the square other systems treat as ringside. */
-export const ARENA = Object.freeze({
-  cx: 4, cz: 62, half: 42, postH: 24, ropeY: Object.freeze([8, 13, 18]), clearHalf: 60,
-  matHalf: 45.5, towerH: 55, ropeGive: 9, ropeHits: 3,
-});
-const A0 = ARENA, MAT = A0.matHalf;
-// The venue rectangle (ring, stands, standing areas): inside the festival fence
-const VEN = Object.freeze({ x0: -54, x1: 52, z0: -16, z1: 140 });
-// Grandstands: zf = front (ring side), zb = back; rows rise from H0 to ~10 u
-const STANDS = Object.freeze([
-  Object.freeze({ id: 'n', x0: -38, x1: 18, zf: 12, zb: -14, colour: 14 }),
-  Object.freeze({ id: 's', x0: -38, x1: 46, zf: 112, zb: 138, colour: 15 }),
-]);
+// The whole venue as laid out on Hutchinson Field; another level moves it
+// (every coordinate below shifts by the same dx, dz) with setArenaSite
+let SITE = { dx: 0, dz: 0, title: 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: 'GRANT PARK', fountain: true, stands: 'ns' };
+export let ARENA;
+let A0, VEN, STANDS, STAND_ALL, RAMP, GATE, SCREENS_W, FOUNTAIN;
+const MAT = 45.5;
+function _layoutSite() {
+  const { dx, dz } = SITE;
+  ARENA = A0 = Object.freeze({
+    cx: 4 + dx, cz: 62 + dz, half: 42, postH: 24, ropeY: Object.freeze([8, 13, 18]), clearHalf: 60,
+    matHalf: MAT, towerH: 55, ropeGive: 9, ropeHits: 3,
+  });
+  // Grandstands: zf = front (ring side), zb = back; rows rise from H0 to ~10 u.
+  // STAND_ALL places the standing-room corners; STANDS are the ones built
+  // (a site with no room for one leaves it out: SITE.stands)
+  STAND_ALL = Object.freeze([
+    Object.freeze({ id: 'n', x0: -38 + dx, x1: 18 + dx, zf: 12 + dz, zb: -14 + dz, colour: 14 }),
+    Object.freeze({ id: 's', x0: -38 + dx, x1: 46 + dx, zf: 112 + dz, zb: 138 + dz, colour: 15 }),
+  ]);
+  STANDS = Object.freeze(STAND_ALL.filter((st) => SITE.stands.includes(st.id)));
+  // The venue rectangle (ring, stands, standing areas): inside the festival fence;
+  // without a stand it ends just past the standing room on that side
+  const cz = 62 + dz;
+  VEN = Object.freeze({ x0: -54 + dx, x1: 52 + dx, z0: SITE.stands.includes('n') ? -16 + dz : cz - MAT - 10, z1: SITE.stands.includes('s') ? 140 + dz : cz + MAT + 10 });
+  RAMP = Object.freeze({ x0: MAT + A0.cx + 0.1, x1: 73.5 + dx, z: A0.cz, hw: 12 });
+  GATE = Object.freeze({ x: 67 + dx, z: A0.cz, hw: 19, h: 44, top: 50 });
+  SCREENS_W = Object.freeze([{ x: -50 + dx, z: 30 + dz }, { x: -50 + dx, z: 94 + dz }]); // west screens, facing the ring
+  // Buckingham Fountain's plaza: no standing crowd on it (Chicago only)
+  FOUNTAIN = Object.freeze({ x: 29.5 + dx, z: 4.4 + dz, r: SITE.fountain ? 11 : 0 });
+}
+_layoutSite();
+/** Where the venue stands: { x, z } the ring centre (default Chicago's
+ *  Hutchinson Field, 4, 62), title the championship's name on the mat and
+ *  banners, place the screens' LIVE FROM line, fountain false off Chicago,
+ *  stands the grandstands built ('ns' default; 'n' leaves the south one out:
+ *  standing room takes its side). Call before buildArena. */
+export function setArenaSite(s = {}) {
+  const next = { dx: (s.x ?? 4) - 4, dz: (s.z ?? 62) - 62, title: s.title || 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: s.place || 'GRANT PARK', fountain: s.fountain ?? true, stands: s.stands ?? 'ns' };
+  if (Object.keys(next).every((k) => next[k] === SITE[k])) return;
+  SITE = next;
+  _layoutSite();
+}
 const ROW_D = 2, ROW_H = 0.63, STAND_H0 = 2.4, ROWS = 13;
-const RAMP = Object.freeze({ x0: MAT + A0.cx + 0.1, x1: 73.5, z: A0.cz, hw: 12 });
-const GATE = Object.freeze({ x: 67, z: A0.cz, hw: 19, h: 44, top: 50 });
-const SCREENS_W = Object.freeze([{ x: -50, z: 30 }, { x: -50, z: 94 }]); // west screens, facing the ring
 const SCREEN = Object.freeze({ w: 28, h: 15.75, y0: 15 });
-const FOUNTAIN = Object.freeze({ x: 29.5, z: 4.4, r: 11 });
 const SIDES = ['n', 'e', 's', 'w'];
 
 /** Festival layout items the venue displaces (gates stay: the fence leaves their gaps). */
@@ -62,14 +88,14 @@ export function arenaDisplaces(it) {
 /** The venue's footprint (ring, stands, the runway to the lake) as one simple
  *  polygon the park's trees keep out of: [[x, z], ...]. */
 export function arenaNoTree() {
-  const V = VEN, x2 = 77, za = RAMP.z - 17, zb = RAMP.z + 17;
+  const V = VEN, x2 = 77 + SITE.dx, za = RAMP.z - 17, zb = RAMP.z + 17;
   return [[V.x0, V.z0], [V.x1, V.z0], [V.x1, za], [x2, za], [x2, zb], [V.x1, zb], [V.x1, V.z1], [V.x0, V.z1]];
 }
 
 /** True where street furniture, lamps and trees should not be placed. */
 export function arenaClears(x, z) {
   if (x > VEN.x0 && x < VEN.x1 && z > VEN.z0 && z < VEN.z1) return true;
-  return x >= VEN.x1 && x < 77 && Math.abs(z - RAMP.z) < 17;
+  return x >= VEN.x1 && x < 77 + SITE.dx && Math.abs(z - RAMP.z) < 17;
 }
 
 // ------------------------------------------------------------ tiers
@@ -146,8 +172,8 @@ function _paintAtlas(cx, px, emissive) {
     const r = AT.TITLE;
     cx.fillStyle = '#b8202a'; cx.fillRect(r.x, r.y, r.w, r.h);
     cx.fillStyle = '#0d1430'; cx.fillRect(r.x, r.y + 8, r.w, r.h - 16);
-    _fit(cx, 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', 62, 980);
-    cx.fillStyle = '#f2f0e6'; cx.fillText('CHICAGO HEAVYWEIGHT CHAMPIONSHIP', 512, r.y + r.h / 2 + 3);
+    _fit(cx, SITE.title, 62, 980);
+    cx.fillStyle = '#f2f0e6'; cx.fillText(SITE.title, 512, r.y + r.h / 2 + 3);
   }
   // STRIP
   {
@@ -219,8 +245,8 @@ function _paintMat(cx, px) {
   cx.textAlign = 'center'; cx.textBaseline = 'middle';
   _fit(cx, 'KAIJU HAVOC', 13.5, 70);
   cx.fillStyle = '#e6e4da'; cx.fillText('KAIJU HAVOC', S / 2, S * 0.137);
-  _fit(cx, 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', 6.2, 74);
-  cx.fillStyle = '#e6e4da'; cx.fillText('CHICAGO HEAVYWEIGHT CHAMPIONSHIP', S / 2, S * 0.862);
+  _fit(cx, SITE.title, 6.2, 74);
+  cx.fillStyle = '#e6e4da'; cx.fillText(SITE.title, S / 2, S * 0.862);
   // corners: the player's (north-east: top right from the lake) and the rival's (south-west)
   const cs = 13;
   cx.fillStyle = 'rgba(43,98,192,0.55)'; cx.fillRect(S - 3.5 - cs, S - 3.5 - cs, cs, cs);
@@ -254,7 +280,7 @@ function _makeLed(T) {
   tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
   const S = {
     mode: 'idle', text: '', sub: '', until: 0, flash: 0, a: 'KAIJU', b: 'KAIJU', pips: [0, 0], heat: 0,
-    ticker: 'KAIJU HAVOC  ★  CHICAGO HEAVYWEIGHT CHAMPIONSHIP  ★  LIVE FROM GRANT PARK  ★  ',
+    ticker: `KAIJU HAVOC  ★  ${SITE.title}  ★  LIVE FROM ${SITE.place}  ★  `,
     acc: 1, dirty: true, tickW: 0,
   };
   const big = (text, y, px, maxW, fill, stroke) => {
@@ -361,7 +387,7 @@ let _assets = null;
 /** Textures and materials, made once and kept across city rebuilds (the
  *  teardown frees geometry, never materials: their programs stay linked). */
 function _getAssets(tier) {
-  if (_assets && _assets.tier === tier) return _assets;
+  if (_assets && _assets.tier === tier && _assets.title === SITE.title) return _assets;
   const T = TIERS[tier];
   const tex = (cv) => { const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = tier === 2 ? 8 : 2; return t; };
   const atlasCv = _canvas(T.atlas, T.atlas), atlasECv = _canvas(T.atlas, T.atlas);
@@ -382,7 +408,7 @@ function _getAssets(tier) {
     cx.fillStyle = g; cx.fillRect(0, 0, 32, 32);
   }
   const A = {
-    tier, T, atlas, atlasE, matTex, led,
+    tier, title: SITE.title, T, atlas, atlasE, matTex, led,
     mStruct: struct(),                                   // static steel, stands, signage
     mPost: [struct(), struct(), struct(), struct()],     // one per tower: its lamps flicker / die on their own
     mMat: std({ map: matTex, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
@@ -1115,11 +1141,15 @@ export function buildArena(scene, world, o) {
       }
     }
     // standing room: west behind the barricade, the corners, the fountain plaza
+    // (a side without its grandstand: the corners stop short and a standing strip runs along the mat)
+    const N = STAND_ALL[0], S = STAND_ALL[1], hasN = SITE.stands.includes('n'), hasS = SITE.stands.includes('s');
     const zones = [
       [cx - 52.5, cz - MAT - 1, cx - 48.6, cz + MAT + 1, 0.42],
-      [VEN.x0 + 1.5, STANDS[0].zb, STANDS[0].x0 - 1, cz - MAT - 1, 0.14],
-      [VEN.x0 + 1.5, cz + MAT + 1, STANDS[1].x0 - 1, STANDS[1].zb, 0.14],
-      [STANDS[0].x1 + 1.5, STANDS[0].zb + 2, MAT + cx + 3, cz - MAT - 3.5, 0.30],
+      [VEN.x0 + 1.5, hasN ? N.zb : cz - MAT - 6, N.x0 - 1, cz - MAT - 1, 0.14],
+      [VEN.x0 + 1.5, cz + MAT + 1, S.x0 - 1, hasS ? S.zb : cz + MAT + 6, 0.14],
+      [N.x1 + 1.5, hasN ? N.zb + 2 : cz - MAT - 6, MAT + cx + 3, cz - MAT - 3.5, 0.30],
+      ...(hasN ? [] : [[cx - MAT, cz - MAT - 6, cx + MAT, cz - MAT - 1, 0.5]]),
+      ...(hasS ? [] : [[cx - MAT, cz + MAT + 1, cx + MAT, cz + MAT + 6, 0.5]]),
     ];
     const wsum = zones.reduce((s, zn) => s + zn[4], 0);
     for (const zn of zones) {
@@ -1277,7 +1307,7 @@ export function buildArena(scene, world, o) {
       mv(GATE.x, GATE.top + 2, GATE.z - GATE.hw, 0.58); mv(GATE.x, GATE.top + 2, GATE.z + GATE.hw, 0.0);
       mv(SCREENS_W[0].x, SCREEN.y0 + SCREEN.h + 2, SCREENS_W[0].z, 0.0); mv(SCREENS_W[1].x, SCREEN.y0 + SCREEN.h + 2, SCREENS_W[1].z, 0.58);
     }
-    if (T.movers >= 6) { mv(STANDS[0].x0, 13, STANDS[0].zb, 0.12); mv(STANDS[1].x1, 13, STANDS[1].zb, 0.12); }
+    if (T.movers >= 6) for (const st of STANDS) mv(st.id === 'n' ? st.x0 : st.x1, 13, st.zb, 0.12);
     const n = 4 + movers.length;
     const im = new THREE.InstancedMesh(g, AS.mBeam, n);
     im.name = 'arena_beams';
@@ -1361,7 +1391,8 @@ export function buildArena(scene, world, o) {
       return !hit;
     };
     const whyAt = (x, z, r) => { if (world.isWater && world.isWater(x, z)) return 'water'; if (Math.abs(x - cx) < MAT + r && Math.abs(z - cz) < MAT + r) return 'mat'; let w = ''; if (o.grid) o.grid.forEachNear(x, z, r + 12, (b) => { if (!w && !b.destroyed && Math.abs(b.x - x) < b.w / 2 + r && Math.abs(b.z - z) < b.d / 2 + r) w = (b.fest ? 'fest ' : 'b ') + (b.landmarkId || '') + Math.round(b.x) + ',' + Math.round(b.z); }); return w; };
-    for (const [x0, z0, k, yaw] of SPOTS) {
+    for (const [x00, z00, k, yaw] of SPOTS) {
+      const x0 = x00 + SITE.dx, z0 = z00 + SITE.dz;
       const K = kinds[k], r = Math.max(K.w, K.d) * 0.5 + 1;
       // nudged outward from the venue if something stands there already
       let x = x0, z = z0, ok = false;

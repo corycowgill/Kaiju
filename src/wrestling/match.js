@@ -13,6 +13,7 @@
 // a three count that cannot be kicked out of.
 import { EV } from './events.js';
 import { FINISHERS } from './grapple.js';
+import { placeText } from './venue.js';
 
 /** Match tuning. */
 export const MATCH = {
@@ -710,9 +711,11 @@ export function createMatch(ctx, W) {
     gameOverText(victory) {
       const falls = `${s.playerFalls} - ${s.rivalFalls}`;
       const def = s.defense > 0 ? ` · ${s.defense} TITLE DEFENSE${s.defense > 1 ? 'S' : ''}` : '';
-      return victory
+      const r = victory
         ? { title: s.defense > 0 ? 'AND STILL...' : 'AND NEW...', subtitle: `${W.player.name} · CHICAGO HEAVYWEIGHT CHAMPION${def}`, waveLabel: 'Falls Won', waveValue: falls, keepPose: true }
         : { title: `${W.rival.name} WINS`, subtitle: s.defense > 0 ? `The title changes hands after ${s.defense} defense${s.defense > 1 ? 's' : ''}` : `${W.rival.name} retains the Chicago Heavyweight title`, waveLabel: 'Falls Won', waveValue: falls, keepPose: true };
+      r.subtitle = placeText(ctx, r.subtitle); // (the level's championship: venue.js)
+      return r;
     },
     /** QA: end the current fall now as a win for 'player' or 'rival' (through the normal fall path). */
     end(winner) {

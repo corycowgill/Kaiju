@@ -62,7 +62,10 @@ function findOpenSpawn(world, area) {
 }
 
 export function findDuelSpawns(world) {
-  const [first, second] = SPAWN_AREAS[world.level] || SPAWN_AREAS.tokyo;
+  // A level whose layout names a duel pair (DC) searches 20u round each
+  const area = (p) => ({ x: p.x, z: p.z, minX: p.x - 20, maxX: p.x + 20, minZ: p.z - 20, maxZ: p.z + 20 });
+  const D = world.duelSpawns;
+  const [first, second] = D && D.a && D.b ? [area(D.a), area(D.b)] : SPAWN_AREAS[world.level] || SPAWN_AREAS.tokyo;
   const player = findOpenSpawn(world, first);
   const rival = findOpenSpawn(world, second);
   if (!player || !rival) throw new Error('No clear duel spawn in the selected arena');

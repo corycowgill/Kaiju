@@ -739,3 +739,64 @@ test('VS dropkick hits once and a miss commits the attacker to recovery', async 
   assert.ok(miss.wrestling.locked(miss.wrestling.player));
   assert.equal(miss.result.rivalHits.length,0);
 });
+
+// ---- Washington DC (src/levels/dc.js) ----
+const fs = await import('node:fs');
+const DC_LAYOUT = (() => {
+  // The file dc.js loads (the cartographer's, or the placeholder until it lands)
+  const src = fs.readFileSync(new URL('../src/levels/dc.js', import.meta.url), 'utf8');
+  const url = src.match(/const LAYOUT_URL = '\.\/(assets\/levels\/[\w.]+\.json)'/)[1];
+  return JSON.parse(fs.readFileSync(new URL('../' + url, import.meta.url), 'utf8'));
+})();
+const inPoly = (x, z, poly) => {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+};
+const dcWet = (x, z) => (DC_LAYOUT.water || []).some((w) => inPoly(x, z, w.polygon) && !(w.holes || []).some((h) => inPoly(x, z, h)));
+
+test('DC layout: kaiju, duel pair, ring site and enemy spawns are dry and inside the play area', () => {
+  const B = DC_LAYOUT.bounds, inB = (p, m = 0) => p.x >= B.minX - m && p.x <= B.maxX + m && p.z >= B.minZ - m && p.z <= B.maxZ + m;
+  assert.equal(DC_LAYOUT.meta.scale, 0.2);
+  const sp = DC_LAYOUT.spawn.player;
+  // the kaiju wades in from open water (the Tidal Basin) or starts on dry land
+  assert.ok(inB(sp), 'kaiju spawn inside the bounds');
+  if (dcWet(sp.x, sp.z)) for (const [dx, dz] of [[-10, 0], [10, 0], [0, -10], [0, 10]]) assert.ok(dcWet(sp.x + dx, sp.z + dz), 'kaiju spawn in open water');
+  const { a, b } = DC_LAYOUT.duel;
+  assert.ok(inB(a) && inB(b) && !dcWet(a.x, a.z) && !dcWet(b.x, b.z), 'duel pair dry and inside');
+  assert.ok(Math.hypot(a.x - b.x, a.z - b.z) > 245, 'duel pair far enough apart');
+  const R = DC_LAYOUT.ring;
+  assert.ok(inB(R) && !dcWet(R.x, R.z), 'ring site dry and inside');
+  // The mat (45.5u half) is clear of water and of every landmark's centre
+  for (const [dx, dz] of [[-45, -45], [45, -45], [45, 45], [-45, 45], [0, 0]]) assert.ok(!dcWet(R.x + dx, R.z + dz), 'ring mat on dry ground');
+  for (const lm of DC_LAYOUT.landmarks) assert.ok(Math.abs(lm.x - R.x) > 46 || Math.abs(lm.z - R.z) > 46, `landmark ${lm.id} under the ring`);
+  for (const e of DC_LAYOUT.spawn.enemies || []) assert.ok(inB(e, 40), `enemy spawn ${e.x},${e.z} near the bounds`);
+});
+
+test('VS spawns on DC use the layout pair', async () => {
+  const { findDuelSpawns } = await import('../src/kaijuDuel.js');
+  const { a, b } = DC_LAYOUT.duel;
+  const world = { level: 'dc', bounds: DC_LAYOUT.bounds, isWater: dcWet, buildings: [], duelSpawns: { a, b } };
+  const s = findDuelSpawns(world);
+  assert.ok(s.player.distanceTo(new THREE.Vector3(a.x, 0, a.z)) < 21 && s.rival.distanceTo(new THREE.Vector3(b.x, 0, b.z)) < 21);
+  assert.ok(!dcWet(s.player.x, s.player.z) && !dcWet(s.rival.x, s.rival.z));
+});
+
+test('Title Match off Chicago: booth rows naming Chicago are skipped, on-screen place names swapped', async () => {
+  const { placeText, chicagoLine, offChicago, venueHome } = await import('../src/wrestling/venue.js');
+  const { VO_LINES } = await import('../src/wrestling/commentaryLines.js');
+  const dc = { world: { level: 'dc' } }, chi = { world: { level: 'chicago' } };
+  assert.ok(offChicago(dc) && !offChicago(chi));
+  const gated = VO_LINES.filter(chicagoLine);
+  assert.ok(gated.length > 150 && gated.length < VO_LINES.length / 4, `${gated.length} gated rows`);
+  // every topic the booth needs still has a line on DC (the bell, the intro, the result, the falls)
+  for (const t of ['intro', 'bell', 'match.over', 'fall.end', 'entrance', 'water']) assert.ok(VO_LINES.some((r) => r[0] === t && !chicagoLine(r)), `topic ${t} left empty on DC`);
+  assert.equal(placeText(dc, 'Gorrak · CHICAGO HEAVYWEIGHT CHAMPION'), 'Gorrak · NATIONAL MALL HEAVYWEIGHT CHAMPION');
+  assert.equal(placeText(dc, 'INTO LAKE MICHIGAN!'), 'INTO THE POTOMAC!');
+  assert.equal(placeText(chi, 'INTO LAKE MICHIGAN!'), 'INTO LAKE MICHIGAN!');
+  assert.match(venueHome(dc, 'player', 'x'), /POTOMAC/);
+  assert.equal(venueHome(chi, 'player', 'FROM THE DEPTHS OF LAKE MICHIGAN'), 'FROM THE DEPTHS OF LAKE MICHIGAN');
+});

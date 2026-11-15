@@ -3432,3 +3432,12 @@ function makeRiverBoats(scene, r, n, ps = 1, parts = null, phase0 = 0) {
     },
   };
 }
+
+// Shared with the other data-built levels (src/levels/dc.js): the layout
+// normaliser, geometry helpers, the material set and the generic block kit
+export const LEVEL_KIT = {
+  normalizeLayout: _normalizeLayout, ribbon, geom: _geom, polygonGeom, quadAlong, pointInPoly, distToPolyline,
+  roadIndex: _roadIndex, Massing, mats, std2, decal, axis: _axis, faceRot: _faceRot, placeStatic, makeLamp: makeChiLamp,
+  makeShelter: makeBusShelter, makeBoat, facadeColor: _facade, windows: CHI_WINDOWS, base: CHI_BASE,
+  genericGLBs: CHICAGO_GENERIC_GLBS, bucket: _bucket, landmarkBuilders: LANDMARK_BUILDERS,
+};

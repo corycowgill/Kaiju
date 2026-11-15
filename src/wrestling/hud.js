@@ -20,6 +20,7 @@ import { FINISHERS } from './grapple.js';
 import { PERSONAS } from './rivalAI.js';
 import { SIGNATURES } from './signatures.js';
 import { ROSTER } from './roster.js';
+import { placeText, venueHome } from './venue.js';
 
 // Face crop of assets/<key>.webp (640x360 in-engine renders) for the band portrait
 const PORTRAIT = {
@@ -420,7 +421,7 @@ export function createHud(ctx, W) {
     c.querySelector('.nm').textContent = f.name;
     c.querySelector('.ep').textContent = f.cfg.epithet;
     const home = ROSTER[f.key]?.home;
-    c.querySelector('.st').textContent = home && !PORTRAIT[f.key] ? `FROM ${home.toUpperCase()}` : HOME[id];
+    c.querySelector('.st').textContent = placeText(ctx, home && !PORTRAIT[f.key] ? `FROM ${home.toUpperCase()}` : venueHome(ctx, id, HOME[id]));
     c.querySelector('.pic i').style.backgroundImage = `url(assets/${f.cfg.portrait})`;
     const d = id === 'player' ? -1 : 1, ms = 3400;
     cardT[id === 'player' ? 0 : 1] = ms / 1000;
@@ -560,7 +561,7 @@ export function createHud(ctx, W) {
     on(EV.ENTRANCE_BEAT, (e) => { if (e.beat === 'namecard') showCard(e.who); });
     on(EV.ENTRANCE_SKIP, hideCards);
     on(EV.BELL, (e) => {
-      if (e.kind === 'start') callout('FIGHT!', '', 'result', '', W.match.state.bestOf > 1 ? `FALL ${W.match.state.fall}` : 'CHICAGO HEAVYWEIGHT TITLE', 1.3);
+      if (e.kind === 'start') callout('FIGHT!', '', 'result', '', W.match.state.bestOf > 1 ? `FALL ${W.match.state.fall}` : placeText(ctx, 'CHICAGO HEAVYWEIGHT TITLE'), 1.3);
     });
     on(EV.FALL_START, () => { writePips(); for (const id of ['player', 'rival']) { side[id].hp = -1; writeSide(id); } });
     on(EV.FALL_END, (e) => {
@@ -601,7 +602,7 @@ export function createHud(ctx, W) {
     });
     on(EV.KO, () => { pinEnd(false); setMash(''); callout('K.O.!', '', 'result', ''); });
     // The match director's words
-    on(EV.CALLOUT, (e) => callout(e.text, e.sub, e.tier, e.who));
+    on(EV.CALLOUT, (e) => callout(placeText(ctx, e.text), placeText(ctx, e.sub), e.tier, e.who));
     on(EV.COMMENTARY, (e) => { if (e.vo) say(e.text, e.tone, e.speaker, e.dur); });
     on(EV.PROMPT, (e) => { if (e.id in evPrompt) { evPrompt[e.id] = !!e.show; slowT = 1; } });
     on(EV.LOCKON, (e) => {

@@ -9,6 +9,8 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { cachedFetch, cachedBlobURL, normalizeGLTFMaterials, disposeInstance, assetURL, withParseSlot, reportLoadError, isCodeBug, setKTX2Enabled, markShared } from './assetCache.js';
 import { isMobile } from './quality.js';
 import { buildChicago, loadChicagoLayout, chicagoBuildingGLBs, chicagoPropGLBs, chicagoVehicleGLBs, chicagoLod1GLBs } from './levels/chicago.js';
+import { buildDc, loadDcLayout, dcBuildingGLBs, dcPropGLBs, dcVehicleGLBs, dcLod1GLBs } from './levels/dc.js';
+import { setArenaSite } from './levels/chicago_arena.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
 // and loadPedestrianTemplates() run at module-load time via top-level await in game.js.
@@ -215,6 +217,7 @@ const LOD1_READY = new Set([
   './assets/props/traffic_signal.glb', './assets/props/street_lamp.glb', './assets/props/vending_machine.glb',
 ]);
 for (const u of chicagoLod1GLBs()) LOD1_READY.add(u);
+for (const u of dcLod1GLBs()) LOD1_READY.add(u);
 const _lod1ByGeom = new Map(); // LOD0 BufferGeometry -> LOD1 BufferGeometry
 const _lod1Attached = new Set(); // LOD0 urls whose twin registered (smoke test)
 // Beyond this distance (camera to a 120u instancing tile's centre, or kaiju to
@@ -289,9 +292,10 @@ function _loadProps(list) {
 
 /** The level's prop list as [{ name, url }]. */
 function _levelProps(level) {
-  if (level === 'chicago') {
+  // DC: Chicago's US street kit (its acorn lamp is the Washington globe) plus its own
+  if (level === 'chicago' || level === 'dc') {
     return [...PROP_GLBS_GENERIC.filter((n) => PROP_GLBS_READY.has(n)).map((name) => ({ name, url: PROP_GLB_BASE + name + '.glb' })),
-      ...chicagoPropGLBs()];
+      ...chicagoPropGLBs(), ...(level === 'dc' ? dcPropGLBs() : [])];
   }
   return PROP_GLBS.map((name) => ({ name, url: PROP_GLB_BASE + name + '.glb' }));
 }
@@ -2623,7 +2627,7 @@ function _cachedGLB(url, original = false) {
 
 /** Building GLB urls a level loads (Tokyo: every Tokyo template). */
 function _levelBuildingGLBs(level) {
-  return level === 'chicago' ? chicagoBuildingGLBs() : ALL_BUILDING_GLBS;
+  return level === 'chicago' ? chicagoBuildingGLBs() : level === 'dc' ? dcBuildingGLBs() : ALL_BUILDING_GLBS;
 }
 
 /** Load the level's unique building GLB templates (already-loaded ones are skipped). */
@@ -3279,7 +3283,7 @@ export function flushPendingGLBBuildings(scene) {
 
 /** Fetch the level's map data before buildCity (Tokyo is procedural: none). */
 export function loadLevelData(level) {
-  return level === 'chicago' ? loadChicagoLayout() : Promise.resolve();
+  return level === 'chicago' ? loadChicagoLayout() : level === 'dc' ? loadDcLayout() : Promise.resolve();
 }
 
 /** Build the selected level's city. opts.level: 'tokyo' (default) | 'chicago'.
@@ -3298,13 +3302,19 @@ export function buildCity(scene, world, opts = {}) {
   _windowQueue = [];
   _pedCfg = null;
   _carNet = null;
-  _carLevel = opts.level === 'chicago' ? 'chicago' : 'tokyo';
+  _carLevel = opts.level === 'chicago' || opts.level === 'dc' ? opts.level : 'tokyo';
   // Chicago: zelkova only (elm-like summer green; the ginkgo read neon yellow)
   _bldgTile = BLDG_TILE;
-  _treeTint = opts.level === 'chicago' ? new THREE.Color(0.62, 0.78, 0.55) : null;
-  _treeExclude = new Set(opts.level === 'chicago' ? ['./assets/trees/tree_sakura.glb', './assets/trees/tree_black_pine.glb', './assets/trees/tree_ginkgo.glb'] : []);
+  // (DC: the same; its cherry trees round the Tidal Basin are its own landscape's)
+  const usTrees = opts.level === 'chicago' || opts.level === 'dc';
+  _treeTint = usTrees ? new THREE.Color(0.62, 0.78, 0.55) : null;
+  _treeExclude = new Set(usTrees ? ['./assets/trees/tree_sakura.glb', './assets/trees/tree_black_pine.glb', './assets/trees/tree_ginkgo.glb'] : []);
   _resetCollapseFx();
-  const res = opts.level === 'chicago' ? buildChicago(scene, world, opts, CITY_KIT) : { ...buildTokyo(scene, world, opts), level: 'tokyo' };
+  // The ring stands on Hutchinson Field unless a level moves it (dc.js does)
+  setArenaSite();
+  const res = opts.level === 'chicago' ? buildChicago(scene, world, opts, CITY_KIT)
+    : opts.level === 'dc' ? buildDc(scene, world, opts, CITY_KIT)
+    : { ...buildTokyo(scene, world, opts), level: 'tokyo' };
   // Queued collapse effects, a few buildings per frame (see _drainCollapseFx)
   (res.cityAnimators || (res.cityAnimators = [])).push({ update: () => _drainCollapseFx(world) });
   return res;
@@ -4891,7 +4901,10 @@ function _loadCarList(list, onProgress) {
 
 /** The level's vehicle defs (shared v2 vehicles plus the level's own). */
 function _levelCars(level) {
-  const own = level === 'chicago' ? chicagoVehicleGLBs() : [];
+  // DC drives Chicago's US fleet (less the CTA bus) plus its own; tagging
+  // both levels on the shared templates leaves Chicago's traffic as it was
+  const us = chicagoVehicleGLBs().map((v) => ({ ...v, levels: /cta_bus/.test(v.url) ? ['chicago'] : ['chicago', 'dc'] }));
+  const own = level === 'chicago' ? us : level === 'dc' ? [...us.filter((v) => v.levels.includes('dc')), ...dcVehicleGLBs()] : [];
   return [...CAR_GLBS.filter((d) => !d.levels || d.levels.includes(level)), ...own];
 }
 

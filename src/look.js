@@ -511,13 +511,42 @@ const KEY_T = [0, 0.5, 1];
 // Bearing of the sun (x, z): west-south-west, about 57 degrees left of the
 // lakefront camera's westward view, so towers and kaiju are side-lit
 const SUN_AZ = [-0.545, 0.838];
+// Washington DC: clear late-morning light held all match (one key, no slide
+// to dusk), the sun high in the south-east over the Mall. Starts from the
+// golden-hour key; dc-design tunes the values.
+const DC_KEY = {
+  ...KEYS[0],
+  discElev: 50, lightElev: 50,
+  sun: lin(0xfff3e0), sunI: 3.0,
+  fill: lin(0xc6d6f2), fillI: 0.5,
+  hemiSky: lin(0xbcd2f0), hemiGround: lin(0x7c7462), hemiI: 0.5,
+  amb: lin(0x6c7c98), ambI: 0.07,
+  haze: lin(0xb4c9e0), hazeSun: lin(0xf2e6d2), hazeExp: 1.4, fogD: 0.0006, fogK: 0.011, fogMax: 0.82,
+  zen: lin(0x2c66be), mid: lin(0x7ca8dc), glow: lin(0xfff0d4), disc: 6,
+  env: [0.82, 0.84, 0.88], fillW: lin(0xfff0dc), fillWI: 0.25,
+  win: lin(0xffe0b0), winI: 0.1, winFrac: 0.04, glass: 0.6,
+  sat: 0.95, val: 0.82, ao: 0.6, shadow: 0.92,
+  unlit: [0.84, 0.84, 0.82],
+  cloud: lin(0xf6f6f2), cloudShade: lin(0xa8b2c4), cover: 0.34, stars: 0,
+  rimSun: lin(0xfff0dc, 1.3), rimSky: lin(0xa8ccff, 0.7), rimI: 0.95, hero: 0.18, flood: 0.25,
+  exposure: 0.98, bloomT: 1.08, bloomS: 0.28,
+  gradeMix: 0.3, gradeShadow: [0.95, 0.98, 1.04], gradeHigh: [1.03, 1.01, 0.97],
+};
+// Levels the layer runs on: their keys, key times and sun bearing (x, z)
+const LAYER = {
+  chicago: { keys: KEYS, t: KEY_T, az: SUN_AZ },
+  dc: { keys: [DC_KEY, DC_KEY], t: [0, 1], az: [0.5, 0.866] },
+};
+/** True on a level the look layer runs on (Tokyo keeps its own look). */
+export const lookLayerLevel = (level) => !!LAYER[level];
+let _keys = KEYS, _keyT = KEY_T, AZ = SUN_AZ;
 const _cur = {};
 for (const k of Object.keys(KEYS[0])) _cur[k] = Array.isArray(KEYS[0][k]) ? [0, 0, 0] : 0;
 function _blend(t) {
   let i = 0;
-  while (i < KEY_T.length - 2 && t > KEY_T[i + 1]) i++;
-  const a = KEYS[i], b = KEYS[i + 1];
-  let f = (t - KEY_T[i]) / (KEY_T[i + 1] - KEY_T[i]);
+  while (i < _keyT.length - 2 && t > _keyT[i + 1]) i++;
+  const a = _keys[i], b = _keys[i + 1];
+  let f = (t - _keyT[i]) / (_keyT[i + 1] - _keyT[i]);
   f = f < 0 ? 0 : f > 1 ? 1 : f;
   for (const k in _cur) {
     const va = a[k], vb = b[k];
@@ -557,7 +586,7 @@ export function lookSunDir() { return L.discDir; }
 export function lookSunUp() { const y = L.discDir.y; return y > 0.12 ? 1 : y < 0.02 ? 0 : (y - 0.02) / 0.1; }
 /** Run fn (the environment capture) under a fixed mid-slide sky, then restore. */
 export function withLookEnvSky(fn) {
-  if (L.level !== 'chicago') { fn(); return; }
+  if (!LAYER[L.level]) { fn(); return; }
   _applyTime(0.3);
   try { fn(); } finally { _applyTime(L.todFixed != null ? L.todFixed : _todFromClock()); }
 }
@@ -570,7 +599,8 @@ export function setLookFxDip(v) { L.dipB = v; L.dip = Math.max(L.dipA, L.dipB); 
  *  there except for the kaiju rim. */
 export function setLookLevel(level) {
   L.level = level;
-  if (level !== 'chicago') {
+  if (LAYER[level]) ({ keys: _keys, t: _keyT, az: AZ } = LAYER[level]);
+  if (!LAYER[level]) {
     lookData.fill(0, 0, IDX.GLOWA * 4);
     lookData.fill(0, IDX.ARENA * 4);
     // Tokyo's low west sun and cool back light, as the kaiju rim's two sides
@@ -594,9 +624,9 @@ function _applyTime(t) {
   _blend(t);
   const c = _cur, R = L.refs;
   const de = c.discElev * Math.PI / 180, le = c.lightElev * Math.PI / 180;
-  L.discDir.set(SUN_AZ[0] * Math.cos(de), Math.sin(de), SUN_AZ[1] * Math.cos(de));
+  L.discDir.set(AZ[0] * Math.cos(de), Math.sin(de), AZ[1] * Math.cos(de));
   set4(IDX.SUN, L.discDir.x, L.discDir.y, L.discDir.z, 1);
-  set4(IDX.SUNH, SUN_AZ[0], SUN_AZ[1], Math.tan(le), c.fogK);
+  set4(IDX.SUNH, AZ[0], AZ[1], Math.tan(le), c.fogK);
   set4(IDX.HAZE, c.haze[0], c.haze[1], c.haze[2], c.fogD);
   set4(IDX.HAZES, c.hazeSun[0], c.hazeSun[1], c.hazeSun[2], c.hazeExp);
   set4(IDX.ZEN, c.zen[0], c.zen[1], c.zen[2], _edge[2]);
@@ -621,12 +651,12 @@ function _applyTime(t) {
   // Floodlights come up as the daylight goes (the arena scales its lamps the same way: 0.55 -> 1)
   set4(IDX.ARENA, _arena[0], _arena[1], _arena[2], _arena[2] > 0 ? c.flood * (0.55 + 0.45 * t) : 0);
   set4(IDX.FLOOD, 0.80, 0.90, 1.0, 0);
-  L.lightDir.set(SUN_AZ[0] * Math.cos(le), Math.sin(le), SUN_AZ[1] * Math.cos(le));
+  L.lightDir.set(AZ[0] * Math.cos(le), Math.sin(le), AZ[1] * Math.cos(le));
   if (!R) return;
   R.sun.color.setRGB(c.sun[0], c.sun[1], c.sun[2]); R.sun.intensity = c.sunI;
   R.sunOffset.copy(L.lightDir).multiplyScalar(190);
   R.fill.color.setRGB(c.fill[0], c.fill[1], c.fill[2]); R.fill.intensity = c.fillI;
-  R.fill.position.set(-SUN_AZ[0] * 70, 80, -SUN_AZ[1] * 70);
+  R.fill.position.set(-AZ[0] * 70, 80, -AZ[1] * 70);
   // Without IBL the hemisphere carries the sky fill alone
   const hk = L.hasEnv ? 1 : 2.3;
   R.hemi.color.setRGB(c.hemiSky[0], c.hemiSky[1], c.hemiSky[2]); R.hemi.groundColor.setRGB(c.hemiGround[0], c.hemiGround[1], c.hemiGround[2]); R.hemi.intensity = c.hemiI * hk;
@@ -649,7 +679,7 @@ function _applyTime(t) {
  *  p0 / p1: the kaiju roots (or null) for the analytic shadows. */
 export function updateLook(dt, time, camera, p0, p1) {
   lookData[IDX.CTR * 4 + 3] = time;
-  if (L.level !== 'chicago') return;
+  if (!LAYER[L.level]) return;
   L.clock += dt;
   _applyTime(L.todFixed != null ? L.todFixed : _todFromClock());
   if (L.refs && L.refs.sky) L.refs.sky.position.copy(camera.position);
@@ -753,7 +783,7 @@ function _define(m, name, value = '') {
  *  street lamps (classes: uniforms) and the two unlit backdrop meshes
  *  (defines, so before the prewarm links them). Idempotent. */
 export function tagLookScene(scene, world) {
-  if (world.level !== 'chicago') return;
+  if (!LAYER[world.level]) return;
   // Facades: the GLB buildings' materials, minus the festival kit and other
   // things the level places as "buildings" (fences, tents, signs)
   for (const b of world.buildings || []) {
@@ -787,9 +817,9 @@ let _map = null;
 export function buildLookMap(world, edge) {
   _map = null;
   if (edge) { _edge[0] = edge.x; _edge[1] = edge.z; _edge[2] = edge.r0; _edge[3] = edge.r1; }
-  const ar = world.level === 'chicago' ? world.arena : null;
+  const ar = LAYER[world.level] ? world.arena : null;
   _arena[0] = ar ? ar.cx : 0; _arena[1] = ar ? ar.cz : 0; _arena[2] = ar ? ar.half : 0;
-  if (!_cfg || _cfg.q < 1 || world.level !== 'chicago' || !world.buildings) {
+  if (!_cfg || _cfg.q < 1 || !LAYER[world.level] || !world.buildings) {
     set4(IDX.MAPBOX, 0, 0, 0, 0);
     return;
   }
@@ -856,7 +886,7 @@ function _stampTrees(scene) {
   if (!M || M.trees) return;
   M.trees = true;
   const seen = new Set(), S = M.S;
-  const ax = -SUN_AZ[0], az = -SUN_AZ[1]; // away from the sun
+  const ax = -AZ[0], az = -AZ[1]; // away from the sun
   let xa = S, za = S, xb = 0, zb = 0;
   for (const o of scene.children) {
     if (!o.isInstancedMesh || !o.material || !/^tree_/i.test(o.material.name || '')) continue;

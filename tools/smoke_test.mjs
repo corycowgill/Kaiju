@@ -27,8 +27,11 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // (iphone low chicago: the procedural-only tier, where Chicago still loads its building GLBs)
 // Chicago configs without a mode build the Title Match city (ring, ringside crowd); the 'waves' configs build
 // the classic city that Kaiju Havoc, VS and Lone Soldier play on, with the festival and its rigged crowd.
+// Washington DC (src/levels/dc.js) runs the same six data-level configs as Chicago.
 const CONFIGS = [['desktop', 'high', 'tokyo'], ['iphone', 'med', 'tokyo'], ['desktop', 'high', 'chicago'], ['iphone', 'med', 'chicago'], ['iphone', 'low', 'chicago'],
-  ['desktop', 'high', 'chicago', 'waves'], ['iphone', 'med', 'chicago', 'waves'], ['iphone', 'low', 'chicago', 'waves']];
+  ['desktop', 'high', 'chicago', 'waves'], ['iphone', 'med', 'chicago', 'waves'], ['iphone', 'low', 'chicago', 'waves'],
+  ['desktop', 'high', 'dc'], ['iphone', 'med', 'dc'], ['iphone', 'low', 'dc'],
+  ['desktop', 'high', 'dc', 'waves'], ['iphone', 'med', 'dc', 'waves'], ['iphone', 'low', 'dc', 'waves']];
 
 const argv = process.argv.slice(2);
 if (argv[0] !== '--run') {
@@ -63,6 +66,8 @@ if (argv[0] !== '--run') {
 }
 
 const [, device, tier, level = 'tokyo', modeArg = ''] = argv;
+// Levels built from a map layout (GLB buildings on every tier, a ring, bounds and water)
+const DATA = level === 'chicago' || level === 'dc';
 const failures = [];
 const fail = (msg) => failures.push(msg);
 
@@ -214,10 +219,11 @@ for (const role of ['infantry','tank','helicopter']) await step(`first-person ${
 });
 await step('level data', () => city.loadLevelData(level));
 if (Q.GLB_CONTENT) await step('tree/ped/car templates', () => Promise.all([city.loadTreeTemplates(undefined, level), city.loadPedestrianTemplates(), city.loadCarTemplates(undefined, level)]));
-else if (level === 'chicago') await step('car templates', () => city.loadCarTemplates(undefined, level)); // as game.js: GLB cars on Chicago LOW
+else if (DATA) await step('car templates', () => city.loadCarTemplates(undefined, level)); // as game.js: GLB cars on Chicago / DC LOW
 // Chicago without a mode argument: the Title Match build, ring included (game.js: MODE = Title Match)
-const mode = modeArg || (level === 'chicago' ? 'wrestling' : 'waves');
+const mode = modeArg || (DATA ? 'wrestling' : 'waves');
 const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q.isMobile, glb: Q.GLB_CONTENT, level, mode }));
+if (res) world.level = res.level; // as game.js (the wrestling modules read it: venue.js)
 // (the classic Chicago build: in the title match the lawns are empty, everyone is at ringside)
 if (level === 'chicago' && mode === 'waves') await step('rigged festival crowd', async () => {
   const { festivalPeopleStats } = await import('../src/levels/festivalPeople.js');
@@ -241,9 +247,9 @@ for (const [key, { model, portrait }] of Object.entries(MONSTERS)) {
 if (Q.GLB_CONTENT) {
   await step('building/debris/enemy templates', () => Promise.all([city.loadBuildingTemplates(undefined, level), city.loadDebrisTemplates(), enemies.loadEnemyTemplates()]));
   await step('flushPendingGLBBuildings', () => city.flushPendingGLBBuildings(scene));
-} else if (level === 'chicago') {
-  // Chicago's buildings are GLB on every tier, the procedural-only phone LOW included (as game.js)
-  await step('chicago building templates', () => city.loadBuildingTemplates(undefined, level));
+} else if (DATA) {
+  // Chicago's and DC's buildings are GLB on every tier, the procedural-only phone LOW included (as game.js)
+  await step(`${level} building templates`, () => city.loadBuildingTemplates(undefined, level));
   await step('flushPendingGLBBuildings', () => city.flushPendingGLBBuildings(scene));
 }
 const spawned = {};
@@ -289,7 +295,7 @@ if (mode === 'wrestling') await step('wrestling', async () => {
   for (const [name, def] of Object.entries(ANIMS)) {
     for (const c of def.clips) if (!clipKeys.has(c)) fail(`wrestling anim '${name}': stand-in clip '${c}' is not a kaijuLoader key on any rig`);
   }
-  if (!world.arena || !world.arena.crowd) fail('wrestling: chicago built without its ring / ringside crowd (world.arena)');
+  if (!world.arena || !world.arena.crowd) fail(`wrestling: ${level} built without its ring / ringside crowd (world.arena)`);
   const A = world.arena || { cx: 0, cz: 0, half: 0 };
   const inRing = res.buildings.filter((b) => !b.destroyed && Math.abs(b.x - A.cx) < A.half - b.w / 2 && Math.abs(b.z - A.cz) < A.half - b.d / 2);
   if (inRing.length) fail(`wrestling: ${inRing.length} buildings stand inside the ring, e.g. (${inRing[0].x.toFixed(1)}, ${inRing[0].z.toFixed(1)})`);
@@ -642,9 +648,10 @@ if (!res || !res.buildings || !res.buildings.length) fail('buildCity returned no
 if (res?.buildings?.length) {
   const {findDuelSpawns} = await import('../src/kaijuDuel.js');
   const {player, rival} = findDuelSpawns({
-    level, bounds: res.bounds, isWater: res.isWater, buildings: res.buildings, buildingGrid: res.grid,
+    level, bounds: res.bounds, isWater: res.isWater, buildings: res.buildings, buildingGrid: res.grid, duelSpawns: res.duelSpawns,
   });
   if (player.distanceTo(rival) < (level === 'chicago' ? 295 : 245)) fail('VS spawns are too close');
+  if (level === 'dc' && res.isWater && (res.isWater(player.x, player.z) || res.isWater(rival.x, rival.z))) fail('dc: a VS spawn is on water');
   log(`VS SPAWNS ${player.toArray()} / ${rival.toArray()}`);
 }
 
@@ -733,7 +740,8 @@ const litPrograms = (() => {
 // two new variants, one removed, net +1. Geometry/draw budgets stay unchanged.
 // (Chicago 18 since the merge of main's surface materials with the title-match branch's: each side fitted its
 // own budget, 17 and 16; the union is 18. SMOKE_BREAKDOWN=lit lists them.)
-const LIT_PROGRAM_BUDGET = level==='chicago'?18:16;
+// (DC: Chicago's materials and surfaces, so Chicago's budget)
+const LIT_PROGRAM_BUDGET = DATA?18:16;
 if (litPrograms > LIT_PROGRAM_BUDGET) fail(`${litPrograms} lit shader programs in the scene, budget ${LIT_PROGRAM_BUDGET} (a new material variant? see assetCache.canonMaterialMaps)`);
 if (process.env.SMOKE_BREAKDOWN) {
   // Top triangle contributors (debug aid): by geometry name / material
@@ -774,32 +782,39 @@ summary += `${res && res.buildings ? res.buildings.length : 0} buildings, scene 
 // Chicago budget (desktop): Tokyo's own totals with this counter (desktop HIGH ~710 meshes /
 // ~5.0M tris) plus ~15%; phones: the MED target of ~450 draws and 4-5M tris (Tokyo MED: ~365 / ~2.3M)
 const BUDGET = Q.isMobile ? { draws: 450, tris: 4.5e6 } : { draws: 815, tris: 5.8e6 };
-if (level === 'chicago' && res && res.bounds) {
+if (DATA && res && res.bounds) {
   const B = res.bounds;
   // Footprint centres (edge blocks may overhang the play limit a little)
   const outside = res.buildings.filter((b) => b.x < B.minX || b.x > B.maxX || b.z < B.minZ || b.z > B.maxZ);
-  if (outside.length) fail(`chicago: ${outside.length} buildings outside bounds, e.g. (${outside[0].x.toFixed(1)}, ${outside[0].z.toFixed(1)})`);
+  if (outside.length) fail(`${level}: ${outside.length} buildings outside bounds, e.g. (${outside[0].x.toFixed(1)}, ${outside[0].z.toFixed(1)})`);
   const wet = res.buildings.filter((b) => !b.isBridge && b.h > 4 && res.isWater && res.isWater(b.x, b.z));
-  if (wet.length) fail(`chicago: ${wet.length} buildings stand on water, e.g. (${wet[0].x.toFixed(1)}, ${wet[0].z.toFixed(1)})`);
+  if (wet.length) fail(`${level}: ${wet.length} buildings stand on water, e.g. (${wet[0].x.toFixed(1)}, ${wet[0].z.toFixed(1)})`);
   // The kaiju wades in from Lake Michigan: open water, nothing solid (shore,
   // breakwater, festival) within 10u of the spawn
-  if (res.isWater) {
+  // (DC: out of the Tidal Basin, when the layout puts it in water)
+  if (res.isWater && (level === 'chicago' || res.isWater(res.spawn.x, res.spawn.z))) {
     const { x, z } = res.spawn;
     const dry = [];
     for (let dx = -10; dx <= 10; dx += 2.5) for (let dz = -10; dz <= 10; dz += 2.5) if (!res.isWater(x + dx, z + dz)) dry.push([x + dx, z + dz]);
-    if (dry.length) fail(`chicago: kaiju spawn (${x}, ${z}) is not in open water (land at ${dry[0].join(', ')})`);
+    if (dry.length) fail(`${level}: kaiju spawn (${x}, ${z}) is not in open water (land at ${dry[0].join(', ')})`);
     const near = res.buildings.filter((b) => !b.destroyed && Math.abs(b.x - x) < b.w / 2 + 10 && Math.abs(b.z - z) < b.d / 2 + 10);
-    if (near.length) fail(`chicago: ${near.length} buildings within 10u of the kaiju spawn`);
+    if (near.length) fail(`${level}: ${near.length} buildings within 10u of the kaiju spawn`);
   }
-  if (res.spawn.x < B.minX || res.spawn.x > B.maxX || res.spawn.z < B.minZ || res.spawn.z > B.maxZ) fail('chicago: kaiju spawn outside bounds');
+  // DC on land: clear of buildings
+  if (level === 'dc' && !(res.isWater && res.isWater(res.spawn.x, res.spawn.z))) {
+    const { x, z } = res.spawn;
+    const near = res.buildings.filter((b) => !b.destroyed && Math.abs(b.x - x) < b.w / 2 + 8 && Math.abs(b.z - z) < b.d / 2 + 8);
+    if (near.length) fail(`dc: ${near.length} buildings within 8u of the kaiju spawn`);
+  }
+  if (res.spawn.x < B.minX || res.spawn.x > B.maxX || res.spawn.z < B.minZ || res.spawn.z > B.maxZ) fail(`${level}: kaiju spawn outside bounds`);
   const tooTall = res.buildings.filter((b) => !(b.h > 0 && b.h < 140));
-  if (tooTall.length) fail(`chicago: ${tooTall.length} buildings with height outside 0..140u`);
+  if (tooTall.length) fail(`${level}: ${tooTall.length} buildings with height outside 0..140u`);
   // No Tokyo dressing: cherry blossom / black pine trees or Japanese street props
   // (Tokyo kit material names exactly; Chicago's own pieces, e.g. traffic_signal_palette, are fine)
   const tokyoOnly = /^(tree_sakura|tree_black_pine|koban|yatai_stall|torii_gate|vending_machine|subway_entrance|street_sign|traffic_signal)$/;
   const leaks = new Set();
   scene.traverse((o) => { if (o.isMesh && tokyoOnly.test(o.material?.name || '')) leaks.add(o.material.name); });
-  if (leaks.size) fail(`chicago: Tokyo-only meshes in the scene: ${[...leaks].join(', ')}`);
+  if (leaks.size) fail(`${level}: Tokyo-only meshes in the scene: ${[...leaks].join(', ')}`);
   // Every Chicago building and landmark is a pipeline GLB once templates load:
   // procedural massing or a box is only a load-failure fallback. Assets still
   // marked pending in chicago.js (not delivered) are listed, not failed.
@@ -807,12 +822,12 @@ if (level === 'chicago' && res && res.bounds) {
     const proc = res.buildings.filter((b) => !b.isBridge && !b.glbUrl);
     const pending = proc.filter((b) => b.pendingGLB);
     const bad = proc.filter((b) => !b.pendingGLB);
-    if (bad.length) fail(`chicago: ${bad.length} buildings are procedural, not GLB: ${bad.slice(0, 6).map((b) => b.landmarkId || `(${b.x.toFixed(0)},${b.z.toFixed(0)} h${b.h.toFixed(1)})`).join(', ')}`);
+    if (bad.length) fail(`${level}: ${bad.length} buildings are procedural, not GLB: ${bad.slice(0, 6).map((b) => b.landmarkId || `(${b.x.toFixed(0)},${b.z.toFixed(0)} h${b.h.toFixed(1)})`).join(', ')}`);
     summary += `${res.buildings.length - proc.length} GLB buildings${pending.length ? `, ${pending.length} pending GLB (${[...new Set(pending.map((b) => b.pendingGLB))].join(', ')})` : ''}; `;
   }
   // Kaijupalooza! (on by default): its stages, tents and fence runs are
   // buildings too, so the GLB check above covers them; here just that it's there
-  {
+  if (level === 'chicago') {
     const fest = res.buildings.filter((b) => b.fest);
     if (!fest.length) fail('chicago: Kaijupalooza! festival not built');
     const fp = fest.filter((b) => !b.glbUrl).length;
@@ -820,17 +835,17 @@ if (level === 'chicago' && res && res.bounds) {
   }
   const lms = res.buildings.filter((b) => b.landmarkId);
   summary += `${lms.length} landmarks; `;
-  if (!lms.length) fail('chicago: no landmarks built');
+  if (!lms.length) fail(`${level}: no landmarks built`);
   for (const [kind, list] of [['car', traffic.cars], ['civilian', traffic.civs]]) {
     for (const a of list) {
       const p = a.root.position;
       if (!(p.y >= 0 && p.y < 2) || p.x < B.minX - 40 || p.x > B.maxX + 40 || p.z < B.minZ - 40 || p.z > B.maxZ + 40) {
-        fail(`chicago: ${kind} spawned at (${p.x.toFixed(1)}, ${p.y.toFixed(2)}, ${p.z.toFixed(1)})`);
-      } else if (kind === 'civilian' && res.isWater(p.x, p.z)) fail(`chicago: civilian spawned on water at (${p.x.toFixed(1)}, ${p.z.toFixed(1)})`);
+        fail(`${level}: ${kind} spawned at (${p.x.toFixed(1)}, ${p.y.toFixed(2)}, ${p.z.toFixed(1)})`);
+      } else if (kind === 'civilian' && res.isWater(p.x, p.z)) fail(`${level}: civilian spawned on water at (${p.x.toFixed(1)}, ${p.z.toFixed(1)})`);
     }
   }
-  if (BUDGET.draws && totals.draws > BUDGET.draws) fail(`chicago: ${totals.draws} meshes in the scene, budget ${BUDGET.draws}`);
-  if (BUDGET.tris && totals.tris > BUDGET.tris) fail(`chicago: ${(totals.tris / 1e6).toFixed(2)}M tris in the scene, budget ${(BUDGET.tris / 1e6).toFixed(2)}M`);
+  if (BUDGET.draws && totals.draws > BUDGET.draws) fail(`${level}: ${totals.draws} meshes in the scene, budget ${BUDGET.draws}`);
+  if (BUDGET.tris && totals.tris > BUDGET.tris) fail(`${level}: ${(totals.tris / 1e6).toFixed(2)}M tris in the scene, budget ${(BUDGET.tris / 1e6).toFixed(2)}M`);
 }
 if (Q.GLB_CONTENT) {
   const s = city.getTemplateStats(level);

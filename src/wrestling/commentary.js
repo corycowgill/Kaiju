@@ -14,6 +14,10 @@ import { EV } from './events.js';
 import { VO_LINES } from './commentaryLines.js';
 import { alignOf, matchup } from './roster.js';
 import { SIGNATURES } from './signatures.js';
+import { chicagoLine, offChicago } from './venue.js';
+
+// Lines that name Chicago places: left out when the match is staged elsewhere (venue.js)
+const CHI_ROWS = new Set(VO_LINES.filter(chicagoLine));
 
 export const BOOTH = Object.freeze({
   M: Object.freeze({ id: 'mike', name: 'MIKE BRANNIGAN', tag: 'BRANNIGAN' }),
@@ -65,16 +69,17 @@ export function createCommentary(ctx, W) {
   function pick(topics, f) {
     cand.length = 0; weight.length = 0;
     let total = 0;
+    const off = offChicago(ctx);
     for (let ti = 0; ti < topics.length; ti++) {
       const rows = byTopic.get(topics[ti]);
       if (!rows) continue;
       let u = used.get(topics[ti]);
       if (!u) used.set(topics[ti], u = new Set());
       let fresh = 0;
-      for (const r of rows) if (fits(r[1], f) && !u.has(r)) fresh++;
+      for (const r of rows) if (fits(r[1], f) && !u.has(r) && !(off && CHI_ROWS.has(r))) fresh++;
       if (!fresh) u.clear();
       for (const r of rows) {
-        if (!fits(r[1], f) || u.has(r)) continue;
+        if (!fits(r[1], f) || u.has(r) || (off && CHI_ROWS.has(r))) continue;
         // the more a line says about this exact moment, the likelier it is
         const w = (1 + 1.6 * specificity(r[1])) * (ti === 0 ? 1 : 0.45);
         cand.push(r); weight.push(w); total += w;

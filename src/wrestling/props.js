@@ -89,7 +89,8 @@ export function createProps(ctx, W, hooks) {
     if (!own && !((b._glbSlots && b._glbSlots.length) || (b._bodyIM && b._bodyIndex >= 0))) return '';
     const C = carve(), big = b._wound || b.h > T.maxH || Math.max(b.w, b.d) > T.maxSide;
     if (big) return C && !own ? C.kind(b, T) : '';
-    return b.h >= (b.fest ? T.festMinH : b.landmarkId ? T.lmMinH : T.minH) ? 'whole' : '';
+    // (DC's height limit keeps its blocks at 4-8u: there they lift from a landmark's minimum)
+    return b.h >= (b.fest ? T.festMinH : b.landmarkId || ctx.world.level === 'dc' ? T.lmMinH : T.minH) ? 'whole' : '';
   }
   function visitNear(b) {
     if (!modeOf(b)) return;

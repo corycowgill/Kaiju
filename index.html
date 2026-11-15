@@ -1869,6 +1869,7 @@
   }
   #menu .level-card[data-level="tokyo"] { background-image: linear-gradient(90deg, rgba(5, 1, 2, 0.88) 15%, rgba(5, 1, 2, 0.15)), url(assets/ui/menu/stage_tokyo.webp); }
   #menu .level-card[data-level="chicago"] { background-image: linear-gradient(90deg, rgba(5, 1, 2, 0.88) 15%, rgba(5, 1, 2, 0.15)), url(assets/ui/menu/stage_chicago.webp); }
+  #menu .level-card[data-level="dc"] { background-image: linear-gradient(90deg, rgba(5, 1, 2, 0.88) 15%, rgba(5, 1, 2, 0.15)), url(assets/ui/menu/stage_dc.webp); }
   #menu .level-card::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 2px rgba(255, 230, 200, 0.18); }
   #menu .level-card b { display: block; font: 400 28px/1 var(--f-display); letter-spacing: 3px; color: var(--c-cream); text-shadow: 0 2px 0 #1a0004; }
   #menu .level-card b .jp { font: 700 14px/1 var(--f-jp); color: var(--c-kanji); margin-right: 8px; letter-spacing: 1px; vertical-align: 3px; }
@@ -1880,8 +1881,8 @@
     content: '✓'; position: absolute; right: 12px; top: 10px; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 50%;
     font: 700 14px/24px var(--f-jp); color: #fff; background: var(--c-red-hi);
   }
-  /* The Title Match is staged in Chicago only: the other city is not offered there */
-  #menu[data-mode="title"] .level-card:not([data-level="chicago"]) { display: none; }
+  /* The Title Match is staged in Chicago and Washington DC only: Tokyo is not offered there */
+  #menu[data-mode="title"] .level-card:not([data-level="chicago"]):not([data-level="dc"]) { display: none; }
   #menu[data-mode="title"] .levels { grid-template-columns: minmax(0, 1fr); }
 
   #menu .deployment-options { display: flex; gap: 12px; margin: 0; flex-wrap: wrap; width: auto; max-width: none; justify-content: flex-start; }
@@ -2176,13 +2177,13 @@
     <div class="mn-head"><b>SELECT MODE</b><span class="jp">モード選択</span></div>
     <div class="mode-cards" id="modeCards">
       <button type="button" class="mode-card" data-mode="havoc"><span class="mc-art"></span><span class="mc-no">01</span>
-        <span class="mc-body"><span class="mc-jp">怪獣大暴れ</span><b>KAIJU HAVOC</b><span class="mc-pitch">Raze the city wave after wave while the army throws everything it has at you.</span><span class="mc-city">TOKYO · CHICAGO</span></span></button>
+        <span class="mc-body"><span class="mc-jp">怪獣大暴れ</span><b>KAIJU HAVOC</b><span class="mc-pitch">Raze the city wave after wave while the army throws everything it has at you.</span><span class="mc-city">TOKYO · CHICAGO · DC</span></span></button>
       <button type="button" class="mode-card" data-mode="title"><span class="mc-art"></span><span class="mc-no">02</span><span class="mc-tag">MAIN EVENT</span>
-        <span class="mc-body"><span class="mc-jp">王座決定戦</span><b>TITLE MATCH</b><span class="mc-pitch">Best of three falls for the heavyweight belt in a ring built across Grant Park.</span><span class="mc-city">CHICAGO · GRANT PARK</span></span></button>
+        <span class="mc-body"><span class="mc-jp">王座決定戦</span><b>TITLE MATCH</b><span class="mc-pitch">Best of three falls for the heavyweight belt in a ring built across Grant Park or the National Mall.</span><span class="mc-city">CHICAGO · DC</span></span></button>
       <button type="button" class="mode-card" data-mode="vs"><span class="mc-art"><i class="vs-l"></i><i class="vs-r"></i><em>VS</em></span><span class="mc-no">03</span>
-        <span class="mc-body"><span class="mc-jp">怪獣対決</span><b>VS DUEL</b><span class="mc-pitch">Two kaiju enter, one leaves. Punch, grapple and throw your rival through the streets.</span><span class="mc-city">TOKYO · CHICAGO</span></span></button>
+        <span class="mc-body"><span class="mc-jp">怪獣対決</span><b>VS DUEL</b><span class="mc-pitch">Two kaiju enter, one leaves. Punch, grapple and throw your rival through the streets.</span><span class="mc-city">TOKYO · CHICAGO · DC</span></span></button>
       <button type="button" class="mode-card" data-mode="lone"><span class="mc-art"></span><span class="mc-no">04</span>
-        <span class="mc-body"><span class="mc-jp">一兵卒</span><b>LONE SOLDIER</b><span class="mc-pitch">Drop in on foot, in a tank or a gunship and bring a kaiju down yourself.</span><span class="mc-city">TOKYO · CHICAGO</span></span></button>
+        <span class="mc-body"><span class="mc-jp">一兵卒</span><b>LONE SOLDIER</b><span class="mc-pitch">Drop in on foot, in a tank or a gunship and bring a kaiju down yourself.</span><span class="mc-city">TOKYO · CHICAGO · DC</span></span></button>
     </div>
     <div class="menu-extras">
       <button class="trailer-btn" id="trailerBtn" type="button">▶ WATCH TRAILER</button>
@@ -2210,7 +2211,7 @@
       <div class="fs-label fs-stage-label">STAGE <span class="jp">舞台</span><h2 id="levelTitle"><span class="jp-line">東京破壊</span>TOKYO DESTRUCTION</h2></div>
       <div class="levels" id="levelCards"></div>
       <div class="deployment-options">
-        <label class="deployment-field mn-modefield"><span>MODE · 作戦</span><select id="game-mode"><option value="havoc">Kaiju Havoc</option><option value="title">Title Match · Chicago Wrestling</option><option value="vs">VS · Kaiju Duel</option><option value="lone">Lone Soldier · First Person</option></select></label>
+        <label class="deployment-field mn-modefield"><span>MODE · 作戦</span><select id="game-mode"><option value="havoc">Kaiju Havoc</option><option value="title">Title Match · Wrestling</option><option value="vs">VS · Kaiju Duel</option><option value="lone">Lone Soldier · First Person</option></select></label>
         <label class="deployment-field" id="vs-rival-label" hidden><span>AI RIVAL · 相手</span><select id="vs-rival"><option value="">Choose automatically</option></select></label>
         <label class="deployment-field" id="lone-role-label" hidden><span>DEPLOY AS · 部隊</span><select id="lone-role"><option value="infantry">Infantry · Rifle</option><option value="tank">Tank · Cannon</option><option value="helicopter">Helicopter · Autocannon</option></select></label>
       </div>
@@ -2430,7 +2431,7 @@
       <!-- main plate -->
       <path d="M260 6 L338 30 Q352 88 338 146 L260 170 L182 146 Q168 88 182 30 Z" fill="url(#wrGold)" stroke="#5a3400" stroke-width="3"/>
       <path d="M260 17 L329 38 Q340 88 329 138 L260 159 L191 138 Q180 88 191 38 Z" fill="url(#wrGoldIn)" stroke="#fff6c8" stroke-width="1.5" opacity="0.92"/>
-      <text font-family="'Bebas Neue', sans-serif" font-size="14" letter-spacing="1.5" fill="#5a1200" text-anchor="middle"><textPath href="#wrArc" startOffset="50%">CHICAGO HEAVYWEIGHT</textPath></text>
+      <text font-family="'Bebas Neue', sans-serif" font-size="14" letter-spacing="1.5" fill="#5a1200" text-anchor="middle"><textPath id="wr-belt-name" href="#wrArc" startOffset="50%">CHICAGO HEAVYWEIGHT</textPath></text>
       <text x="260" y="116" font-family="'Yuji Boku', 'Yuji Mai', serif" font-size="46" fill="#8e0a1c" stroke="#3a0006" stroke-width="0.8" text-anchor="middle">王者</text>
       <text x="260" y="136" font-family="'Bebas Neue', sans-serif" font-size="18" letter-spacing="5" fill="#5a1200" text-anchor="middle">CHAMPION</text>
       <g fill="#c8102e" stroke="#5a0010" stroke-width="0.8"><use href="#wrStar" transform="translate(236 149) scale(0.6)"/><use href="#wrStar" transform="translate(252 152) scale(0.6)"/><use href="#wrStar" transform="translate(268 152) scale(0.6)"/><use href="#wrStar" transform="translate(284 149) scale(0.6)"/></g>
@@ -2577,6 +2578,10 @@
     "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.14.0",
     "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.14.0",
     "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.14.0",
+    "./src/levels/dc.js": "./src/levels/dc.js?v=1.14.0",
+    "./src/levels/dcLandscape.js": "./src/levels/dcLandscape.js?v=1.14.0",
+    "./src/levels/dcManifest.js": "./src/levels/dcManifest.js?v=1.14.0",
+    "./src/levels/dcMaterials.js": "./src/levels/dcMaterials.js?v=1.14.0",
     "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.14.0",
     "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.14.0",
     "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.14.0",
@@ -2601,6 +2606,7 @@
     "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.14.0",
     "./src/wrestling/carve.js": "./src/wrestling/carve.js?v=1.14.0",
     "./src/wrestling/commentary.js": "./src/wrestling/commentary.js?v=1.14.0",
+    "./src/wrestling/venue.js": "./src/wrestling/venue.js?v=1.14.0",
     "./src/wrestling/commentaryLines.js": "./src/wrestling/commentaryLines.js?v=1.14.0",
     "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.14.0",
     "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.14.0",

@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { EV } from './events.js';
 import { createProps } from './props.js';
 import { createCarver } from './carve.js';
+import { offChicago } from './venue.js';
 
 /** Tuning (exported for the AI and the balance sims). */
 export const SPOTS_TUNE = {
@@ -142,6 +143,8 @@ export function createSpots(ctx, W) {
   // ------------------------------------------------------------------ classification
   /** Which set piece a point on the ground belongs to ('' = none). */
   function spotAt(x, z) {
+    // The set pieces are Chicago's (Buckingham, the lake front, the L); elsewhere only open water counts
+    if (offChicago(ctx)) return ctx.isWater(x, z) ? 'lake' : '';
     if (Math.hypot(x - FOUNTAIN.x, z - FOUNTAIN.z) < T.fountainR) return 'fountain';
     if (x > T.lakeX && ctx.isWater(x, z)) return 'lake';
     if (railDist(x, z) < T.railR) return 'ltracks';
@@ -149,7 +152,7 @@ export function createSpots(ctx, W) {
   }
   /** Which set piece a building is part of ('' = none). */
   function spotOf(b) {
-    if (!b) return '';
+    if (!b || offChicago(ctx)) return '';
     if (b === fountainB || b.landmarkId === 'buckingham_fountain') return 'fountain';
     if (b.landmarkId && BEAN_IDS[b.landmarkId]) return 'bean';
     if (!b.fest && !b.isFence && b.h >= 10 && b.x > -78 && b.x < -56 && b.z > -130 && b.z < 270) return 'michigan';
@@ -453,6 +456,7 @@ export function createSpots(ctx, W) {
     weapons,
     /** The landmark set piece f could throw its foe into from here, or null (scratch result). */
     bestSpot(f, maxDist = 110) {
+      if (offChicago(ctx)) return null; // (Chicago's set pieces: none to go for elsewhere)
       const p = f.pos;
       let best = '', bd = maxDist, bx = 0, bz = 0;
       const cand = (id, x, z) => { const d = Math.hypot(x - p.x, z - p.z); if (d < bd) { bd = d; best = id; bx = x; bz = z; } };
