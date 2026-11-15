@@ -800,3 +800,69 @@ test('Title Match off Chicago: booth rows naming Chicago are skipped, on-screen 
   assert.match(venueHome(dc, 'player', 'x'), /POTOMAC/);
   assert.equal(venueHome(chi, 'player', 'FROM THE DEPTHS OF LAKE MICHIGAN'), 'FROM THE DEPTHS OF LAKE MICHIGAN');
 });
+
+// ---- New York City (src/levels/nyc.js) ----
+const NYC_LAYOUT = (() => {
+  // The file nyc.js loads (the cartographer's, or the placeholder until it lands)
+  const src = fs.readFileSync(new URL('../src/levels/nyc.js', import.meta.url), 'utf8');
+  const url = src.match(/const LAYOUT_URL = '\.\/(assets\/levels\/[\w.]+\.json)'/)[1];
+  return JSON.parse(fs.readFileSync(new URL('../' + url, import.meta.url), 'utf8'));
+})();
+const nycWet = (x, z) => (NYC_LAYOUT.water || []).some((w) => inPoly(x, z, w.polygon) && !(w.holes || []).some((h) => inPoly(x, z, h)));
+
+test('NYC layout: kaiju, duel pair, ring site and enemy spawns are dry and inside the play area', () => {
+  const B = NYC_LAYOUT.bounds, inB = (p, m = 0) => p.x >= B.minX - m && p.x <= B.maxX + m && p.z >= B.minZ - m && p.z <= B.maxZ + m;
+  assert.equal(NYC_LAYOUT.meta.scale, 0.2);
+  const sp = NYC_LAYOUT.spawn.player;
+  assert.ok(inB(sp), 'kaiju spawn inside the bounds');
+  if (nycWet(sp.x, sp.z)) for (const [dx, dz] of [[-10, 0], [10, 0], [0, -10], [0, 10]]) assert.ok(nycWet(sp.x + dx, sp.z + dz), 'kaiju spawn in open water');
+  const { a, b } = NYC_LAYOUT.duel;
+  assert.ok(inB(a) && inB(b) && !nycWet(a.x, a.z) && !nycWet(b.x, b.z), 'duel pair dry and inside');
+  assert.ok(Math.hypot(a.x - b.x, a.z - b.z) > 245, 'duel pair far enough apart');
+  const R = NYC_LAYOUT.ring;
+  assert.ok(inB(R) && !nycWet(R.x, R.z), 'ring site dry and inside');
+  for (const [dx, dz] of [[-45, -45], [45, -45], [45, 45], [-45, 45], [0, 0]]) assert.ok(!nycWet(R.x + dx, R.z + dz), 'ring mat on dry ground');
+  for (const lm of NYC_LAYOUT.landmarks) assert.ok(Math.abs(lm.x - R.x) > 46 || Math.abs(lm.z - R.z) > 46, `landmark ${lm.id} under the ring`);
+  for (const e of NYC_LAYOUT.spawn.enemies || []) assert.ok(inB(e, 40), `enemy spawn ${e.x},${e.z} near the bounds`);
+});
+
+test('A turned lot (the Manhattan grid) holds a body out in its own frame and leaves the street beside it open', () => {
+  const r = 29 * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  // a 16 x 44 block turned 29 deg: its axis box is ~35 x 46
+  const b = { x: 0, z: 0, w: 16 * c + 44 * s, d: 16 * s + 44 * c, h: 30, hp: 1e9, destroyed: false, obb: { hw: 8, hd: 22, c, s }, damage() {} };
+  const hit = new THREE.Vector3();
+  // inside the axis box, but 3u off the lot's long face (local +X): untouched by a 2u body
+  const lx = 11, lz = 0, p = new THREE.Vector3(lx * c, 0, -lx * s);
+  assert.ok(Math.abs(p.x) < b.w / 2 && Math.abs(p.z) < b.d / 2, 'the point is inside the axis box');
+  resolveStructureContact(p, 2, b, 1 / 60, {}, hit);
+  assert.ok(Math.abs(p.x - lx * c) < 1e-9 && Math.abs(p.z + lx * s) < 1e-9, 'the street beside the lot stays open');
+  // 1u off the face: pushed out along the face's normal to the body radius
+  const q = new THREE.Vector3(9 * c, 0, -9 * s);
+  resolveStructureContact(q, 2, b, 1 / 60, {}, hit);
+  assert.ok(Math.abs(Math.hypot(q.x, q.z) - 10) < 1e-6, 'pushed out to the radius along the lot normal');
+  // camera rays: a ray down the street misses, one into the face hits it at the face
+  const grid = new BuildingGrid(60); grid.add(b);
+  const qy = new StructureRayQuery();
+  const along = new THREE.Ray(new THREE.Vector3(11 * c - 40 * s, 5, -11 * s - 40 * c), new THREE.Vector3(s, 0, c));
+  assert.equal(qy.nearest({ buildingGrid: grid, buildings: [b] }, along, 80), null, 'a ray down the street misses');
+  const into = new THREE.Ray(new THREE.Vector3(30 * c, 5, -30 * s), new THREE.Vector3(-c, 0, s));
+  const h = qy.nearest({ buildingGrid: grid, buildings: [b] }, into, 80);
+  assert.ok(h && Math.abs(h.distance - 22) < 1e-6, 'a ray into the face hits it');
+});
+
+test('VS spawns on NYC use the layout pair', async () => {
+  const { findDuelSpawns } = await import('../src/kaijuDuel.js');
+  const { a, b } = NYC_LAYOUT.duel;
+  const world = { level: 'nyc', bounds: NYC_LAYOUT.bounds, isWater: nycWet, buildings: [], duelSpawns: { a, b } };
+  const s = findDuelSpawns(world);
+  assert.ok(s.player.distanceTo(new THREE.Vector3(a.x, 0, a.z)) < 21 && s.rival.distanceTo(new THREE.Vector3(b.x, 0, b.z)) < 21);
+});
+
+test('Title Match on NYC: New York place names on screen, the booth gate as off Chicago', async () => {
+  const { placeText, offChicago, venueHome } = await import('../src/wrestling/venue.js');
+  const ny = { world: { level: 'nyc' } };
+  assert.ok(offChicago(ny));
+  assert.equal(placeText(ny, 'Gorrak · CHICAGO HEAVYWEIGHT CHAMPION'), 'Gorrak · NEW YORK HEAVYWEIGHT CHAMPION');
+  assert.equal(placeText(ny, 'Into Lake Michigan! That wave will reach Indiana!'), 'Into the Hudson! That wave will reach New Jersey!');
+  assert.match(venueHome(ny, 'player', 'x'), /HUDSON/);
+});

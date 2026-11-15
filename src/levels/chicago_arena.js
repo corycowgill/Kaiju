@@ -75,7 +75,8 @@ _layoutSite();
  *  entrance gateway (a site too short for the chase camera behind the
  *  player's corner to clear it), flag the city flag the mat and signage carry
  *  ('chicago': light-blue bars, six-pointed stars; 'dc': the District's red
- *  bars and five-pointed stars). Call before buildArena. */
+ *  bars and five-pointed stars; 'nyc': New York's blue, white and orange
+ *  tricolour with a seal ring, five-pointed stars). Call before buildArena. */
 export function setArenaSite(s = {}) {
   const next = { dx: (s.x ?? 4) - 4, dz: (s.z ?? 62) - 62, title: s.title || 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: s.place || 'GRANT PARK', fountain: s.fountain ?? true, stands: s.stands ?? 'ns', east: s.east || 0, west: s.west || 0, gate: s.gate ?? true, flag: s.flag || 'chicago' };
   if (Object.keys(next).every((k) => next[k] === SITE[k])) return;
@@ -128,7 +129,7 @@ function _fit(cx, text, px, maxW) {
 }
 /** The site flag's star: Chicago's six-pointed one, the District's five-pointed one. */
 function _star(cx, x, y, R, col) {
-  const n = SITE.flag === 'dc' ? 5 : 6, k = SITE.flag === 'dc' ? 0.4 : 0.42;
+  const n = SITE.flag === 'chicago' ? 6 : 5, k = SITE.flag === 'chicago' ? 0.42 : 0.4;
   cx.fillStyle = col;
   cx.beginPath();
   for (let i = 0; i < n * 2; i++) {
@@ -165,8 +166,8 @@ function _paintAtlas(cx, px, emissive) {
   const dim = emissive ? 0.42 : 1; // signage is backlit: the emissive copy is the same art, dimmer
   cx.globalAlpha = dim;
   cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineJoin = 'round';
-  // (the flag's accent: Chicago's light blue, the District's white)
-  const ACC = SITE.flag === 'dc' ? '#e9e7df' : '#58b7e6';
+  // (the flag's accent: Chicago's light blue, the District's white, New York's orange)
+  const ACC = SITE.flag === 'dc' ? '#e9e7df' : SITE.flag === 'nyc' ? '#f26b21' : '#58b7e6';
   // LOGO
   {
     const r = AT.LOGO, g = cx.createLinearGradient(0, r.y, 0, r.y + r.h);
@@ -214,6 +215,14 @@ function _paintAtlas(cx, px, emissive) {
       // the District: two red bars, three red stars above them
       cx.fillStyle = '#d21c34'; cx.fillRect(r.x, r.y + r.h * 0.42, r.w, r.h * 0.17); cx.fillRect(r.x, r.y + r.h * 0.7, r.w, r.h * 0.17);
       for (let i = 0; i < 3; i++) _star(cx, r.x + r.w * (0.25 + i * 0.25), r.y + r.h * 0.22, 26, '#d21c34');
+    } else if (SITE.flag === 'nyc') {
+      // New York: blue, white and orange vertical bars, the seal ring on the white
+      cx.fillStyle = '#1b3f94'; cx.fillRect(r.x, r.y, r.w / 3, r.h);
+      cx.fillStyle = '#f26b21'; cx.fillRect(r.x + r.w * 2 / 3, r.y, r.w / 3, r.h);
+      cx.fillStyle = '#1b3f94'; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 62, 0, Math.PI * 2); cx.fill();
+      cx.fillStyle = '#e9e7df'; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 46, 0, Math.PI * 2); cx.fill();
+      cx.strokeStyle = '#f26b21'; cx.lineWidth = 4; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 40, 0, Math.PI * 2); cx.stroke();
+      _star(cx, r.x + r.w / 2, r.y + r.h / 2, 28, '#1b3f94');
     } else {
       cx.fillStyle = '#58b7e6'; cx.fillRect(r.x, r.y + 38, r.w, 44); cx.fillRect(r.x, r.y + r.h - 82, r.w, 44);
       for (let i = 0; i < 4; i++) _star(cx, r.x + 100 + i * 104, r.y + r.h / 2, 36, '#d21c34');
@@ -259,6 +268,29 @@ function _paintMat(cx, px) {
       _star(cx, x, S * 0.36, 7.6, '#e6e4da');
       _star(cx, x, S * 0.36, 6.6, '#c4162c');
     }
+  } else if (SITE.flag === 'nyc') {
+    // New York's flag: blue, white and orange bars across the mat (south to
+    // north), white-edged on the navy canvas, the seal ring on the white bar
+    const y0 = S * 0.235, y1 = S * 0.765;
+    cx.fillStyle = 'rgba(230,236,244,0.85)'; cx.fillRect(0, y0 - 0.5, S, y1 - y0 + 1);
+    cx.fillStyle = '#1b3f94'; cx.fillRect(0, y0, S / 3, y1 - y0);
+    cx.fillStyle = '#e9e7df'; cx.fillRect(S / 3, y0, S / 3, y1 - y0);
+    cx.fillStyle = '#e8601c'; cx.fillRect(S * 2 / 3, y0, S / 3, y1 - y0);
+    // the seal: a blue band lettered CITY OF NEW YORK · 1625 round a white
+    // disc, an orange ring and a star (it is the seal that tells it from a
+    // French tricolour at a glance)
+    const R = 13.5, sx = S / 2, sy = S / 2;
+    cx.fillStyle = '#1b3f94'; cx.beginPath(); cx.arc(sx, sy, R, 0, Math.PI * 2); cx.fill();
+    cx.fillStyle = '#e9e7df'; cx.beginPath(); cx.arc(sx, sy, R - 3.4, 0, Math.PI * 2); cx.fill();
+    cx.strokeStyle = '#e8601c'; cx.lineWidth = 0.9; cx.beginPath(); cx.arc(sx, sy, R - 4.6, 0, Math.PI * 2); cx.stroke();
+    _star(cx, sx, sy, 6.2, '#1b3f94');
+    cx.font = FONT(2.3, 700); cx.fillStyle = '#e9e7df'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    const txt = 'CITY OF NEW YORK ★ 1625 ★ ', step = Math.PI * 2 / txt.length;
+    for (let i = 0; i < txt.length; i++) {
+      const a = -Math.PI / 2 + i * step;
+      cx.save(); cx.translate(sx + Math.cos(a) * (R - 1.7), sy + Math.sin(a) * (R - 1.7)); cx.rotate(a + Math.PI / 2);
+      cx.fillText(txt[i], 0, 0); cx.restore();
+    }
   } else {
     // the flag's two bars
     cx.fillStyle = '#2a77b3';
@@ -295,7 +327,7 @@ function _paintMat(cx, px) {
   cx.fillStyle = '#0d1226';
   cx.fillRect(0, 0, S, 3.5); cx.fillRect(0, S - 3.5, S, 3.5); cx.fillRect(0, 0, 3.5, S); cx.fillRect(S - 3.5, 0, 3.5, S);
   cx.strokeStyle = '#e6e4da'; cx.lineWidth = 0.45; cx.strokeRect(3.5, 3.5, S - 7, S - 7);
-  cx.strokeStyle = SITE.flag === 'dc' ? '#c4162c' : '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
+  cx.strokeStyle = SITE.flag === 'dc' ? '#c4162c' : SITE.flag === 'nyc' ? '#e8601c' : '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
   cx.restore();
 }
 

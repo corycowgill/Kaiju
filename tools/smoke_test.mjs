@@ -27,11 +27,14 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // (iphone low chicago: the procedural-only tier, where Chicago still loads its building GLBs)
 // Chicago configs without a mode build the Title Match city (ring, ringside crowd); the 'waves' configs build
 // the classic city that Kaiju Havoc, VS and Lone Soldier play on, with the festival and its rigged crowd.
-// Washington DC (src/levels/dc.js) runs the same six data-level configs as Chicago.
+// Washington DC (src/levels/dc.js) runs the same six data-level configs as Chicago; New York
+// (src/levels/nyc.js) desktop HIGH, desktop LOW and iPhone LOW in both builds.
 const CONFIGS = [['desktop', 'high', 'tokyo'], ['iphone', 'med', 'tokyo'], ['desktop', 'high', 'chicago'], ['iphone', 'med', 'chicago'], ['iphone', 'low', 'chicago'],
   ['desktop', 'high', 'chicago', 'waves'], ['iphone', 'med', 'chicago', 'waves'], ['iphone', 'low', 'chicago', 'waves'],
   ['desktop', 'high', 'dc'], ['iphone', 'med', 'dc'], ['iphone', 'low', 'dc'],
-  ['desktop', 'high', 'dc', 'waves'], ['iphone', 'med', 'dc', 'waves'], ['iphone', 'low', 'dc', 'waves']];
+  ['desktop', 'high', 'dc', 'waves'], ['iphone', 'med', 'dc', 'waves'], ['iphone', 'low', 'dc', 'waves'],
+  ['desktop', 'high', 'nyc'], ['desktop', 'low', 'nyc'], ['iphone', 'low', 'nyc'],
+  ['desktop', 'high', 'nyc', 'waves'], ['desktop', 'low', 'nyc', 'waves'], ['iphone', 'low', 'nyc', 'waves']];
 
 const argv = process.argv.slice(2);
 if (argv[0] !== '--run') {
@@ -61,7 +64,7 @@ if (argv[0] !== '--run') {
       return (j.nodes || []).reduce((n, nd) => n + (nd.mesh !== undefined ? j.meshes[nd.mesh].primitives.length : 0), 0);
     };
     let lodPairs = 0;
-    for (const tree of ['assets', 'assets/m', 'assets/ktx2']) for (const sub of ['buildings/chicago', 'buildings/dc', 'trees', 'props', 'vehicles']) {
+    for (const tree of ['assets', 'assets/m', 'assets/ktx2']) for (const sub of ['buildings/chicago', 'buildings/dc', 'buildings/nyc', 'trees', 'props', 'vehicles']) {
       const dir = path.join(REPO, tree, sub);
       if (!fs.existsSync(dir)) continue;
       for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('_lod1.glb'))) {
@@ -85,7 +88,7 @@ if (argv[0] !== '--run') {
 
 const [, device, tier, level = 'tokyo', modeArg = ''] = argv;
 // Levels built from a map layout (GLB buildings on every tier, a ring, bounds and water)
-const DATA = level === 'chicago' || level === 'dc';
+const DATA = level === 'chicago' || level === 'dc' || level === 'nyc';
 const failures = [];
 const fail = (msg) => failures.push(msg);
 
@@ -669,7 +672,7 @@ if (res?.buildings?.length) {
     level, bounds: res.bounds, isWater: res.isWater, buildings: res.buildings, buildingGrid: res.grid, duelSpawns: res.duelSpawns,
   });
   if (player.distanceTo(rival) < (level === 'chicago' ? 295 : 245)) fail('VS spawns are too close');
-  if (level === 'dc' && res.isWater && (res.isWater(player.x, player.z) || res.isWater(rival.x, rival.z))) fail('dc: a VS spawn is on water');
+  if ((level === 'dc' || level === 'nyc') && res.isWater && (res.isWater(player.x, player.z) || res.isWater(rival.x, rival.z))) fail(`${level}: a VS spawn is on water`);
   log(`VS SPAWNS ${player.toArray()} / ${rival.toArray()}`);
 }
 
@@ -819,11 +822,11 @@ if (DATA && res && res.bounds) {
     const near = res.buildings.filter((b) => !b.destroyed && Math.abs(b.x - x) < b.w / 2 + 10 && Math.abs(b.z - z) < b.d / 2 + 10);
     if (near.length) fail(`${level}: ${near.length} buildings within 10u of the kaiju spawn`);
   }
-  // DC on land: clear of buildings
-  if (level === 'dc' && !(res.isWater && res.isWater(res.spawn.x, res.spawn.z))) {
+  // DC / NYC on land: clear of buildings
+  if ((level === 'dc' || level === 'nyc') && !(res.isWater && res.isWater(res.spawn.x, res.spawn.z))) {
     const { x, z } = res.spawn;
     const near = res.buildings.filter((b) => !b.destroyed && Math.abs(b.x - x) < b.w / 2 + 8 && Math.abs(b.z - z) < b.d / 2 + 8);
-    if (near.length) fail(`dc: ${near.length} buildings within 8u of the kaiju spawn`);
+    if (near.length) fail(`${level}: ${near.length} buildings within 8u of the kaiju spawn`);
   }
   if (res.spawn.x < B.minX || res.spawn.x > B.maxX || res.spawn.z < B.minZ || res.spawn.z > B.maxZ) fail(`${level}: kaiju spawn outside bounds`);
   const tooTall = res.buildings.filter((b) => !(b.h > 0 && b.h < 140));

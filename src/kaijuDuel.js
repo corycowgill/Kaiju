@@ -34,8 +34,10 @@ function spawnIsClear(world, x, z) {
   let occupied = false;
   const check = building => {
     if (occupied || building.destroyed) return;
-    const dx = Math.max(0, Math.abs(building.x - x) - building.w / 2);
-    const dz = Math.max(0, Math.abs(building.z - z) - building.d / 2);
+    // (a turned lot, building.obb: the distance in its own frame)
+    const o = building.obb, rx = x - building.x, rz = z - building.z;
+    const dx = o ? Math.max(0, Math.abs(rx * o.c - rz * o.s) - o.hw) : Math.max(0, Math.abs(rx) - building.w / 2);
+    const dz = o ? Math.max(0, Math.abs(rx * o.s + rz * o.c) - o.hd) : Math.max(0, Math.abs(rz) - building.d / 2);
     occupied = dx * dx + dz * dz < clearance * clearance;
   };
   if (world.buildingGrid) {

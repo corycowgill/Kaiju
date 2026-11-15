@@ -4,7 +4,7 @@ window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
 import { firstPersonEnvironment, lightFirstPerson, followSoldierShadow, applyEnvironmentStrength, soldierSunExposure } from './firstPersonLighting.js';
-import { resolveStructureContact } from './buildingCollision.js';
+import { resolveStructureContact, obbTouch, obbPush } from './buildingCollision.js';
 import { StructureRayQuery, cameraFollowAlpha } from './structureRayQuery.js';
 window.__dbg && window.__dbg('DBG · three imported OK');
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -40,6 +40,7 @@ import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTexture
 import { createWrestling } from './wrestling/index.js';
 import { prebakeAnims } from './wrestling/anims.js';
 import { DC_LOOK } from './levels/dcLook.js';
+import { NYC_LOOK } from './levels/nycLook.js';
 import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, lookSunUp, withLookEnvSky, setLookDip } from './look.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
@@ -79,6 +80,7 @@ const LEVELS = {
   tokyo:   { name: 'TOKYO',   jp: '東京', tag: 'NEON DUSK · SHINJUKU', h2: 'TOKYO DESTRUCTION', h2jp: '東京破壊' },
   chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'GOLDEN HOUR · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊', arena: true, data: true, title: 'CHICAGO HEAVYWEIGHT TITLE' },
   dc: { name: 'WASHINGTON DC', jp: 'ワシントン', tag: 'LATE MORNING · THE NATIONAL MALL', h2: 'WASHINGTON DC DESTRUCTION', h2jp: 'ワシントン破壊', arena: true, data: true, title: 'NATIONAL MALL HEAVYWEIGHT TITLE' },
+  nyc: { name: 'NEW YORK CITY', jp: 'ニューヨーク', tag: 'AFTERNOON · MIDTOWN MANHATTAN', h2: 'NEW YORK CITY DESTRUCTION', h2jp: 'ニューヨーク破壊', arena: true, data: true, title: 'NEW YORK HEAVYWEIGHT TITLE' },
 };
 // data: built from a map layout (src/levels/<level>.js): GLB buildings on
 // every tier, the look layer, open water, explicit bounds and spawns
@@ -1167,7 +1169,12 @@ const _DC_LOOK = {
   ..._CHICAGO_LOOK, ...DC_LOOK.statics, // (src/levels/dcLook.js: dc-design's values)
   bloom: bloomPass && { threshold: DC_LOOK.statics.bloomThreshold, strength: bloomPass.strength * DC_LOOK.statics.bloomK }, // sunlit marble must not bloom
 };
-const _LAYER_LOOKS = { chicago: _CHICAGO_LOOK, dc: _DC_LOOK };
+// New York City: one afternoon key held all match (src/levels/nycLook.js: nyc-design's values)
+const _NYC_LOOK = {
+  ..._CHICAGO_LOOK, ...NYC_LOOK.statics,
+  bloom: bloomPass && { threshold: NYC_LOOK.statics.bloomThreshold, strength: bloomPass.strength * NYC_LOOK.statics.bloomK },
+};
+const _LAYER_LOOKS = { chicago: _CHICAGO_LOOK, dc: _DC_LOOK, nyc: _NYC_LOOK };
 // Sun position relative to the kaiju (shadow camera follows it). Tokyo's
 // low west rake; levels may override (see sunOffset in the looks above)
 const _TOKYO_SUN = [-100, 100, 45];
@@ -1186,13 +1193,13 @@ function applyLevelLook(level) {
   // (1600u square centred 200u west of the map)
   resetLookClock();
   setLookLevel(level);
-  // (DC: centred on the map, a long fade from its corners out over the surround)
+  // (DC, NYC: centred on the map, a long fade from its corners out over the surround)
   buildLookMap(world, level === 'chicago' ? { x: world.center.x - 200, z: world.center.z, r0: 520, r1: 775 }
-    : level === 'dc' ? { x: world.center.x, z: world.center.z, r0: _dcEdge(world.bounds, 0), r1: _dcEdge(world.bounds, 650) } : null);
+    : level === 'dc' || level === 'nyc' ? { x: world.center.x, z: world.center.z, r0: _dcEdge(world.bounds, 0), r1: _dcEdge(world.bounds, 650) } : null);
   if (_LAYER_LOOKS[level]) sun.position.copy(_sunOffset); // until a kaiju exists to follow
   if (changed && Q_HIGH) _captureEnv();
 }
-/** Radius from the map centre to its corner plus `pad` (DC's world-edge fade). */
+/** Radius from the map centre to its corner plus `pad` (DC's and NYC's world-edge fade). */
 function _dcEdge(b, pad) { return Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + pad; }
 function _applyLevelStatics(level) {
   _lookLevel = level;
@@ -2432,7 +2439,8 @@ function _showMobileDataWarning() {
     // phone MED 37.0 / 28.5, phone LOW 31.7 / 10.3 MB.
     // Washington DC (2026-11-15, after dc-design's detail passes; every response
     // counted incl. code and audio, 30 s of play): desktop 58.6, phone MED 35.4, phone LOW 30.1 MB.
-    const chi = selectedLevel === 'chicago', dc = selectedLevel === 'dc';
+    // New York City: DC's figures until measured (nyc-integrator)
+    const chi = selectedLevel === 'chicago', dc = selectedLevel === 'dc' || selectedLevel === 'nyc';
     if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? (chi ? '~37 MB' : dc ? '~35 MB' : '~29 MB') : (chi ? '~32 MB' : dc ? '~30 MB' : '~10 MB')) : (chi ? '~65 MB' : dc ? '~59 MB' : '~74 MB');
     warn.classList.remove('hidden');
     warn.style.display = 'flex';
@@ -5045,6 +5053,16 @@ let _bumped = null;
 // (a mode's own wear rate, 0 = none): no crush-on-contact, the building
 // simply holds the body out while it stands.
 function _pushOutOfStructure(pos, radius, b, dt, wearDps) {
+  if (b.obb) {
+    // a turned lot (the Manhattan grid): its own frame (buildingCollision.js)
+    const t = obbTouch(pos, radius, b);
+    if (!t) return;
+    const hx = t.x, hz = t.z;
+    obbPush(pos, radius, b, t);
+    _bumped = b;
+    if (wearDps) b.damage(wearDps * dt, _tmpV1.set(hx, b.h * 0.6, hz), world);
+    return;
+  }
   const hw = b.w / 2, hd = b.d / 2;
   const cx = THREE.MathUtils.clamp(pos.x, b.x - hw, b.x + hw), cz = THREE.MathUtils.clamp(pos.z, b.z - hd, b.z + hd);
   const dx = pos.x - cx, dz = pos.z - cz, d2 = dx * dx + dz * dz;

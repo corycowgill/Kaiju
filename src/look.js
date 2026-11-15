@@ -850,18 +850,30 @@ function _rasterH(M, b, h) {
   const S = M.S;
   const xa = Math.max(1, Math.ceil(_tx(M, b.x - b.w / 2) - 0.5)), xb = Math.min(S - 2, Math.floor(_tx(M, b.x + b.w / 2) - 0.5));
   const za = Math.max(1, Math.ceil(_tz(M, b.z - b.d / 2) - 0.5)), zb = Math.min(S - 2, Math.floor(_tz(M, b.z + b.d / 2) - 0.5));
-  for (let z = za; z <= zb; z++) for (let x = xa, o = z * S + xa; x <= xb; x++, o++) M.H[o] = h > 0 ? Math.max(M.H[o], h) : 0;
+  const q = b.obb; // a turned lot (the Manhattan grid): only texels inside its own footprint
+  for (let z = za; z <= zb; z++) for (let x = xa, o = z * S + xa; x <= xb; x++, o++) {
+    if (q) {
+      const rx = M.x0 + (x + 0.5) * M.sx - b.x, rz = M.z0 + (z + 0.5) * M.sz - b.z;
+      if (Math.abs(rx * q.c - rz * q.s) > q.hw || Math.abs(rx * q.s + rz * q.c) > q.hd) continue;
+    }
+    M.H[o] = h > 0 ? Math.max(M.H[o], h) : 0;
+  }
 }
 function _splatA(M, b, sign) {
   // Occlusion falls off over R from the footprint; taller buildings reach further and weigh more
   if (b.h < 1.2) return;
   const R = Math.min(13, Math.max(2.5, b.h * 0.45)), k = sign * Math.min(1, 0.22 + b.h / 26);
   const [xa, za, xb, zb] = _rect(M, b, R);
-  const hw = b.w / 2, hd = b.d / 2, S = M.S;
+  const hw = b.w / 2, hd = b.d / 2, S = M.S, q = b.obb;
   for (let z = za; z <= zb; z++) {
-    const dz = Math.max(0, Math.abs(M.z0 + (z + 0.5) * M.sz - b.z) - hd);
+    let dz = Math.max(0, Math.abs(M.z0 + (z + 0.5) * M.sz - b.z) - hd);
     for (let x = xa, o = z * S + xa; x <= xb; x++, o++) {
-      const dx = Math.max(0, Math.abs(M.x0 + (x + 0.5) * M.sx - b.x) - hw);
+      let dx = Math.max(0, Math.abs(M.x0 + (x + 0.5) * M.sx - b.x) - hw);
+      if (q) {
+        // (a turned lot: the distance from its own footprint)
+        const rx = M.x0 + (x + 0.5) * M.sx - b.x, rz = M.z0 + (z + 0.5) * M.sz - b.z;
+        dx = Math.max(0, Math.abs(rx * q.c - rz * q.s) - q.hw); dz = Math.max(0, Math.abs(rx * q.s + rz * q.c) - q.hd);
+      }
       const f = 1 - Math.sqrt(dx * dx + dz * dz) / R;
       if (f > 0) M.A[o] += k * f * f;
     }

@@ -11,6 +11,8 @@ import { isMobile } from './quality.js';
 import { buildChicago, loadChicagoLayout, chicagoBuildingGLBs, chicagoPropGLBs, chicagoVehicleGLBs, chicagoLod1GLBs } from './levels/chicago.js';
 import { buildDc, loadDcLayout, dcBuildingGLBs, dcPropGLBs, dcVehicleGLBs, dcLod1GLBs } from './levels/dc.js';
 import { DC_DEBRIS_GLBS } from './levels/dcManifest.js';
+import { buildNyc, loadNycLayout, nycBuildingGLBs, nycPropGLBs, nycVehicleGLBs, nycLod1GLBs } from './levels/nyc.js';
+import { NYC_DEBRIS_GLBS } from './levels/nycManifest.js';
 import { setArenaSite } from './levels/chicago_arena.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
@@ -218,11 +220,19 @@ const LOD1_READY = new Set([
   './assets/props/traffic_signal.glb', './assets/props/street_lamp.glb', './assets/props/vending_machine.glb',
 ]);
 for (const u of chicagoLod1GLBs()) LOD1_READY.add(u);
-for (const u of dcLod1GLBs()) LOD1_READY.add(u);
+// The map-built levels after Chicago (src/levels/<key>.js), all on Chicago's
+// US street kit: layout loader, builder, asset lists, own debris (set when
+// the level has any) and phone LOW's box-rubble tint
+const MAP_LEVELS = {
+  dc: { load: loadDcLayout, build: buildDc, buildings: dcBuildingGLBs, props: dcPropGLBs, vehicles: dcVehicleGLBs, lod1: dcLod1GLBs, debris: DC_DEBRIS_GLBS, boxTint: 0xd6d0c4 },
+  nyc: { load: loadNycLayout, build: buildNyc, buildings: nycBuildingGLBs, props: nycPropGLBs, vehicles: nycVehicleGLBs, lod1: nycLod1GLBs, debris: NYC_DEBRIS_GLBS, boxTint: null },
+};
+const _usLevel = (level) => level === 'chicago' || !!MAP_LEVELS[level];
+for (const k in MAP_LEVELS) for (const u of MAP_LEVELS[k].lod1()) LOD1_READY.add(u);
 // Twins whose shape is checked against their LOD0 on attach (DC's: a twin
 // that lost its dome failed silently at distance). Chicago's box LODs differ
 // from their LOD0 by design (the bascule leaves), so the check is opt-in.
-const LOD1_STRICT = new Set(dcLod1GLBs());
+const LOD1_STRICT = new Set([...dcLod1GLBs(), ...nycLod1GLBs()]);
 const _lod1Rejected = new Map(); // url -> why (smoke test lists them)
 /** LOD1 twins left out because their shape does not match their LOD0 (url -> reason). */
 export function lod1Rejected() { return _lod1Rejected; }
@@ -319,10 +329,10 @@ function _loadProps(list) {
 
 /** The level's prop list as [{ name, url }]. */
 function _levelProps(level) {
-  // DC: Chicago's US street kit (its acorn lamp is the Washington globe) plus its own
-  if (level === 'chicago' || level === 'dc') {
+  // DC / NYC: Chicago's US street kit (its acorn lamp is the Washington globe) plus their own
+  if (_usLevel(level)) {
     return [...PROP_GLBS_GENERIC.filter((n) => PROP_GLBS_READY.has(n)).map((name) => ({ name, url: PROP_GLB_BASE + name + '.glb' })),
-      ...chicagoPropGLBs(), ...(level === 'dc' ? dcPropGLBs() : [])];
+      ...chicagoPropGLBs(), ...(MAP_LEVELS[level] ? MAP_LEVELS[level].props() : [])];
   }
   return PROP_GLBS.map((name) => ({ name, url: PROP_GLB_BASE + name + '.glb' }));
 }
@@ -2654,7 +2664,7 @@ function _cachedGLB(url, original = false) {
 
 /** Building GLB urls a level loads (Tokyo: every Tokyo template). */
 function _levelBuildingGLBs(level) {
-  return level === 'chicago' ? chicagoBuildingGLBs() : level === 'dc' ? dcBuildingGLBs() : ALL_BUILDING_GLBS;
+  return level === 'chicago' ? chicagoBuildingGLBs() : MAP_LEVELS[level] ? MAP_LEVELS[level].buildings() : ALL_BUILDING_GLBS;
 }
 
 /** Load the level's unique building GLB templates (already-loaded ones are skipped). */
@@ -2707,7 +2717,7 @@ const DEBRIS_GLBS_FALLBACK = [
 const _debrisTemplates = [];  // array of { scene, box, set } after loading
 // A level's own debris (DC: marble and limestone chunks), used there instead of
 // the concrete / rebar kit; set by buildCity
-const LEVEL_DEBRIS = { dc: DC_DEBRIS_GLBS };
+const LEVEL_DEBRIS = Object.fromEntries(Object.entries(MAP_LEVELS).filter(([, v]) => v.debris.length).map(([k, v]) => [k, v.debris]));
 const _debrisLoaded = new Set(); // urls requested
 let _debrisSet = 'default';
 // Phone LOW's procedural chunks and rubble take the building's colour; a
@@ -3075,14 +3085,17 @@ class _Placed {
 // generic block fills its footprint and reaches its height (Chicago kit)
 // atOrigin: put the model's own origin (not its bbox centre) on the
 // building position, for models authored around a meaningful centre
-function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, stretch = 1, atOrigin = false) {
+function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, stretch = 1, atOrigin = false, lot = null) {
   const tpl = _glbTemplates.get(url);
   if (!tpl || building.destroyed) return;
 
   const P = new _Placed(tpl.scene), root = P.top;
 
+  // A turned lot (lot: its own w x d, e.g. the Manhattan grid's 29 deg): the
+  // model is fitted to the lot in its own frame, then turned
+  if (lot) { maxW = lot.w; maxD = lot.d; }
   // Apply Y rotation before measuring if specified
-  if (rotY) root.rotation.y = rotY;
+  else if (rotY) root.rotation.y = rotY;
 
   const rawBox = P.box();
   const rawW = rawBox.max.x - rawBox.min.x;
@@ -3105,11 +3118,12 @@ function placeBuildingGLB(url, targetHeight, building, scene, maxW, maxD, rotY, 
     const sy = Math.min(targetHeight / rawH, s * stretch);
     // Scale is applied before the Y rotation: a quarter-turned model's
     // local X lies along world Z
-    const quarter = Math.abs(Math.sin(rotY || 0)) > Math.SQRT1_2;
+    const quarter = !lot && Math.abs(Math.sin(rotY || 0)) > Math.SQRT1_2;
     root.scale.set(quarter ? sz : sx, sy, quarter ? sx : sz);
   } else {
     root.scale.setScalar(s);
   }
+  if (lot && rotY) root.rotation.y = rotY;
 
   const boxScaled = P.box();
   building.w = boxScaled.max.x - boxScaled.min.x;
@@ -3156,8 +3170,11 @@ const FILL_NO_REPEAT = /brick_hotel/;
 function _placeFillGLB(entry, scene) {
   const b = entry.building;
   if (b.destroyed) return;
-  const rotY = entry.rotY || 0, h = entry.h, W = entry.maxW, D = entry.maxD;
-  const quarter = Math.abs(Math.sin(rotY)) > Math.SQRT1_2;
+  const rotY = entry.rotY || 0, h = entry.h, lot = entry.lot || null;
+  // (a turned lot: cells laid out and fitted in the lot's own frame, offsets turned to the world)
+  const W = lot ? lot.w : entry.maxW, D = lot ? lot.d : entry.maxD;
+  const quarter = !lot && Math.abs(Math.sin(rotY)) > Math.SQRT1_2;
+  const ca = Math.cos(rotY), sa = Math.sin(rotY);
   const urls = [...new Set([entry.url, ...(entry.pool || [])])].filter((u) => _glbTemplates.has(u));
   const dim = new Map();
   for (const u of urls) {
@@ -3180,7 +3197,7 @@ function _placeFillGLB(entry, scene) {
     return top[Math.floor(Math.random() * top.length)] || c[0];
   };
   const [u0, c0] = best(W, D, null);
-  if (c0 >= 0.75 || W * D < 12) { placeBuildingGLB(u0, h, b, scene, W, D, rotY, 1.25); return; }
+  if (c0 >= 0.75 || W * D < 12) { placeBuildingGLB(u0, h, b, scene, W, D, rotY, 1.25, false, lot); return; }
   const alongX = W >= D, len = alongX ? W : D, dep = alongX ? D : W;
   const [pw, , pd] = dim.get(u0), plong = (alongX ? pw : pd) * h / dim.get(u0)[1];
   const n = Math.max(2, Math.min(4, Math.round(len / Math.max(plong * 1.1, 1e-3))));
@@ -3208,11 +3225,12 @@ function _placeFillGLB(entry, scene) {
     c.scale.set(quarter ? sz : sx, s, quarter ? sx : sz);
     const bx = P.box();
     const off = -len / 2 + (i + 0.5) * cl;
-    const tx = b.x + (alongX ? off : 0), tz = b.z + (alongX ? 0 : off);
+    const ox = alongX ? off : 0, oz = alongX ? 0 : off;
+    const tx = b.x + (lot ? ox * ca + oz * sa : ox), tz = b.z + (lot ? -ox * sa + oz * ca : oz);
     c.position.set(tx - (bx.min.x + bx.max.x) / 2, -bx.min.y, tz - (bx.min.z + bx.max.z) / 2);
     cells.push(P);
   }
-  b.w = W; b.d = D; b.h = h;
+  b.w = lot ? entry.maxW : W; b.d = lot ? entry.maxD : D; b.h = h;
   b._grid?.expandBounds(b);
   _bucketGLBNodes(cells.flatMap((P) => P.nodes(rootW)), u0, b);
 }
@@ -3334,7 +3352,7 @@ export function flushPendingGLBBuildings(scene) {
     } else if (url && entry.fill) {
       _placeFillGLB({ ...entry, url }, scene);
     } else if (url) {
-      placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0, entry.stretch || 1, !!entry.atOrigin);
+      placeBuildingGLB(url, entry.h, entry.building, scene, entry.maxW || 0, entry.maxD || 0, entry.rotY || 0, entry.stretch || 1, !!entry.atOrigin, entry.lot || null);
     } else if (!entry.building.destroyed) {
       _revealProceduralBody(entry.building);
       boxed++;
@@ -3350,7 +3368,7 @@ export function flushPendingGLBBuildings(scene) {
 
 /** Fetch the level's map data before buildCity (Tokyo is procedural: none). */
 export function loadLevelData(level) {
-  return level === 'chicago' ? loadChicagoLayout() : level === 'dc' ? loadDcLayout() : Promise.resolve();
+  return level === 'chicago' ? loadChicagoLayout() : MAP_LEVELS[level] ? MAP_LEVELS[level].load() : Promise.resolve();
 }
 
 /** Build the selected level's city. opts.level: 'tokyo' (default) | 'chicago'.
@@ -3369,20 +3387,20 @@ export function buildCity(scene, world, opts = {}) {
   _windowQueue = [];
   _pedCfg = null;
   _carNet = null;
-  _carLevel = opts.level === 'chicago' || opts.level === 'dc' ? opts.level : 'tokyo';
+  _carLevel = _usLevel(opts.level) ? opts.level : 'tokyo';
   // Chicago: zelkova only (elm-like summer green; the ginkgo read neon yellow)
   _bldgTile = BLDG_TILE;
   // (DC: the same; its cherry trees round the Tidal Basin are its own landscape's)
-  const usTrees = opts.level === 'chicago' || opts.level === 'dc';
+  const usTrees = _usLevel(opts.level);
   _treeTint = usTrees ? new THREE.Color(0.62, 0.78, 0.55) : null;
   _treeExclude = new Set(usTrees ? ['./assets/trees/tree_sakura.glb', './assets/trees/tree_black_pine.glb', './assets/trees/tree_ginkgo.glb'] : []);
   _resetCollapseFx();
   _debrisSet = LEVEL_DEBRIS[opts.level] ? opts.level : 'default';
-  _boxDebrisTint = opts.level === 'dc' ? new THREE.Color(0xd6d0c4) : null;
+  _boxDebrisTint = MAP_LEVELS[opts.level]?.boxTint != null ? new THREE.Color(MAP_LEVELS[opts.level].boxTint) : null;
   // The ring stands on Hutchinson Field unless a level moves it (dc.js does)
   setArenaSite();
   const res = opts.level === 'chicago' ? buildChicago(scene, world, opts, CITY_KIT)
-    : opts.level === 'dc' ? buildDc(scene, world, opts, CITY_KIT)
+    : MAP_LEVELS[opts.level] ? MAP_LEVELS[opts.level].build(scene, world, opts, CITY_KIT)
     : { ...buildTokyo(scene, world, opts), level: 'tokyo' };
   // Queued collapse effects, a few buildings per frame (see _drainCollapseFx)
   (res.cityAnimators || (res.cityAnimators = [])).push({ update: () => _drainCollapseFx(world) });
@@ -4972,8 +4990,9 @@ function _loadCarList(list, onProgress) {
 function _levelCars(level) {
   // DC drives Chicago's US fleet (less the CTA bus) plus its own; tagging
   // both levels on the shared templates leaves Chicago's traffic as it was
-  const us = chicagoVehicleGLBs().map((v) => ({ ...v, levels: /cta_bus/.test(v.url) ? ['chicago'] : ['chicago', 'dc'] }));
-  const own = level === 'chicago' ? us : level === 'dc' ? [...us.filter((v) => v.levels.includes('dc')), ...dcVehicleGLBs()] : [];
+  // (NYC the same)
+  const us = chicagoVehicleGLBs().map((v) => ({ ...v, levels: /cta_bus/.test(v.url) ? ['chicago'] : ['chicago', ...Object.keys(MAP_LEVELS)] }));
+  const own = level === 'chicago' ? us : MAP_LEVELS[level] ? [...us.filter((v) => v.levels.includes(level)), ...MAP_LEVELS[level].vehicles()] : [];
   return [...CAR_GLBS.filter((d) => !d.levels || d.levels.includes(level)), ...own];
 }
 
