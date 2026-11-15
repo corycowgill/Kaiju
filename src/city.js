@@ -2417,7 +2417,7 @@ export class Building {
     const rubbleCount = festival ? 2 : 3 + Math.floor(Math.random() * 2);
     for (let i = 0; i < rubbleCount && world; i++) {
       const rubSize = THREE.MathUtils.clamp(Math.max(this.w, this.d) * rand(0.15, 0.3), 2.5, 8);
-      if (useGLBDebris && _placeRubbleInstanced(world.scene, rubSize,
+      if (useGLBDebris && _placeRubbleInstanced(world.scene, rubSize, this.debrisTint ?? null,
           this.group.position.x + rand(-this.w / 4, this.w / 4),
           rubSize * 0.15,
           this.group.position.z + rand(-this.d / 4, this.d / 4),
@@ -2428,7 +2428,7 @@ export class Building {
       const rw = festival ? rand(.3, 1.1) : this.w * rand(0.3, 0.7);
       const rd = festival ? rand(.2, .7) : this.d * rand(0.3, 0.7);
       const rh = festival ? rand(.06, .18) : rand(1.2, 2.6);
-      _placeBoxRubble(world.scene, _boxDebrisTint || this.body.material.color, rw, rh, rd,
+      _placeBoxRubble(world.scene, this.debrisTint != null ? new THREE.Color(this.debrisTint) : _boxDebrisTint || this.body.material.color, rw, rh, rd,
         this.group.position.x + rand(-this.w / 4, this.w / 4),
         festival ? rh / 2 : rubSize * 0.15,
         this.group.position.z + rand(-this.d / 4, this.d / 4),
@@ -2488,7 +2488,7 @@ const _fxV = new THREE.Vector3();
 function _queueCollapseFx(world, b) {
   const t = typeof world.time === 'number' ? world.time : 0;
   const kp = world.kaijuPos; // chunks fly away from the kaiju
-  _fxJobs.push({ x: b.group.position.x, z: b.group.position.z, w: b.w, d: b.d, h: b.h, color: _boxDebrisTint || b.body.material.color, t,
+  _fxJobs.push({ x: b.group.position.x, z: b.group.position.z, w: b.w, d: b.d, h: b.h, color: b.debrisTint != null ? new THREE.Color(b.debrisTint) : _boxDebrisTint || b.body.material.color, tint: b.debrisTint ?? null, t,
     fest: !!b.fest, fence: !!b.isFence, metal: b.destructionMaterial === 'metal', kx: kp ? kp.x : NaN, kz: kp ? kp.z : NaN });
   if (_fxInlineT !== t) { _fxInlineT = t; _fxInlineN = 0; }
   if (_fxJobs.length - _fxHead === 1 && _fxInlineN < _FX_INLINE) {
@@ -2562,7 +2562,7 @@ function _collapseFx(world, j, level) {
       : Math.max(j.w, j.d) * rand(0.25, 0.65);
     let m;
     if (useGLBDebris) {
-      m = _cloneDebris(targetSize);
+      m = _cloneDebris(targetSize, _pickDebrisTemplate(j.tint));
     }
     if (!m) {
       // Fallback to a procedural box if GLBs not loaded (pooled, see _boxDebris)
@@ -2737,11 +2737,35 @@ function _loadDebrisList(list, set = 'default') {
   ));
 }
 
-function _pickDebrisTemplate() {
+/** A debris template for the level in play; tint (0xRRGGBB, a level's own
+ *  kit only): the fallen building's stone, as a tinted copy of the template
+ *  (made once per template and stone: same program, its own material). */
+function _pickDebrisTemplate(tint = null) {
   if (_debrisTemplates.length === 0) return null;
   const own = _debrisTemplates.filter((t) => t.set === _debrisSet);
   const list = own.length ? own : _debrisTemplates.filter((t) => t.set === 'default');
-  return list[Math.floor(Math.random() * list.length)] || null;
+  const tpl = list[Math.floor(Math.random() * list.length)] || null;
+  return tpl && tint != null && tpl.set !== 'default' ? _tintedDebris(tpl, tint) : tpl;
+}
+// The level kit is authored in marble: other stones scale its colour by stone / marble
+const DEBRIS_MARBLE = new THREE.Color(0xd6d0c4);
+const _tinted = new Map(); // template -> Map(hex -> tinted template)
+function _tintedDebris(tpl, hex) {
+  let byHex = _tinted.get(tpl);
+  if (!byHex) _tinted.set(tpl, (byHex = new Map()));
+  let t = byHex.get(hex);
+  if (!t) {
+    const c = new THREE.Color(hex), k = [c.r / DEBRIS_MARBLE.r, c.g / DEBRIS_MARBLE.g, c.b / DEBRIS_MARBLE.b];
+    const scene = tpl.scene.clone(true), mats = new Map();
+    scene.traverse((o) => {
+      if (!o.isMesh) return;
+      if (!mats.has(o.material)) { const m = o.material.clone(); m.color.setRGB(m.color.r * k[0], m.color.g * k[1], m.color.b * k[2]); mats.set(o.material, m); }
+      o.material = mats.get(o.material);
+    });
+    t = { scene, box: tpl.box, set: tpl.set, tint: hex };
+    byHex.set(hex, t);
+  }
+  return t;
 }
 
 // Flying chunks are reused: a chunk the game has dropped (expired, trimmed or
@@ -2879,8 +2903,8 @@ function _rubblePool(tpl, scene) {
   return pool;
 }
 /** Place one rubble piece (instanced). Returns false if no template. */
-function _placeRubbleInstanced(scene, targetSize, x, y, z, rx, ry, rz) {
-  const tpl = _pickDebrisTemplate();
+function _placeRubbleInstanced(scene, targetSize, tint, x, y, z, rx, ry, rz) {
+  const tpl = _pickDebrisTemplate(tint);
   if (!tpl) return false;
   const rawSize = Math.max(
     tpl.box.max.x - tpl.box.min.x,

@@ -134,8 +134,8 @@ function leafCard(center, width, height, yaw, pitch, tile) {
 // Species shapes: limbs fork from the trunk top (fork height), arch out to
 // their tips; leaf cards cluster round each tip and along the limb's outer half.
 const SPECIES = {
-  elm: { trunkH: 3.6, trunkR: .5, limbs: 5, tipH: [9.6, 12.4], spread: [4.2, 5.8], arch: .55, cards: 22, card: 1.35, h: 12.6 },
-  cherry: { trunkH: 1.3, trunkR: .32, limbs: 6, tipH: [3.4, 5.0], spread: [2.8, 3.9], arch: .15, cards: 8, card: 1.5, h: 5.4 },
+  elm: { trunkH: 3.6, trunkR: .5, limbs: 5, tipH: [9.6, 12.4], spread: [3.8, 4.9], arch: .55, cards: 22, card: 1.35, h: 12.6, fit: .42 },
+  cherry: { trunkH: 1.3, trunkR: .32, limbs: 6, tipH: [3.4, 5.0], spread: [2.8, 3.9], arch: .15, cards: 8, card: 1.5, h: 5.4, fit: .6 },
 };
 
 function makeTemplate(kind, variant, far) {
@@ -214,7 +214,10 @@ export function createDcTrees(K, lite = false, glb = true) {
     }
     root.position.set(x, 0, z);
     root.rotation.y = seed * Math.PI * 2;
-    root.scale.set(scale * (.94 + seed * .14), scale * (.91 + hash(z, x) * .16), scale);
+    // fit: template units -> true size at the level's 0.2 u/m (Mall elms ~22 m tall with an ~20 m crown,
+    // Yoshino cherries ~8 m): the placement scale (about 0.8-0.95 for elms) lands on real dimensions
+    const k = scale * (SPECIES[kind] || SPECIES.elm).fit;
+    root.scale.set(k * (.94 + seed * .14), k * (.91 + hash(z, x) * .16), k);
     root.userData.instance = true;
     root.userData.instanceTile = !glb ? 4000 : lite ? 480 : 240;
     root.userData.instanceLodDistance = lite ? 360 : 240;
