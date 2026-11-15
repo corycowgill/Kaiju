@@ -54,3 +54,13 @@ export function dcFacade(material, file) {
 export function tickDcMaterials(time) { tickChicagoMaterials(time); }
 /** Park / street tree factory: (x, z, scale, kind = 'elm' | 'cherry') => Object3D (dcLandscape.js). */
 export function createDcTrees(K, lite = false, glb = true) { return createTrees(K, lite, glb); }
+/** DC water colours on the shared water material's uniforms (waterUniforms(mat)): the Potomac and the Tidal
+ *  Basin are grey-green river water under a pale sky, not Lake Michigan teal; narrow channels (the field's
+ *  river band: the reflecting pools) dark and glassy so they mirror the sky and the Monument. */
+export function dcWater(WU) {
+  WU.uDeep.value.setHex(0x2c4544); WU.uMid.value.setHex(0x3a5752);
+  WU.uShallow.value.setHex(0x4c665d); WU.uShore.value.setHex(0x627a6e);
+  WU.uRiver.value.setHex(0x1f2a2a); WU.uRiverEdge.value.setHex(0x2b3836);
+  WU.uSky.value.setHex(0xc4d6ea);
+  WU.uWaveAmp.value = 0.16;
+}

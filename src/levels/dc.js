@@ -8,7 +8,7 @@
 // block kit, the monuments' massing and the low skyline backdrop.
 import * as THREE from 'three';
 import { LEVEL_KIT as LK } from './chicago.js';
-import { dcGround, dcFacade, tickDcMaterials, createDcTrees } from './dcMaterials.js';
+import { dcGround, dcFacade, tickDcMaterials, createDcTrees, dcWater } from './dcMaterials.js';
 import { configureChicagoWear } from './chicagoMaterials.js';
 import { isMobile } from '../quality.js';
 import { splashPool } from './chicago_harbor.js';
@@ -67,23 +67,41 @@ function _kitDefs() {
 }
 // DC's ceiling (~40 m above the street on most blocks): the kit's tall
 // bucket folds into medium, medium into short where a bucket is empty
-function _bucketDefs(bucket) {
-  const defs = _kitDefs();
+// fedTri: the red-tile Federal Triangle family (dcManifest fedTri: true), only
+// on the blocks between Constitution and Pennsylvania Aves, 15th to 6th St
+function _bucketDefs(bucket, fedTri = false) {
+  const all = _kitDefs(), tri = all.filter((g) => g.fedTri);
+  if (fedTri && tri.length) return tri;
+  const defs = all.filter((g) => !g.fedTri);
   for (const b of [bucket, 'medium', 'short', 'low']) {
     const list = defs.filter((g) => g.bucket === b);
     if (list.length) return list;
   }
   return defs;
 }
-function _pickGeneric(h, avoid) {
-  const all = _bucketDefs(LK.bucket(h));
+/** One kit url for a block of height h (rnd: the block's own seeded random, so a
+ *  building gets the same piece every run; avoid: urls standing next door). */
+function _pickGeneric(h, avoid, rnd = Math.random, fedTri = false) {
+  const all = _bucketDefs(LK.bucket(h), fedTri);
   const fit = all.filter((g) => !g.maxH || h <= g.maxH);
   const own = fit.length ? fit : all;
   const ok = avoid ? own.filter((g) => !avoid.has(g.url)) : own;
   const list = ok.length ? ok : own;
-  let r = Math.random() * list.reduce((a, g) => a + (g.share ?? 1), 0);
-  for (const g of list) { r -= g.share ?? 1; if (r < 0) return g.url; }
+  const share = (g) => (fedTri ? 1 : g.share ?? 1);
+  let r = rnd() * list.reduce((a, g) => a + share(g), 0);
+  for (const g of list) { r -= share(g); if (r < 0) return g.url; }
   return list[list.length - 1]?.url || null;
+}
+/** A small seeded random from a string (mulberry32 on its hash). */
+function _seeded(key) {
+  let t = 2166136261;
+  for (let i = 0; i < key.length; i++) t = Math.imul(t ^ key.charCodeAt(i), 16777619);
+  return () => {
+    t = (t + 0x6d2b79f5) | 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 /** Building GLB urls the DC level loads. */
@@ -436,6 +454,7 @@ export function buildDc(scene, world, opts, K) {
     const waterMat = makeWaterMaterial(field);
     for (const wm of waterMeshes) wm.material = waterMat;
     const WU = waterUniforms(waterMat);
+    dcWater(WU); // (dc-design: grey-green river, darker glassy pools)
     animators.push({ update(dt, time) { WU.uTime.value = time; } });
     waterSplash = splashPool(scene, lite ? 200 : 600, lite ? 12 : 32);
     animators.push(waterSplash);
@@ -661,6 +680,17 @@ export function buildDc(scene, world, opts, K) {
 
   // ---- buildings: federal and museum blocks from the kit ----
   const picked = new Map();
+  // The Federal Triangle: between Constitution Ave (south), Pennsylvania Ave
+  // (north-east diagonal), 15th St (west) and 6th St (east), from the road lines
+  const fedTriAt = (() => {
+    const pts = (re) => L.roads.filter((r) => re.test(r.name)).flatMap((r) => r.points);
+    const penn = pts(/^Pennsylvania Avenue Northwest$/), cons = pts(/^Constitution Avenue Northwest$/);
+    const xOf = (re) => { const p = pts(re); return p.length ? p.reduce((a, q) => a + q[0], 0) / p.length : NaN; };
+    const x15 = xOf(/^15th Street Northwest$/), x6 = xOf(/^6th Street Northwest$/);
+    if (!penn.length || !cons.length || !(x15 < x6)) return () => false;
+    const nearZ = (list, x) => { let best = null; for (const p of list) if (!best || Math.abs(p[0] - x) < Math.abs(best[0] - x)) best = p; return best[1]; };
+    return (x, z) => x > x15 + 2 && x < x6 - 2 && z < nearZ(cons, x) - 2 && z > nearZ(penn, x) + 2;
+  })();
   const placeBlock = (o) => {
     const color = LK.facadeColor();
     const c = Math.abs(Math.cos(o.rotY || 0)), s = Math.abs(Math.sin(o.rotY || 0));
@@ -676,7 +706,8 @@ export function buildDc(scene, world, opts, K) {
       K.queueGLB({ url: DC_BASE + own.file, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, stretch: 1.6 });
       return;
     }
-    const url = _pickGeneric(o.h, null);
+    const rnd = _seeded(o.id + ':' + Math.round(o.x) + ':' + Math.round(o.z)), tri = fedTriAt(o.x, o.z);
+    const url = _pickGeneric(o.h, null, rnd, tri);
     if (!url) {
       const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true, noRoofProps: true, windows: { scale: 0.65, faces: lite ? 2 : 4, minH: 2.5 } });
       b.group.matrixAutoUpdate = false; b.group.updateMatrix();
@@ -693,7 +724,7 @@ export function buildDc(scene, world, opts, K) {
         for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
           if (nx >= 3 && nz >= 3 && i > 0 && i < nx - 1 && j > 0 && j < nz - 1) continue;
           const u = (i + 0.5) * cw - o.w / 2, v = (j + 0.5) * cd - o.d / 2;
-          placeBlock({ ...o, cell: true, x: o.x + ax[0] * u + az[0] * v, z: o.z + ax[1] * u + az[1] * v, w: cw, d: cd, h: o.h * (0.9 + Math.random() * 0.2) });
+          placeBlock({ ...o, cell: true, x: o.x + ax[0] * u + az[0] * v, z: o.z + ax[1] * u + az[1] * v, w: cw, d: cd, h: o.h * (0.9 + rnd() * 0.2) });
         }
         return;
       }
@@ -706,12 +737,12 @@ export function buildDc(scene, world, opts, K) {
     const cx = Math.floor(o.x / 24), cz = Math.floor(o.z / 24);
     const avoid = new Set();
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const u of picked.get((cx + i) + ':' + (cz + j)) || []) avoid.add(u);
-    const pick = _pickGeneric(o.h, avoid) || url;
+    const pick = _pickGeneric(o.h, avoid, rnd, tri) || url;
     const k = cx + ':' + cz;
     if (!picked.has(k)) picked.set(k, []);
     picked.get(k).push(pick);
     const fill = o.h < 18;
-    K.queueGLB({ url: pick, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: _bucketDefs(LK.bucket(o.h)).map((g) => g.url), stretch: 1.3, fill });
+    K.queueGLB({ url: pick, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: _bucketDefs(LK.bucket(o.h), tri).map((g) => g.url), stretch: 1.3, fill });
   };
   for (const o of L.buildings) if (!(lite && o.phoneSkip)) placeBlock(o);
 

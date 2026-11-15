@@ -134,7 +134,7 @@ function leafCard(center, width, height, yaw, pitch, tile) {
 // Species shapes: limbs fork from the trunk top (fork height), arch out to
 // their tips; leaf cards cluster round each tip and along the limb's outer half.
 const SPECIES = {
-  elm: { trunkH: 3.6, trunkR: .5, limbs: 5, tipH: [9.6, 12.4], spread: [4.2, 5.8], arch: .55, cards: 15, card: 2.4, h: 12.6 },
+  elm: { trunkH: 3.6, trunkR: .5, limbs: 5, tipH: [9.6, 12.4], spread: [4.2, 5.8], arch: .55, cards: 22, card: 1.35, h: 12.6 },
   cherry: { trunkH: 1.3, trunkR: .32, limbs: 6, tipH: [3.4, 5.0], spread: [2.8, 3.9], arch: .15, cards: 8, card: 1.5, h: 5.4 },
 };
 

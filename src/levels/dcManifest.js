@@ -72,19 +72,37 @@ export const DC_LANDMARK_GLBS = [
 // Generic blocks by height bucket (game units: low < 7, short 7-18,
 // medium 18-40, tall > 40). Empty: dc.js borrows Chicago's stone kit.
 export const DC_GENERIC_GLBS = [
-  // dc-design kit (devtools/dc/design/tools/build_kit.py): front +Z = street face,
-  // metres, fitted to lots like Chicago's kit. trueM [w, h, d] incl. roof.
-  // maxH (u): only on blocks up to that height (a rowhouse blown up to a
-  // 30 m block reads as a giant)
-  { file: 'dc_brick_row.glb', bucket: 'low', maxH: 3.5, trueM: [24, 12, 15], ready: true },      // Capitol Hill red-brick rowhouses with bays
-  { file: 'dc_brick_corner.glb', bucket: 'low', maxH: 5, trueM: [22, 18, 18], ready: true },     // 4-5 storey brick + stone corner shop
-  { file: 'dc_beaux.glb', bucket: 'low', trueM: [41, 34, 31], ready: true },                     // Beaux-Arts limestone, copper mansard
-  { file: 'dc_fed_plain.glb', bucket: 'low', trueM: [57, 37, 37], ready: true },                 // plain limestone federal office
-  { file: 'dc_fed_colonnade.glb', bucket: 'short', trueM: [64, 43, 51], ready: true },           // Federal Triangle: colonnade facade, red tile roof
-  { file: 'dc_fed_white.glb', bucket: 'short', trueM: [61, 41, 41], ready: true },               // white granite federal with pilasters + attic
-  { file: 'dc_brutal.glb', bucket: 'short', trueM: [70, 44, 34], ready: true },                  // brutalist concrete agency block on pilotis
-  { file: 'dc_office_band.glb', bucket: 'short', trueM: [46, 45, 34], ready: true },             // 1980s stone + ribbon-window office, setback top
-  { file: 'dc_office_glass.glb', bucket: 'short', trueM: [45, 47, 33], ready: true },            // 2000s glass-and-stone office
+  // dc-design kit v2 (devtools/dc/design/tools/build_kit2.py): one material + one painted atlas per piece,
+  // front +Z = street face, metres, fitted to lots like Chicago's kit. trueM [w, h, d] incl. roof clutter.
+  // fedTri: red-tile Federal Triangle family, share 0 so the random pick never takes them; place them on the
+  // Federal Triangle blocks (Constitution - Pennsylvania Ave, 6th - 15th St) by zone.
+  { file: 'dc_beaux_a.glb', bucket: 'low', trueM: [42.4, 33.6, 32.4], ready: true },
+  { file: 'dc_beaux_b.glb', bucket: 'short', trueM: [32, 37.7, 28], ready: true },
+  { file: 'dc_beaux_c.glb', bucket: 'low', trueM: [50.4, 30.2, 30.4], ready: true },
+  { file: 'dc_brick_corner_a.glb', bucket: 'low', maxH: 5.5, trueM: [24.6, 21.2, 19.9], ready: true },
+  { file: 'dc_brick_corner_b.glb', bucket: 'low', maxH: 5.5, trueM: [17.4, 18.4, 22], ready: true },
+  { file: 'dc_brick_corner_c.glb', bucket: 'low', maxH: 5.5, trueM: [31.4, 26.1, 18], ready: true },
+  { file: 'dc_brick_row_a.glb', bucket: 'low', maxH: 3.5, trueM: [24.9, 13.5, 14.7], ready: true },
+  { file: 'dc_brick_row_b.glb', bucket: 'low', maxH: 3.5, trueM: [13.1, 13.3, 16.7], ready: true },
+  { file: 'dc_brick_row_c.glb', bucket: 'low', maxH: 3.5, trueM: [19.5, 16.1, 13.8], ready: true },
+  { file: 'dc_brutal_a.glb', bucket: 'short', trueM: [71.1, 44, 35.1], ready: true },
+  { file: 'dc_brutal_b.glb', bucket: 'short', trueM: [64, 42.6, 44], ready: true },
+  { file: 'dc_brutal_c.glb', bucket: 'short', trueM: [65.0, 40.3, 36], ready: true },
+  { file: 'dc_fed_plain_a.glb', bucket: 'short', trueM: [57.4, 37.2, 37.4], ready: true },
+  { file: 'dc_fed_plain_b.glb', bucket: 'low', trueM: [70.7, 30.6, 44.7], ready: true },
+  { file: 'dc_fed_plain_c.glb', bucket: 'low', trueM: [45.2, 32.3, 35.2], ready: true },
+  { file: 'dc_fed_white_a.glb', bucket: 'short', trueM: [61.8, 36.6, 41.8], ready: true },
+  { file: 'dc_fed_white_b.glb', bucket: 'low', trueM: [54, 32.3, 46.6], ready: true },
+  { file: 'dc_fed_white_c.glb', bucket: 'short', trueM: [67.4, 35.1, 39.8], ready: true },
+  { file: 'dc_fedtri_a.glb', bucket: 'short', fedTri: true, share: 0, trueM: [74.2, 36.5, 52.8], ready: true },
+  { file: 'dc_fedtri_b.glb', bucket: 'short', fedTri: true, share: 0, trueM: [66.2, 37.0, 46.2], ready: true },
+  { file: 'dc_fedtri_c.glb', bucket: 'short', fedTri: true, share: 0, trueM: [86.2, 40.8, 42.8], ready: true },
+  { file: 'dc_office_band_a.glb', bucket: 'short', trueM: [46, 47.3, 34], ready: true },
+  { file: 'dc_office_band_b.glb', bucket: 'short', trueM: [48, 49.9, 31.2], ready: true },
+  { file: 'dc_office_band_c.glb', bucket: 'short', trueM: [36.8, 47.8, 30.8], ready: true },
+  { file: 'dc_office_glass_a.glb', bucket: 'short', trueM: [45.1, 44, 33.1], ready: true },
+  { file: 'dc_office_glass_b.glb', bucket: 'short', trueM: [51.8, 44.6, 31.8], ready: true },
+  { file: 'dc_office_glass_c.glb', bucket: 'short', trueM: [40, 42.8, 36], ready: true },
 ];
 
 // Street props: { name, file, ready } (front +Z, metres)
