@@ -4,6 +4,15 @@ import * as THREE from 'three';
  * Uses building boxes and cached canopy spheres, never a skinned-mesh raycast.
  * Runs once during deployment, while the loading screen is still visible. */
 export function chooseSoldierSpawn(world,kaijuPosition,eye) {
+  // A level whose layout names the start (DC: the Sylvan Theater lawn) uses it when it is dry and clear
+  const L=world.soldierSpawn;
+  if(L&&!world.isWater?.(L.x,L.z)) {
+    let clear=true;
+    (world.buildingGrid?world.buildingGrid.forEachNear.bind(world.buildingGrid,L.x,L.z,30):(fn)=>(world.buildings||[]).forEach(fn))(b=>{
+      if(!b.destroyed&&eye<b.h+1&&Math.abs(L.x-b.x)<b.w/2+2&&Math.abs(L.z-b.z)<b.d/2+2)clear=false;
+    });
+    if(clear)return new THREE.Vector3(L.x,eye,L.z);
+  }
   const target=kaijuPosition.clone();target.y+=12;
   const fallback=world.landPoint?.()||[kaijuPosition.x+70,kaijuPosition.z];
   let best=new THREE.Vector3(fallback[0],eye,fallback[1]);

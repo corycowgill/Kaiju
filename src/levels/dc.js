@@ -14,6 +14,8 @@ import { isMobile } from '../quality.js';
 import { splashPool } from './chicago_harbor.js';
 import { bakeShoreField, makeWaterMaterial, waterUniforms, waterFX } from './chicago_water.js';
 import { buildArena, arenaNoTree, setArenaSite } from './chicago_arena.js';
+import { setLookLayerKey } from '../look.js';
+import { DC_LOOK } from './dcLook.js';
 import { DC_BASE, DC_LANDMARK_GLBS, DC_GENERIC_GLBS, DC_PROP_GLBS, DC_VEHICLE_GLBS, DC_KIT_GLBS } from './dcManifest.js';
 
 // The cartographer's layout once delivered; the integrator's placeholder until then
@@ -264,6 +266,7 @@ export function buildDc(scene, world, opts, K) {
   const lite = !!opts.lite;
   const glb = opts.glb !== undefined ? !!opts.glb : !lite;
   K.setBuildingLite(lite);
+  setLookLayerKey('dc', DC_LOOK.key, DC_LOOK.az); // (dc-design's light: dcLook.js)
   const smallCull = glb && lite ? { px: 3, maxH: 2, keep: /tree|lamp/i } : null;
   const instance = () => K.instanceStaticClones(scene, !glb ? Infinity : lite ? 240 : 120, lite ? 185 : 150, smallCull);
   K.setBuildingTile(!glb || lite ? Infinity : 400);
@@ -304,12 +307,14 @@ export function buildDc(scene, world, opts, K) {
       return x + hw > ring.x + x0 && x - hw < ring.x + x1 && z + hd > ring.z + z0 && z - hd < ring.z + z1;
     });
   };
-  if (ring) setArenaSite({ x: ring.x, z: ring.z, title: DC_TITLE, place: 'THE NATIONAL MALL', fountain: false, stands: ['n', 's'].filter(standsFree).join('') });
+  if (ring) setArenaSite({ x: ring.x, z: ring.z, title: DC_TITLE, place: 'THE NATIONAL MALL', fountain: false, stands: ['n', 's'].filter(standsFree).join(''), east: 17, west: 5, gate: false, flag: 'dc' });
   const ringPoly = ring ? arenaNoTree() : null;
   // Landmarks only give way to the venue's structures: the mat, the entrance
   // gate's legs, the big screens, the grandstands built (from the ring centre,
   // chicago_arena.js; a corner clipped by under 1.5u stays), and small props inside the venue
-  const VENUE_REL = [[-47.5, 47.5, -47.5, 47.5], [56, 70, -26, -12], [56, 70, 12, 26], [-56, -52, -46, -18], [-56, -52, 18, 46]];
+  // (setArenaSite above: the runway shortened 17u (its end clear of Commerce's west face), the west screens pulled in 5u and no entrance
+  // gateway, which stood where the chase camera sits at the bell: the site is 106u between DAR Hall and Commerce)
+  const VENUE_REL = [[-47.5, 47.5, -47.5, 47.5], [-51, -47, -46, -18], [-51, -47, 18, 46]];
   const onMat = (x, z, hw, hd) => !!ring && [...VENUE_REL, ...['n', 's'].filter(standsFree).map((id) => STAND_REL[id])].some(([x0, x1, z0, z1]) =>
     x + hw - 1.5 > ring.x + x0 && x - hw + 1.5 < ring.x + x1 && z + hd - 1.5 > ring.z + z0 && z - hd + 1.5 < ring.z + z1);
   // The venue's bounding box: blocks standing in it are not built for the match
@@ -370,8 +375,43 @@ export function buildDc(scene, world, opts, K) {
     return waterGrid[i * wcz + j] === 1;
   };
   let waterSplash = null;
+  // Rivers that run off the map (the Potomac, the Washington Channel) carry on
+  // past the bounds: where a polygon lies along an edge, a plane runs out
+  // from that stretch of the edge to the horizon ([x0, z0, x1, z1] rects)
+  const farWater = [];
+  for (const w of L.water) {
+    if (w.kind === 'pond') continue;
+    const ring = w.polygon, n = ring.length;
+    for (const [side, on, along] of [
+      ['w', (p) => p[0] <= B.minX + 1.5, 1], ['e', (p) => p[0] >= B.maxX - 1.5, 1],
+      ['n', (p) => p[1] <= B.minZ + 1.5, 0], ['s', (p) => p[1] >= B.maxZ - 1.5, 0]]) {
+      // contiguous runs of vertices on this edge
+      const start = ring.findIndex((p) => !on(p));
+      if (start < 0) continue;
+      let run = [];
+      for (let k = 1; k <= n; k++) {
+        const p = ring[(start + k) % n];
+        if (on(p)) { run.push(p[along]); continue; }
+        if (run.length >= 2) {
+          // (the river runs north-south: on a side edge only the rest of its width, ~80u, lies past the map)
+          const a = Math.min(...run), b = Math.max(...run), F = 1000, Fw = 80;
+          farWater.push(side === 'w' ? [B.minX - Fw, a, B.minX + 0.5, b] : side === 'e' ? [B.maxX - 0.5, a, B.maxX + Fw, b]
+            : side === 'n' ? [a, B.minZ - F, b, B.minZ + 0.5] : [a, B.maxZ - 0.5, b, B.maxZ + F]);
+        }
+        run = [];
+      }
+    }
+  }
   if (L.water.length) {
     const shore = [[], [], []], waterMeshes = [];
+    for (const [x0, z0, x1, z1] of farWater) {
+      const fm = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), M.water);
+      fm.rotation.x = -Math.PI / 2;
+      fm.position.set((x0 + x1) / 2, 0.19, (z0 + z1) / 2);
+      fm.matrixAutoUpdate = false; fm.updateMatrix();
+      scene.add(fm);
+      waterMeshes.push(fm);
+    }
     const onEdge = (p) => p[0] >= B.maxX - 0.5 || p[0] <= B.minX + 0.5 || p[1] <= B.minZ + 0.5 || p[1] >= B.maxZ - 0.5;
     for (const w of L.water) {
       const wm = new THREE.Mesh(polygonGeom(w.polygon, w.kind === 'pond' ? 0.08 : 0.2, 1, w.holes), M.water);
@@ -392,7 +432,7 @@ export function buildDc(scene, world, opts, K) {
       }
     }
     if (shore[0].length) addBatch(LK.geom(...shore), M.seawall);
-    const field = bakeShoreField(L.water, [], { x0: B.minX - 100, z0: B.minZ - 100, x1: B.maxX + 100, z1: B.maxZ + 100 });
+    const field = bakeShoreField(L.water, farWater, { x0: B.minX - 100, z0: B.minZ - 100, x1: B.maxX + 100, z1: B.maxZ + 100 });
     const waterMat = makeWaterMaterial(field);
     for (const wm of waterMeshes) wm.material = waterMat;
     const WU = waterUniforms(waterMat);
@@ -406,10 +446,31 @@ export function buildDc(scene, world, opts, K) {
   const swMat = M.path;
 
   // ---- roads ----
-  const roads = L.roads.filter((r) => !(lite && r.kind === 'alley'));
+  // Title Match: the streets through the venue (Constitution Ave, 15th and
+  // 17th St) are closed under it: polylines are cut where they enter the
+  // venue box (+ their half width), so no asphalt, markings or traffic there
+  const clipVenue = (pts, hw) => {
+    if (!ringBox) return [pts];
+    const runs = [];
+    let run = [];
+    const visit = (p) => {
+      if (inRingBox(p[0], p[1], hw + 1, hw + 1)) { if (run.length >= 2) runs.push(run); run = []; } else run.push(p);
+    };
+    for (let i = 0; i < pts.length; i++) {
+      if (i > 0) {
+        const a = pts[i - 1], b = pts[i], n = Math.floor(Math.hypot(b[0] - a[0], b[1] - a[1]) / 2);
+        for (let k = 1; k < n; k++) visit([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+      }
+      visit(pts[i]);
+    }
+    if (run.length >= 2) runs.push(run);
+    return runs;
+  };
+  const roads = L.roads.filter((r) => !(lite && r.kind === 'alley')).flatMap((r) => (ringBox ? clipVenue(r.points, r.width / 2).map((points) => ({ ...r, points })) : [r]));
   const inB = ([x, z]) => x > B.minX - 10 && x < B.maxX + 10 && z > B.minZ - 10 && z < B.maxZ + 10;
   const netRoads = [];
-  for (const r of L.netRoads) {
+  for (const r0 of L.netRoads) for (const points of clipVenue(r0.points, r0.width / 2)) {
+    const r = { width: r0.width, points };
     let run = [];
     for (const p of r.points) {
       if (inB(p)) run.push(p);
@@ -546,7 +607,7 @@ export function buildDc(scene, world, opts, K) {
   const onRing = (x, z) => !!ringPoly && pointInPoly(x, z, ringPoly);
   const onLandmark = (x, z) => lmBoxes.some(([lx, lz, hw, hd]) => Math.abs(x - lx) < hw && Math.abs(z - lz) < hd)
     || noTree.some((poly) => pointInPoly(x, z, poly));
-  for (const q of L.paths) addBatch(ribbon(q.points, -Math.max(0.3, q.width / 2), Math.max(0.3, q.width / 2), 0.04), D.gravel);
+  for (const q of L.paths) for (const pts of clipVenue(q.points, 0)) addBatch(ribbon(pts, -Math.max(0.3, q.width / 2), Math.max(0.3, q.width / 2), 0.04), D.gravel);
   const treeOK = (x, z, poly) => (!poly || pointInPoly(x, z, poly)) && !isWater(x, z) && !onRoad(x, z, 1.2) && !onLandmark(x, z);
   let trees = 0;
   // (the surveyed trees: every elm and cherry, the rest thinned to the cap)
@@ -605,6 +666,16 @@ export function buildDc(scene, world, opts, K) {
     const c = Math.abs(Math.cos(o.rotY || 0)), s = Math.abs(Math.sin(o.rotY || 0));
     const aw = o.w * c + o.d * s, ad = o.w * s + o.d * c;
     if (inRingBox(o.x, o.z, aw / 2, ad / 2)) return; // the Title Match venue stands here
+    // A kit piece made for this very footprint (dcManifest layoutIds: the White House West Wing)
+    const own = Object.values(DC_KIT_GLBS).find((d) => d.ready && d.layoutIds && d.layoutIds.includes(o.id));
+    if (own) {
+      const b = new K.Building(o.x, o.z, aw, ad, o.h, { skipWindows: true, color });
+      b.layoutId = o.id; b._skipBodyIM = true;
+      b.group.matrixAutoUpdate = false; b.group.updateMatrix();
+      scene.add(b.group); buildings.push(b); grid.add(b);
+      K.queueGLB({ url: DC_BASE + own.file, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, stretch: 1.6 });
+      return;
+    }
     const url = _pickGeneric(o.h, null);
     if (!url) {
       const b = new K.Building(o.x, o.z, aw, ad, o.h, { color, noDecor: true, noRoofProps: true, windows: { scale: 0.65, faces: lite ? 2 : 4, minH: 2.5 } });
@@ -659,9 +730,19 @@ export function buildDc(scene, world, opts, K) {
     scene.add(b.group); buildings.push(b); grid.add(b);
     const def = _landmarkGLB(lm.id);
     if (def) {
-      const h = lm.heightM ? lm.h * def.trueHeightM / lm.heightM : lm.h;
+      // dc-design's models are built at true size: uniform 0.2 u/m (a dome or a
+      // spire makes the layout's roof height a poor scale reference)
+      const h = def.trueHeightM * S;
       const url = DC_BASE + def.file;
       const rotY = def.face ? LK.faceRot(lm.rotY || 0, def.face) : def.faceX ? LK.faceRot(lm.rotY || 0, def.faceX, true) : (lm.rotY || 0);
+      if (def.shiftM) {
+        // A model whose origin is not its building's centre (the Capitol's west
+        // terraces and stair): the site moves shiftM metres along the model's front (+Z)
+        grid.remove(b);
+        b.x += Math.sin(rotY) * def.shiftM * S; b.z += Math.cos(rotY) * def.shiftM * S;
+        b.group.position.set(b.x, 0, b.z); b.group.updateMatrix();
+        grid.add(b);
+      }
       if (def.exact) K.queueGLB({ url, h: def.trueHeightM * S, building: b, maxW: 0, maxD: 0, rotY, landmark: true, atOrigin: !!def.atOrigin });
       else if (def.fit === 'footprint') K.queueGLB({ url, h: lm.h * (def.maxH || 1.6), building: b, maxW: aw, maxD: ad, rotY, landmark: true, stretch: def.stretch || 1.3 });
       else K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY, landmark: true });
@@ -683,7 +764,17 @@ export function buildDc(scene, world, opts, K) {
   }
 
   // ---- the Washington Monument's circle of 50 flags (GLB tiers) ----
-  const poles = L.detail?.monumentFlags?.poles;
+  // dc-design's flag-ring model when it is ready (one mesh, true size, centred on the obelisk), else 50 instanced poles
+  // (not when the Title Match venue reaches the circle: the separate poles inside it are left out)
+  const mon = L.landmarks.find((lm) => lm.id === 'washington_monument');
+  const ringKit = glb && mon && !inRingBox(mon.x, mon.z, 6.6, 6.6) && _kit('dc_flag_ring');
+  if (ringKit) {
+    K.onTemplatesReady((sc, get) => {
+      const tpl = get(ringKit);
+      if (tpl) { LK.placeStatic(scene, tpl, false, [{ x: mon.x, z: mon.z, ry: 0 }], () => new THREE.Vector3(S, S, S)); instance(); }
+    });
+  }
+  const poles = !ringKit && L.detail?.monumentFlags?.poles;
   if (glb && poles?.length) {
     const ph = (L.detail.monumentFlags.poleHeightMetres || 7.6) * S;
     const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.05, ph, 5).translate(0, ph / 2, 0), M.steel, poles.length);
@@ -777,58 +868,94 @@ export function buildDc(scene, world, opts, K) {
     }
   }
 
-  // ---- distant backdrop: Arlington and Rosslyn west, the city north and east ----
-  // One merged unlit mesh beyond the bounds, as Chicago's: low and mid-rise
-  // stone and brick (the DC height limit), Rosslyn's towers across the river
+  // ---- the surround: the city past the bounds, the Virginia shore ----
+  // Out to the ground plane's edge (where the look layer's world-edge fade
+  // takes everything into the haze): a street-grid ground and, on its blocks,
+  // a dense low fabric of rowhouse and office blocks under DC's height limit,
+  // denser near the map; Rosslyn's towers and the Arlington ridge across the
+  // river to the west, the downtown offices north. One merged UNLIT mesh with
+  // baked sun shading (no lit program, one draw) plus the ground (one draw).
+  const G = GROUND / 2, RX0 = cxB - G, RX1 = cxB + G, RZ0 = czB - G, RZ1 = czB + G;
+  const BLOCK = 24, STREET = 3.5; // a DC block (~105 m) with its streets, in u
+  const wetFar = (x, z, pad = 0) => farWater.some(([x0, z0, x1, z1]) => x > x0 - pad && x < x1 + pad && z > z0 - pad && z < z1 + pad);
   {
-    const N = lite ? 90 : 220;
-    const halfW = (B.maxX - B.minX) / 2, halfD = (B.maxZ - B.minZ) / 2;
-    const BAY = 6, STOREYS = 8;
-    const sunL = new THREE.Vector3(-0.4, 1.4, 0.6).normalize();
-    const TINTS = [0xd9d3c4, 0xcbc3b0, 0xe2ddd2, 0x9a6a58, 0x8c7466, 0xb8b0a2, 0x7e8a96, 0xa9a297];
+    const sunL = new THREE.Vector3(0.55, 1.2, 0.65).normalize();
     const pos = [], uv = [], col = [], idx = [];
-    const cc = new THREE.Color(), cTop = new THREE.Color(), nn = new THREE.Vector3();
-    const addBox = (x, y0, z, w, h, d, ry, tint, roof) => {
-      const cs = Math.cos(ry), sn = Math.sin(ry);
-      const P = (lx, ly, lz) => [x + lx * cs + lz * sn, y0 + ly, z - lx * sn + lz * cs];
+    const cc = new THREE.Color(), nn = new THREE.Vector3();
+    const addBox = (x, z, w, h, d, tint, roof) => {
       const hw = w / 2, hd = d / 2;
-      const sides = [[[-hw, hd], [hw, hd], [0, 1], w], [[hw, hd], [hw, -hd], [1, 0], d], [[hw, -hd], [-hw, -hd], [0, -1], w], [[-hw, -hd], [-hw, hd], [-1, 0], d]];
-      for (const [a, b, nl, fw] of sides) {
-        nn.set(nl[0] * cs + nl[1] * sn, 0, -nl[0] * sn + nl[1] * cs);
-        const shade = 0.62 + 0.38 * Math.max(0, nn.dot(sunL)) / 0.34;
-        cc.copy(tint).multiplyScalar(Math.min(1, shade) * 0.86);
-        const v = pos.length / 3, u0 = (x * 0.37 + z * 0.61) / BAY;
+      for (const [a, b, nl, fw] of [[[-hw, hd], [hw, hd], [0, 1], w], [[hw, hd], [hw, -hd], [1, 0], d], [[hw, -hd], [-hw, -hd], [0, -1], w], [[-hw, -hd], [-hw, hd], [-1, 0], d]]) {
+        nn.set(nl[0], 0, nl[1]);
+        cc.copy(tint).multiplyScalar(Math.min(1, 0.6 + 0.5 * Math.max(0, nn.dot(sunL))) * 0.9);
+        const v = pos.length / 3, u0 = (x * 0.37 + z * 0.61) / 6;
         for (const [lx, lz, ly, uu] of [[a[0], a[1], 0, 0], [b[0], b[1], 0, fw], [b[0], b[1], h, fw], [a[0], a[1], h, 0]]) {
-          pos.push(...P(lx, ly, lz)); uv.push(u0 + uu / BAY, (y0 + ly) / STOREYS); col.push(cc.r, cc.g, cc.b);
+          pos.push(x + lx, ly, z + lz); uv.push(u0 + uu / 6, ly / 3.2); col.push(cc.r, cc.g, cc.b);
         }
         idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
       }
-      cTop.copy(roof);
       const v = pos.length / 3;
-      for (const [lx, lz] of [[-hw, hd], [hw, hd], [hw, -hd], [-hw, -hd]]) { pos.push(...P(lx, h, lz)); uv.push(0.5, 0.082); col.push(cTop.r, cTop.g, cTop.b); }
+      for (const [lx, lz] of [[-hw, hd], [hw, hd], [hw, -hd], [-hw, -hd]]) { pos.push(x + lx, h, z + lz); uv.push(0.5, 0.03); col.push(roof.r, roof.g, roof.b); }
       idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
     };
-    for (let i = 0; i < N; i++) {
-      // A band 60-300u outside the play rectangle on every side
-      const a = Math.random() * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
-      const t = Math.min(halfW / Math.max(1e-3, Math.abs(ca)), halfD / Math.max(1e-3, Math.abs(sa)));
-      const r = t + 60 + Math.random() * 240;
-      const x = cxB + ca * r, z = czB + sa * r;
-      if (isWater(x, z)) continue;
-      const ry = Math.random() * Math.PI;
-      const tint = new THREE.Color(TINTS[(Math.random() * TINTS.length) | 0]);
-      const roof = tint.clone().lerp(new THREE.Color(0x8c8a86), 0.6).multiplyScalar(0.95);
-      const west = x < B.minX; // Rosslyn and Crystal City across the river
-      if (west && Math.random() < 0.4) {
-        const h = 18 + Math.random() * 22, w = 8 + Math.random() * 6;
-        addBox(x, 0, z, w, h, w * (0.8 + Math.random() * 0.4), ry, new THREE.Color([0x7e93a6, 0x5f6c78, 0xb7b0a6][(Math.random() * 3) | 0]), roof);
-      } else if (Math.random() < 0.5) {
-        const h = 6 + Math.random() * 6, w = 14 + Math.random() * 16, d = 10 + Math.random() * 12;
-        addBox(x, 0, z, w, h, d, ry, tint, roof);
-      } else {
-        const h = 2.5 + Math.random() * 4, w = 12 + Math.random() * 16, d = 10 + Math.random() * 12;
-        addBox(x, 0, z, w, h, d, ry, tint, roof);
+    // A low wooded rise (the Arlington ridge): rings of quads on the roof texel, shaded by slope
+    const addMound = (x, z, rx, rz, h, tint) => {
+      const R = 10, A = 24, base = pos.length / 3;
+      for (let r = 0; r <= R; r++) for (let a = 0; a <= A; a++) {
+        const t = r / R, ang = a / A * Math.PI * 2;
+        pos.push(x + Math.cos(ang) * rx * t, h * Math.cos(t * Math.PI / 2), z + Math.sin(ang) * rz * t);
+        uv.push(0.5, 0.03);
+        nn.set(Math.cos(ang) * t * h / rx * 1.6, 1, Math.sin(ang) * t * h / rz * 1.6).normalize();
+        cc.copy(tint).multiplyScalar(0.72 + 0.35 * Math.max(0, nn.dot(sunL)) + Math.sin(ang * 7 + r) * 0.04);
+        col.push(cc.r, cc.g, cc.b);
       }
+      for (let r = 0; r < R; r++) for (let a = 0; a < A; a++) {
+        const i0 = base + r * (A + 1) + a, i1 = i0 + A + 1;
+        idx.push(i0, i0 + 1, i1, i0 + 1, i1 + 1, i1);
+      }
+    };
+    const rnd = (k) => { const v = Math.sin(k * 12.9898) * 43758.5453; return v - Math.floor(v); };
+    const STONE = [0xd8d0bf, 0xcfc6b2, 0xe0dacd, 0xbfb7a6], BRICK = [0x9a6452, 0x8c5c4c, 0xa87660, 0x7c5a4e], GLASSY = [0x8597a8, 0x6f8090, 0xa9b3ba];
+    const pick = (arr, k) => new THREE.Color(arr[Math.floor(rnd(k) * arr.length) % arr.length]);
+    const ROOFS = [new THREE.Color(0x6e6a66), new THREE.Color(0x5b5f63), new THREE.Color(0x7d848a)];
+    const rosslyn = { x: B.minX - 240, z: B.minZ + 10 }; // across the Key Bridge, north-west: far back in the haze
+    const keep = lite ? 0.45 : 1, inner = BLOCK - STREET * 2;
+    let k = 0;
+    for (let gx = Math.floor(RX0 / BLOCK) * BLOCK; gx < RX1; gx += BLOCK) for (let gz = Math.floor(RZ0 / BLOCK) * BLOCK; gz < RZ1; gz += BLOCK) {
+      k++;
+      const x = gx + BLOCK / 2, z = gz + BLOCK / 2;
+      // outside the play rectangle (+ a street), off the far water
+      if (x > B.minX - BLOCK / 2 - 2 && x < B.maxX + BLOCK / 2 + 2 && z > B.minZ - BLOCK / 2 - 2 && z < B.maxZ + BLOCK / 2 + 2) continue;
+      if (wetFar(x, z, BLOCK / 2)) continue;
+      const dEdge = Math.max(B.minX - x, x - B.maxX, B.minZ - z, z - B.maxZ, 0);
+      if (rnd(k * 1.7) > keep * (dEdge < 250 ? 0.95 : 0.7)) continue;
+      const west = x < B.minX, north = z < B.minZ;
+      const dr = Math.hypot(x - rosslyn.x, z - rosslyn.z);
+      if (west && dr < 80) {
+        // Rosslyn: a cluster of 12-24u glass and concrete towers, each a shaft with a set-back
+        // upper block and a plant room, so the tops step instead of ending flat
+        if (rnd(k * 2.9) < 0.55) continue; // a loose cluster of a dozen or so, not a wall
+        const h = 10 + rnd(k * 3.1) * 12 * (1 - dr / 110), w = inner * (0.45 + rnd(k * 4.1) * 0.25), d = inner * (0.4 + rnd(k * 5.3) * 0.25);
+        const tint = pick(GLASSY, k), h1 = h * (0.68 + rnd(k * 6.1) * 0.15);
+        addBox(x, z, w, h1, d, tint, ROOFS[2]);
+        addBox(x + (rnd(k * 7.1) - 0.5) * w * 0.2, z, w * 0.72, h, d * 0.7, tint.clone().multiplyScalar(0.93), ROOFS[2]);
+        addBox(x, z, w * 0.3, h + 1 + rnd(k * 8.3) * 1.5, d * 0.3, new THREE.Color(0x8a8e92), ROOFS[0]);
+        continue;
+      }
+      if (north && !west && rnd(k * 2.3) < 0.35) {
+        // downtown offices: whole-block boxes up to the height limit (~8u)
+        addBox(x, z, inner, 6.5 + rnd(k * 5.7) * 2.5, inner, pick(rnd(k * 9.1) < 0.6 ? STONE : GLASSY, k + 3), ROOFS[0]);
+        continue;
+      }
+      // rowhouse and walk-up blocks: four strips round an open court, varied heights
+      const ht = 2.2 + rnd(k * 4.3) * (dEdge < 120 ? 3 : 2), dep = inner * 0.3;
+      const tint = pick(rnd(k * 6.7) < 0.55 ? BRICK : STONE, k + 7), roof = ROOFS[rnd(k * 8.9) < 0.5 ? 0 : 1];
+      [[0, -(inner - dep) / 2, inner, dep], [0, (inner - dep) / 2, inner, dep], [-(inner - dep) / 2, 0, dep, inner - dep * 2], [(inner - dep) / 2, 0, dep, inner - dep * 2]]
+        .forEach(([ox, oz, w, d], q) => { if (rnd(k * 11.3 + q) >= 0.12) addBox(x + ox, z + oz, w, ht * (0.85 + rnd(k + q * 7.7) * 0.3), d, tint, roof); });
+    }
+    // The Arlington ridge and the Cemetery west of the river, the shore to its south
+    // (three overlapping rises, so its skyline undulates)
+    for (const [ox, oz, rx, rz, h] of [[-260, 40, 200, 150, 10], [-300, 170, 170, 130, 8], [-230, -80, 150, 110, 6]]) {
+      if (!wetFar(B.minX + ox, czB + oz)) addMound(B.minX + ox, czB + oz, rx, rz, h, new THREE.Color(0x4e6b3e));
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -836,20 +963,18 @@ export function buildDc(scene, world, opts, K) {
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     geo.setIndex(idx);
     geo.computeBoundingSphere();
-    const TS = 128;
-    const cv = document.createElement('canvas'); cv.width = cv.height = TS;
+    // Facade tile: three storeys of windows a repeat (v: 3.2u), a plain roof texel at (0.5, 0.03)
+    const TS = 128, cv = document.createElement('canvas'); cv.width = cv.height = TS;
     const g2 = cv.getContext('2d');
-    g2.fillStyle = '#e4e2dc'; g2.fillRect(0, 0, TS, TS);
-    const rowH = TS / 10, bayW = TS / 6;
-    for (let rI = 0; rI < 10; rI++) for (let bI = 0; bI < 6; bI++) {
-      const k = 92 + Math.random() * 46;
-      g2.fillStyle = `rgb(${k | 0},${(k + 8) | 0},${(k + 18) | 0})`;
-      g2.fillRect(bI * bayW + 1.5, rI * rowH + 4.5, bayW - 3, rowH - 5.5);
+    g2.fillStyle = '#ece8e0'; g2.fillRect(0, 0, TS, TS);
+    for (let r = 0; r < 3; r++) for (let b = 0; b < 6; b++) {
+      const v = 90 + Math.random() * 50;
+      g2.fillStyle = `rgb(${v | 0},${(v + 8) | 0},${(v + 16) | 0})`;
+      g2.fillRect(b * TS / 6 + 4, r * TS / 3 + 9, TS / 6 - 8, TS / 3 - 18);
     }
+    g2.fillStyle = '#ffffff'; g2.fillRect(48, TS - 8, 32, 8);
     const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.anisotropy = 4;
+    tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = 4;
     const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, fog: true }));
     mesh.frustumCulled = false;
     mesh.userData.backdrop = true;
@@ -857,32 +982,24 @@ export function buildDc(scene, world, opts, K) {
     scene.add(mesh);
   }
 
-  // ---- outer ground: a street grid from the map edge out to the backdrop ----
+  // ---- outer ground: streets, pavement and street trees under the surround ----
   {
-    const T = 48, TS = 256, px = TS / T;
+    const T = BLOCK * 4, TS = 512, px = TS / T;
     const cv = document.createElement('canvas'); cv.width = cv.height = TS;
     const g2 = cv.getContext('2d');
-    g2.fillStyle = '#5e5c58'; g2.fillRect(0, 0, TS, TS);
-    for (const bz of [0, 24]) {
-      const x0 = 2 * px, z0 = (bz + 2) * px, w = 44 * px, d = 20 * px;
-      g2.fillStyle = '#b4b0a8'; g2.fillRect(x0, z0, w, d);
-      g2.fillStyle = '#9a978f'; g2.fillRect(x0 + px, z0 + px, w - 2 * px, d - 2 * px);
-      for (const side of [0, 1]) {
-        let x = x0 + 1.5 * px;
-        while (x < x0 + w - 4 * px) {
-          const lw = (4 + Math.random() * 7) * px, ld = (5 + Math.random() * 3) * px;
-          const k = 70 + Math.random() * 70, warm = Math.random() < 0.4 ? 18 : 0;
-          g2.fillStyle = `rgb(${(k + warm) | 0},${(k + warm * 0.5) | 0},${k | 0})`;
-          g2.fillRect(x, side ? z0 + d - 1.5 * px - ld : z0 + 1.5 * px, Math.min(lw, x0 + w - 1.5 * px - x), ld);
-          x += lw + 0.6 * px;
-        }
+    g2.fillStyle = '#6a6863'; g2.fillRect(0, 0, TS, TS); // asphalt
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+      const x0 = (i * BLOCK + STREET * 0.5) * px, z0 = (j * BLOCK + STREET * 0.5) * px, w = (BLOCK - STREET) * px;
+      g2.fillStyle = '#bdb8ae'; g2.fillRect(x0, z0, w, w);                       // sidewalk
+      g2.fillStyle = Math.random() < 0.35 ? '#7f8a5e' : '#a59f93';                 // court: garden or paving
+      g2.fillRect(x0 + 1.4 * px, z0 + 1.4 * px, w - 2.8 * px, w - 2.8 * px);
+      g2.fillStyle = '#56703f';                                                    // street trees on the kerbs
+      for (let t = 0; t < w; t += 3 * px) for (const [tx, tz] of [[x0 + t, z0 + 0.5 * px], [x0 + t, z0 + w - 0.5 * px], [x0 + 0.5 * px, z0 + t], [x0 + w - 0.5 * px, z0 + t]]) {
+        if (Math.random() < 0.6) { g2.beginPath(); g2.arc(tx, tz, 0.9 * px, 0, Math.PI * 2); g2.fill(); }
       }
     }
     const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.anisotropy = 8;
-    const G = GROUND / 2, RX0 = cxB - G, RX1 = cxB + G, RZ0 = czB - G, RZ1 = czB + G;
+    tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = 8;
     const rects = [[RX0, B.minX, RZ0, RZ1], [B.maxX, RX1, RZ0, RZ1], [B.minX, B.maxX, RZ0, B.minZ], [B.minX, B.maxX, B.maxZ, RZ1]];
     const pos = [], uv = [], idx = [];
     for (const [x0, x1, z0, z1] of rects) {

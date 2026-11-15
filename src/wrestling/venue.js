@@ -30,10 +30,10 @@ export function venueHome(ctx, id, fallback) {
   const v = VENUES[_level(ctx)];
   return (v && v.home[id]) || fallback;
 }
-// Recorded booth lines that name Chicago places, the lake, or the sunset (DC
-// plays in late-morning light):
+// Recorded booth lines that name Chicago places, the lake, the sunset or the
+// night (DC plays in late-morning light):
 // voiced, so they cannot be reworded; the booth skips them off Chicago
-const CHI_PLACES = /Chicago|Grant Park|Lake Michigan|Lake Shore|\bthe Loop\b|Willis|Soldier Field|Buckingham|Michigan Ave|Navy Pier|Windy City|Hutchinson|Cloud Gate|\bthe Bean\b|Wrigley|Field Museum|Shedd|Indiana|deep.dish|\bthe L\b|Art Institute|Sears Tower|Hancock|Adler|Planetarium|Point Tower|\blake\b|sunset|\bdusk\b/i;
+const CHI_PLACES = /Chicago|Grant Park|Lake Michigan|Lake Shore|\bthe Loop\b|Willis|Soldier Field|Buckingham|Michigan Ave|Navy Pier|Windy City|Hutchinson|Cloud Gate|\bthe Bean\b|Wrigley|Field Museum|Shedd|Indiana|deep.dish|\bthe L\b|Art Institute|Sears Tower|Hancock|Adler|Planetarium|Point Tower|\blake\b|\bnight\b|tonight|sunset|\bdusk\b/i;
 /** True for a booth row ([topic, cond, utterances]) that names a Chicago place. */
 export function chicagoLine(row) { return row[2].some((u) => CHI_PLACES.test(u[1])); }
 /** True when the match is staged somewhere other than Chicago. */

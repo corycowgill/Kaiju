@@ -218,6 +218,13 @@ const LOD1_READY = new Set([
 ]);
 for (const u of chicagoLod1GLBs()) LOD1_READY.add(u);
 for (const u of dcLod1GLBs()) LOD1_READY.add(u);
+// Twins whose shape is checked against their LOD0 on attach (DC's: a twin
+// that lost its dome failed silently at distance). Chicago's box LODs differ
+// from their LOD0 by design (the bascule leaves), so the check is opt-in.
+const LOD1_STRICT = new Set(dcLod1GLBs());
+const _lod1Rejected = new Map(); // url -> why (smoke test lists them)
+/** LOD1 twins left out because their shape does not match their LOD0 (url -> reason). */
+export function lod1Rejected() { return _lod1Rejected; }
 const _lod1ByGeom = new Map(); // LOD0 BufferGeometry -> LOD1 BufferGeometry
 const _lod1Attached = new Set(); // LOD0 urls whose twin registered (smoke test)
 // Beyond this distance (camera to a 120u instancing tile's centre, or kaiju to
@@ -254,10 +261,29 @@ function _attachLod1(url, scene) {
     // scale / offset on the mesh node) is moved into its LOD0's mesh space
     scene.updateMatrixWorld(true); gltf.scene.updateMatrixWorld(true);
     const rel = new THREE.Matrix4();
-    m0.forEach((m, i) => {
+    const twins = m0.map((m, i) => {
       rel.copy(m.matrixWorld).invert().multiply(m1[i].matrixWorld);
-      _lod1ByGeom.set(m.geometry, _isIdentity(rel) ? m1[i].geometry : _floatGeom(m1[i].geometry).applyMatrix4(rel));
+      return _isIdentity(rel) ? m1[i].geometry : _floatGeom(m1[i].geometry).applyMatrix4(rel);
     });
+    // Same count is not enough: a twin that lost a part (a dome decimated
+    // away, meshes in another order) would draw that building without it
+    // from LOD1_DIST on. Each twin's box must match its LOD0's to 8% of the
+    // model's size, else the model keeps LOD0 everywhere (and it is reported)
+    const all = new THREE.Box3(), b0 = new THREE.Box3(), b1 = new THREE.Box3();
+    for (const m of m0) { m.geometry.computeBoundingBox(); all.union(m.geometry.boundingBox); }
+    const tol = all.getSize(new THREE.Vector3()).length() * 0.08;
+    for (let i = 0; i < m0.length && LOD1_STRICT.has(url); i++) {
+      b0.copy(m0[i].geometry.boundingBox);
+      twins[i].computeBoundingBox(); b1.copy(twins[i].boundingBox);
+      if (b0.min.distanceTo(b1.min) > tol || b0.max.distanceTo(b1.max) > tol) {
+        // The model keeps LOD0 at every distance: correct, a little dearer. An
+        // asset to fix, not a load failure (listed by the smoke test, logged here)
+        _lod1Rejected.set(url, `mesh ${i} box off by more than 8% of the model`);
+        console.info('[LOD] ' + url + ': LOD1 mesh ' + i + ' does not match its LOD0, LOD0 kept');
+        return;
+      }
+    }
+    m0.forEach((m, i) => _lod1ByGeom.set(m.geometry, twins[i]));
     _lod1Attached.add(url);
   }).catch((err) => {
     // LOD0 still works; the tile just keeps drawing full detail

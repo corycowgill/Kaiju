@@ -511,32 +511,21 @@ const KEY_T = [0, 0.5, 1];
 // Bearing of the sun (x, z): west-south-west, about 57 degrees left of the
 // lakefront camera's westward view, so towers and kaiju are side-lit
 const SUN_AZ = [-0.545, 0.838];
-// Washington DC: clear late-morning light held all match (one key, no slide
-// to dusk), the sun high in the south-east over the Mall. Starts from the
-// golden-hour key; dc-design tunes the values.
-const DC_KEY = {
-  ...KEYS[0],
-  discElev: 50, lightElev: 50,
-  sun: lin(0xfff3e0), sunI: 3.0,
-  fill: lin(0xc6d6f2), fillI: 0.5,
-  hemiSky: lin(0xbcd2f0), hemiGround: lin(0x7c7462), hemiI: 0.5,
-  amb: lin(0x6c7c98), ambI: 0.07,
-  haze: lin(0xb4c9e0), hazeSun: lin(0xf2e6d2), hazeExp: 1.4, fogD: 0.0006, fogK: 0.011, fogMax: 0.82,
-  zen: lin(0x2c66be), mid: lin(0x7ca8dc), glow: lin(0xfff0d4), disc: 6,
-  env: [0.82, 0.84, 0.88], fillW: lin(0xfff0dc), fillWI: 0.25,
-  win: lin(0xffe0b0), winI: 0.1, winFrac: 0.04, glass: 0.6,
-  sat: 0.95, val: 0.82, ao: 0.6, shadow: 0.92,
-  unlit: [0.84, 0.84, 0.82],
-  cloud: lin(0xf6f6f2), cloudShade: lin(0xa8b2c4), cover: 0.34, stars: 0,
-  rimSun: lin(0xfff0dc, 1.3), rimSky: lin(0xa8ccff, 0.7), rimI: 0.95, hero: 0.18, flood: 0.25,
-  exposure: 0.98, bloomT: 1.08, bloomS: 0.28,
-  gradeMix: 0.3, gradeShadow: [0.95, 0.98, 1.04], gradeHigh: [1.03, 1.01, 0.97],
-};
 // Levels the layer runs on: their keys, key times and sun bearing (x, z)
 const LAYER = {
   chicago: { keys: KEYS, t: KEY_T, az: SUN_AZ },
-  dc: { keys: [DC_KEY, DC_KEY], t: [0, 1], az: [0.5, 0.866] },
+  // dc: set by dc.js from src/levels/dcLook.js (setLookLayerKey), one key held all match
 };
+/** A level's held key from plain data (src/levels/dcLook.js): fields over
+ *  the golden-hour key; a colour as an sRGB hex or [hex, scale]. */
+export function setLookLayerKey(level, data, az) {
+  const k = { ...KEYS[0] };
+  for (const [f, v] of Object.entries(data || {})) {
+    if (!(f in k)) continue;
+    k[f] = Array.isArray(k[f]) ? (typeof v === 'number' ? lin(v) : v.length === 2 ? lin(v[0], v[1]) : v.slice()) : v;
+  }
+  LAYER[level] = { keys: [k, k], t: [0, 1], az: az || SUN_AZ };
+}
 /** True on a level the look layer runs on (Tokyo keeps its own look). */
 export const lookLayerLevel = (level) => !!LAYER[level];
 let _keys = KEYS, _keyT = KEY_T, AZ = SUN_AZ;

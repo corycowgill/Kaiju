@@ -13,10 +13,10 @@ export const DC_BASE = './assets/buildings/dc/';
 export const DC_LANDMARK_GLBS = [
   // dc-design, procedural Blender builds at true size (devtools/dc/design/tools/build_*.py).
   // All: metres, Y up, base y=0 (street grade), centred X/Z, front +Z, LOD1 twin, metal 0.
-  { id: 'us_capitol', file: 'us_capitol.glb', trueHeightM: 94.0, face: 'west', ready: true }, // 230 x 142 m incl. the 6 m west terraces + stair; Freedom crest 88 m above the terrace; model X = N-S
+  { id: 'us_capitol', file: 'us_capitol.glb', trueHeightM: 94.0, face: 'west', shiftM: 21.3, ready: true }, // 230 x 142 m incl. the 6 m west terraces + stair; Freedom crest 88 m above the terrace; model X = N-S
   { id: 'washington_monument', file: 'washington_monument.glb', trueHeightM: 169.3, face: 'east', ready: true }, // obelisk 16.8 m base on a 22.8 m granite plinth; door east
-  { id: 'lincoln_memorial', file: 'lincoln_memorial.glb', trueHeightM: 30.2, face: 'east', ready: true }, // 67.8 x 59.1 m incl. podium and east stair
-  { id: 'jefferson_memorial', file: 'jefferson_memorial.glb', trueHeightM: 39.0, face: 'north', ready: true }, // 70 x 88.5 m incl. terrace and north stair; portico north
+  { id: 'lincoln_memorial', file: 'lincoln_memorial.glb', trueHeightM: 30.2, face: 'east', shiftM: 6.5, ready: true }, // 67.8 x 59.1 m incl. podium and east stair
+  { id: 'jefferson_memorial', file: 'jefferson_memorial.glb', trueHeightM: 39.0, face: 'north', shiftM: 9.2, ready: true }, // 70 x 88.5 m incl. terrace and north stair; portico north
   { id: 'white_house', file: 'white_house.glb', trueHeightM: 21.9, face: 'north', ready: true }, // 52 x 48.5 m residence; north portico +Z, bowed south portico; wings not included
   { id: 'natural_history_museum', file: 'natural_history_museum.glb', trueHeightM: 40.1, face: 'south', ready: true }, // 224 x 144 m; portico + dome on the Mall side
   { id: 'air_and_space_museum', file: 'air_and_space_museum.glb', trueHeightM: 29.2, face: 'north', ready: true }, // 220 x 92 m
@@ -103,6 +103,9 @@ export const DC_VEHICLE_GLBS = [
 
 // Kit pieces placed many times: { id: { file, ready, ... } }
 export const DC_KIT_GLBS = {
+  // White House West Wing (b1570) and West Colonnade (b1869): painted white 2-storey, 42 x 30 x 11 m,
+  // +Z front; fit it to those two footprints instead of a generic kit piece
+  dc_wh_wing: { file: 'dc_wh_wing.glb', trueM: [42, 11, 30], layoutIds: ['b1570', 'b1869'], ready: true }, // layoutIds: dc.js fits it to those footprints
   // The 50 flags round the Washington Monument: one mesh, ring radius 33 m centred on the origin
   // (place at the Monument's centre, true size), 9.1 m poles, flags flying toward +X
   dc_flag_ring: { file: 'dc_flag_ring.glb', radiusM: 33, heightM: 9.1, ready: true },

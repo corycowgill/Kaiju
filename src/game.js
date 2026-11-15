@@ -39,6 +39,7 @@ import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFoot
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures, flipbooksReady } from './vfx.js';
 import { createWrestling } from './wrestling/index.js';
 import { prebakeAnims } from './wrestling/anims.js';
+import { DC_LOOK } from './levels/dcLook.js';
 import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, lookSunUp, withLookEnvSky, setLookDip } from './look.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
@@ -1163,10 +1164,8 @@ const _CHICAGO_LOOK = {
 // Washington DC: clear late morning held all match (look.js DC_KEY writes
 // the light every frame; these stand until its first write)
 const _DC_LOOK = {
-  ..._CHICAGO_LOOK,
-  bg: 0xb4c9e0, fog: 0xb4c9e0, fogDensity: 0.0006,
-  sky: { horizon: [0.74, 0.83, 0.92], midCol: [0.45, 0.65, 0.88], zenith: [0.20, 0.42, 0.77], sunRim: [1.0, 0.97, 0.9] },
-  sunOffset: [95, 145, 165],
+  ..._CHICAGO_LOOK, ...DC_LOOK.statics, // (src/levels/dcLook.js: dc-design's values)
+  bloom: bloomPass && { threshold: DC_LOOK.statics.bloomThreshold, strength: bloomPass.strength * DC_LOOK.statics.bloomK }, // sunlit marble must not bloom
 };
 const _LAYER_LOOKS = { chicago: _CHICAGO_LOOK, dc: _DC_LOOK };
 // Sun position relative to the kaiju (shadow camera follows it). Tokyo's
@@ -1187,9 +1186,9 @@ function applyLevelLook(level) {
   // (1600u square centred 200u west of the map)
   resetLookClock();
   setLookLevel(level);
-  // (DC: centred on the map, fading out past its ground plane's 500u margin)
+  // (DC: centred on the map, a long fade from its corners out over the surround)
   buildLookMap(world, level === 'chicago' ? { x: world.center.x - 200, z: world.center.z, r0: 520, r1: 775 }
-    : level === 'dc' ? { x: world.center.x, z: world.center.z, r0: _dcEdge(world.bounds, 60), r1: _dcEdge(world.bounds, 470) } : null);
+    : level === 'dc' ? { x: world.center.x, z: world.center.z, r0: _dcEdge(world.bounds, 0), r1: _dcEdge(world.bounds, 650) } : null);
   if (_LAYER_LOOKS[level]) sun.position.copy(_sunOffset); // until a kaiju exists to follow
   if (changed && Q_HIGH) _captureEnv();
 }

@@ -141,6 +141,7 @@ export const KTX2_VARIANTS = new Set([
   "buildings/dc/dc_office_band.glb",
   "buildings/dc/dc_office_glass.glb",
   "buildings/dc/dc_tour_bus.glb",
+  "buildings/dc/dc_wh_wing.glb",
   "buildings/dc/dirksen_hart.glb",
   "buildings/dc/doj_rfk.glb",
   "buildings/dc/eeob.glb",

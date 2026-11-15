@@ -54,8 +54,26 @@ if (argv[0] !== '--run') {
       if (!(j.extensionsRequired || []).includes('KHR_texture_basisu')) bad.push(`assets/ktx2/${p} has no KTX2 texture`);
       if (!ASSET_HASHES[`assets/ktx2/${p}`]) bad.push(`assets/ktx2/${p} is not in assetManifest.js (re-run tools/make_asset_manifest.mjs)`);
     }
+    // LOD1 twins: as many mesh primitives as their LOD0, in every tree the game loads from (a
+    // mismatched twin is skipped at runtime and the model keeps LOD0; city.js also checks DC twins' shapes)
+    const prims = (f) => {
+      const b = fs.readFileSync(f), j = JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString('utf8'));
+      return (j.nodes || []).reduce((n, nd) => n + (nd.mesh !== undefined ? j.meshes[nd.mesh].primitives.length : 0), 0);
+    };
+    let lodPairs = 0;
+    for (const tree of ['assets', 'assets/m', 'assets/ktx2']) for (const sub of ['buildings/chicago', 'buildings/dc', 'trees', 'props', 'vehicles']) {
+      const dir = path.join(REPO, tree, sub);
+      if (!fs.existsSync(dir)) continue;
+      for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('_lod1.glb'))) {
+        const lod0 = path.join(dir, f.replace(/_lod1\.glb$/, '.glb'));
+        if (!fs.existsSync(lod0)) continue;
+        lodPairs++;
+        const a = prims(lod0), c = prims(path.join(dir, f));
+        if (a !== c) bad.push(`${tree}/${sub}/${f}: ${c} meshes, its LOD0 has ${a}`);
+      }
+    }
     if (bad.length) { failed++; console.log(`[asset lists] FAIL (${bad.length})`); for (const l of bad.slice(0, 12)) console.log('  - ' + l); }
-    else console.log(`[asset lists] ok: ${Object.keys(ASSET_HASHES).length} hashed GLBs, ${MOBILE_VARIANTS.size} mobile variants, ${KTX2_VARIANTS.size} KTX2 variants on disk`);
+    else console.log(`[asset lists] ok: ${Object.keys(ASSET_HASHES).length} hashed GLBs, ${MOBILE_VARIANTS.size} mobile variants, ${KTX2_VARIANTS.size} KTX2 variants on disk, ${lodPairs} LOD1 pairs matched`);
   }
   for (const [device, tier, level, modeArg] of CONFIGS) {
     const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--run', device, tier, level, ...(modeArg ? [modeArg] : [])], { stdio: 'inherit' });
@@ -778,6 +796,7 @@ if (process.env.SMOKE_ASSETS) {
   const rows = [...by].map(([k, e]) => ({ material: k, instancesVisible: e.vis, instancesHiddenLodTwin: e.hid, draws: e.draws, tris: Math.round(e.tris), trisPerCopy: [...e.triEach] }));
   fs.appendFileSync(process.env.SMOKE_ASSETS, JSON.stringify({ config: `${device} ${tier} ${level}`, rows }) + '\n');
 }
+{ const rej = city.lod1Rejected(); if (rej.size) summary += `${rej.size} LOD1 twins kept at LOD0 (shape mismatch: ${[...rej.keys()].map((u) => u.split('/').pop()).join(', ')}); `; }
 summary += `${res && res.buildings ? res.buildings.length : 0} buildings, scene ${totals.draws} meshes (${totals.shadowDraws} cast), ${(totals.tris / 1e6).toFixed(2)}M tris, ${litPrograms} lit programs; `;
 // Chicago budget (desktop): Tokyo's own totals with this counter (desktop HIGH ~710 meshes /
 // ~5.0M tris) plus ~15%; phones: the MED target of ~450 draws and 4-5M tris (Tokyo MED: ~365 / ~2.3M)
@@ -856,7 +875,9 @@ if (Q.GLB_CONTENT) {
   };
   count('trees', s.trees); count('debris', s.debris); count('cars', s.cars);
   set('buildings', s.buildings); set('props', s.props); set('pedestrian clips', s.pedestrian);
-  set('LOD1 twins attached', s.lod1);
+  // (a twin left out for a shape mismatch is listed in the summary, not failed: its model keeps LOD0)
+  const rejected = city.lod1Rejected();
+  set('LOD1 twins attached', { loaded: s.lod1.loaded, expected: s.lod1.expected.filter((u) => !rejected.has(u)) });
   const exact = (name, { loaded, expected }) => { if (loaded.length !== expected.length) fail(`${name}: ${loaded.length} clips (${loaded.join(',')}), expected ${expected.length} (${expected.join(',')})`); };
   exact('pedestrian clips', s.pedestrian);
   const en = enemies.getTemplateStats();

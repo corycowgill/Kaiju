@@ -34,7 +34,7 @@ import * as LOOK from '../look.js';
  *  clearHalf the half-size of the square other systems treat as ringside. */
 // The whole venue as laid out on Hutchinson Field; another level moves it
 // (every coordinate below shifts by the same dx, dz) with setArenaSite
-let SITE = { dx: 0, dz: 0, title: 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: 'GRANT PARK', fountain: true, stands: 'ns' };
+let SITE = { dx: 0, dz: 0, title: 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: 'GRANT PARK', fountain: true, stands: 'ns', east: 0, west: 0, gate: true, flag: 'chicago' };
 export let ARENA;
 let A0, VEN, STANDS, STAND_ALL, RAMP, GATE, SCREENS_W, FOUNTAIN;
 const MAT = 45.5;
@@ -55,10 +55,13 @@ function _layoutSite() {
   // The venue rectangle (ring, stands, standing areas): inside the festival fence;
   // without a stand it ends just past the standing room on that side
   const cz = 62 + dz;
-  VEN = Object.freeze({ x0: -54 + dx, x1: 52 + dx, z0: SITE.stands.includes('n') ? -16 + dz : cz - MAT - 10, z1: SITE.stands.includes('s') ? 140 + dz : cz + MAT + 10 });
-  RAMP = Object.freeze({ x0: MAT + A0.cx + 0.1, x1: 73.5 + dx, z: A0.cz, hw: 12 });
-  GATE = Object.freeze({ x: 67 + dx, z: A0.cz, hw: 19, h: 44, top: 50 });
-  SCREENS_W = Object.freeze([{ x: -50 + dx, z: 30 + dz }, { x: -50 + dx, z: 94 + dz }]); // west screens, facing the ring
+  // (SITE.east / west pull the entrance gate and runway end, and the west
+  // screens and venue edge, that many units in toward the ring)
+  const E = SITE.east, Wd = SITE.west;
+  VEN = Object.freeze({ x0: -54 + Wd + dx, x1: 52 + dx, z0: SITE.stands.includes('n') ? -16 + dz : cz - MAT - 10, z1: SITE.stands.includes('s') ? 140 + dz : cz + MAT + 10 });
+  RAMP = Object.freeze({ x0: MAT + A0.cx + 0.1, x1: 73.5 - E + dx, z: A0.cz, hw: 12 });
+  GATE = Object.freeze({ x: 67 - E + dx, z: A0.cz, hw: 19, h: 44, top: 50 });
+  SCREENS_W = Object.freeze([{ x: -50 + Wd + dx, z: 30 + dz }, { x: -50 + Wd + dx, z: 94 + dz }]); // west screens, facing the ring
   // Buckingham Fountain's plaza: no standing crowd on it (Chicago only)
   FOUNTAIN = Object.freeze({ x: 29.5 + dx, z: 4.4 + dz, r: SITE.fountain ? 11 : 0 });
 }
@@ -67,9 +70,14 @@ _layoutSite();
  *  Hutchinson Field, 4, 62), title the championship's name on the mat and
  *  banners, place the screens' LIVE FROM line, fountain false off Chicago,
  *  stands the grandstands built ('ns' default; 'n' leaves the south one out:
- *  standing room takes its side). Call before buildArena. */
+ *  standing room takes its side), east / west the entrance gate and the west
+ *  screens pulled in toward the ring (u) on a tight site, gate false: no
+ *  entrance gateway (a site too short for the chase camera behind the
+ *  player's corner to clear it), flag the city flag the mat and signage carry
+ *  ('chicago': light-blue bars, six-pointed stars; 'dc': the District's red
+ *  bars and five-pointed stars). Call before buildArena. */
 export function setArenaSite(s = {}) {
-  const next = { dx: (s.x ?? 4) - 4, dz: (s.z ?? 62) - 62, title: s.title || 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: s.place || 'GRANT PARK', fountain: s.fountain ?? true, stands: s.stands ?? 'ns' };
+  const next = { dx: (s.x ?? 4) - 4, dz: (s.z ?? 62) - 62, title: s.title || 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: s.place || 'GRANT PARK', fountain: s.fountain ?? true, stands: s.stands ?? 'ns', east: s.east || 0, west: s.west || 0, gate: s.gate ?? true, flag: s.flag || 'chicago' };
   if (Object.keys(next).every((k) => next[k] === SITE[k])) return;
   SITE = next;
   _layoutSite();
@@ -88,14 +96,14 @@ export function arenaDisplaces(it) {
 /** The venue's footprint (ring, stands, the runway to the lake) as one simple
  *  polygon the park's trees keep out of: [[x, z], ...]. */
 export function arenaNoTree() {
-  const V = VEN, x2 = 77 + SITE.dx, za = RAMP.z - 17, zb = RAMP.z + 17;
+  const V = VEN, x2 = 77 - SITE.east + SITE.dx, za = RAMP.z - 17, zb = RAMP.z + 17;
   return [[V.x0, V.z0], [V.x1, V.z0], [V.x1, za], [x2, za], [x2, zb], [V.x1, zb], [V.x1, V.z1], [V.x0, V.z1]];
 }
 
 /** True where street furniture, lamps and trees should not be placed. */
 export function arenaClears(x, z) {
   if (x > VEN.x0 && x < VEN.x1 && z > VEN.z0 && z < VEN.z1) return true;
-  return x >= VEN.x1 && x < 77 + SITE.dx && Math.abs(z - RAMP.z) < 17;
+  return x >= VEN.x1 && x < 77 - SITE.east + SITE.dx && Math.abs(z - RAMP.z) < 17;
 }
 
 // ------------------------------------------------------------ tiers
@@ -118,12 +126,13 @@ function _fit(cx, text, px, maxW) {
   const w = cx.measureText(text).width || 1;
   if (w > maxW) cx.font = FONT(Math.floor(px * maxW / w));
 }
-/** Chicago's six-pointed star. */
+/** The site flag's star: Chicago's six-pointed one, the District's five-pointed one. */
 function _star(cx, x, y, R, col) {
+  const n = SITE.flag === 'dc' ? 5 : 6, k = SITE.flag === 'dc' ? 0.4 : 0.42;
   cx.fillStyle = col;
   cx.beginPath();
-  for (let i = 0; i < 12; i++) {
-    const a = -Math.PI / 2 + i * Math.PI / 6, r = i % 2 ? R * 0.42 : R;
+  for (let i = 0; i < n * 2; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / n, r = i % 2 ? R * k : R;
     if (i) cx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); else cx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
   }
   cx.closePath(); cx.fill();
@@ -156,12 +165,14 @@ function _paintAtlas(cx, px, emissive) {
   const dim = emissive ? 0.42 : 1; // signage is backlit: the emissive copy is the same art, dimmer
   cx.globalAlpha = dim;
   cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineJoin = 'round';
+  // (the flag's accent: Chicago's light blue, the District's white)
+  const ACC = SITE.flag === 'dc' ? '#e9e7df' : '#58b7e6';
   // LOGO
   {
     const r = AT.LOGO, g = cx.createLinearGradient(0, r.y, 0, r.y + r.h);
     g.addColorStop(0, '#0d1430'); g.addColorStop(1, '#1a2a66');
     cx.fillStyle = g; cx.fillRect(r.x, r.y, r.w, r.h);
-    cx.fillStyle = '#58b7e6'; cx.fillRect(r.x, r.y + 10, r.w, 8); cx.fillRect(r.x, r.y + r.h - 18, r.w, 8);
+    cx.fillStyle = ACC; cx.fillRect(r.x, r.y + 10, r.w, 8); cx.fillRect(r.x, r.y + r.h - 18, r.w, 8);
     _star(cx, 78, r.y + r.h / 2, 52, '#d21c34'); _star(cx, 946, r.y + r.h / 2, 52, '#d21c34');
     _fit(cx, 'KAIJU HAVOC', 150, 740);
     cx.lineWidth = 14; cx.strokeStyle = '#06091c'; cx.strokeText('KAIJU HAVOC', 512, r.y + r.h / 2 + 6);
@@ -179,7 +190,7 @@ function _paintAtlas(cx, px, emissive) {
   {
     const r = AT.STRIP;
     cx.fillStyle = '#10162e'; cx.fillRect(r.x, r.y, r.w, r.h);
-    cx.fillStyle = '#58b7e6'; cx.fillRect(r.x, r.y, r.w, 5); cx.fillRect(r.x, r.y + r.h - 5, r.w, 5);
+    cx.fillStyle = ACC; cx.fillRect(r.x, r.y, r.w, 5); cx.fillRect(r.x, r.y + r.h - 5, r.w, 5);
     cx.font = FONT(38);
     for (let i = 0; i < 2; i++) {
       const x = 256 + i * 512;
@@ -199,8 +210,14 @@ function _paintAtlas(cx, px, emissive) {
   {
     const r = AT.FLAG;
     cx.fillStyle = '#e9e7df'; cx.fillRect(r.x, r.y, r.w, r.h);
-    cx.fillStyle = '#58b7e6'; cx.fillRect(r.x, r.y + 38, r.w, 44); cx.fillRect(r.x, r.y + r.h - 82, r.w, 44);
-    for (let i = 0; i < 4; i++) _star(cx, r.x + 100 + i * 104, r.y + r.h / 2, 36, '#d21c34');
+    if (SITE.flag === 'dc') {
+      // the District: two red bars, three red stars above them
+      cx.fillStyle = '#d21c34'; cx.fillRect(r.x, r.y + r.h * 0.42, r.w, r.h * 0.17); cx.fillRect(r.x, r.y + r.h * 0.7, r.w, r.h * 0.17);
+      for (let i = 0; i < 3; i++) _star(cx, r.x + r.w * (0.25 + i * 0.25), r.y + r.h * 0.22, 26, '#d21c34');
+    } else {
+      cx.fillStyle = '#58b7e6'; cx.fillRect(r.x, r.y + 38, r.w, 44); cx.fillRect(r.x, r.y + r.h - 82, r.w, 44);
+      for (let i = 0; i < 4; i++) _star(cx, r.x + 100 + i * 104, r.y + r.h / 2, 36, '#d21c34');
+    }
   }
   // MAIN EVENT
   {
@@ -210,7 +227,7 @@ function _paintAtlas(cx, px, emissive) {
     _fit(cx, 'MAIN EVENT', 110, 440);
     cx.fillStyle = '#ffe9b8'; cx.fillText('MAIN EVENT', r.x + r.w / 2, r.y + 96);
     _fit(cx, 'KAIJU vs KAIJU', 58, 420);
-    cx.fillStyle = '#58b7e6'; cx.fillText('KAIJU vs KAIJU', r.x + r.w / 2, r.y + 186);
+    cx.fillStyle = ACC; cx.fillText('KAIJU vs KAIJU', r.x + r.w / 2, r.y + 186);
   }
   cx.restore();
 }
@@ -229,17 +246,32 @@ function _paintMat(cx, px) {
     cx.fillStyle = Math.random() < 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(10,14,24,0.05)';
     if (i & 1) cx.fillRect(x, y, l, 0.09); else cx.fillRect(x, y, 0.09, l);
   }
-  // the flag's two bars
-  cx.fillStyle = '#2a77b3';
-  cx.fillRect(0, S * 0.235, S, S * 0.105); cx.fillRect(0, S * 0.66, S, S * 0.105);
-  cx.fillStyle = 'rgba(230,236,244,0.75)';
-  for (const y of [0.235, 0.34, 0.66, 0.765]) cx.fillRect(0, S * y - 0.12, S, 0.24);
-  // four stars
-  for (let i = 0; i < 4; i++) {
-    const x = S / 2 + (i - 1.5) * 16.5;
-    _star(cx, x + 0.25, S / 2 + 0.3, 7.2, 'rgba(10,14,30,0.35)');
-    _star(cx, x, S / 2, 7.2, '#e6e4da');
-    _star(cx, x, S / 2, 6.3, '#c4162c');
+  if (SITE.flag === 'dc') {
+    // the District's flag: two red bars across the mat, three red stars above them
+    // (white-edged on the navy canvas, as Chicago's are)
+    for (const y of [0.5, 0.68]) {
+      cx.fillStyle = 'rgba(230,236,244,0.85)'; cx.fillRect(0, S * y - 0.5, S, S * 0.11 + 1);
+      cx.fillStyle = '#c4162c'; cx.fillRect(0, S * y, S, S * 0.11);
+    }
+    for (let i = 0; i < 3; i++) {
+      const x = S / 2 + (i - 1) * 21;
+      _star(cx, x + 0.25, S * 0.36 + 0.3, 7.6, 'rgba(10,14,30,0.35)');
+      _star(cx, x, S * 0.36, 7.6, '#e6e4da');
+      _star(cx, x, S * 0.36, 6.6, '#c4162c');
+    }
+  } else {
+    // the flag's two bars
+    cx.fillStyle = '#2a77b3';
+    cx.fillRect(0, S * 0.235, S, S * 0.105); cx.fillRect(0, S * 0.66, S, S * 0.105);
+    cx.fillStyle = 'rgba(230,236,244,0.75)';
+    for (const y of [0.235, 0.34, 0.66, 0.765]) cx.fillRect(0, S * y - 0.12, S, 0.24);
+    // four stars
+    for (let i = 0; i < 4; i++) {
+      const x = S / 2 + (i - 1.5) * 16.5;
+      _star(cx, x + 0.25, S / 2 + 0.3, 7.2, 'rgba(10,14,30,0.35)');
+      _star(cx, x, S / 2, 7.2, '#e6e4da');
+      _star(cx, x, S / 2, 6.3, '#c4162c');
+    }
   }
   // lettering
   cx.textAlign = 'center'; cx.textBaseline = 'middle';
@@ -263,7 +295,7 @@ function _paintMat(cx, px) {
   cx.fillStyle = '#0d1226';
   cx.fillRect(0, 0, S, 3.5); cx.fillRect(0, S - 3.5, S, 3.5); cx.fillRect(0, 0, 3.5, S); cx.fillRect(S - 3.5, 0, 3.5, S);
   cx.strokeStyle = '#e6e4da'; cx.lineWidth = 0.45; cx.strokeRect(3.5, 3.5, S - 7, S - 7);
-  cx.strokeStyle = '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
+  cx.strokeStyle = SITE.flag === 'dc' ? '#c4162c' : '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
   cx.restore();
 }
 
@@ -387,7 +419,7 @@ let _assets = null;
 /** Textures and materials, made once and kept across city rebuilds (the
  *  teardown frees geometry, never materials: their programs stay linked). */
 function _getAssets(tier) {
-  if (_assets && _assets.tier === tier && _assets.title === SITE.title) return _assets;
+  if (_assets && _assets.tier === tier && _assets.title === SITE.title && _assets.flag === SITE.flag) return _assets;
   const T = TIERS[tier];
   const tex = (cv) => { const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = tier === 2 ? 8 : 2; return t; };
   const atlasCv = _canvas(T.atlas, T.atlas), atlasECv = _canvas(T.atlas, T.atlas);
@@ -408,7 +440,7 @@ function _getAssets(tier) {
     cx.fillStyle = g; cx.fillRect(0, 0, 32, 32);
   }
   const A = {
-    tier, title: SITE.title, T, atlas, atlasE, matTex, led,
+    tier, title: SITE.title, flag: SITE.flag, T, atlas, atlasE, matTex, led,
     mStruct: struct(),                                   // static steel, stands, signage
     mPost: [struct(), struct(), struct(), struct()],     // one per tower: its lamps flicker / die on their own
     mMat: std({ map: matTex, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
@@ -964,7 +996,7 @@ export function buildArena(scene, world, o) {
       pyro.push({ x: sc.x, y: y1 + 2, z: sc.z - hw, kind: 'screen' }, { x: sc.x, y: y1 + 2, z: sc.z + hw, kind: 'screen' });
     }
     // gateway on the lake side: two pylons and a truss the kaiju walks under
-    {
+    if (SITE.gate) {
       const G = GATE;
       for (const s of [-1, 1]) {
         const pz = G.z + s * G.hw;
@@ -1304,7 +1336,7 @@ export function buildArena(scene, world, o) {
     const movers = [];
     const mv = (x, y, z, hue) => movers.push({ x, y, z, hue, ph: Math.random() * 6.28 });
     if (T.movers >= 4) {
-      mv(GATE.x, GATE.top + 2, GATE.z - GATE.hw, 0.58); mv(GATE.x, GATE.top + 2, GATE.z + GATE.hw, 0.0);
+      if (SITE.gate) { mv(GATE.x, GATE.top + 2, GATE.z - GATE.hw, 0.58); mv(GATE.x, GATE.top + 2, GATE.z + GATE.hw, 0.0); }
       mv(SCREENS_W[0].x, SCREEN.y0 + SCREEN.h + 2, SCREENS_W[0].z, 0.0); mv(SCREENS_W[1].x, SCREEN.y0 + SCREEN.h + 2, SCREENS_W[1].z, 0.58);
     }
     if (T.movers >= 6) for (const st of STANDS) mv(st.id === 'n' ? st.x0 : st.x1, 13, st.zb, 0.12);
@@ -1335,7 +1367,7 @@ export function buildArena(scene, world, o) {
   // casters for the look layer's shadow map, shot positions for the camera, launch points for pyro
   const casters = posts.map((p) => ({ x: p.x, z: p.z, w: 5, d: 5, h: A0.towerH - 9 }));
   for (const st of STANDS) casters.push({ x: (st.x0 + st.x1) / 2, z: (st.zf + st.zb) / 2, w: st.x1 - st.x0, d: Math.abs(st.zb - st.zf), h: 7 });
-  for (const s of [-1, 1]) casters.push({ x: GATE.x, z: GATE.z + s * GATE.hw, w: 5, d: 5, h: GATE.top });
+  if (SITE.gate) for (const s of [-1, 1]) casters.push({ x: GATE.x, z: GATE.z + s * GATE.hw, w: 5, d: 5, h: GATE.top });
   for (const sc of SCREENS_W) casters.push({ x: sc.x, z: sc.z, w: 1.6, d: SCREEN.w, h: SCREEN.y0 + SCREEN.h });
 
   // ---- foreign objects: steel girders (one instanced draw for all of them; spots.js places them, held or lying) ----
@@ -1436,7 +1468,7 @@ export function buildArena(scene, world, o) {
     posts, ropes, crowd,
     stands: STANDS.map((st) => ({ id: st.id, x0: st.x0, x1: st.x1, z0: Math.min(st.zf, st.zb), z1: Math.max(st.zf, st.zb), h: standH(100) })),
     ramp: { x0: RAMP.x0, x1: RAMP.x1, z: RAMP.z, halfWidth: RAMP.hw },
-    gate: { x: GATE.x, z: GATE.z, halfWidth: GATE.hw - 2.5, clearance: GATE.h, top: GATE.top },
+    gate: SITE.gate ? { x: GATE.x, z: GATE.z, halfWidth: GATE.hw - 2.5, clearance: GATE.h, top: GATE.top } : null,
     gaps: FEST_RING_GAPS,
     screens, pyro, casters, weapons, throwables,
     /** True where spectators stand or sit (for throw:land surface 'crowd'). */
