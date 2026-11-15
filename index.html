@@ -8,6 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="theme-color" content="#000000" />
 <title>怪獣ハヴォック · Kaiju Havoc</title>
+<link rel="icon" href="data:,"><!-- (no favicon: stops the browser's own /favicon.ico request at the menu) -->
 
 <!-- Japanese-inspired display fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2077,6 +2078,25 @@
   #menu.mn-warm .mn-step:not([data-for="title"]), #menu.mn-warm > .deployment-bar { visibility: visible !important; opacity: 0.004 !important; transform: none !important; transition: none !important; }
   #menu.mn-warm .mode-card { animation: mcIn 0.6s linear infinite alternate; }
   #menu.mn-warm .fs-pic { animation: fsPic 0.6s linear infinite alternate; }
+  /* Boot screen (window.__boot below <body>): up from the first paint until the city is built, every webfont glyph
+     and menu image/video is in memory and the menu's first raster has settled (game.js "Boot prewarm"). At 99.2%
+     opacity, not 100%: an occluded menu would not be rasterized under it. Under the intro video. */
+  #boot-screen {
+    position: fixed; inset: 0; z-index: 9000; display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+    padding: 0 max(6vw, env(safe-area-inset-left)); overflow: hidden; opacity: 0.992; transition: opacity 0.35s; color: #ffe6c8;
+    background: radial-gradient(ellipse 60% 80% at 78% 45%, rgba(211, 37, 60, 0.2), transparent 70%), linear-gradient(180deg, #16040a 0%, #050102 100%);
+  }
+  #boot-screen.out { opacity: 0; pointer-events: none; }
+  #boot-screen::before {
+    content: '\602A\7363'; /* 怪獣 */ position: absolute; right: 3vw; top: 50%; transform: translateY(-50%); writing-mode: vertical-rl;
+    font: 400 clamp(160px, 38vh, 420px)/1 'Yuji Boku', 'Yuji Mai', serif; color: rgba(211, 37, 60, 0.1); pointer-events: none; white-space: nowrap;
+  }
+  #boot-screen > * { position: relative; }
+  #boot-screen .bt-title { font: 400 clamp(44px, 6vw, 92px)/0.95 'Bebas Neue', sans-serif; letter-spacing: 3px; text-shadow: 0 4px 0 #6a0d12, 0 8px 0 #1a0004; margin: 0 0 22px; }
+  #boot-screen .bt-bar { width: min(520px, 70vw); height: 10px; background: rgba(255, 230, 200, 0.12); clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); }
+  #boot-screen .bt-bar i { display: block; height: 100%; background: linear-gradient(90deg, #d3253c, #ff8866, #ffcc66); transform: scaleX(0); transform-origin: 0 50%; transition: transform 0.2s ease-out; }
+  #boot-screen .bt-pct { font: 400 30px/1 'Bebas Neue', sans-serif; margin-top: 10px; }
+  #boot-screen .bt-status { font: 400 13px/1.4 'Bebas Neue', sans-serif; letter-spacing: 5px; color: rgba(255, 230, 200, 0.6); margin-top: 4px; }
   @media (prefers-reduced-motion: reduce) {
     .mn-still, .mn-sun, .mn-embers i, .lg-havoc .fx, #menu .mn-press, #menu .deployment-bar #startBtn:not(:disabled) { animation: none !important; }
     .mn-embers { display: none; }
@@ -2088,6 +2108,99 @@
 </head>
 <body>
 <div id="game"></div>
+
+<!-- Boot screen: everything the title menu can show is loaded before it is revealed (no streaming, no font
+     subsets fetched on first use). Parts report into window.__boot: 'city' (game.js top-level build: the bar
+     follows the files fetched), 'fonts' and 'media' (src/intro.js), 'warm' (game.js "Boot prewarm"), which
+     calls __boot.finish(). A run started under it (QA scripts) hides it at once. -->
+<div id="boot-screen" role="progressbar" aria-label="Loading">
+  <div class="bt-title">KAIJU HAVOC</div>
+  <div class="bt-bar"><i></i></div>
+  <div class="bt-pct">0%</div>
+  <div class="bt-status">LOADING</div>
+</div>
+<script>
+window.__boot = (function () {
+  var el = document.getElementById('boot-screen');
+  var bar = el.querySelector('.bt-bar i'), pct = el.querySelector('.bt-pct'), st = el.querySelector('.bt-status');
+  var parts = {}, order = [], waits = {}, shown = 0, files = 0, gone = false;
+  var api = { done: false, ms: 0 };
+  function add(name, w, label) { parts[name] = { w: w, f: 0, label: label }; order.push(name); }
+  add('city', 50, 'BUILDING THE CITY');
+  add('fonts', 12, 'LOADING FONTS');
+  add('media', 26, 'LOADING MENU MEDIA');
+  add('warm', 12, 'WARMING UP');
+  function render() {
+    if (gone) return;
+    var sum = 0, tot = 0, label = '';
+    for (var i = 0; i < order.length; i++) {
+      var p = parts[order[i]];
+      sum += p.w * p.f; tot += p.w;
+      if (!label && p.f < 1) label = p.label + (order[i] === 'city' && files ? ' · ' + files + ' FILES' : '');
+    }
+    var f = Math.max(shown, sum / tot); // (never goes backwards)
+    shown = f;
+    bar.style.transform = 'scaleX(' + f.toFixed(3) + ')';
+    pct.textContent = Math.floor(f * 100) + '%';
+    st.textContent = label || 'READY';
+  }
+  api.set = function (name, f) {
+    var p = parts[name];
+    if (!p) return;
+    f = Math.min(1, Math.max(p.f, f || 0));
+    if (f === p.f) return;
+    p.f = f;
+    if (f >= 1 && waits[name]) waits[name].res();
+    render();
+  };
+  /** A promise for part `name` reaching 100%. */
+  api.until = function (name) {
+    if (!waits[name]) {
+      var res, pr = new Promise(function (r) { res = r; });
+      waits[name] = { p: pr, res: res };
+      if (parts[name] && parts[name].f >= 1) res();
+    }
+    return waits[name].p;
+  };
+  // The city build's progress: the files it has fetched so far (its total is not known up front)
+  try {
+    var po = new PerformanceObserver(function (list) {
+      if (parts.city.f >= 1) { po.disconnect(); return; }
+      files += list.getEntries().length;
+      api.set('city', 0.95 * (1 - Math.exp(-files / 150)));
+      render();
+    });
+    po.observe({ type: 'resource', buffered: true });
+  } catch (e) { /* no PerformanceObserver: the bar jumps when the city is built */ }
+  // Keys don't drive the menu underneath (the intro video handles its own)
+  function onKey(e) { if (!document.getElementById('intro-video')) { e.preventDefault(); e.stopImmediatePropagation(); } }
+  window.addEventListener('keydown', onKey, true);
+  function hide(fade) {
+    if (gone) return;
+    gone = true;
+    window.removeEventListener('keydown', onKey, true);
+    el.classList.add('out');
+    setTimeout(function () { el.remove(); }, fade ? 400 : 0);
+  }
+  api.finish = function () {
+    if (api.done) return;
+    api.done = true;
+    api.ms = window.__bootMs = Math.round(performance.now());
+    for (var i = 0; i < order.length; i++) api.set(order[i], 1);
+    console.info('[KAIJU HAVOC] boot ready in ' + (api.ms / 1000).toFixed(1) + ' s');
+    hide(true);
+  };
+  // A run started under the boot screen (QA scripts click START at once): out of the way now
+  document.addEventListener('DOMContentLoaded', function () {
+    var ls = document.getElementById('loading-screen');
+    if (ls) new MutationObserver(function () { if (ls.classList.contains('visible')) hide(false); }).observe(ls, { attributes: true, attributeFilter: ['class'] });
+  });
+  // Never strand the player: whatever has not finished after 2 minutes, show the menu
+  setTimeout(function () { if (!api.done) { console.warn('[KAIJU HAVOC] boot timed out; showing the menu'); api.finish(); } }, 120000);
+  render();
+  return api;
+})();
+</script>
 
 <!-- Diagnostic banner: opt-in via ?debug so it doesn't show for normal users.
      Surfaces uncaught script errors and lets game.js post checkpoints via

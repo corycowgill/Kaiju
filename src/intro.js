@@ -2,16 +2,157 @@
 // Hallucinated Games studio card) on first load,
 // muted battle-clip previews on the monster-select cards, and the WATCH
 // TRAILER modal. Everything here is optional sugar: any video failure falls
-// straight through to the normal menu, and nothing loads until it is needed
-// (intro excepted). Videos live in assets/video/ (see its README.md).
+// straight through to the normal menu. Videos live in assets/video/ (see its
+// README.md).
+//
+// It also does the menu's share of the boot screen (window.__boot, index.html):
+// every webfont glyph the game can show, and every image / video the title menu
+// can show, are in memory before the menu is revealed (bootFonts, bootMedia).
+// The trailer (intro and WATCH TRAILER) is the one thing that still streams:
+// 14 MB, played only on a first visit or when asked for.
 //
 // ?intro=0 / ?nointro skip the intro (automated browsers skip it by default).
 
 import { isMobile } from './quality.js';
+import { MONSTERS } from './monsters.js';
 
 const VID = 'assets/video/';
 const SUFFIX = isMobile ? '_480p' : '';       // 854x480 baseline encodes for phones
 const SEEN_KEY = 'kh_intro_seen';
+
+// ------------------------------------------------------------- boot: fonts
+// index.html's Google Fonts are split into unicode-range subsets that the
+// browser fetches the first time a glyph from one is drawn (a CJK face is
+// ~120 subsets): mid-match and on the result screen, until now. At boot every
+// face loads every glyph the game can show: printable ASCII plus BOOT_GLYPHS.
+// BOOT_GLYPHS = every non-ASCII character in src/**/*.js and index.html
+// (commentary captions included: hud.js shows commentaryLines.js text), emoji
+// left out (no webfont draws them). Generated, do not edit by hand; after
+// adding text with new characters, regenerate it with
+//   node C:/Users/coryc/kaiju3/devtools/upfront/menu/gen_glyphs.mjs [repoRoot]
+// and paste its output here. A character missed here still draws: its subset
+// is fetched on first use, as before.
+const BOOT_GLYPHS = "°·éπϟ—“”•…Ⅱ←↑→↓≈⏱▲▶▸▼◀◆☄★☢⚠✓✕✥✨❤いきくさしだてのれをイェォオカクケゲコゴシジズタチッテトドニネハバパビフホボムメモュヨラリルワンヴー一三下中乱事二五交京人体作停兵出利力勝化北卒参古召台司向君喚四地壊大定対寿居屋山工店座強得怒怪戦手択押掴撃操敗映時暴書本東械標横樹機止気氷決河波海深演火点焼獣王画番目相破磁社神竜者舞螂蟷行質選部酒鉄銀闘防隊電頭鳥";
+// The faces index.html requests (family, weight)
+const FONT_FACES = [['Bebas Neue', 400], ['Noto Sans JP', 400], ['Noto Sans JP', 700], ['Noto Sans JP', 900],
+  ['Stick', 400], ['Yuji Mai', 400], ['Yuji Boku', 400], ['Reggae One', 400]];
+const boot = window.__boot || { set() {}, until: () => Promise.resolve() };
+const timeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(r, ms))]);
+async function bootFonts() {
+  try {
+    if (!document.fonts || !document.fonts.load) return;
+    // The faces exist once the Google Fonts stylesheet has loaded
+    const link = document.querySelector('link[href*="fonts.googleapis.com/css2"]');
+    if (link && !link.sheet) {
+      await timeout(new Promise((r) => { link.addEventListener('load', r, { once: true }); link.addEventListener('error', r, { once: true }); }), 15000);
+    }
+    let ascii = '';
+    for (let c = 32; c < 127; c++) ascii += String.fromCharCode(c);
+    const text = ascii + BOOT_GLYPHS;
+    let n = 0;
+    // (offline / blocked fonts: a failed or stalled face counts as done, the fallback font draws)
+    await Promise.all(FONT_FACES.map(([family, w]) => timeout(document.fonts.load(`${w} 32px "${family}"`, text), 25000)
+      .catch(() => {}).then(() => boot.set('fonts', ++n / FONT_FACES.length))));
+  } finally {
+    boot.set('fonts', 1);
+  }
+}
+
+// ------------------------------------------------------------- boot: media
+// Every image the title menu shows (CSS backgrounds in index.html, the
+// portraits game.js puts on the cards and the showcase) decoded and held, so
+// the CSS reuses the in-memory copy; every menu video fetched whole into a
+// blob: URL (bootVideoURL), so nothing streams when a card is hovered. The
+// card videos are then played once under the boot screen, so their decoders
+// and first frames are up before the first hover.
+const MENU_IMAGES = ['assets/ui/menu/bg_still.webp', 'assets/ui/menu/mode_havoc.webp', 'assets/ui/menu/mode_title.webp',
+  'assets/ui/menu/mode_lone.webp', 'assets/ui/menu/stage_tokyo.webp', 'assets/ui/menu/stage_chicago.webp',
+  'assets/ui/menu/stage_dc.webp', 'assets/ui/menu/stage_nyc.webp',
+  ...Object.values(MONSTERS).map((m) => `assets/${m.portrait}`)];
+// The desktop backdrop reel (game.js _menuReel; phones and reduced motion keep the still)
+const REEL_OK = !isMobile && !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const MENU_VIDEOS = [...new Set(Object.values(MONSTERS).map((m) => m.previewVideo).filter(Boolean))].map((f) => VID + f);
+if (REEL_OK) MENU_VIDEOS.push(VID + 'menu_loop.mp4');
+const _bootImgs = [];                         // (held: the decoded copies stay in the memory cache)
+const _bootVideos = new Map();                // 'assets/video/x.mp4' -> blob: URL
+window.__bootMedia = _bootVideos;             // (game.js reads the reel's)
+/** The blob: URL of a menu video loaded at boot, else its own URL (streams). */
+function bootVideoURL(path) { return _bootVideos.get(path) || path; }
+async function fetchWhole(url, onBytes) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url}: ${res.status}`);
+  const type = res.headers.get('content-type') || 'video/mp4';
+  if (!res.body || !res.body.getReader) { const b = await res.blob(); onBytes(b.size, b.size); return b; }
+  const total = +res.headers.get('content-length') || 0;
+  const reader = res.body.getReader(), chunks = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value); got += value.byteLength;
+    onBytes(got, total);
+  }
+  return new Blob(chunks, { type });
+}
+function cardsBuilt() {
+  return new Promise((resolve) => {
+    const has = () => document.querySelector('#monsterCards .monster-card');
+    if (has()) { resolve(); return; }
+    const mo = new MutationObserver(() => { if (has()) { mo.disconnect(); resolve(); } });
+    mo.observe(document.getElementById('monsterCards') || document.body, { childList: true, subtree: true });
+  });
+}
+async function bootMedia() {
+  try {
+    // progress: bytes of the videos (guessed at 250 KB until their headers say), plus 30 KB an image
+    const IMG = 30e3, prog = new Map();
+    for (const p of MENU_VIDEOS) prog.set(p, [0, 250e3]);
+    for (const p of MENU_IMAGES) prog.set(p, [0, IMG]);
+    const report = () => {
+      let a = 0, b = 0;
+      for (const [got, tot] of prog.values()) { a += Math.min(got, tot); b += tot; }
+      boot.set('media', 0.9 * a / b);
+    };
+    await Promise.all([
+      ...MENU_IMAGES.map((p) => {
+        const im = new Image();
+        im.src = p;
+        _bootImgs.push(im);
+        return timeout(im.decode(), 30000).catch(() => {}).then(() => { prog.set(p, [IMG, IMG]); report(); });
+      }),
+      ...MENU_VIDEOS.map((p) => timeout(fetchWhole(p, (got, tot) => { prog.set(p, [got, Math.max(tot, got)]); report(); })
+        .then((blob) => { if (blob) _bootVideos.set(p, URL.createObjectURL(blob)); }), 60000)
+        .catch(() => { /* streams on demand instead, as before */ })
+        .then(() => { const v = prog.get(p); prog.set(p, [v[1], v[1]]); report(); })),
+    ]);
+    // The card videos' decoders and first frames, under the boot screen
+    await timeout(cardsBuilt(), 90000);
+    await timeout(warmCardVideos(), 5000);
+  } finally {
+    boot.set('media', 1);
+  }
+}
+/** Plays each card's preview once (muted, under the boot screen) and parks it on its first frame. */
+function warmCardVideos() {
+  const cards = [...document.querySelectorAll('#monsterCards .monster-card')].filter((c) => c.dataset.previewVideo);
+  return Promise.all(cards.map((card) => new Promise((resolve) => {
+    const v = ensurePreview(card);
+    if (!v) { resolve(); return; }
+    let done = false;
+    const end = () => {
+      if (done) return;
+      done = true;
+      if (!(menuShown() && (card.classList.contains('selected') || card.classList.contains('pad-focus') || card.matches(':hover')))) {
+        v.pause(); v.classList.remove('on');
+        try { v.currentTime = 0; } catch (e) { /* not seekable yet */ }
+      }
+      resolve();
+    };
+    v.addEventListener('playing', () => setTimeout(end, 250), { once: true });
+    v.addEventListener('error', end, { once: true });
+    v.play().catch(end);
+  })));
+}
 
 function sessionGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
 function sessionSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* private mode */ } }
@@ -116,11 +257,12 @@ function playIntro() {
 
 // ------------------------------------------------------ card video previews
 // Cards are built by game.js; we hook them by delegation so load order
-// doesn't matter. The <video> is only created (preload="none" until then)
-// when a card is hovered, focused by keyboard/gamepad, or selected, and
-// only while the title menu is up: a run hides #menu, which stops every
-// preview and drops its decoder (the selected card used to keep looping
-// behind the game).
+// doesn't matter. The <video> is made at boot (warmCardVideos) from the
+// blob: URL bootMedia fetched, and plays when a card is hovered, focused by
+// keyboard/gamepad, or selected, and only while the title menu is up: a run
+// hides #menu, which stops every preview and drops its decoder (the selected
+// card used to keep looping behind the game); back at the menu it reloads
+// from the same blob: URL, no network.
 const menuEl = document.getElementById('menu');
 const menuShown = () => !!menuEl && !menuEl.classList.contains('hidden');
 function ensurePreview(card) {
@@ -129,11 +271,11 @@ function ensurePreview(card) {
   const prev = card.querySelector('.preview');
   const file = card.dataset.previewVideo;
   if (!prev || !file) return null;
-  v = makeVideo('', { loop: true, preload: 'none' });
+  v = makeVideo('', { loop: true, preload: 'auto' });
   v.className = 'card-video';
   v.addEventListener('error', () => { if (!v.getAttribute('src')) return; card.dataset.noVideo = '1'; v.remove(); });
   v.addEventListener('playing', () => v.classList.add('on'));
-  v.src = VID + file;
+  v.src = bootVideoURL(VID + file);
   prev.appendChild(v);
   return v;
 }
@@ -141,7 +283,7 @@ function updateCard(card, hovered) {
   const active = menuShown() && (hovered || card.classList.contains('selected') || card.classList.contains('pad-focus'));
   if (active) {
     const v = ensurePreview(card);
-    if (v && !v.getAttribute('src')) v.src = VID + card.dataset.previewVideo;
+    if (v && !v.getAttribute('src')) v.src = bootVideoURL(VID + card.dataset.previewVideo);
     if (v && v.paused) v.play().catch(() => {});
   } else {
     const v = card.querySelector('video.card-video');
@@ -243,3 +385,5 @@ function hookTrailer() {
 playIntro();
 hookCards();
 hookTrailer();
+bootFonts();
+bootMedia();

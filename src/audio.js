@@ -712,15 +712,34 @@ class Audio {
     return this._phone;
   }
 
+  /** START loading (Chicago's festival): every stage track fetched now (5 MB of Vorbis, kept);
+   *  desktop decodes them all too (~26 MB each), phones decode from the kept bytes when a stage
+   *  comes in range (their decoded set is capped, see the eviction above). No fetch in play. */
+  async stagePreload(decode = !this._isPhone()) {
+    if (!this.ctx) return;
+    const probe = document.createElement('audio');
+    const exts = probe.canPlayType && probe.canPlayType('audio/ogg; codecs="vorbis"') ? ['ogg', 'm4a'] : ['m4a', 'ogg'];
+    const B = this._stageBytes || (this._stageBytes = {});
+    await Promise.all(Object.keys(STAGE_TRACKS).map(async (id) => {
+      for (const ext of exts) {
+        if (B[id]) break;
+        try { B[id] = { ext, arr: await cachedFetch(STAGE_DIR + STAGE_TRACKS[id] + '.' + ext) }; } catch (e) { /* next format */ }
+      }
+      if (decode) { this._loadStage(id); await this._stageBuf[id]; }
+    }));
+  }
+
   // OGG Vorbis where supported, AAC (.m4a) otherwise (iOS Safari)
   _loadStage(id) {
     if (this._stageBuf[id]) return;
     const probe = document.createElement('audio');
-    const exts = probe.canPlayType && probe.canPlayType('audio/ogg; codecs="vorbis"') ? ['ogg', 'm4a'] : ['m4a', 'ogg'];
+    const kept = this._stageBytes && this._stageBytes[id];
+    const exts = kept ? [kept.ext] : probe.canPlayType && probe.canPlayType('audio/ogg; codecs="vorbis"') ? ['ogg', 'm4a'] : ['m4a', 'ogg'];
     this._stageBuf[id] = (async () => {
       for (const ext of exts) {
         try {
-          const arr = await cachedFetch(STAGE_DIR + STAGE_TRACKS[id] + '.' + ext);
+          // (the bytes stagePreload kept: a copy, decodeAudioData detaches its input)
+          const arr = kept ? kept.arr.slice(0) : await cachedFetch(STAGE_DIR + STAGE_TRACKS[id] + '.' + ext);
           const buf = await new Promise((resolve, reject) => { this.ctx.decodeAudioData(arr, resolve, reject); });
           buf._ext = ext;
           if (this._stageBuf[id] instanceof Promise) this._stageBuf[id] = buf; // not evicted / destroyed meanwhile
@@ -1025,15 +1044,45 @@ class Audio {
 
 
   // ============ Commentary voice-over (wrestling/commentary.js) ============
-  // One mp3 per line under assets/vo/, fetched the first time the booth wants it and kept decoded.
+  // One mp3 per line under assets/vo/. The START loading screen fetches every line the match can
+  // speak (voPreload: compressed bytes kept, 12-18 MB a match) and decodes the opening's; the
+  // rest decode from those bytes when the booth wants them (decodeAudioData runs off the main
+  // thread; nothing is fetched in play). Decoding the whole set would take 0.45-0.7 GB of RAM.
   // voLoad(id) -> Promise<AudioBuffer | null>; voPlay(buffer, gain) -> a handle for voStop().
+  async voPreload(ids, first = [], onProgress) {
+    if (!this.ctx) return;
+    const B = this._voBytes || (this._voBytes = new Map());
+    const want = ids.filter((id) => !B.has(id));
+    let done = 0;
+    const next = async () => {
+      while (want.length) {
+        const id = want.shift();
+        try {
+          const r = await fetch(VO_DIR + id + '.mp3?r=' + VO_REC);
+          if (r.ok) B.set(id, await r.arrayBuffer());
+        } catch (e) { /* a missing line just stays silent */ }
+        if (onProgress) onProgress(++done, ids.length);
+      }
+    };
+    await Promise.all([next(), next(), next(), next(), next(), next()]);
+    await Promise.all(first.map((id) => this.voLoad(id)));
+  }
+  /** Drop the match's voice bytes (another pair or level next run). */
+  voRelease() { if (this._voBytes) this._voBytes.clear(); if (this._vo) this._vo.clear(); }
   voLoad(id) {
     if (!this.ctx) return Promise.resolve(null);
     const M = this._vo || (this._vo = new Map());
     let p = M.get(id);
     if (!p) {
-      // (plain fetch with the recording's version: a re-recorded line keeps its file name, and must not come back from a cache)
-      p = fetch(VO_DIR + id + '.mp3?r=' + VO_REC).then((r) => { if (!r.ok) throw new Error('vo ' + r.status); return r.arrayBuffer(); })
+      const bytes = this._voBytes && this._voBytes.get(id);
+      // A match's lines are all fetched behind its loading screen (voPreload): one missing here would be
+      // fetched in play, so it is reported (smoke test and the up-front loading audit fail on a warning)
+      if (!bytes && this._voBytes && this._voBytes.size) {
+        const W = this._voWarned || (this._voWarned = new Set());
+        if (!W.has(id)) { W.add(id); console.warn('[audio] voice line not preloaded, fetched in play:', id); }
+      }
+      // (plain fetch with the recording's version when a line was not preloaded: a re-recorded line keeps its file name, and must not come back from a cache)
+      p = (bytes ? Promise.resolve(bytes.slice(0)) : fetch(VO_DIR + id + '.mp3?r=' + VO_REC).then((r) => { if (!r.ok) throw new Error('vo ' + r.status); return r.arrayBuffer(); }))
         .then((arr) => new Promise((resolve, reject) => { this.ctx.decodeAudioData(arr, resolve, reject); }))
         .catch(() => null);
       M.set(id, p);

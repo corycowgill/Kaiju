@@ -8,6 +8,63 @@ const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const rand = (a, b) => a + Math.random() * (b - a);
 const count = n => Math.max(4, Math.round(n * Math.max(.3, QUALITY_PROFILE.particleMul)));
 
+// Pooled parts: a puff layer, a trail, a fragment batch is kept (mesh, geometry, material)
+// when its effect ends and handed to the next effect of the same shape, so a power
+// allocates no buffers in play (up-front loading audit: ~1,000 new GPU buffers per 10 s
+// of powers on NYC). mesh.userData.poolKey marks a pooled part; shared parts
+// (userData.shared on geometry / material) are never disposed. game.js's START loading
+// stages every power, then warmPowerPool tops the pool up and draws it once.
+const _pool = new Map();
+let _cap = 24; // parts kept per kind (raised to the warm fill)
+const _poolStats = { made: 0, reused: 0, given: 0, byKey: {} };
+if (typeof window !== 'undefined') window.__powerPool = { pool: _pool, stats: _poolStats }; // (QA: the up-front loading audit)
+const _take = (key) => { const a = _pool.get(key); if (a && a.length) { _poolStats.reused++; return a.pop(); } _poolStats.made++; _poolStats.byKey[key] = (_poolStats.byKey[key] || 0) + 1; return null; };
+// Shared, never disposed: the explosion's rock fragment and the barrage missile
+let _cg = null, _cm = null, _mg = null, _mm = null;
+const _shared = (o) => { o.userData.shared = true; return o; };
+const _chunkGeo = () => _cg || (_cg = _shared(new THREE.DodecahedronGeometry(.13, 0)));
+const _chunkMat = () => _cm || (_cm = _shared(new THREE.MeshStandardMaterial({ color: 0x59534b, roughness: 1 })));
+const _missileGeo = () => _mg || (_mg = _shared(new THREE.ConeGeometry(.22, 1.6, 6)));
+const _missileMat = () => _mm || (_mm = _shared(new THREE.MeshStandardMaterial({ color: 0x48535e, roughness: .55, metalness: .65 })));
+// (the collapse / explosion family runs many at once: a rampage's collapses kept 50-100 of
+// each alive on NYC; the world's effect cap is 180 desktop, 45-60 phones)
+const _HEAVY = /explosion_fireball|^chunks|^puff\|(16|24)\|smoke_plume_8x8\|0\||^puff\|(8|20)\|smoke_plume_8x8\|1\||dust_burst|__grit/;
+/** START loading: every pooled kind topped up (heavy kinds to heavyMin, the rest to min: copies
+ *  of the staged parts) and all of them drawn once with the level's fog, so the buffers of a
+ *  run's worth of simultaneous powers exist before play. Returns the number of parts. */
+export function warmPowerPool(renderer, camera, fog = null, min = 8, heavyMin = 48) {
+  const sc = new THREE.Scene(); sc.fog = fog;
+  let n = 0;
+  for (const [key, a] of _pool) {
+    const want = _HEAVY.test(key) ? heavyMin : min;
+    while (a.length && a.length < want) {
+      const src = a[0], c = src.clone();
+      if (!src.geometry.userData.shared) c.geometry = src.geometry.clone();
+      if (!src.material.userData.shared) c.material = src.material.clone();
+      if (src.geometry.isInstancedBufferGeometry) c.geometry.instanceCount = src.geometry.instanceCount;
+      a.push(c);
+    }
+    if (a.length > _cap) _cap = a.length;
+    for (const m of a) { m.frustumCulled = false; sc.add(m); n++; }
+  }
+  renderer.render(sc, camera);
+  for (const [, a] of _pool) for (const m of a) sc.remove(m); // (every pooled part is frustumCulled false already)
+  return n;
+}
+/** A pooled part back to the pool (an effect that does its own teardown: kaijuPowers.js). */
+export function releasePowerPart(mesh) { _give(mesh); }
+// (a part comes back where its last effect left it: placed at its parent's origin again)
+function _reset(mesh) { mesh.position.set(0, 0, 0); mesh.quaternion.identity(); mesh.scale.set(1, 1, 1); mesh.visible = true; mesh.renderOrder = 0; }
+function _give(mesh) {
+  const k = mesh.userData.poolKey;
+  _poolStats.given++;
+  mesh.removeFromParent();
+  let a = _pool.get(k);
+  if (!a) _pool.set(k, a = []);
+  if (a.length < _cap) a.push(mesh);
+  else { if (!mesh.geometry.userData.shared) mesh.geometry.dispose(); if (!mesh.material.userData.shared) mesh.material.dispose(); if (mesh.isInstancedMesh) mesh.dispose(); }
+}
+
 export class PowerEffect {
   constructor(world, group, life, animate) {
     this.mesh = group; this.life = this.maxLife = life; this.dead = false;
@@ -18,11 +75,13 @@ export class PowerEffect {
     this.life -= dt;
     if (this.life <= 0) {
       this.dead = true; this.mesh.removeFromParent();this.onDispose?.();
-      const geometries = new Set(), materials = new Set();
+      const geometries = new Set(), materials = new Set(), pooled = [];
       this.mesh.traverse(o => {
-        if (o.geometry) geometries.add(o.geometry);
-        for (const m of [].concat(o.material || [])) materials.add(m);
+        if (o.userData.poolKey) { pooled.push(o); return; }
+        if (o.geometry && !o.geometry.userData.shared) geometries.add(o.geometry);
+        for (const m of [].concat(o.material || [])) if (!m.userData.shared) materials.add(m);
       });
+      for (const o of pooled) _give(o);
       for (const g of geometries) g.dispose();
       for (const m of materials) m.dispose(); // atlas textures belong to the cache
       return;
@@ -88,6 +147,8 @@ void main() {
 // Every puff in a layer is one instanced draw, with per-puff atlas frame,
 // rotation and opacity. A procedural wispy mask also works before load ends.
 export function puffs(group, n, getTexture, { sheet = 'smoke_plume_8x8', hot = false, color = 0xffffff, textureWeight = 1, additive = false } = {}) {
+  const key = `puff|${n}|${sheet}|${+hot}|${+additive}|${textureWeight}`, old = _take(key);
+  if (old) return _puffApi(group, old, n, getTexture, sheet, color, true);
   const base = new THREE.PlaneGeometry(1, 1);
   const g = new THREE.InstancedBufferGeometry().copy(base); base.dispose();
   const attr = (name, size) => {
@@ -105,7 +166,20 @@ export function puffs(group, n, getTexture, { sheet = 'smoke_plume_8x8', hot = f
     transparent: true, depthWrite: false, fog: true,
     blending: hot || additive ? THREE.AdditiveBlending : THREE.NormalBlending,
   });
-  const mesh = new THREE.Mesh(g, mat); mesh.frustumCulled = false; mesh.name = hot ? 'power_embers' : 'power_textured_matter'; group.add(mesh);
+  const mesh = new THREE.Mesh(g, mat); mesh.frustumCulled = false; mesh.name = hot ? 'power_embers' : 'power_textured_matter';
+  mesh.userData.poolKey = key;
+  return _puffApi(group, mesh, n, getTexture, sheet, color, false);
+}
+// (a pooled layer comes back with the last effect's puffs: all hidden and retinted first)
+function _puffApi(group, mesh, n, getTexture, sheet, color, reused) {
+  const g = mesh.geometry, mat = mesh.material, A = g.attributes;
+  const center = A.center, shape = A.shape, state = A.state, tint = A.tint, c = new THREE.Color(color);
+  if (reused) {
+    _reset(mesh);
+    for (let i = 0; i < n; i++) { tint.setXYZ(i, c.r, c.g, c.b); shape.setW(i, 0); }
+    tint.needsUpdate = shape.needsUpdate = true;
+  }
+  group.add(mesh);
   return {
     n, mesh,
     tint(i, hex) { c.setHex(hex); tint.setXYZ(i, c.r, c.g, c.b); tint.needsUpdate = true; },
@@ -156,6 +230,22 @@ void main() {
 export function trail(group, points, color, width, energy = 1) {
   const pos = [], tangents = [], uv = [], sides = [], idx = [];
   const strips = Array.isArray(points[0][0]) ? points : [points];
+  // (pooled by its topology: the strips' lengths; positions and tangents rewritten in place)
+  const key = `trail|${strips.map((l) => l.length).join(',')}|${energy ? 1 : 0}`, old = _take(key);
+  if (old) {
+    const P = old.geometry.attributes.position, Tn = old.geometry.attributes.tangent;
+    let v = 0;
+    for (const line of strips) for (let i = 0; i < line.length; i++) {
+      const p = line[i], a = line[Math.max(0, i - 1)], b = line[Math.min(line.length - 1, i + 1)];
+      for (let k = 0; k < 2; k++, v++) { P.setXYZ(v, p[0], p[1], p[2]); Tn.setXYZ(v, b[0] - a[0], b[1] - a[1], b[2] - a[2]); }
+    }
+    P.needsUpdate = Tn.needsUpdate = true;
+    old.geometry.computeBoundingSphere();
+    const u = old.material.uniforms;
+    u.color.value.setHex(color); u.width.value = width; u.time.value = 0; u.opacity.value = 1; u.reveal.value = 1.03; u.energy.value = energy;
+    _reset(old); group.add(old);
+    return { mesh: old, uniforms: u };
+  }
   let base = 0;
   for (const line of strips) {
     for (let i = 0; i < line.length; i++) {
@@ -179,6 +269,7 @@ export function trail(group, points, color, width, energy = 1) {
     transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: true,
     blending: energy ? THREE.AdditiveBlending : THREE.NormalBlending });
   const mesh = new THREE.Mesh(g, mat); mesh.name = 'power_directional_trail'; mesh.frustumCulled = false; group.add(mesh);
+  mesh.userData.poolKey = key;
   return { mesh, uniforms };
 }
 
@@ -222,9 +313,13 @@ export function powerBuilders(getTexture, placeScorch = () => {}, lightBurst = (
     const smoke=puffs(group,count(16),getTexture,{color:0xaca69c});
     const dust=puffs(group,count(12),getTexture,{sheet:'dust_burst_8x8',color:0xb8ac94,textureWeight:.4});
     const embers=puffs(group,count(20),getTexture,{hot:true,color:0xffa253});
-    const chunks=new THREE.InstancedMesh(new THREE.DodecahedronGeometry(.13,0),
-      new THREE.MeshStandardMaterial({color:0x59534b,roughness:1}),count(10));
-    chunks.frustumCulled=false;chunks.name='blast_ballistic_fragments';group.add(chunks);
+    // (the fragment batch pooled whole: one shared rock, the same count every time)
+    let chunks=_take('chunks');
+    if(chunks){_reset(chunks);chunks.count=chunks.instanceMatrix.count;}else{
+      chunks=new THREE.InstancedMesh(_chunkGeo(),_chunkMat(),count(10));
+      chunks.frustumCulled=false;chunks.name='blast_ballistic_fragments';chunks.userData.poolKey='chunks';
+    }
+    group.add(chunks);
     const pose=new THREE.Object3D();
     if(pos.y<4)placeScorch(world,pos,3.4*scale);
     const lamp=lightBurst(world,pos,scale);
@@ -265,10 +360,11 @@ export function powerBuilders(getTexture, placeScorch = () => {}, lightBurst = (
 
   function dustBurst({world,pos,args=[]}) {
     const radius=clamp(args[0]??14,1,35),group=oriented(pos),life=2.5;
-    const dust=puffs(group,count(Math.min(32,(args[1]??8)*2)),getTexture,{sheet:'dust_burst_8x8',color:0xb8ae9d,textureWeight:.4});
+    // (one layer size for every burst, so they share one pool: the burst's own count lit, the rest hidden)
+    const dust=puffs(group,count(32),getTexture,{sheet:'dust_burst_8x8',color:0xb8ae9d,textureWeight:.4}),dustN=count(Math.min(32,(args[1]??8)*2));
     const grit=puffs(group,count(12),getTexture,{sheet:'__grit',color:0x666056});
     return new PowerEffect(world,group,life,T=>{
-      for(let i=0;i<dust.n;i++) {
+      for(let i=0;i<dustN;i++) {
         const delay=i%4*.035,age=Math.max(0,T-delay),a=i*2.399;
         const r=radius*(1-Math.exp(-age*1.8))*randStable(i,.3,1),size=1+radius*.22+age*2;
         dust.set(i,Math.sin(a)*r+age*.6,size*.4+Math.sqrt(age)*radius*.07,Math.cos(a)*r,size*1.4,size,a+age*.06,
@@ -475,8 +571,7 @@ export function powerBuilders(getTexture, placeScorch = () => {}, lightBurst = (
     const group = new THREE.Group(), n = Math.min(requested, isMobile ? 10 : 18);
     const smoke = puffs(group, n * 7, getTexture, { color: 0xb9b5ae });
     const jets = puffs(group, n, getTexture, { hot: true, color: 0xffb052 });
-    const geom = new THREE.ConeGeometry(.22, 1.6, 6);
-    const mat = new THREE.MeshStandardMaterial({ color: 0x48535e, roughness: .55, metalness: .65 });
+    const geom = _missileGeo(), mat = _missileMat(); // (shared, never disposed)
     const start = origin.clone(); start.y = Math.max(12, start.y);
     const bodies = Array.from({ length: n }, (_, i) => {
       const a = i / n * TAU + rand(-.15, .15), r = radius * rand(.5, .95), flight = rand(.8, 1.15);

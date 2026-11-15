@@ -35,10 +35,12 @@ import { QUALITY, Q_HIGH, Q_MED, Q_LOW, isMobile, QUALITY_PROFILE, GLB_CONTENT, 
 import { batchCars, batchMovers } from './carBatch.js';
 import { fireAtomicBreath, updateAtomicBlasts, resetAtomicBlasts } from './atomicBlast.js';
 import { KAIJU_POWERS, spawnKaijuPower, updateKaijuPowers, resetKaijuPowers } from './kaijuPowers.js';
+import { releasePowerPart, warmPowerPool } from './powerVfx.js';
 import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk, waterDepth } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures, flipbooksReady } from './vfx.js';
 import { createWrestling } from './wrestling/index.js';
 import { prebakeAnims } from './wrestling/anims.js';
+import { matchVoiceIds } from './wrestling/commentary.js';
 import { DC_LOOK } from './levels/dcLook.js';
 import { NYC_LOOK } from './levels/nycLook.js';
 import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, lookSunUp, withLookEnvSky, setLookDip } from './look.js';
@@ -1312,10 +1314,12 @@ _linkAsync(_flipWarm).then(() => _flipWarm.children.forEach((m) => {
   const pr = renderer.properties.get(m.material).currentProgram;
   if (pr) { pr.getUniforms(); pr.getAttributes(); }
 }));
-// Desktop: about a second after the title menu is up (past its own first
-// frames' stall), link the effect set in the background
-// (_linkVfxBehindMenu); a START before then skips this.
-if (!isMobile) setTimeout(() => { if (!state.kaiju && !_startingGame) _linkVfxBehindMenu(); }, 3700);
+// Desktop: link the effect set at once, behind the boot screen (it waits for
+// _vfxMenuDone before revealing the menu); a START before then skips this.
+// (The links used to start 3.7 s after the menu showed: 1-6 s menu stalls.)
+// (on the next task: its state is declared further down this module)
+let _vfxMenuDone = null;
+if (!isMobile) setTimeout(() => { if (!state.kaiju && !_startingGame) _linkVfxBehindMenu(); }, 0);
 
 // ------------------------- Game state -------------------------
 const state = {
@@ -1668,6 +1672,7 @@ function confirmMenu() {
 }
 function pollMenuGamepad(dt) {
   if (!_menuVisible() && !_upgradeVisible()) return;
+  if (window.__boot && !window.__boot.done && !_upgradeVisible()) return; // (not under the boot screen)
   if (!navigator.getGamepads) return;
   const pads = navigator.getGamepads();
   let pad = null;
@@ -2081,6 +2086,7 @@ function updateLoneSoldier(dt) {
 // Build cards immediately with the emoji visible, THEN swap in rendered 3D
 // portraits async so the title screen never appears blank if the preview
 // renderer is slow (e.g. iPhone) or fails.
+window.__boot?.set('city', 1); // (the boot screen's first part: the top-level build above is done)
 const cardsDiv = document.getElementById('monsterCards');
 const _cardEls = {};
 function _rosterRows() {
@@ -2139,9 +2145,9 @@ function _tryStaticImage(key) {
     // single request, no probing of other extensions (each miss was a 404)
     const url = `assets/${MONSTERS[key].portrait}`;
     const img = new Image();
-    img.onload = () => { _staticCovered.add(key); _setCardImage(key, url); resolve(true); };
-    img.onerror = () => resolve(false);
     img.src = url;
+    // decoded before it is shown (the boot screen waits on _portraitsReady)
+    img.decode().then(() => { _staticCovered.add(key); _setCardImage(key, url); resolve(true); }, () => resolve(false));
   });
 }
 const _renderPreviewsLazy = () => {
@@ -2155,14 +2161,13 @@ const _renderPreviewsLazy = () => {
     }
   } catch (e) { console.warn('preview render failed; keeping emoji fallback', e); }
 };
-// Kick off both. Static images are probed in parallel; 3D fallback runs once
-// the menu has painted (idleCallback / setTimeout). Whichever finishes first
-// wins per monster, with static taking precedence if both complete.
-Promise.all(Object.keys(MONSTERS).map(_tryStaticImage)).then((results) => {
+// Static images are probed in parallel; the 3D fallback renders right after,
+// only for a monster whose image failed (every monster ships one, so normally
+// never). Both happen under the boot screen: "Boot prewarm" waits on this.
+const _portraitsReady = Promise.all(Object.keys(MONSTERS).map(_tryStaticImage)).then((results) => {
   // If every monster got a static image, skip the 3D render entirely.
   if (results.every(Boolean)) return;
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(_renderPreviewsLazy, { timeout: 500 });
-  else setTimeout(_renderPreviewsLazy, 50);
+  _renderPreviewsLazy();
 });
 document.getElementById('startBtn').addEventListener('click', () => {
   if (!state.monsterKey) return;
@@ -2350,10 +2355,17 @@ document.getElementById('startBtn').addEventListener('click', () => {
 // menu stops it and drops its decoder. Phones keep the still.
 const _reelOk = !isMobile && !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
 let _reel = null;
+const _REEL_URL = 'assets/video/menu_loop.mp4';
+let _reelWait = null; // the boot media wait: a promise, then true
 function _menuReel(on) {
   if (!_reelOk) return;
   // The session's intro trailer plays over the menu first: wait for it
   if (on && document.getElementById('intro-video')) { setTimeout(() => _menuReel(_menuVisible()), 700); return; }
+  // At boot it plays from the blob: URL intro.js fetched whole (window.__bootMedia), never streaming
+  if (on && window.__boot && _reelWait !== true && !window.__bootMedia?.has(_REEL_URL)) {
+    if (!_reelWait) _reelWait = window.__boot.until('media').then(() => { _reelWait = true; _menuReel(_menuVisible() && !menuEl.classList.contains('mn-loading')); });
+    return;
+  }
   if (on) {
     if (!_reel) {
       _reel = document.createElement('video');
@@ -2364,7 +2376,7 @@ function _menuReel(on) {
       _reel.addEventListener('error', () => { if (_reel.getAttribute('src')) _reel.classList.remove('on'); });
       menuEl.querySelector('.mn-sun').before(_reel);
     }
-    if (!_reel.getAttribute('src')) _reel.src = 'assets/video/menu_loop.mp4';
+    if (!_reel.getAttribute('src')) _reel.src = window.__bootMedia?.get(_REEL_URL) || _REEL_URL;
     _reel.play().catch(() => {});
   } else if (_reel) {
     _reel.pause();
@@ -2400,20 +2412,35 @@ new MutationObserver(() => {
   menuEl.classList.toggle('mn-loading', loading);
   _menuReel(!loading && _menuVisible());
 }).observe(_menuLoadingEl, { attributes: true, attributeFilter: ['class'] });
-// Boot prewarm (see .mn-warm in index.html): on until the boot work has
-// settled (30 frames in a row under 50 ms) or the first step change
+// Boot prewarm (see .mn-warm in index.html) behind the boot screen (window.__boot,
+// index.html): the menu is drawn under it with every step showing until the
+// webfonts, the menu's images and videos (intro.js bootFonts / bootMedia) and the
+// portraits are in memory, then until the menu's first raster and the city's
+// first frames behind it have settled (30 frames in a row under 50 ms). Only then
+// is the menu revealed. A step change (a run started under it) ends the warm early.
 _showFighter(Object.keys(MONSTERS)[0], true);
 menuEl.classList.add('mn-warm');
 {
-  let calm = 0, last = performance.now();
-  const watch = () => {
-    const now = performance.now();
-    calm = now - last < 50 ? calm + 1 : 0;
-    last = now;
-    if (calm < 30 && menuEl.classList.contains('mn-warm')) requestAnimationFrame(watch);
-    else menuEl.classList.remove('mn-warm');
-  };
-  requestAnimationFrame(watch);
+  const boot = window.__boot;
+  const wait = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(r, ms))]);
+  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+  (async () => {
+    // (a face or file that never arrives fails open: the menu still shows, that asset loads on use)
+    await wait(Promise.all([boot?.until('fonts'), boot?.until('media'), _portraitsReady]), 60000);
+    // desktop: the effect set's programs, linked behind the boot screen too (_linkVfxBehindMenu)
+    if (!isMobile) await wait(_vfxMenuDone || Promise.resolve(), 20000);
+    let calm = 0, last = performance.now();
+    while (calm < 30 && menuEl.classList.contains('mn-warm')) {
+      await frame();
+      const now = performance.now();
+      calm = now - last < 50 ? calm + 1 : 0;
+      last = now;
+      boot?.set('warm', calm / 30);
+    }
+    menuEl.classList.remove('mn-warm');
+    await frame(); await frame(); // (the steps back to hidden, under the boot screen)
+    boot?.finish();
+  })();
 }
 if (/[?&]debug\b/.test(location.search)) window.__menuQA = { pad: _menuPad, rows: () => _menuRows().map((r) => r.length), step: (s) => _setMenuStep(s) };
 
@@ -2617,6 +2644,8 @@ function _queueVfxLinks() {
  *  the first frames (_linkVfxInSlices). */
 function _linkVfxBehindMenu() {
   if (_vfxLinked) return;
+  let done;
+  _vfxMenuDone = new Promise((r) => { done = r; });
   const t0 = performance.now();
   _vfxStaged = new THREE.Group();
   const items = [], seen = new Set();
@@ -2642,7 +2671,7 @@ function _linkVfxBehindMenu() {
   let i = 0;
   const inFlight = [];
   const next = () => {
-    if (state.kaiju || _startingGame) { _vfxLinked = null; return; }
+    if (state.kaiju || _startingGame) { _vfxLinked = null; done(); return; }
     for (let k = inFlight.length - 1; k >= 0; k--) if (!pending(inFlight[k])) inFlight.splice(k, 1);
     while (i < items.length && inFlight.length < CAP) {
       const o = items[i++];
@@ -2651,6 +2680,7 @@ function _linkVfxBehindMenu() {
     }
     if (inFlight.length) { setTimeout(next, 100); return; }
     console.log(`[prewarm:vfx] ${items.length} effect materials linked behind the menu in ${(performance.now() - t0).toFixed(0)} ms (${renderer.info.programs.length} programs)`);
+    done();
   };
   _vfxLinked = Promise.resolve();
   next();
@@ -2692,6 +2722,26 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
   let destr = null;
   try { destr = stageDestruction(stage); } catch (e) { warnOnce('prewarm|debris', '[prewarm] debris not prewarmed:', e); }
   for (const t of ['hp', 'rage', 'score']) stage.add(new Pickup(t, 0, 0, 0).root); // the first building's drop
+  // ...the artillery shell, its ground marker and the air-strike ring (made when the first one is
+  // fired: their unlit transparent double-sided variant linked mid-run, measured by the up-front
+  // loading audit on Tokyo and DC)
+  { const m = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffaa44 })); stagedEnemies.push(m); stage.add(m); }
+  { const m = new THREE.Mesh(new THREE.RingGeometry(2.5, 3.0, 24), new THREE.MeshBasicMaterial({ color: 0xff3344, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })); stagedEnemies.push(m); stage.add(m); }
+  { const m = new THREE.Mesh(new THREE.RingGeometry(18, 22, 32), new THREE.MeshBasicMaterial({ color: 0xff5544, side: THREE.DoubleSide, transparent: true, opacity: 0.7 })); stagedEnemies.push(m); stage.add(m); }
+  // ...and every element power of the run's kaiju (player and rival): drawn in the warm frame,
+  // then their puff layers and ribbons go to powerVfx's pool, so a power in play reuses them
+  // instead of making buffers (resetKaijuPowers after the warm frame)
+  {
+    const stub = Object.create(world);
+    stub.scene = stage; stub.effects = []; stub.shells = []; stub.debris = [];
+    const P = new THREE.Vector3(0, 2, 0), D = new THREE.Vector3(0, 0, 1);
+    for (const cfg of [state.monsterCfg, _rivalCache && _rivalCache.cfg]) {
+      if (!cfg) continue;
+      for (const move of ['beam', 'impact', 'roar', 'charge', 'ult']) {
+        try { spawnKaijuPower(stub, cfg, move, P, { direction: D, extent: 20 }); } catch (e) { warnOnce('prewarm|kp|' + move, '[prewarm] kaiju power not staged:', e && e.message); }
+      }
+    }
+  }
   try { batchMovers([[spawnCars(stage, 16, 10, 40).concat(destr ? destr.cars : []), (c) => c.root], [destr ? destr.debris : null, (d) => d]], stage, camera, false); } catch (e) { warnOnce('prewarm|cars', '[prewarm] car spawn failed:', e); }
   try { spawnCivilians(stage, 2, 10); } catch (e) { warnOnce('prewarm|civs', '[prewarm] civilian spawn failed:', e); }
   // Gameplay set first: kaiju + enemies, and the whole scene (the GLB
@@ -2792,11 +2842,18 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
   scene.remove(stage);
   if (fxLink) {
     stage.remove(_vfxStaged);
+    // (their pooled parts, warm now, wait for the effects in play: powerVfx.js)
+    const parts = [];
+    _vfxStaged.traverse((o) => { if (o.userData.poolKey) parts.push(o); });
+    for (const o of parts) releasePowerPart(o);
     for (const o of fxShown) o.visible = false;
     for (const o of fxCulled) o.frustumCulled = true;
     _vfxWarmLevel = world.level;
   }
   if (destr) destr.release();
+  resetKaijuPowers(); // (the staged powers: their parts into the pool)
+  // ...topped up to a run's worth of simultaneous effects and drawn once (no buffers made in play)
+  try { warmPowerPool(renderer, camera, scene.fog, isMobile ? 4 : 8, isMobile ? 24 : 80); } catch (e) { warnOnce('prewarm|pool', '[prewarm] power pool not warmed:', e && e.message); }
   if (kaijuRoot) stage.remove(kaijuRoot);
   if (rivalRoot) stage.remove(rivalRoot);
   stage.traverse((n) => { if (n.isSkinnedMesh && n.skeleton) n.skeleton.dispose(); });
@@ -3350,6 +3407,22 @@ async function _startGameInner(key) {
     if (_mode.id === 'wrestling') {
       loadingStatus.textContent = 'REHEARSING THE MATCH';
       try { await prebakeAnims(glb); if (rivalKey) await prebakeAnims(_rivalCache.glb); } catch (e) { warnOnce('prewarm|anims', '[prewarm] anim bake failed (bakes at the bell instead):', e && e.message); }
+      // The booth: every line this match can speak, fetched now (the opening's decoded too), so
+      // the commentary never fetches in play (audio.voPreload). Off with the booth's voice off.
+      let vo = true;
+      try { vo = !/[?&]vo=0/.test(location.search) && localStorage.getItem('kh_vo') !== '0'; } catch (e) { /* private mode */ }
+      const voKey = `${key}|${rivalKey}|${world.level}`;
+      if (vo && rivalKey && _voKey !== voKey) {
+        audio.voRelease();
+        const { all, first } = matchVoiceIds(key, rivalKey, world.level, world.buildings.filter((b) => b.landmarkId).map((b) => b.landmarkId));
+        loadingStatus.textContent = 'THE BOOTH TAKES ITS SEATS';
+        await audio.voPreload(all, first, (n, total) => {
+          const pct = Math.round(n / total * 100);
+          loadingBar.style.width = pct + '%'; loadingPct.textContent = pct + '%';
+          loadingStatus.textContent = `THE BOOTH TAKES ITS SEATS • ${n}/${total} LINES`;
+        });
+        _voKey = voKey;
+      }
     }
     await _hudPrewarmEnd();
 
@@ -3448,6 +3521,9 @@ async function _startGameInner(key) {
     if(renderer.compileAsync)await renderer.compileAsync(scene,camera);
     else renderer.compile(scene,camera);
   }
+  await _preloadUpgradeArt(); // (the upgrade screen's art, decoded before play)
+  // Kaijupalooza!'s stage PAs (Chicago): their music fetched (desktop: decoded) before play
+  if (world.level === 'chicago') { loadingStatus.textContent = 'SOUNDCHECK'; await audio.stagePreload(); }
   await _settleGpu([duel && duel.glb && duel.glb.root, lone && camera]); // (perf) the first frame's GPU work, behind the loading screen
   loadingScreen.classList.remove('visible');
   // Effects not linked behind the menu: phones queue them all now, desktop
@@ -3456,10 +3532,10 @@ async function _startGameInner(key) {
   if (_vfxWarmLevel === world.level) { /* linked and drawn behind the loading screen */ }
   else if (isMobile) _queueVfxLinks();
   else setTimeout(_linkVfxInSlices, 500);
-  _preloadUpgradeArt();
   if (!touchUI) _requestPointerLock();
 }
 let _helpDimTimer = 0;
+let _voKey = ''; // the match whose voice lines are loaded (audio.voPreload)
 /** Hide the in-run HUD (game over, quit to menu). */
 function _hideRunHUD() {
   document.exitPointerLock?.();
@@ -6240,17 +6316,27 @@ const UPGRADE_POOL = [
 
 // Decode the card art when a run starts so the picker never pops in empty.
 let _upgradeArtLoaded = false;
+// The upgrade cards' art, fetched and decoded behind the START loading screen and kept: the
+// cards show these very elements (no request or decode when the upgrade screen opens)
+const _upgradeImgs = new Map();
 function _preloadUpgradeArt() {
-  if (_upgradeArtLoaded) return;
-  _upgradeArtLoaded = true;
-  for (const u of UPGRADE_POOL) { const im = new Image(); im.decoding = 'async'; im.src = u.img; }
+  if (_upgradeArtLoaded) return _upgradeArtLoaded;
+  _upgradeArtLoaded = Promise.all(UPGRADE_POOL.map((u) => {
+    const im = new Image(); im.decoding = 'async'; im.src = u.img;
+    _upgradeImgs.set(u.img, im);
+    return im.decode().catch(() => { _upgradeImgs.delete(u.img); });
+  }));
+  return _upgradeArtLoaded;
 }
 
 function _fillUpgradeCard(card, u) {
   card.className = 'ucard';
   card.style.setProperty('--ac', u.ac);
   card.innerHTML = `<div class="u-art"><img class="icon" src="${u.img}" alt="" width="256" height="256" decoding="async"><span class="u-emoji" aria-hidden="true">${u.icon}</span></div><h3>${u.name}</h3><p>${u.desc}</p>`;
-  const img = card.querySelector('img');
+  let img = card.querySelector('img');
+  // (the preloaded, decoded element in its place)
+  const pre = _upgradeImgs.get(u.img);
+  if (pre) { pre.className = 'icon'; pre.alt = ''; pre.width = 256; pre.height = 256; img.replaceWith(pre); img = pre; }
   img.addEventListener('error', () => img.parentElement.classList.add('noimg'), { once: true });
   return img;
 }
@@ -6693,13 +6779,32 @@ function _pickRivalKey(playerKey) {
 async function loadRival(key) {
   if (_rivalCache && _rivalCache.key === key) return _rivalCache;
   if (!MONSTERS[key] || key === state.monsterKey) throw new Error(`loadRival: '${key}' is not a possible rival`);
-  const glb = await loadKaijuModel(key);
-  if (_rivalCache) _disposeKaijuGLB(_rivalCache.glb);
-  _rivalCache = { key, cfg: MONSTERS[key], glb };
-  styleKaiju(glb.root, 1, key);
-  markShadowCaster(glb.root);
-  await _preuploadTextures([glb.root]);
-  return _rivalCache;
+  // The title defense's next challenger, loaded behind the loading screen like a START: the
+  // model, its textures and programs, its baked match clips and the booth lines for the new
+  // pair (nothing of it is fetched, decoded or linked once the next match is on)
+  const screen = document.getElementById('loading-screen'), status = document.getElementById('loading-status');
+  screen.classList.add('visible');
+  if (status) status.textContent = 'THE NEXT CHALLENGER';
+  try {
+    const glb = await loadKaijuModel(key);
+    if (_rivalCache) _disposeKaijuGLB(_rivalCache.glb);
+    _rivalCache = { key, cfg: MONSTERS[key], glb };
+    styleKaiju(glb.root, 1, key);
+    markShadowCaster(glb.root);
+    await _preuploadTextures([glb.root]);
+    await _linkAsync(glb.root);
+    try { await prebakeAnims(glb); } catch (e) { warnOnce('prewarm|anims', '[prewarm] anim bake failed (bakes at the bell instead):', e && e.message); }
+    let vo = true;
+    try { vo = !/[?&]vo=0/.test(location.search) && localStorage.getItem('kh_vo') !== '0'; } catch (e) { /* private mode */ }
+    if (vo) {
+      const { all, first } = matchVoiceIds(state.monsterKey, key, world.level, world.buildings.filter((b) => b.landmarkId).map((b) => b.landmarkId));
+      await audio.voPreload(all, first, (n, total) => { if (status) status.textContent = `THE NEXT CHALLENGER • ${n}/${total} LINES`; });
+      _voKey = `${state.monsterKey}|${key}|${world.level}`;
+    }
+    return _rivalCache;
+  } finally {
+    screen.classList.remove('visible');
+  }
 }
 
 // ---- damage and buildings for a body that is not the player ----

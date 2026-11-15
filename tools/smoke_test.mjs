@@ -143,6 +143,10 @@ globalThis.Image = class { constructor() { this.height = 1; } set src(v) { setTi
 URL.createObjectURL = () => 'blob:stub';
 URL.revokeObjectURL = noop;
 const fetched = new Set();
+// Up-front loading: once the run is built (templates in, buildings placed: the game's loading
+// screen ends here), playing it must fetch nothing (owner, 2026-11-15)
+let afterStart = false;
+const lateFetches = [];
 let fetchedBytes = 0; // GLBs + JSON through fetch (images via <img> not counted)
 globalThis.fetch = async (u) => {
   const url = typeof u === 'string' ? u : u.url;
@@ -151,6 +155,7 @@ globalThis.fetch = async (u) => {
   if (!fs.existsSync(p)) return new Response(null, { status: 404 });
   if (!fetched.has(url)) fetchedBytes += fs.statSync(p).size;
   fetched.add(url);
+  if (afterStart) lateFetches.push(url);
   return new Response(fs.readFileSync(p));
 };
 
@@ -273,6 +278,7 @@ if (Q.GLB_CONTENT) {
   await step(`${level} building templates`, () => city.loadBuildingTemplates(undefined, level));
   await step('flushPendingGLBBuildings', () => city.flushPendingGLBBuildings(scene));
 }
+afterStart = true; // (the run starts: from here on nothing may be fetched)
 const spawned = {};
 let traffic = { cars: [], civs: [] };
 await step('spawn cars/civilians', () => {
@@ -803,6 +809,8 @@ if (process.env.SMOKE_ASSETS) {
 summary += `${res && res.buildings ? res.buildings.length : 0} buildings, scene ${totals.draws} meshes (${totals.shadowDraws} cast), ${(totals.tris / 1e6).toFixed(2)}M tris, ${litPrograms} lit programs; `;
 // Chicago budget (desktop): Tokyo's own totals with this counter (desktop HIGH ~710 meshes /
 // ~5.0M tris) plus ~15%; phones: the MED target of ~450 draws and 4-5M tris (Tokyo MED: ~365 / ~2.3M)
+// No fetch after the run started (the up-front loading rule): every request listed
+if (lateFetches.length) fail(`${lateFetches.length} files fetched after the run started (load them behind the loading screen): ${[...new Set(lateFetches)].slice(0, 8).join(', ')}`);
 const BUDGET = Q.isMobile ? { draws: 450, tris: 4.5e6 } : { draws: 815, tris: 5.8e6 };
 if (DATA && res && res.bounds) {
   const B = res.bounds;

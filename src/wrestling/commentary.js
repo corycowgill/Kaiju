@@ -38,6 +38,27 @@ const sigId = (key, name) => { const d = (SIGNATURES[key] || []).find((x) => x.n
 const lmKey = (id) => (id || '').replace(/_(rear|twin|\d)$/, '');
 
 /** @returns {{ start, update, updateIdle, dispose, say, enabled, debug }} */
+/** The voice files a match between kaiju keys pk and rk on `level` can speak (every booth row whose
+ *  fighter / pair / matchup / alignment facts can hold for these two; the Chicago-named rows off
+ *  Chicago; landmark rows only where those landmarks stand), for the START loading screen to fetch
+ *  up front. first: the opening's lines (intro, entrance, name cards, bell), decoded up front too. */
+export function matchVoiceIds(pk, rk, level, landmarkIds = null) {
+  // (landmark rows: the level's standing landmarks by the booth's own key, lmKey; without a list, Chicago's all)
+  const lms = landmarkIds ? new Set(landmarkIds.map(lmKey)) : null;
+  const fs = [pk, rk], mu = matchup(pk, rk), pair = [pk, rk].sort().join('+'), al = [alignOf(pk), alignOf(rk)];
+  const OPEN = /^(intro|entrance|namecard|bell|card|booth\.open|open)/;
+  const all = new Set(), first = new Set();
+  for (const row of VO_LINES) {
+    const c = row[1];
+    if (level !== 'chicago' && chicagoLine(row)) continue;
+    if ((c.a && !fs.includes(c.a)) || (c.v && !fs.includes(c.v)) || (c.pair && c.pair !== pair) || (c.mu && c.mu !== mu)) continue;
+    if ((c.aa && !al.includes(c.aa)) || (c.va && !al.includes(c.va))) continue;
+    if (c.lm && (lms ? !lms.has(c.lm) : level !== 'chicago')) continue;
+    for (const u of row[2]) if (u[3] > 0) { all.add(u[2]); if (OPEN.test(row[0])) first.add(u[2]); }
+  }
+  return { all: [...all], first: [...first] };
+}
+
 export function createCommentary(ctx, W) {
   const T = VO_TUNE, bus = W.bus, audio = ctx.audio;
   const byTopic = new Map();
@@ -149,7 +170,9 @@ export function createCommentary(ctx, W) {
       const rows = byTopic.get(t);
       if (!rows) continue;
       let n = 0;
-      for (const r of rows) if (fits(r[1], f) && n++ < 6) for (const u of r[2]) if (u[3] > 0 && !primed.has(u[2])) { primed.add(u[2]); primeQ.push(u[2]); }
+      // (rows the venue gate leaves unsaid off Chicago are never primed: pick() would never choose them)
+      const off = offChicago(ctx);
+      for (const r of rows) if (fits(r[1], f) && !(off && CHI_ROWS.has(r)) && n++ < 6) for (const u of r[2]) if (u[3] > 0 && !primed.has(u[2])) { primed.add(u[2]); primeQ.push(u[2]); }
     }
     pump();
   }

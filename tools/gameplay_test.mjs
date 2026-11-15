@@ -216,7 +216,9 @@ test('combat VFX remain bounded and clean up their geometry on expiry or retirem
       const fx=vfx.spawn(name,{world,pos:new THREE.Vector3(),origin:new THREE.Vector3(0,2,0),
         dir:new THREE.Vector3(0,0,-1),normal:new THREE.Vector3(0,0,1),length:300,source,args:[2,8]});
       assert.ok(fx,`${name} exists`);let draws=0,disposed=0;
-      fx.mesh.traverse(o=>{if(o.isMesh){draws++;o.geometry.addEventListener('dispose',()=>disposed++);}});
+      // (a pooled part, powerVfx.js poolKey, is kept for the next effect instead of disposed: it counts as released when it left the scene)
+      const pooled=[];
+      fx.mesh.traverse(o=>{if(o.isMesh){draws++;if(o.userData.poolKey||o.geometry.userData.shared)pooled.push(o);else o.geometry.addEventListener('dispose',()=>disposed++);}});
       assert.ok(draws<=5,`${name}: ${draws} draws`);
       for(let i=0;i<12;i++) {
         source.position.x+=.1;fx.tick(1/60);
@@ -224,8 +226,9 @@ test('combat VFX remain bounded and clean up their geometry on expiry or retirem
       }
       if(name==='kaijuCharge')assert.ok(Math.abs(fx.mesh.position.x-source.position.x)<.001,'charge follows animated source');
       if(retire)effects.finishEffect(fx);else fx.tick(20);
-      assert.equal(fx.dead,true);assert.equal(fx.mesh.parent,null);assert.equal(disposed,draws,`${name}: geometry released`);
-      effects.finishEffect(fx);assert.equal(disposed,draws,'retirement is idempotent');
+      const released=()=>disposed+pooled.filter(o=>!o.parent||o.parent===fx.mesh&&!fx.mesh.parent).length;
+      assert.equal(fx.dead,true);assert.equal(fx.mesh.parent,null);assert.equal(released(),draws,`${name}: geometry released`);
+      effects.finishEffect(fx);assert.equal(released(),draws,'retirement is idempotent');
       assert.equal(scene.children.filter(o=>o!==source&&!o.isLight).length,0);
     }
   }
@@ -255,12 +258,17 @@ test('all six new Kaiju powers initialize, animate, and release their resources'
       const fx = liveKaijuPowers().at(-1);
       assert.ok(fx && !fx.dead && !world.effects.includes(fx), `${key} ${move}: a live power, outside world.effects (never trimmed by its cap)`);
       let draws = 0, owned = 0, geometries = 0, materials = 0, instanced = 0, instances = 0;
+      const pooled = [];
       fx.mesh.traverse(object => {
         if (!object.isMesh) return;
         draws++;
-        if (!object.geometry.userData.keep) { owned++; object.geometry.addEventListener('dispose', () => geometries++); }
-        object.material.addEventListener('dispose', () => materials++);
-        if (object.isInstancedMesh) { instanced++; object.addEventListener('dispose', () => instances++); }
+        // (puff layers and ribbons go back to powerVfx's pool instead of being disposed)
+        if (object.userData.poolKey) pooled.push(object);
+        else {
+          if (!object.geometry.userData.keep) { owned++; object.geometry.addEventListener('dispose', () => geometries++); }
+          object.material.addEventListener('dispose', () => materials++);
+          if (object.isInstancedMesh) { instanced++; object.addEventListener('dispose', () => instances++); }
+        }
         // only the shared effect programs: the puff / ribbon shaders and the fragments' standard material
         assert.ok(object.material.isShaderMaterial || (object.material.isMeshStandardMaterial && object.isInstancedMesh && !object.material.transparent && !object.instanceColor),
           `${key} ${move}: ${object.material.type} would need a program of its own`);
@@ -282,10 +290,11 @@ test('all six new Kaiju powers initialize, animate, and release their resources'
       for (const other of world.effects) if (other !== fx) { other.tick(6); other.tick(1); }
       assert.equal(world.scene.children.filter((o) => !o.isLight).length, 0, `${key} ${move}: everything it spawned is gone`);
       assert.equal(geometries, owned);
-      assert.equal(materials, draws);
+      assert.equal(materials + pooled.length, draws);
+      assert.ok(pooled.every((o) => !o.parent), `${key} ${move}: pooled parts left the scene`);
       assert.equal(instances, instanced);
       effects.finishEffect(fx);
-      assert.equal(materials, draws, 'retirement is idempotent');
+      assert.equal(materials + pooled.length, draws, 'retirement is idempotent');
     }
   }
 });
@@ -865,4 +874,36 @@ test('Title Match on NYC: New York place names on screen, the booth gate as off 
   assert.equal(placeText(ny, 'Gorrak · CHICAGO HEAVYWEIGHT CHAMPION'), 'Gorrak · NEW YORK HEAVYWEIGHT CHAMPION');
   assert.equal(placeText(ny, 'Into Lake Michigan! That wave will reach Indiana!'), 'Into the Pond! That wave will reach New Jersey!');
   assert.match(venueHome(ny, 'player', 'x'), /HUDSON/);
+});
+
+// ---- Up-front loading: the booth's lines are all fetched behind the loading screen ----
+test('every booth line a match can speak is in its preloaded voice set (matchVoiceIds), every pair and arena level', async () => {
+  const { matchVoiceIds } = await import('../src/wrestling/commentary.js');
+  const { VO_LINES } = await import('../src/wrestling/commentaryLines.js');
+  const { chicagoLine } = await import('../src/wrestling/venue.js');
+  const { alignOf, matchup } = await import('../src/wrestling/roster.js');
+  const { MONSTERS } = await import('../src/monsters.js');
+  const lmKey = (id) => (id || '').replace(/_(rear|twin|\d)$/, ''); // (commentary.js)
+  const keys = Object.keys(MONSTERS);
+  for (const level of ['chicago', 'dc', 'nyc']) {
+    const layout = JSON.parse(fs.readFileSync(new URL(`../assets/levels/${level}_layout.json`, import.meta.url), 'utf8'));
+    const lmIds = layout.landmarks.map((l) => l.id), lms = new Set(lmIds.map(lmKey));
+    for (const pk of keys) for (const rk of keys) {
+      if (pk === rk) continue;
+      const set = new Set(matchVoiceIds(pk, rk, level, lmIds).all);
+      // every fact the booth can build (commentary.js facts(): a / v any of the two or none,
+      // their alignments, the matchup and pair; m any move or signature; lm any standing landmark)
+      const F = [];
+      for (const a of ['', pk, rk]) for (const v of ['', pk, rk]) {
+        if (a && a === v) continue;
+        F.push({ a, v, aa: a ? alignOf(a) : '', va: v ? alignOf(v) : '', mu: matchup(pk, rk), pair: [pk, rk].sort().join('+') });
+      }
+      const fits = (c) => F.some((f) => Object.keys(c).every((k) => (k === 'm' ? true : k === 'lm' ? lms.has(c.lm) : c[k] === f[k])));
+      for (const row of VO_LINES) {
+        if (level !== 'chicago' && chicagoLine(row)) continue; // (the venue gate: never said off Chicago)
+        if (!fits(row[1])) continue;
+        for (const u of row[2]) if (u[3] > 0) assert.ok(set.has(u[2]), `${level} ${pk} v ${rk}: line ${u[2]} (${row[0]} ${JSON.stringify(row[1])}) can be spoken but is not preloaded`);
+      }
+    }
+  }
 });

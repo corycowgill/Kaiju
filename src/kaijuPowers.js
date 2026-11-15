@@ -9,7 +9,7 @@
 // work only writes instance attributes and uniforms.
 import * as THREE from 'three';
 import vfx, { flipTexture, placeScorch } from './vfx.js';
-import { puffs, trail, randStable as rs } from './powerVfx.js';
+import { puffs, trail, randStable as rs, releasePowerPart } from './powerVfx.js';
 import { QUALITY_PROFILE, isMobile } from './quality.js';
 
 const TAU = Math.PI * 2, PI = Math.PI;
@@ -48,11 +48,15 @@ class KaijuFx {
   dispose() {
     this.dead = true;
     this.mesh.removeFromParent();
+    // (puff layers and ribbons go back to powerVfx's pool for the next power: no buffers made in play)
+    const pooled = [];
     this.mesh.traverse((o) => {
+      if (o.userData.poolKey) { pooled.push(o); return; }
       if (o.isInstancedMesh) o.dispose();
-      if (o.geometry && !o.geometry.userData.keep) o.geometry.dispose();
-      if (o.material) o.material.dispose();
+      if (o.geometry && !o.geometry.userData.keep && !o.geometry.userData.shared) o.geometry.dispose();
+      if (o.material && !o.material.userData?.shared) o.material.dispose();
     });
+    for (const o of pooled) releasePowerPart(o);
   }
 }
 
