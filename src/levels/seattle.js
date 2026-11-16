@@ -37,6 +37,10 @@ const DETAIL_URL = './assets/levels/seattle_detail.json';
 /** The Title Match belt on Seattle (mat, banners, HUD). */
 export const SEATTLE_TITLE = 'SEATTLE HEAVYWEIGHT CHAMPIONSHIP';
 
+// Gameplay minimum street widths (u): Seattle's real streets are narrow, and the shared
+// 7 / 4.5 trims more of its blocks than NYC's. TRIAL (lead's decision pending): null keeps the
+// shared minimums; { minMajor, minMinor } passes Seattle's own to normalizeLayout
+const STREET_MIN = { minMajor: 6, minMinor: 4 };
 let _layout = null;
 /** Fetch the layout once (revalidated, so an updated JSON is picked up). */
 export async function loadSeattleLayout() {
@@ -44,7 +48,7 @@ export async function loadSeattleLayout() {
   const r = await fetch(LAYOUT_URL, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`seattle layout: HTTP ${r.status}`);
   const raw = await r.json();
-  _layout = LK.normalizeLayout(raw);
+  _layout = LK.normalizeLayout(raw, STREET_MIN || undefined);
   const pt = (p) => (p ? { x: +p.x, z: +p.z, rot: p.rot !== undefined ? +p.rot : undefined } : null);
   // Layout extras (DC's): the ring site, VS spawns, the Lone Soldier start, wave entry points
   // (ring east / west: runway and west screens pulled in, u; gate: false drops the entrance gateway)
@@ -494,7 +498,8 @@ export function buildSeattle(scene, world, opts, K) {
   if (world) world.chicagoSurfaceWear = surfaceWear;
   animators.push({ update(dt, time) { tickSeattleMaterials(time); } });
   const SW_TILE = K.TILE.SIDEWALK, ASPHALT_TILE = 2;
-  const MAJOR_W = 6.9, SIDEWALK_W = 1.2, PS = 0.8;
+  // (an avenue: a road at the major minimum or wider)
+  const MAJOR_W = (STREET_MIN?.minMajor ?? 7) - 0.1, SIDEWALK_W = 1.2, PS = 0.8;
   const ring = opts.mode === 'wrestling' && L.ring ? L.ring : null;
   // Landmarks that stand: a district or an area with no structure of its own
   // (Times Square, Bryant Park) is a name on the map, nothing is built there
@@ -718,7 +723,7 @@ export function buildSeattle(scene, world, opts, K) {
             quadAlong(wht[0], wht[1], wht[2], px, pz, e.dx, e.dz, dash, lw * 0.85, 0.07);
           }
         }
-      } else if (w >= 4.5) {
+      } else if (w >= (STREET_MIN?.minMinor ?? 4.5)) {
         for (let t = 0.5; t + dash < len; t += dash + gap) {
           quadAlong(yel[0], yel[1], yel[2], p0[0] + e.dx * (t + dash / 2), p0[1] + e.dz * (t + dash / 2), e.dx, e.dz, dash, lw * 1.1, 0.07);
         }
@@ -1550,7 +1555,7 @@ export function buildSeattle(scene, world, opts, K) {
     // avenues' parking lanes, one every ~6u with gaps, and rows in the surface lots (layout parks
     // kind plaza / surface parking). Phones: a few, nearer the cap of the draw budget
     {
-      const capKerb = lite ? 140 : 900, capLot = lite ? 80 : 700;
+      const capKerb = lite ? 60 : 900, capLot = lite ? 30 : 700;
       let kerb = 0, lot = 0;
       const park = (x, z, yaw) => {
         if (isWater(x, z) || onRing(x, z) || inRingBox(x, z, 1.5, 1.5) || onLandmark(x, z)) return false;

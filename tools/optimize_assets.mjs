@@ -36,7 +36,7 @@ const TONE = [
 ];
 // Hand-authored phone models live only in assets/m/ (see make_mobile_assets PINNED):
 // they get the same geometry / format treatment, at phone texture density
-const PINNED_MOBILE = /^m\/buildings\/chicago\/soldier_field(_lod1)?\.glb$/;
+const PINNED_MOBILE = /^m\/buildings\/(chicago\/soldier_field|seattle\/seattle_(belltown_[abc]|pioneer_[abc]|podium_[abcd]|low_[ce]))(_lod1)?\.glb$/; // + Seattle kit: trimmed phone meshes (seattle-design)
 
 function walk(dir, rel = '') {
   const out = [];

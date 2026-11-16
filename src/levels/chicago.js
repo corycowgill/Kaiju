@@ -444,8 +444,10 @@ function _rect(o) {
 const KIT_IDS = new Set(['bascule_bridge', 'l_track_segment', 'l_track_curve', 'l_station', 'riverwalk', 'dusable_bridge', 'art_institute_lions']);
 
 /** Accepts the cartographer's schema (meta, water[], roadGraph, cx/cz/rot
- *  buildings, spawn.player) and the older dev placeholder. */
-function _normalizeLayout(L) {
+ *  buildings, spawn.player) and the older dev placeholder. opts (a level's
+ *  own, optional): minMajor / minMinor, its gameplay minimum street widths
+ *  in place of 7 / 4.5 (Seattle's narrower streets); left out, nothing changes. */
+function _normalizeLayout(L, opts = {}) {
   const out = {};
   // Real-scale map (0.2 u/m): street furniture and sidewalks shrink to match
   out.scale = L.meta?.scale || L.unitsPerMeter || 0;
@@ -462,7 +464,7 @@ function _normalizeLayout(L) {
   // Real scale: major streets two lanes each way at 3.5u (7u), minor ones a
   // lane each way (4.5u); the old 8.5 / 6 read ~3x a Loop street and cost
   // ~38% of the building footprints to the road trim
-  const minW = (cls) => (out.real ? (cls === 'lsd' ? 12 : cls === 'minor' ? 4.5 : 7) : 0);
+  const minW = (cls) => (out.real ? (cls === 'lsd' ? 12 : cls === 'minor' ? opts.minMinor ?? 4.5 : opts.minMajor ?? 7) : 0);
   out.roads = (L.roads || []).map((r) => ({
     id: r.id, name: r.name || '', kind: kindOf(r), expressway: !!r.expressway,
     width: Math.max(minW(r.class), +(r.width || (r.kind === 'lsd' ? 16 : r.kind === 'arterial' ? 12 : r.kind === 'alley' ? 4 : 9))),
