@@ -657,8 +657,12 @@ export function buildNyc(scene, world, opts, K) {
     };
     for (let i = 0; i < pts.length; i++) {
       if (i > 0) {
+        // (sampled every 2u only where the segment comes near the venue: elsewhere the road keeps its
+        // own points, so the car graph's edges stay block-long and the lamps / shelters / carts get placed)
         const a = pts[i - 1], b = pts[i], n = Math.floor(Math.hypot(b[0] - a[0], b[1] - a[1]) / 2);
-        for (let k = 1; k < n; k++) visit([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+        if (inRingBox((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.abs(b[0] - a[0]) / 2 + hw + 1, Math.abs(b[1] - a[1]) / 2 + hw + 1)) {
+          for (let k = 1; k < n; k++) visit([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+        }
       }
       visit(pts[i]);
     }
@@ -795,6 +799,9 @@ export function buildNyc(scene, world, opts, K) {
     }
   }
   K.setCarNet(net);
+  // (dressing counts for the smoke test's summary: world.levelStats)
+  const dstats = { netEdges: net.edges.length, lamps: 0, avenueEdges: 0 };
+  if (world) world.levelStats = dstats;
 
   // ---- parks: Central Park, Bryant Park, the plazas ----
   const onRoad = LK.roadIndex(roads, SIDEWALK_W, 2);
@@ -1199,6 +1206,7 @@ export function buildNyc(scene, world, opts, K) {
         lamp.matrixAutoUpdate = false; lamp.updateMatrix();
         lamp.userData.instance = true;
         scene.add(lamp);
+        dstats.lamps++;
       }
     }
     const sigName = K.hasProp('nyc_traffic_signal') ? 'nyc_traffic_signal' : 'chi_traffic_signal';
@@ -1226,6 +1234,7 @@ export function buildNyc(scene, world, opts, K) {
     }
     // Bus shelters on the avenues
     const art = net.edges.filter((e) => e.laneOff * 4 >= MAJOR_W && e.len > 15);
+    dstats.avenueEdges = art.length;
     const shelterName = K.hasProp('nyc_bus_shelter') ? 'nyc_bus_shelter' : 'chi_bus_shelter';
     for (let i = 0; i < (lite ? 6 : 14) && art.length; i++) {
       const e = art[Math.floor(Math.random() * art.length)];

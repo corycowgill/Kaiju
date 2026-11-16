@@ -490,8 +490,12 @@ export function buildDc(scene, world, opts, K) {
     };
     for (let i = 0; i < pts.length; i++) {
       if (i > 0) {
+        // (sampled every 2u only where the segment comes near the venue: elsewhere the road keeps its
+        // own points, so the car graph's edges stay block-long and the lamps / shelters / carts get placed)
         const a = pts[i - 1], b = pts[i], n = Math.floor(Math.hypot(b[0] - a[0], b[1] - a[1]) / 2);
-        for (let k = 1; k < n; k++) visit([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+        if (inRingBox((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.abs(b[0] - a[0]) / 2 + hw + 1, Math.abs(b[1] - a[1]) / 2 + hw + 1)) {
+          for (let k = 1; k < n; k++) visit([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+        }
       }
       visit(pts[i]);
     }
@@ -628,6 +632,9 @@ export function buildDc(scene, world, opts, K) {
     }
   }
   K.setCarNet(net);
+  // (dressing counts for the smoke test's summary: world.levelStats)
+  const dstats = { netEdges: net.edges.length, lamps: 0, avenueEdges: 0 };
+  if (world) world.levelStats = dstats;
 
   // ---- parks: the Mall's lawn panels and elm rows, the memorial parks ----
   const onRoad = LK.roadIndex(roads, SIDEWALK_W, 2);
@@ -868,6 +875,7 @@ export function buildDc(scene, world, opts, K) {
         lamp.matrixAutoUpdate = false; lamp.updateMatrix();
         lamp.userData.instance = true;
         scene.add(lamp);
+        dstats.lamps++;
         if (!lite && Math.random() < 0.45) {
           const tx = net.nodes[e.a].x + e.dx * (t + lampEvery / 2) + e.dz * off, tz = net.nodes[e.a].z + e.dz * (t + lampEvery / 2) - e.dx * off;
           if (t + lampEvery / 2 < e.len - 6 && !isWater(tx, tz) && !onRing(tx, tz)) tree(tx, tz, 0.75 + Math.random() * 0.3);
@@ -899,6 +907,7 @@ export function buildDc(scene, world, opts, K) {
     }
     // Bus shelters on the avenues
     const art = net.edges.filter((e) => e.laneOff * 4 >= MAJOR_W && e.len > 15);
+    dstats.avenueEdges = art.length;
     const shelterName = K.hasProp('dc_bus_shelter') ? 'dc_bus_shelter' : 'chi_bus_shelter';
     for (let i = 0; i < (lite ? 6 : 14) && art.length; i++) {
       const e = art[Math.floor(Math.random() * art.length)];

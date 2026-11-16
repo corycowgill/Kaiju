@@ -30,7 +30,7 @@ export const SEATTLE_LANDMARK_GLBS = [
   { id: 'us_bank_centre', file: 'us_bank_centre.glb', trueHeightM: 203.0, face: 'west', stone: 0xa8a09c, ready: true }, // 47 x 42 m chamfered, bowed glass corner bays, granite crown
   { id: 'seattle_central_library', file: 'central_library.glb', trueHeightM: 57.5, face: 'west', stone: 0x8a9aa4, ready: true }, // 84 x 68 m: shifted platforms in the diamond-lattice skin; entrance on +Z (Fourth Ave)
   { id: 'smith_tower', file: 'smith_tower.glb', trueHeightM: 148.4, face: 'west', stone: 0xd4d0c6, ready: true }, // 33 x 40 m base block (82 m) with the 18 m tower over its +Z half, pyramid and globe lantern
-  { id: 'pike_place_market', file: 'pike_place_market.glb', trueHeightM: 18.9, face: 'east', stone: 0xc8bea8, offsetM: [-38, -40], ready: true }, // offsetM: the layout lot is only the Pike St corner; the arcade runs ~55 m north-west from it along Pike Place. 129 x 35 m: the Main Arcade opening on +Z (Pike Place), the brick corner block at model -X (Pike St end); the sign is its own prop
+  { id: 'pike_place_market', file: 'pike_place_market.glb', trueHeightM: 18.9, face: 'east', stone: 0xc8bea8, ready: true }, // 129 x 35 m = the layout lot: the brick corner block at the south end (model -X) under the pike_place_sign prop, the Main Arcade north (+X); arcade front on +Z (Pike Place)
   { id: 'pike_place_sign', file: 'pike_place_sign.glb', trueHeightM: 21.2, face: 'east', stone: 0x8a3028, ready: true }, // PUBLIC MARKET CENTER neon board 20 m wide on four steel columns from grade (top 21 m), FARMERS MARKET board, the clock on its post 4 m in front
   { id: 'westlake_center', file: 'westlake_center.glb', trueHeightM: 94.0, face: 'west', stone: 0x8aa0a0, ready: true }, // 80 x 70 m mall with the glass entrance vault on +Z (Pine St / Westlake Park), tower over the back half, monorail station canopy along the back (-Z, Fifth Ave)
   { id: 'convention_center_summit', file: 'convention_center_summit.glb', trueHeightM: 60.0, face: 'west', stone: 0x5a5c60, ready: true }, // 150 x 85 m shifted blocks, charcoal panels and faceted glass; glazed corner at model (+X, +Z)
@@ -38,9 +38,9 @@ export const SEATTLE_LANDMARK_GLBS = [
   { id: 'hammering_man', file: 'hammering_man.glb', trueHeightM: 14.6, face: 'west', stone: 0x202022, ready: true }, // flat black steel silhouette, arm raised with the hammer
   { id: 'great_wheel', file: 'great_wheel.glb', trueHeightM: 53.3, face: 'west', stone: 0xd8dadc, clone: 'wheel_rotor', spinAxis: 'z', ready: true }, // 51 x 20 m, wheel plane faces +Z; node 'wheel_rotor' turns about its local Z (the axle), origin at the hub (28.6 m)
   { id: 'pier_57', file: 'pier_57.glb', trueHeightM: 21.6, face: 'east', stone: 0x8a8a84, ready: true }, // timber pier 60 x 120 m (deck top 1.2 m), gabled shed, MINER'S LANDING on the +Z street end; the pier runs toward -Z (the bay)
-  { id: 'seattle_aquarium', file: 'aquarium.glb', trueHeightM: 23.3, face: 'north', stone: 0x8a9496, ready: true }, // pier 50 x 130 m, shed, timber-louvre entrance pavilion and SEATTLE AQUARIUM letters on the +Z street end
+  { id: 'seattle_aquarium', file: 'aquarium.glb', trueHeightM: 23.3, face: 'east', stone: 0x8a9496, ready: true }, // pier 50 x 130 m, shed, timber-louvre entrance pavilion and SEATTLE AQUARIUM letters on the +Z street end
   { id: 'colman_dock', file: 'colman_dock.glb', trueHeightM: 21.8, face: 'east', stone: 0x7a7c7a, ready: true }, // 190 x 150 m apron, terminal on the +Z (Alaskan Way) side, three slips at the -Z end (berth centrelines model x -55, 0, 55)
-  { id: 'olympic_sculpture_park', file: 'olympic_sculpture_park.glb', trueHeightM: 6.8, face: 'west', stone: 0x9a968e, ready: true }, // the PACCAR pavilion only (30 x 20 m); lawns and the Z path are the layout's
+  { id: 'olympic_sculpture_park', file: 'olympic_sculpture_park.glb', trueHeightM: 6.8, face: 'south', stone: 0x9a968e, ready: true }, // the PACCAR pavilion only (30 x 20 m); lawns and the Z path are the layout's
   { id: 'calder_eagle', file: 'calder_eagle.glb', trueHeightM: 13.1, face: 'east', stone: 0xb03020, ready: true }, // red steel stabile, 12 x 8 m
   { id: 'echo_plensa', file: 'echo_plensa.glb', trueHeightM: 14.0, face: 'west', stone: 0xd0cec8, ready: true }, // white elongated head, face on +Z
   { id: 'lumen_field', file: 'lumen_field.glb', trueHeightM: 78.1, face: 'east', stone: 0x9a9c9e, ready: true }, // 258 x 206 m bowl, field long axis along model X: the low open Hawks Nest end is model +X (face east puts it north), scoreboard end -X
@@ -88,8 +88,8 @@ export const SEATTLE_LANDMARK_GLBS = [
   { id: 'edgewater_hotel', file: 'edgewater_hotel.glb', trueHeightM: 22.8, face: 'north', stone: 0x705038, ready: true }, // tier C, 51.1 x 150.5 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
   { id: 'pier_69', file: 'pier_69.glb', trueHeightM: 25, face: 'north', stone: 0x9a9a96, ready: true }, // tier C, 56.1 x 200.5 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
   { id: 'pier_62', file: 'pier_62.glb', trueHeightM: 5, face: 'west', stone: 0x8a8a84, ready: true }, // tier C, 51.1 x 140.5 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
-  { id: 'bell_harbor', file: 'bell_harbor.glb', trueHeightM: 27.8, face: 'north', stone: 0xa0b0aa, ready: true }, // tier B, 81.1 x 290.9 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
-  { id: 'ocean_pavilion', file: 'ocean_pavilion.glb', trueHeightM: 17, face: 'south', stone: 0x505458, ready: true }, // tier B, 52.8 x 72.4 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
+  { id: 'bell_harbor', file: 'bell_harbor.glb', trueHeightM: 27.8, face: 'east', stone: 0xa0b0aa, ready: true }, // tier B, ~150 x 60 m along the shore (long side to the front) m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
+  { id: 'ocean_pavilion', file: 'ocean_pavilion.glb', trueHeightM: 17, face: 'west', stone: 0x505458, ready: true }, // tier B, 52.8 x 72.4 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
 
 ];
 
@@ -106,8 +106,10 @@ export const SEATTLE_GENERIC_GLBS = [
   { file: 'seattle_low_f.glb', bucket: 'low', style: 'lowrise apartment', trueM: [22.6, 13.77, 25.2], stone: 0xb6b6b2, ready: true }, // 3-st mixed-use fibre-cement, rust bays, parapet 11.95 m
   { file: 'seattle_low_g.glb', bucket: 'low', style: 'lowrise warehouse', trueM: [35.16, 8.6, 25.16], stone: 0xc4c0b0, ready: true }, // 1-st auto shop, roll-up doors, parapet 7.4 m
   { file: 'seattle_low_h.glb', bucket: 'low', style: 'lowrise warehouse brick', trueM: [24.0, 7.5, 30.0], stone: 0x5c3630, ready: true }, // 1-st sawtooth brick warehouse
-  { file: 'seattle_house_a.glb', bucket: 'low', style: 'lowrise house', trueM: [11.2, 7.4, 17.9], stone: 0x78825e, ready: true }, // Craftsman bungalow with porch
-  { file: 'seattle_house_b.glb', bucket: 'low', style: 'lowrise house', trueM: [10.2, 9.45, 13.5], stone: 0xcecabe, ready: true }, // two-storey foursquare, hipped roof
+  { file: 'seattle_house_a.glb', bucket: 'low', style: 'lowrise house', trueM: [12.0, 7.1, 18.5], stone: 0x32543c, ready: true }, // Craftsman bungalow: deep-green shingle, knee braces, shed dormer, porch on brick piers, side bay
+  { file: 'seattle_house_b.glb', bucket: 'low', style: 'lowrise house', trueM: [10.85, 9.5, 13.65], stone: 0x4e667c, ready: true }, // foursquare: slate-blue siding, hipped roof + dormer, balustraded porch, two-storey bay
+  { file: 'seattle_house_c.glb', bucket: 'low', style: 'lowrise house', trueM: [11.9, 8.4, 12.95], stone: 0xded4bc, ready: true }, // Tudor cottage: stucco and half-timber, steep cross-gable, front chimney
+  { file: 'seattle_house_d.glb', bucket: 'low', style: 'lowrise apartment', trueM: [18.0, 12.5, 12.6], stone: 0x424446, ready: true }, // modern townhouse row of 3, fibre-cement + cedar slats, roof decks
   // seattle-design kit (devtools/seattle/design/tools/build_seattle_kit.py, kit2 method): one material + one painted atlas per piece,
   // front +Z = street face, metres, base y=0, LOD1 twin. style words match seattle.js STYLE_OK (pioneer / brick / masonry /
   // warehouse / concrete / midrise / apartment / lowrise / glassslab / glasstower / glass). trueM [w, h, d] incl. roof clutter.

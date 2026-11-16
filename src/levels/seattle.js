@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LEVEL_KIT as LK } from './chicago.js';
 import { seattleGround, seattleFacade, tickSeattleMaterials, createSeattleTrees, seattleWater } from './seattleMaterials.js';
+import { createSeattleHills, seattleHillHeight } from './seattleLandscape.js';
 import { configureChicagoWear } from './chicagoMaterials.js';
 import { isMobile } from '../quality.js';
 import { assetURL } from '../assetCache.js';
@@ -516,7 +517,9 @@ export function buildSeattle(scene, world, opts, K) {
     });
   };
   // (the layout's ring entry may trim the runway (east) and the west screens (west) or drop the gateway)
-  if (ring) setArenaSite({ x: ring.x, z: ring.z, title: SEATTLE_TITLE, place: ring.place || 'SEATTLE CENTER', fountain: false, stands: ['n', 's'].filter(standsFree).join(''), east: ring.east || 0, west: ring.west || 0, gate: ring.gate ?? true, flag: 'seattle' });
+  if (ring) setArenaSite({ x: ring.x, z: ring.z, title: SEATTLE_TITLE, place: ring.place || 'SEATTLE CENTER', fountain: false, stands: ['n', 's'].filter(standsFree).join(''), east: ring.east || 0, west: ring.west || 0, gate: ring.gate ?? true, flag: 'seattle',
+    // (the fight camera settles south-west of the pair, looking north-east: the downtown skyline and Lumen Field behind them)
+    hardAz: ring.hardAz ?? -0.785 });
   const ringPoly = ring ? arenaNoTree() : null;
   // Landmarks only give way to the venue's structures: the mat, the entrance
   // gate's legs, the big screens, the grandstands built (from the ring centre,
@@ -1362,7 +1365,8 @@ export function buildSeattle(scene, world, opts, K) {
     // (defaults when the detail file has none: a ship at anchor off the stadiums clear of the ferry lanes, and
     // the ship-to-shore cranes along Harbor Island's Terminal 18 apron, ~1.2 km south-west of the box; phones: three)
     const ship = L.detail?.containerShip || { x: -480, z: 430, rot: 0.35 };
-    const cranes = L.detail?.harborCranes || [[-215, 690], [-205, 722], [-195, 754], [-185, 786], [-175, 818]].slice(0, lite ? 3 : 5).map(([x, z]) => ({ x, z, rot: 1.75, land: true }));
+    // (the surround's Harbor Island / T5 container cranes from the cartographer when present)
+    const cranes = L.detail?.harborCranes || (L.surround?.cranes?.length && L.surround.cranes.slice(0, lite ? 6 : 17)) || [[-215, 690], [-205, 722], [-195, 754], [-185, 786], [-175, 818]].slice(0, lite ? 3 : 5).map(([x, z]) => ({ x, z, rot: 1.75, land: true }));
     const kShip = _kit('seattle_container_ship'), kCrane = _kit('seattle_container_crane') || _kit('seattle_harbor_crane');
     const placeKit = (url, x, z, ry, y = 0.2) => K.onTemplatesReady((sc0, get) => {
       const t = get(url);
@@ -1396,6 +1400,19 @@ export function buildSeattle(scene, world, opts, K) {
         const [hx, hz] = P2(0, -1); m.box(M.red, 4, 2.2, 3, hx, 9.7, hz, r);
       }
       addBatch(m.build(true).children[0].geometry, M.red).castShadow = true;
+    }
+    // The Queen Anne TV masts (surround masts: true height on seattle-design's hill), steel lattice as
+    // one tapered red-and-white column each, a single batch
+    const masts = L.surround?.masts || [];
+    if (masts.length) {
+      const m = new LK.Massing();
+      for (const ms of masts) {
+        const h = (ms.heightMetres || 150) * S, y0 = seattleHillHeight(ms.x, ms.z, B);
+        for (let k = 0; k < 6; k++) m.cyl(k % 2 ? M.white : M.red, 0.25 + (5 - k) * 0.12, 0.25 + (6 - k) * 0.12, h / 6, 4, ms.x, y0 + k * h / 6, ms.z);
+      }
+      const g = m.build(false);
+      g.traverse((o) => { if (o.isMesh) { o.matrixAutoUpdate = false; o.updateMatrix(); o.userData.backdrop = false; } });
+      scene.add(g);
     }
     // Floatplanes moored off the Lake Union seaplane dock (landmark lake_union_seaplane), on the water
     const dock = L.landmarks.find((l) => l.id === 'lake_union_seaplane'), kPlane = _kit('seattle_floatplane') || _kit('seattle_seaplane');
@@ -1650,7 +1667,7 @@ export function buildSeattle(scene, world, opts, K) {
       const dEdge = Math.max(B.minX - x, x - B.maxX, B.minZ - z, z - B.maxZ, 0);
       if (lite && cls !== 1 && dEdge > 200 && rnd(k * 1.7) < 0.5) continue;
       const tint = cls === 1 ? pick(h > 30 ? GLASSY : rnd(k * 2.3) < 0.5 ? STONE : GLASSY, k) : cls === 2 ? pick(WOOD, k) : pick(rnd(k * 6.7) < 0.4 ? BRICK : rnd(k * 3.1) < 0.5 ? STONE : WOOD, k * 3);
-      addBox(x, z, w, h, d, rot || 0, tint, ROOFS[k % 3]);
+      addBox(x, z, w, h, d, rot || 0, tint, ROOFS[k % 3], seattleHillHeight(x, z, B)); // (on seattle-design's hills)
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -1675,6 +1692,15 @@ export function buildSeattle(scene, world, opts, K) {
     mesh.userData.backdrop = true;
     mesh.matrixAutoUpdate = false; mesh.updateMatrix();
     scene.add(mesh);
+  }
+
+  // ---- the hills past the bounds (seattle-design: Queen Anne, Capitol / First / Beacon Hill, Magnolia,
+  // West Seattle), one unlit mesh to the shore; the surround boxes stand on them (seattleHillHeight).
+  // Tagged as outer ground for the look layer (unlit shading, no painted windows on the slopes)
+  {
+    const hills = createSeattleHills(B, L.surround?.water || [], { lite });
+    hills.userData.backdrop = false; hills.userData.outerGround = true;
+    scene.add(hills);
   }
 
   // ---- the horizon: Mount Rainier to the south-south-east, the Olympics across the Sound, the Cascades ----

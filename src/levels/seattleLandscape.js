@@ -382,3 +382,104 @@ export function createSeattleTrees(K, lite = false, glb = true) {
     return root;
   };
 }
+
+// ---- the hills past the play box (owner: seattle-design) ----
+// The game ground is flat, but Seattle's downtown sits in a bowl of hills: Queen
+// Anne to the north, Capitol Hill / First Hill east across I-5, Beacon Hill to the
+// south-east, Magnolia to the north-west and the West Seattle ridge across the bay.
+// HILLS: [name, x, z, rx, rz, rot (rad), height] in game units (0.2 u/m, +X east,
+// +Z south, origin First Ave / Union St), real summit positions and heights.
+// The height fades to 0 within FADE of the play box so nothing in play is lifted.
+const HILLS = [
+  ['Queen Anne', -217, -640, 260, 220, 0.2, 28],
+  ['Capitol Hill', 430, -330, 190, 330, 0.0, 27],
+  ['First Hill', 380, 40, 130, 170, 0.0, 21],
+  ['Beacon Hill', 500, 700, 170, 400, 0.15, 22],
+  ['Magnolia', -870, -800, 260, 170, -0.3, 22],
+  ['West Seattle', -760, 820, 230, 520, 0.1, 30],
+  ['Yesler Terrace', 330, 230, 110, 110, 0.0, 13],
+];
+const FADE = 70;
+/** Hill height (u) at (x, z) for a play box B ({ minX, maxX, minZ, maxZ }): 0 inside the box, rising past it. */
+export function seattleHillHeight(x, z, B) {
+  let h = 0;
+  for (const [, cx, cz, rx, rz, rot, hh] of HILLS) {
+    const c = Math.cos(rot), s = Math.sin(rot), dx = x - cx, dz = z - cz;
+    const u = (dx * c - dz * s) / rx, v = (dx * s + dz * c) / rz, r2 = u * u + v * v;
+    if (r2 < 1) h = Math.max(h, hh * Math.pow(1 - r2, 1.6) * (1 + 0.06 * Math.sin(x * 0.05) * Math.cos(z * 0.043)));
+  }
+  if (!h || !B) return h;
+  const d = Math.max(B.minX - x, x - B.maxX, B.minZ - z, z - B.maxZ);   // distance outside the box (< 0 inside)
+  if (d <= 0) return 0;
+  return d >= FADE ? h : h * (d / FADE) * (d / FADE) * (3 - 2 * d / FADE);
+}
+
+function pointInPoly(x, z, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** The hill masses as one unlit, vertex-coloured mesh with baked sun shading (one draw, fogged like the surround
+ *  boxes): wooded slopes (dark evergreen stands mottled with lighter maples) and neighbourhoods (grey-green
+ *  speckle of roofs and street trees), greener and darker on the crests. water: [{ polygon }] (the surround file's
+ *  water; the hills stop at the shore). Lift anything standing on the hills with seattleHillHeight(x, z, B).
+ *  opts.lite: coarser grid. */
+export function createSeattleHills(B, water = [], opts = {}) {
+  const cell = opts.lite ? 18 : 10;
+  const sun = new THREE.Vector3(-0.55, 0.9, 0.62).normalize();
+  const polys = water.map((w) => w.polygon || w).map((p) => {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const [x, z] of p) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    return { p, x0, x1, z0, z1 };
+  });
+  const wet = (x, z) => polys.some((w) => x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1 && pointInPoly(x, z, w.p));
+  const noise = (x, z) => {
+    const v = Math.sin(x * 0.071 + Math.sin(z * 0.053) * 2.1) * Math.cos(z * 0.067 - Math.sin(x * 0.041) * 1.7);
+    return v * 0.5 + 0.5;
+  };
+  const speck = (x, z) => hash(Math.floor(x / 3), Math.floor(z / 3));
+  const C_TREE = new THREE.Color(0x34503a), C_MAPLE = new THREE.Color(0x5e7646), C_HOOD = new THREE.Color(0x7f857a),
+    C_ROOF = new THREE.Color(0xa29c90), C_ROOF2 = new THREE.Color(0x6a6460);
+  const pos = [], col = [], idx = [];
+  const cc = new THREE.Color(), n = new THREE.Vector3();
+  for (const [, cx, cz, rx, rz] of HILLS) {
+    const R = Math.max(rx, rz) * 1.05, nx = Math.ceil(2 * R / cell), base = pos.length / 3, H = [];
+    for (let j = 0; j <= nx; j++) for (let i = 0; i <= nx; i++) {
+      const x = cx - R + i * cell, z = cz - R + j * cell, h = seattleHillHeight(x, z, B);
+      H.push(h > 0.05 && wet(x, z) ? 0 : h);
+    }
+    for (let j = 0; j <= nx; j++) for (let i = 0; i <= nx; i++) {
+      const x = cx - R + i * cell, z = cz - R + j * cell, h = H[j * (nx + 1) + i];
+      const hx = H[j * (nx + 1) + Math.min(nx, i + 1)] - H[j * (nx + 1) + Math.max(0, i - 1)];
+      const hz = H[Math.min(nx, j + 1) * (nx + 1) + i] - H[Math.max(0, j - 1) * (nx + 1) + i];
+      n.set(-hx / (2 * cell), 1, -hz / (2 * cell)).normalize();
+      const shade = 0.62 + 0.48 * Math.max(0, n.dot(sun));
+      // wooded where the noise is high and on the steep flanks, neighbourhoods on the gentle tops and lower slopes
+      const steep = 1 - n.y, wood = noise(x, z) * 0.8 + steep * 3.5;
+      if (wood > 0.62) cc.copy(C_TREE).lerp(C_MAPLE, speck(x, z) * 0.45);
+      else cc.copy(C_HOOD).lerp(speck(x, z) > 0.55 ? C_ROOF : C_ROOF2, speck(z, x) * 0.6);
+      cc.multiplyScalar(shade * 0.92);
+      pos.push(x, h + 0.08, z); col.push(cc.r, cc.g, cc.b);
+    }
+    for (let j = 0; j < nx; j++) for (let i = 0; i < nx; i++) {
+      const a = j * (nx + 1) + i, b = a + 1, c = a + nx + 1, d = c + 1;
+      if (Math.max(H[a], H[b], H[c], H[d]) < 0.6) continue;   // the flat rim is the outer ground's
+      idx.push(base + a, base + c, base + b, base + b, base + c, base + d);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(idx);
+  geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, fog: true }));
+  mesh.name = 'seattle_hills';
+  mesh.frustumCulled = false;
+  mesh.userData.backdrop = true;
+  mesh.matrixAutoUpdate = false; mesh.updateMatrix();
+  return mesh;
+}

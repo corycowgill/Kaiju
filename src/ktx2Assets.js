@@ -414,6 +414,8 @@ export const KTX2_VARIANTS = new Set([
   "buildings/seattle/seattle_glasstower_d.glb",
   "buildings/seattle/seattle_house_a.glb",
   "buildings/seattle/seattle_house_b.glb",
+  "buildings/seattle/seattle_house_c.glb",
+  "buildings/seattle/seattle_house_d.glb",
   "buildings/seattle/seattle_hydrant.glb",
   "buildings/seattle/seattle_low_a.glb",
   "buildings/seattle/seattle_low_b.glb",

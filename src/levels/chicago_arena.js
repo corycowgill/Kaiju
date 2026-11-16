@@ -34,7 +34,7 @@ import * as LOOK from '../look.js';
  *  clearHalf the half-size of the square other systems treat as ringside. */
 // The whole venue as laid out on Hutchinson Field; another level moves it
 // (every coordinate below shifts by the same dx, dz) with setArenaSite
-let SITE = { dx: 0, dz: 0, title: 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: 'GRANT PARK', fountain: true, stands: 'ns', east: 0, west: 0, gate: true, flag: 'chicago' };
+let SITE = { dx: 0, dz: 0, title: 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: 'GRANT PARK', fountain: true, stands: 'ns', east: 0, west: 0, gate: true, flag: 'chicago', hardAz: null };
 export let ARENA;
 let A0, VEN, STANDS, STAND_ALL, RAMP, GATE, SCREENS_W, FOUNTAIN;
 const MAT = 45.5;
@@ -77,9 +77,11 @@ _layoutSite();
  *  ('chicago': light-blue bars, six-pointed stars; 'dc': the District's red
  *  bars and five-pointed stars; 'nyc': New York's blue, white and orange
  *  tricolour with a seal ring, five-pointed stars; 'seattle': Seattle's
- *  teal-green field with the white seal disc). Call before buildArena. */
+ *  teal-green field with the white seal disc); hardAz: the side (azimuth of
+ *  the camera from the ring, atan2(dx, dz)) the fight camera takes when it
+ *  settles on the pair, so a chosen skyline is behind them (null: none). Call before buildArena. */
 export function setArenaSite(s = {}) {
-  const next = { dx: (s.x ?? 4) - 4, dz: (s.z ?? 62) - 62, title: s.title || 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: s.place || 'GRANT PARK', fountain: s.fountain ?? true, stands: s.stands ?? 'ns', east: s.east || 0, west: s.west || 0, gate: s.gate ?? true, flag: s.flag || 'chicago' };
+  const next = { dx: (s.x ?? 4) - 4, dz: (s.z ?? 62) - 62, title: s.title || 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: s.place || 'GRANT PARK', fountain: s.fountain ?? true, stands: s.stands ?? 'ns', east: s.east || 0, west: s.west || 0, gate: s.gate ?? true, flag: s.flag || 'chicago', hardAz: s.hardAz ?? null };
   if (Object.keys(next).every((k) => next[k] === SITE[k])) return;
   SITE = next;
   _layoutSite();
@@ -1528,6 +1530,7 @@ export function buildArena(scene, world, o) {
     ramp: { x0: RAMP.x0, x1: RAMP.x1, z: RAMP.z, halfWidth: RAMP.hw },
     gate: SITE.gate ? { x: GATE.x, z: GATE.z, halfWidth: GATE.hw - 2.5, clearance: GATE.h, top: GATE.top } : null,
     gaps: FEST_RING_GAPS,
+    hardAz: SITE.hardAz, // (the broadcast side the fight camera takes when it settles: null, wherever it is)
     screens, pyro, casters, weapons, throwables,
     /** True where spectators stand or sit (for throw:land surface 'crowd'). */
     crowdAt(x, z) {

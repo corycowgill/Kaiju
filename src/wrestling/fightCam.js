@@ -384,7 +384,8 @@ export function createFightCam(ctx, W) {
     // ideal azimuth on side s: perp * cos(beta) - axis * sin(beta), perp = s * (axis rotated -90 deg)
     const a1 = Math.atan2(az_ * cb - ax * sb, -ax * cb - az_ * sb), a2 = Math.atan2(-az_ * cb - ax * sb, ax * cb - az_ * sb);
     if (rig.snap) {
-      const cur = camAzAround(fxx, fz);
+      // (a venue with a broadcast side: settle on the side nearer it, else on the side the camera is on)
+      const cur = ringA && ringA.hardAz != null ? ringA.hardAz : camAzAround(fxx, fz);
       rig.side = Math.abs(wrap(a1 - cur)) <= Math.abs(wrap(a2 - cur)) ? 1 : -1;
     } else {
       // stay on this side of the action unless the other side is now clearly nearer (the fighters swapped): never a long swing
