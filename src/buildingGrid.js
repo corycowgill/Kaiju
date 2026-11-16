@@ -5,7 +5,10 @@ export class BuildingGrid {
     this.cells = new Map();
     this.maxHalfX=0;this.maxHalfZ=0;
   }
-  _key(cx, cz) { return cx + ':' + cz; }
+  // Integer cell key (was the string cx + ':' + cz: a string built and
+  // hashed per cell per query, ~9 cells for each of the several grid queries
+  // a frame makes). Unique while |cz| < 4096 cells (~245k u); stays a small int.
+  _key(cx, cz) { return cx * 8192 + cz; }
   add(b) {
     this.expandBounds(b);
     const cs = this.cellSize;
@@ -21,7 +24,7 @@ export class BuildingGrid {
     this.maxHalfZ=Math.max(this.maxHalfZ,b.d/2);
   }
   remove(b) {
-    if (!b._gridKey) return;
+    if (b._gridKey == null) return; // (0 is a valid key)
     const arr = this.cells.get(b._gridKey);
     if (arr) {
       const i = arr.indexOf(b);
