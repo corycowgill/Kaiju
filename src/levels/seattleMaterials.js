@@ -1,6 +1,6 @@
 // Seattle surfaces and facades (owner: seattle-design; called by src/levels/seattle.js).
-// Seeded by seattle-integrator: Chicago's shared terrain shader family and a
-// copy of NYC's tree factory until seattle-design's own maps land. No
+// Chicago's shared terrain shader family with Seattle's own ground maps
+// (devtools/seattle/design/tools/seattle_ground_tex.py) and Pacific Northwest trees (seattleLandscape.js). No
 // per-material onBeforeCompile variants on building materials (they split
 // shader programs past the smoke test's budget).
 import * as THREE from 'three';
@@ -19,13 +19,13 @@ function texture(file, color = false) {
 }
 // Seattle map set per kind (assets/textures/seattle_<name>_color.jpg / _normal.png / _roughness.png,
 // seattle-design), on Chicago's shared terrain program (same shader, world-space tiling).
-// Empty until the files exist: Chicago's ground maps stand in.
-const SEATTLE_MAPS = {};
-const TINT = { lawn: 0xffffff, grass: 0xe4ecd6, gravel: 0xffffff, pavement: 0xffffff, plaza: 0xffffff, rock: 0xffffff, asphalt: 0xffffff };
+// 'pier' = the timber pier deck, 'beach' = the pebble shore (Alki / the sculpture park beach).
+const SEATTLE_MAPS = { asphalt: 'asphalt', pavement: 'sidewalk', lawn: 'lawn', grass: 'lawn', plaza: 'plaza', gravel: 'park_path', rock: 'rock', pier: 'pierdeck', beach: 'beach' };
+const TINT = { lawn: 0xffffff, grass: 0xe4ecd6, gravel: 0xffffff, pavement: 0xffffff, plaza: 0xffffff, rock: 0xffffff, asphalt: 0xffffff, pier: 0xffffff, beach: 0xffffff };
 
-/** Ground surface: kind 'grass' | 'lawn' | 'pavement' | 'plaza' | 'asphalt' | 'gravel' (park paths) | 'rock'. */
+/** Ground surface: kind 'grass' | 'lawn' | 'pavement' | 'plaza' | 'asphalt' | 'gravel' (park paths) | 'rock' | 'pier' | 'beach'. */
 export function seattleGround(material, kind, wear = 0) {
-  const k = kind === 'lawn' ? 'grass' : kind === 'gravel' || kind === 'marble' || kind === 'plaza' || kind === 'rock' ? 'pavement' : kind;
+  const k = kind === 'lawn' ? 'grass' : ['gravel', 'marble', 'plaza', 'rock', 'pier', 'beach'].includes(kind) ? 'pavement' : kind;
   chicagoGround(material, k, wear);
   const own = SEATTLE_MAPS[kind];
   if (own) {

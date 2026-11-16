@@ -2,23 +2,27 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { chicagoTreeSurface } from './chicagoMaterials.js';
 
-// Seattle trees (owner: seattle-design; seeded by seattle-integrator as a copy of nycLandscape.js). Same build as Chicago's / DC's park
-// trees (one canopy + one wood mesh per tree, alpha-tested leaf cards, near /
-// far LOD twins registered with the city kit, the shared tree shader family via
-// chicagoTreeSurface: no new onBeforeCompile) with four Central Park species:
-//  - 'elm': American elm, the Mall's four rows: short trunk splitting into
-//    limbs that arch up and out into a high vase (~23 m).
-//  - 'plane': London plane, the avenue / Bryant Park tree: stout trunk with
-//    mottled cream-olive-grey bark, broad rounded crown of big lobed leaves (~21 m).
-//  - 'oak': pin oak, a central leader with tiers of limbs, the lower ones
-//    drooping, a narrow pyramidal crown of small deep-green leaves (~18 m).
-//  - 'ornamental': a flowering cherry / crabapple, low and spreading, in
-//    deep-pink blossom with young leaves (~8 m).
-// Layout kinds are accepted too: 'park' (Central Park woodland: a mix of oak,
-// plane, elm and the odd ornamental), 'street' (Midtown street trees ~11-12 m:
-// pin oak / plane templates at street size).
+// Seattle trees (owner: seattle-design). Same build as Chicago's / DC's / NYC's
+// park trees (one canopy + one wood mesh per tree, alpha-tested leaf cards,
+// near / far LOD twins registered with the city kit, the shared tree shader
+// family via chicagoTreeSurface: no new onBeforeCompile) with Pacific Northwest
+// species:
+//  - 'fir': Douglas fir, the tall park conifer: straight trunk bare for the
+//    lowest quarter, whorls of near-level branches shortening to a narrow
+//    spire, dark blue-green needle sprays (~35 m).
+//  - 'cedar': western red cedar: buttressed reddish fibrous trunk, a broad
+//    cone down to the ground of drooping branches that turn up at the tips,
+//    hanging flat yellow-green sprays, a nodding leader (~25 m).
+//  - 'maple': big-leaf maple: short mossy trunk forking into heavy spreading
+//    limbs, a broad rounded crown of very large lobed leaves (~20 m).
+//  - 'redmaple': red maple street tree, oval crown of small lobed leaves (~11 m).
+//  - 'plane': London plane (street / plaza), mottled bark, rounded crown (~12 m).
+//  - 'cherry': ornamental cherry, low and spreading, pale pink blossom (~8 m).
+// Layout kinds: 'park' (fir, cedar, big-leaf maple with the odd plane / red
+// maple), 'street' (red maple / plane / cherry ~8-12 m), 'evergreen' (and its
+// alias 'conifer': Douglas fir and red cedar). Unknown kinds fall back to 'park'.
 // Sizes: `fit` is computed from each template's real height so that a placement
-// scale of 0.8 (nyc.js PS x 1.0) lands on the species' true height at the
+// scale of 0.8 (seattle.js PS x 1.0) lands on the species' true height at the
 // level's 0.2 u/m; pass s ~ 0.9-1.1 x PS for natural variation.
 let templates;
 const hash = (x, z) => {
@@ -37,62 +41,98 @@ function dataTexture(pixels, size) {
   return texture;
 }
 
-// Four sprays per atlas. leaf: 'serrate' (elm), 'lobed' (plane), 'oak' (deeply
-// cut, small), 'blossom' (ornamental, with a few leaves).
+// Four sprays per atlas. shape: 'needle' (fir: twigs with dense needles),
+// 'frond' (cedar: flat pinnate sprays of scale leaves), 'lobed' (maples, plane),
+// 'blossom' (cherry).
 const LEAF = {
-  elm: { shape: 'serrate', bg: [86, 108, 58], count: 130, len: [3.5, 6], green: [92, 58] },
+  fir: { shape: 'needle', bg: [40, 62, 46], twigs: 7, green: [64, 30], tint: [.62, .5] },
+  cedar: { shape: 'frond', bg: [70, 92, 44], twigs: 5, green: [92, 40], tint: [.78, .4] },
+  maple: { shape: 'lobed', bg: [86, 112, 48], count: 46, len: [8, 5], green: [104, 50] },
+  redmaple: { shape: 'lobed', bg: [70, 94, 44], count: 110, len: [3.5, 3], green: [86, 50] },
   plane: { shape: 'lobed', bg: [74, 96, 50], count: 70, len: [6, 6], green: [84, 54] },
-  oak: { shape: 'oak', bg: [52, 78, 40], count: 120, len: [4, 4], green: [70, 46] },
-  ornamental: { shape: 'blossom', bg: [196, 120, 150], count: 150, len: [2.6, 2.2], green: [90, 50] },
+  cherry: { shape: 'blossom', bg: [214, 168, 184], count: 150, len: [2.6, 2.2], green: [96, 50] },
 };
+
+function paintBlade(pixels, size, tileX, tileY, x, y, heading, length, width, rgb, shapeFn) {
+  const c = Math.cos(heading), s = Math.sin(heading), r = Math.max(length, width);
+  for (let py = Math.max(3, Math.floor(y - r)); py <= Math.min(124, y + r); py++) {
+    for (let px = Math.max(3, Math.floor(x - r)); px <= Math.min(124, x + r); px++) {
+      const dx = px - x, dy = py - y;
+      const u = (dx * c + dy * s) / length, v = (dy * c - dx * s) / width;
+      const edge = shapeFn(u, v);
+      if (edge <= 0) continue;
+      const shade = .86 + .16 * hash(px, py);
+      pixels.set([rgb[0] * shade, rgb[1] * shade, rgb[2] * shade, Math.min(255, 120 + edge * 490)], ((tileY + py) * size + tileX + px) * 4);
+    }
+  }
+}
+
 function leafAtlas(kind) {
   const spec = LEAF[kind], size = 256, tileSize = size / 2;
   const pixels = new Uint8Array(size * size * 4);
   for (let i = 0; i < pixels.length; i += 4) pixels.set([...spec.bg, 0], i);
+  const green = (i, tile) => {
+    const g = spec.green[0] + hash(i, tile + 42) * spec.green[1];
+    const t = spec.tint || [.6, .34];
+    return [g * (t[0] + hash(i, tile + 48) * .16), g, g * (t[1] + hash(i, tile + 53) * .12)];
+  };
   for (let tile = 0; tile < 4; tile++) {
     const tileX = (tile % 2) * tileSize, tileY = Math.floor(tile / 2) * tileSize;
+    if (spec.shape === 'needle' || spec.shape === 'frond') {
+      // twigs fan out from near the tile's lower centre; needles (fir) or scale-leaf pinnae (cedar) along them
+      for (let t = 0; t < spec.twigs; t++) {
+        const a0 = -Math.PI / 2 + (t / (spec.twigs - 1) - .5) * 2.4 + (hash(t, tile) - .5) * .3;
+        let x = 64 + (hash(t, tile + 5) - .5) * 16, y = 104 - hash(t, tile + 6) * 10, a = a0;
+        const steps = 20 + Math.floor(hash(t, tile + 7) * 8);
+        for (let k = 0; k < steps; k++) {
+          a += (hash(k, t + tile * 9) - .5) * .12;
+          x += Math.cos(a) * 3.2; y += Math.sin(a) * 3.2;
+          if (x < 8 || x > 120 || y < 8 || y > 120) break;
+          const fade = 1 - k / steps;
+          const rgb = green(t * 40 + k, tile);
+          if (spec.shape === 'needle') {
+            for (const side of [-1, 1]) for (const lean of [.9, 1.25]) {
+              const h = a + side * lean, len = 4.5 + 3 * fade;
+              paintBlade(pixels, size, tileX, tileY, x + Math.cos(h) * len * .55, y + Math.sin(h) * len * .55, h, len * .55, .9,
+                rgb.map((v) => v * (lean > 1 ? .86 : 1)), (u, v) => 1 - u * u - v * v);
+            }
+          } else {
+            // cedar: pinnate side sprays of overlapping scale leaves
+            const pl = (9 + 6 * fade) * (k % 2 ? 1 : .8);
+            for (const side of [-1, 1]) {
+              const h = a + side * 1.05;
+              for (let q = 0; q < 4; q++) {
+                const d = 2 + q * pl / 4;
+                paintBlade(pixels, size, tileX, tileY, x + Math.cos(h) * d, y + Math.sin(h) * d, h, 2.4, 1.6,
+                  rgb.map((v, ch) => v * (1 + q * .04) * (ch === 0 ? 1.03 : 1)), (u, v) => 1 - u * u - v * v);
+              }
+            }
+            paintBlade(pixels, size, tileX, tileY, x, y, a, 2.6, 1.7, rgb, (u, v) => 1 - u * u - v * v);
+          }
+        }
+      }
+      continue;
+    }
     for (let i = 0; i < spec.count; i++) {
       const angle = hash(i, tile + 2) * Math.PI * 2;
       const radius = Math.sqrt(hash(i, tile + 9)) * (44 + 8 * Math.sin(angle * 3 + tile));
       const x = 64 + Math.cos(angle) * radius, y = 64 + Math.sin(angle) * radius * .9;
       const heading = angle + (hash(i, tile + 17) - .5) * 2.5;
-      const c = Math.cos(heading), s = Math.sin(heading);
-      const flower = spec.shape === 'blossom' && hash(i, tile + 71) > .18;
+      const flower = spec.shape === 'blossom' && hash(i, tile + 71) > .25;
       const length = spec.len[0] + hash(i, tile + 26) * spec.len[1];
-      const width = flower ? length : spec.shape === 'oak' ? length * .55 : spec.shape === 'lobed' ? length * .95 : length * (.36 + hash(i, tile + 37) * .18);
-      let r, g, b;
+      const width = flower ? length : length * .95;
+      let rgb;
       if (flower) {
         const w = hash(i, tile + 42);
-        r = 214 + w * 30; g = 108 + w * 60; b = 150 + w * 50;     // deep pink to pale pink
+        rgb = [226 + w * 22, 168 + w * 50, 190 + w * 40];      // pale Yoshino pink to white
       } else {
-        g = spec.green[0] + hash(i, tile + 42) * spec.green[1];
-        r = g * (.6 + hash(i, tile + 48) * .2); b = g * (.34 + hash(i, tile + 53) * .14);
-        if (kind === 'ornamental') { r *= 1.12; g *= 1.05; }      // young bronze-green leaves
+        rgb = green(i, tile);
+        if (kind === 'cherry') rgb = [rgb[0] * 1.1, rgb[1] * 1.04, rgb[2]];
       }
-      for (let py = Math.max(3, Math.floor(y - length)); py <= Math.min(124, y + length); py++) {
-        for (let px = Math.max(3, Math.floor(x - length)); px <= Math.min(124, x + length); px++) {
-          const dx = px - x, dy = py - y;
-          const u = (dx * c + dy * s) / length, v = (dy * c - dx * s) / width;
-          let edge;
-          if (flower) {
-            const rr = Math.hypot(dx, dy) / length, th = Math.atan2(dy, dx) + heading;
-            edge = 1 - rr / (.72 + .28 * Math.abs(Math.cos(th * 2.5)));
-          } else if (spec.shape === 'lobed') { // palmate: five pointed lobes
-            const rr = Math.hypot(u, v), th = Math.atan2(v, u);
-            edge = 1 - rr / (.62 + .38 * Math.pow(Math.abs(Math.cos(th * 2.5)), 1.6));
-          } else if (spec.shape === 'oak') { // deep sinuses along the blade
-            edge = 1 - Math.pow(Math.abs(u), 1.6) - v * v / (.25 + .75 * Math.pow(Math.abs(Math.sin(u * 7.5)), 2));
-          } else {
-            edge = 1 - Math.pow(Math.abs(u), 1.4) - v * v;
-          }
-          if (edge <= 0) continue;
-          const centre = flower && edge > .78 ? .8 : 1;
-          const vein = !flower && Math.abs(v) < .06 ? .9 : 1;
-          const shade = centre * vein * (.86 + .16 * hash(px, py));
-          const index = ((tileY + py) * size + tileX + px) * 4;
-          pixels.set([r * shade, g * shade, b * shade, Math.min(255, 120 + edge * 490)], index);
-        }
-      }
+      const shape = flower
+        ? (u, v) => { const rr = Math.hypot(u, v), th = Math.atan2(v, u); return 1 - rr / (.72 + .28 * Math.abs(Math.cos(th * 2.5))); }
+        : (u, v) => { const rr = Math.hypot(u, v), th = Math.atan2(v, u); return 1 - rr / (.62 + .38 * Math.pow(Math.abs(Math.cos(th * 2.5)), 1.6)); };
+      paintBlade(pixels, size, tileX, tileY, x, y, heading, length, width, rgb, shape);
     }
   }
   return dataTexture(pixels, size);
@@ -110,25 +150,34 @@ function barkTexture(kind) {
   const size = 128, pixels = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     let rgb;
-    if (kind === 'plane') { // exfoliating jigsaw patches: cream, olive, grey-brown (tiling value noise)
+    if (kind === 'fir') { // thick corky bark, deep vertical furrows, dark red-brown ridges
+      const bend = 2.5 * Math.sin(y * .06 + x * .04) + Math.sin(y * .17);
+      const ridge = Math.abs(Math.sin((x + bend) * .32)) ** .45;
+      const v = 46 + ridge * 44 + hash(x, y) * 10;
+      rgb = [v * 1.12, v * .86, v * .7];
+    } else if (kind === 'cedar') { // long fibrous strips, red-brown weathering to grey
+      const strip = vnoise(x, y * .12, 4, 7);
+      const grey = vnoise(x, y, 32, 3) > .55 ? 1 : 0;
+      const v = 78 + strip * 40 + hash(x, y) * 8;
+      rgb = grey ? [v * 1.0, v * .95, v * .88] : [v * 1.18, v * .82, v * .66];
+    } else if (kind === 'maple') { // grey-brown furrowed, wrapped in green moss in patches
+      const ridge = Math.abs(Math.sin(x * .4 + Math.sin(y * .08) * 2)) ** .4;
+      const moss = vnoise(x, y, 16, 11) * .7 + vnoise(x, y, 8, 13) * .3;
+      const v = 70 + ridge * 30 + hash(x, y) * 10;
+      rgb = moss > .55 ? [78 + hash(x, y) * 12, 104 + hash(y, x) * 14, 46] : [v, v * .95, v * .86];
+    } else if (kind === 'plane') { // exfoliating jigsaw patches: cream, olive, grey-brown
       const p = vnoise(x, y, 16, 3) * .65 + vnoise(x, y, 8, 5) * .35, q = vnoise(x, y, 11, 9);
       const n = hash(x, y) * 8;
       rgb = p > .62 ? [196, 188, 152] : p < .36 ? [118, 112, 96] : q > .5 ? [146, 144, 112] : [162, 154, 126];
       rgb = rgb.map((v) => v + n - 4);
-    } else if (kind === 'oak') { // smooth grey with shallow vertical ridges
-      const ridge = Math.abs(Math.sin(x * .3 + Math.sin(y * .05) * 1.5)) ** .5;
-      const v = 92 + ridge * 22 + hash(x, y) * 10;
-      rgb = [v, v * .97, v * .9];
-    } else if (kind === 'ornamental') { // cherry: dark red-brown with horizontal lenticels
+    } else if (kind === 'cherry') { // dark red-brown with horizontal lenticels
       const band = Math.abs(Math.sin(y * .55 + Math.sin(x * .2))) < .12 ? -16 : 0;
       const v = 70 + hash(x, y) * 10 + band;
       rgb = [v * 1.08, v * .93, v * .78];
-    } else { // elm: deep interlacing furrows, grey-brown
-      const bend = 2.2 * Math.sin(y * .07 + x * .05) + 1.1 * Math.sin(y * .19);
-      const ridge = Math.abs(Math.sin((x + bend) * .45)) ** .3;
-      const cross = Math.abs(Math.sin((x - bend * 1.3) * .31 + y * .06)) < .12 ? -14 : 0;
-      const v = 66 + ridge * 40 + hash(x, y) * 10 + cross;
-      rgb = [v, v * .93, v * .82];
+    } else { // red maple: smooth pale grey, a few shallow plates
+      const plate = vnoise(x, y, 16, 21) > .62 ? -10 : 0;
+      const v = 112 + hash(x, y) * 10 + plate;
+      rgb = [v, v * .98, v * .94];
     }
     pixels.set([...rgb, 255], (y * size + x) * 4);
   }
@@ -142,7 +191,7 @@ function tint(geometry, color, canopy, h) {
   const colors = new Float32Array(positions.count * 3);
   for (let i = 0; i < positions.count; i++) {
     const y = positions.getY(i);
-    const shade = canopy ? .7 + THREE.MathUtils.smoothstep(y, h * .35, h * .9) * .36 : .9 + Math.min(y, 7) * .014;
+    const shade = canopy ? .7 + THREE.MathUtils.smoothstep(y, h * .3, h * .9) * .36 : .9 + Math.min(y, 7) * .014;
     colors.set([color.r * shade, color.g * shade, color.b * shade], i * 3);
   }
   geometry.setAttribute('chiTint', new THREE.BufferAttribute(colors, 3));
@@ -170,31 +219,37 @@ function leafCard(center, width, height, yaw, pitch, tile) {
   return geometry;
 }
 
-// Species shapes (template units; true size comes from trueM). 'fork' species
-// split at the trunk top into arching limbs (elm, plane, ornamental); 'leader'
-// species (oak) carry a central stem with tiers of limbs.
+// Species shapes (template units; true size comes from the layout kind). 'fork' species split at the trunk top into
+// limbs (maples, plane, cherry); 'conifer' species carry a stem to the top with whorls of branches: crown base
+// `base` (fraction of h), radius `R` at the crown base, `droop` (tip drop per unit of spread), `upturn` (cedar J tips).
 const SPECIES = {
-  elm: { form: 'fork', trunkH: 3.6, trunkR: .5, limbs: 5, tipH: [9.6, 12.4], spread: [3.8, 4.9], arch: .55, cards: 22, card: 1.35, h: 12.6, trueM: 23, leaf: [0xcfdcb8, 0xdde8bc], wood: [0xd0cdc1, 0xc8bba6] },
-  plane: { form: 'fork', trunkH: 3.0, trunkR: .62, limbs: 6, tipH: [7.4, 10.6], spread: [4.4, 5.6], arch: .15, cards: 22, card: 2.0, h: 11.6, trueM: 21, crownFill: 18, leaf: [0xc4d2a8, 0xccd8ae], wood: [0xe0dccc, 0xd8d2be] },
-  oak: { form: 'leader', trunkH: 11.5, trunkR: .45, limbs: 14, spread: [1.4, 4.2], cards: 16, card: 1.5, h: 12.2, trueM: 18, leaf: [0xb8c8a0, 0xc2d0a6], wood: [0xd4d2cc, 0xccc8c0] },
-  ornamental: { form: 'fork', trunkH: 1.4, trunkR: .3, limbs: 6, tipH: [3.6, 5.2], spread: [3.0, 4.0], arch: .15, cards: 9, card: 1.5, h: 5.6, trueM: 8, leaf: [0xf4e8ec, 0xf0e0e6], wood: [0xd0c6b8, 0xc8bcac] },
+  fir: { form: 'conifer', h: 14, trunkR: .42, base: .26, R: 1.9, whorls: 17, per: 6, droop: .14, upturn: 0, cards: 5, card: 1.3, pitch: .5, leaf: [0xccd8c6, 0xc4d2c0], wood: [0xd2c4b8, 0xc8bcb0] },
+  cedar: { form: 'conifer', h: 12, trunkR: .5, base: .05, R: 2.6, whorls: 13, per: 6, droop: .45, upturn: .5, cards: 4, card: 1.3, pitch: 1.15, buttress: 1.5, leaf: [0xd8e0c0, 0xd2dcba], wood: [0xd8c8bc, 0xd0c0b2] },
+  maple: { form: 'fork', trunkH: 3.2, trunkR: .62, limbs: 6, tipH: [8.4, 11.2], spread: [4.6, 5.8], arch: .3, cards: 20, card: 2.1, h: 11.6, crownFill: 16, leaf: [0xd8e4b4, 0xd4e0ae], wood: [0xd8d4c8, 0xd0ccbe] },
+  redmaple: { form: 'fork', trunkH: 2.6, trunkR: .36, limbs: 6, tipH: [8.0, 10.4], spread: [2.4, 3.2], arch: .05, cards: 18, card: 1.4, h: 10.6, crownFill: 14, leaf: [0xc8d8b0, 0xd0dcb4], wood: [0xd8d6d0, 0xd0cec8] },
+  plane: { form: 'fork', trunkH: 3.0, trunkR: .62, limbs: 6, tipH: [7.4, 10.6], spread: [4.4, 5.6], arch: .15, cards: 22, card: 2.0, h: 11.6, crownFill: 18, leaf: [0xc4d2a8, 0xccd8ae], wood: [0xe0dccc, 0xd8d2be] },
+  cherry: { form: 'fork', trunkH: 1.4, trunkR: .3, limbs: 6, tipH: [3.6, 5.2], spread: [3.0, 4.0], arch: .15, cards: 9, card: 1.5, h: 5.6, leaf: [0xf8f0f2, 0xf4ecee], wood: [0xd0c6b8, 0xc8bcac] },
 };
-// layout kinds -> [species, true height (m)] picked by the tree's position hash
+// layout kinds -> [cumulative pick, species, true height (m)] picked by the tree's position hash
 const KINDS = {
-  elm: [[1, 'elm', 23]],
-  plane: [[1, 'plane', 21]],
-  oak: [[1, 'oak', 18]],
-  ornamental: [[1, 'ornamental', 8]],
-  park: [[.42, 'oak', 18], [.78, 'plane', 20], [.92, 'elm', 21], [1, 'ornamental', 8]],
-  street: [[.5, 'oak', 11], [1, 'plane', 12]],
+  fir: [[1, 'fir', 35]],
+  cedar: [[1, 'cedar', 25]],
+  maple: [[1, 'maple', 20]],
+  redmaple: [[1, 'redmaple', 11]],
+  plane: [[1, 'plane', 12]],
+  cherry: [[1, 'cherry', 8]],
+  park: [[.36, 'fir', 34], [.56, 'cedar', 24], [.84, 'maple', 19], [.93, 'plane', 18], [1, 'redmaple', 12]],
+  street: [[.45, 'redmaple', 11], [.8, 'plane', 12], [1, 'cherry', 8]],
+  evergreen: [[.62, 'fir', 35], [1, 'cedar', 25]],
 };
+KINDS.conifer = KINDS.evergreen;
 
 function makeTemplate(kind, variant, far) {
   const sp = SPECIES[kind];
   const leaves = [], wood = [];
   const leafColor = new THREE.Color(sp.leaf[variant]);
   const woodColor = new THREE.Color(sp.wood[variant]);
-  const addCards = (from, to, i, n, cardK = 1, droop = 0) => {
+  const addCards = (from, to, i, n, cardK = 1, droop = 0, pitchK = 1) => {
     for (let j = 0; j < n; j++) {
       const t = .55 + .45 * hash(i * 13 + j, variant + 9);
       const base = from.clone().lerp(to, t);
@@ -202,27 +257,42 @@ function makeTemplate(kind, variant, far) {
       const off = (.3 + hash(i * 11 + j, variant + 20)) * sp.card * .8;
       const center = base.add(new THREE.Vector3(Math.cos(heading) * off, (hash(i + j * 7, variant + 3) - .3 - droop) * sp.card, Math.sin(heading) * off));
       const size = sp.card * cardK * (far ? 1.45 : 1) * (.8 + hash(i, j + variant + 50) * .45);
-      const pitch = (hash(i * 5 + j, 5 + variant) - .5) * (kind === 'ornamental' ? 2.2 : 1.6);
+      const pitch = (hash(i * 5 + j, 5 + variant) - .5) * (kind === 'cherry' ? 2.2 : 1.6) * pitchK;
       leaves.push(leafCard(center, size * 1.2, size, heading, pitch, (i + j) % 4));
     }
   };
-  if (sp.form === 'leader') {
-    // pin oak: stem to the top, tiers of limbs; low limbs droop, high ones climb, spread shrinks upward
-    const top = new THREE.Vector3(variant ? .1 : -.08, sp.trunkH, variant ? -.05 : .06);
-    wood.push(branch(new THREE.Vector3(0, -.1, 0), top, sp.trunkR, .06, far ? 5 : 8));
-    for (let i = 0; i < sp.limbs; i++) {
-      const f = i / (sp.limbs - 1);                                    // 0 low .. 1 high
-      const y0 = sp.trunkH * (.28 + .62 * f);
-      const angle = i * 2.39996 + variant * .9;
-      const spread = sp.spread[1] - (sp.spread[1] - sp.spread[0]) * f * f + (hash(i, variant) - .5) * .5;
-      const dir = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-      const start = new THREE.Vector3(top.x * y0 / sp.trunkH, y0, top.z * y0 / sp.trunkH);
-      const tip = start.clone().add(dir.clone().multiplyScalar(spread)).add(new THREE.Vector3(0, (f - .45) * 2.6, 0));
-      const r = sp.trunkR * (.38 - .2 * f);
-      wood.push(branch(start, tip, r, .04, far ? 4 : 5));
-      addCards(start, tip, i, far ? Math.ceil(sp.cards / 2.5) : sp.cards, 1, f < .35 ? .35 : 0);
+  if (sp.form === 'conifer') {
+    const lean = new THREE.Vector3(variant ? .08 : -.06, 0, variant ? -.05 : .07);
+    const at = (y) => new THREE.Vector3(lean.x * y / sp.h, y, lean.z * y / sp.h);
+    const top = at(sp.h);
+    if (sp.buttress) { // flared, buttressed base
+      wood.push(branch(new THREE.Vector3(0, -.1, 0), at(sp.buttress), sp.trunkR * 1.6, sp.trunkR, far ? 6 : 9));
+      wood.push(branch(at(sp.buttress), at(sp.h * .92), sp.trunkR, .05, far ? 5 : 8));
+    } else {
+      wood.push(branch(new THREE.Vector3(0, -.1, 0), at(sp.h * .96), sp.trunkR, .05, far ? 5 : 8));
     }
-    addCards(top.clone().multiplyScalar(.85), top, 99, far ? 2 : 5, .9);   // the spire
+    const whorls = far ? Math.ceil(sp.whorls * .6) : sp.whorls;
+    for (let w = 0; w < whorls; w++) {
+      const f = w / (whorls - 1);                                       // 0 crown base .. 1 top
+      const y0 = sp.h * (sp.base + (.97 - sp.base) * f);
+      const spread = (sp.R * Math.pow(1 - f, .95) + .35) * (.85 + hash(w, variant + 30) * .3);
+      const per = far ? Math.max(3, sp.per - 2) : sp.per;
+      for (let k = 0; k < per; k++) {
+        const angle = k * (Math.PI * 2 / per) + w * 2.39996 + variant * .7 + (hash(w * 7 + k, variant) - .5) * .5;
+        const dir = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+        const start = at(y0);
+        const drop = sp.droop * spread * (1.2 - f * .6);
+        const mid = start.clone().add(dir.clone().multiplyScalar(spread * .6)).add(new THREE.Vector3(0, -drop * .9, 0));
+        const tip = start.clone().add(dir.clone().multiplyScalar(spread)).add(new THREE.Vector3(0, -drop + sp.upturn * spread * .5, 0));
+        const r = sp.trunkR * (.3 - .2 * f);
+        if (far) wood.push(branch(start, tip, r, .03, 3));
+        else { wood.push(branch(start, mid, r, r * .6, 3)); wood.push(branch(mid, tip, r * .6, .02, 3)); }
+        const n = far ? Math.max(1, Math.ceil(sp.cards / 2)) : sp.cards;
+        // sprays along the outer two thirds of the branch; cedar sprays hang (steeper pitch)
+        addCards(start.clone().lerp(mid, .5), tip, w * 11 + k, n, .7 + .5 * (1 - f), sp.upturn ? .2 : 0, sp.pitch);
+      }
+    }
+    addCards(at(sp.h * .9), top, 999, far ? 2 : 4, .6);              // the leader
   } else {
     const top = new THREE.Vector3(variant ? .12 : -.1, sp.trunkH, variant ? -.06 : .08);
     wood.push(branch(new THREE.Vector3(0, -.1, 0), top, sp.trunkR, sp.trunkR * .72, far ? 5 : 8));
@@ -244,7 +314,7 @@ function makeTemplate(kind, variant, far) {
       }
       addCards(mid, tip, i, far ? Math.ceil(sp.cards / 2.5) : sp.cards);
     }
-    if (sp.crownFill) { // plane: fill the dome's crown so it reads round, not as a ring of limb tufts
+    if (sp.crownFill) { // fill the dome's crown so it reads round, not as a ring of limb tufts
       const n = far ? Math.ceil(sp.crownFill / 2) : sp.crownFill;
       for (let j = 0; j < n; j++) {
         const a = j * 2.39996 + variant, rr = Math.sqrt((j + .5) / n) * sp.spread[0] * .95;
@@ -265,9 +335,9 @@ function makeTemplate(kind, variant, far) {
   return [canopy, merge(wood, woodColor, false)];
 }
 
-/** NYC tree factory: (x, z, scale, kind) => Object3D, like createDcTrees.
- *  kind: 'elm' | 'plane' | 'oak' | 'ornamental' | layout kinds 'park' | 'street'.
- *  scale: nyc.js passes s * PS (PS 0.8); s = 1 lands on the true height. */
+/** Seattle tree factory: (x, z, scale, kind) => Object3D, like createNycTrees.
+ *  kind: 'fir' | 'cedar' | 'maple' | 'redmaple' | 'plane' | 'cherry' | layout kinds 'park' | 'street' | 'evergreen'
+ *  ('conifer' = 'evergreen'). scale: seattle.js passes s * PS (PS 0.8); s = 1 lands on the true height. */
 export function createSeattleTrees(K, lite = false, glb = true) {
   if (!templates) {
     templates = {};
@@ -289,7 +359,7 @@ export function createSeattleTrees(K, lite = false, glb = true) {
   for (const kind in templates) for (const template of templates[kind]) for (let i = 0; i < 2; i++) {
     K.registerLod1(template.near[i], template.far[i]);
   }
-  return (x = 0, z = 0, scale = 1, kind = 'elm') => {
+  return (x = 0, z = 0, scale = 1, kind = 'park') => {
     const seed = hash(x, z), pick = hash(z * 1.7, x * .3);
     const mix = KINDS[kind] || KINDS.park;
     const [, species, trueM] = mix.find(([p]) => pick <= p) || mix[mix.length - 1];
@@ -302,7 +372,7 @@ export function createSeattleTrees(K, lite = false, glb = true) {
     }
     root.position.set(x, 0, z);
     root.rotation.y = seed * Math.PI * 2;
-    // fit: template height -> true metres at 0.2 u/m when scale = 0.8 (nyc.js PS)
+    // fit: template height -> true metres at 0.2 u/m when scale = 0.8 (seattle.js PS)
     const k = scale * trueM * UPM / (template.h * REF_SCALE);
     root.scale.set(k * (.94 + seed * .14), k * (.91 + hash(z, x) * .16), k);
     root.userData.instance = true;

@@ -24,9 +24,9 @@ import { setLookLayerKey } from '../look.js';
 import { SEATTLE_LOOK } from './seattleLook.js';
 import { SEATTLE_BASE, SEATTLE_LANDMARK_GLBS, SEATTLE_GENERIC_GLBS, SEATTLE_PROP_GLBS, SEATTLE_VEHICLE_GLBS, SEATTLE_KIT_GLBS } from './seattleManifest.js';
 
-// The cartographer's layout once delivered; the integrator's placeholder until then
-// (devtools/seattle/integrator/make_placeholder.mjs)
-const LAYOUT_URL = './assets/levels/seattle_layout_placeholder.json';
+// The cartographer's layout (the integrator's placeholder before it: seattle_layout_placeholder.json,
+// devtools/seattle/integrator/make_placeholder.mjs)
+const LAYOUT_URL = './assets/levels/seattle_layout.json';
 // The cartographer's tree survey ([x, z, kind, osm]; layout meta.trees: false when there is none)
 const TREES_URL = './assets/levels/seattle_trees.json';
 // The city past the bounds from the footprint data (boxes, the bay and the lakes over the fetch area: cartographer)
@@ -47,12 +47,13 @@ export async function loadSeattleLayout() {
   const pt = (p) => (p ? { x: +p.x, z: +p.z, rot: p.rot !== undefined ? +p.rot : undefined } : null);
   // Layout extras (DC's): the ring site, VS spawns, the Lone Soldier start, wave entry points
   // (ring east / west: runway and west screens pulled in, u; gate: false drops the entrance gateway)
-  _layout.ring = raw.ring ? { ...pt(raw.ring), east: +raw.ring.east || 0, west: +raw.ring.west || 0, gate: raw.ring.gate } : null;
+  _layout.ring = raw.ring ? { ...pt(raw.ring), east: +raw.ring.east || 0, west: +raw.ring.west || 0, gate: raw.ring.gate, place: raw.ring.place || null } : null;
   _layout.duel = raw.duel ? { a: pt(raw.duel.a), b: pt(raw.duel.b) } : null;
   _layout.soldier = pt(raw.soldier);
   // (the outer ground's street texture follows downtown's grid: meta.gridRotationDeg, degrees clockwise of north)
   _layout.gridRotationDeg = raw.meta?.gridRotationDeg ?? 0;
   _layout.onPier = new Set((raw.buildings || []).filter((o) => o.onPier).map((o) => o.id));
+  _layout.monorail = raw.monorail || null; // (the Monorail's beams: seattle.js)
   _layout.approaches = (raw.approaches || []).map((p) => (Array.isArray(p) ? [+p[0], +p[1]] : [+p.x, +p.z]));
   // Optional: the parks are scattered procedurally without it (meta.trees
   // false: no survey, no fetch and no 404)
@@ -102,9 +103,9 @@ function _bucketDefs(bucket) {
 // kit styles that suit it (seattle-design's `style` field); a lot keeps the
 // whole bucket when none of them is in it
 const STYLE_OK = {
-  brick: /brick|masonry|pioneer|warehouse/, masonry: /masonry|brick|terra/, pioneer: /pioneer|brick|masonry/,
-  warehouse: /warehouse|brick/, midrise: /midrise|concrete|apartment/, apartment: /apartment|midrise/,
-  glass: /glass|tower/, tower: /tower|glass/,
+  brick: /brick|masonry|pioneer|warehouse/, warehouse: /warehouse|brick/, lowrise: /lowrise|brick|warehouse|apartment/,
+  midrise: /midrise|concrete|apartment/, apartment: /apartment|midrise/,
+  glassslab: /glassslab|glasstower|glass/, glasstower: /glasstower|glassslab|glass/,
 };
 function _styled(defs, style) {
   const re = STYLE_OK[style];
@@ -201,7 +202,7 @@ export function seattleVehicleGLBs() {
 }
 
 // --------------- materials ---------------
-const FALLBACK_TEX = 'nyc_fallback_';
+const FALLBACK_TEX = 'seattle_fallback_';
 let _D = null;
 /** Seattle's own massing surfaces on top of the shared (Chicago) set. */
 function seattleMats(M) {
@@ -216,9 +217,9 @@ function seattleMats(M) {
     copper: std(0x6c9c86, 0.7), roofDark: std(0x4a4c50, 0.85), slate: std(0x5c6066, 0.8),
     gravel: seattleGround(new THREE.MeshStandardMaterial(), 'gravel'),
   };
-  // Tiling fallback facades for the procedural massing (FALLBACK_TEX: NYC's
-  // nyc_fallback_* until seattle-design ships seattle_fallback_*): glass
-  // curtain wall, stone, brick; UVs are world-tiled per face by _tileUVs (tile in u)
+  // Tiling fallback facades for the procedural massing (FALLBACK_TEX:
+  // seattle-design's seattle_fallback_*): glass curtain wall, stone, brick;
+  // UVs are world-tiled per face by _tileUVs (tile in u)
   const tl = new THREE.TextureLoader(), tex = (f, srgb) => {
     const t = tl.load(assetURL('./assets/textures/' + f));
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; if (srgb) t.colorSpace = THREE.SRGBColorSpace;
@@ -434,7 +435,7 @@ const BUILDER_ALIASES = [
   ['lumen', 'stadium'], ['t_mobile', 'stadium'], ['stadium', 'stadium'], ['field', 'stadium'],
   ['king_street', 'station'], ['union_station', 'civic'], ['spheres', 'spheres'], ['climate_pledge', 'arena'], ['arena', 'arena'],
   ['mopop', 'blob'], ['emp', 'blob'], ['science_center', 'arches'], ['chihuly', 'civic'], ['art_museum', 'civic'], ['convention', 'civic'],
-  ['westlake', 'civic'], ['sculpture', 'monument'], ['fountain', 'monument'], ['statue', 'monument'], ['sign', 'monument'],
+  ['westlake', 'civic'], ['gate', 'monument'], ['pergola', 'monument'], ['hammering', 'monument'], ['sculpture', 'monument'], ['fountain', 'monument'], ['statue', 'monument'], ['sign', 'monument'],
 ];
 /** The massing builder for a landmark: by id, else by its height (a tower above ~60 m). */
 function _builderFor(id, h = 0) {
@@ -452,6 +453,9 @@ export function buildSeattle(scene, world, opts, K) {
   const M = LK.mats(), D = seattleMats(M);
   const { ribbon, polygonGeom, quadAlong, pointInPoly, distToPolyline } = LK;
   const buildings = [];
+  // (what the dressing placed, per kind: world.levelStats, read by the QA scripts)
+  const stats = { trees: 0 };
+  if (world) world.levelStats = stats;
   const grid = new K.BuildingGrid(60);
   const lite = !!opts.lite;
   const glb = opts.glb !== undefined ? !!opts.glb : !lite;
@@ -493,7 +497,9 @@ export function buildSeattle(scene, world, opts, K) {
   const ring = opts.mode === 'wrestling' && L.ring ? L.ring : null;
   // Landmarks that stand: a district or an area with no structure of its own
   // (Times Square, Bryant Park) is a name on the map, nothing is built there
-  const LMS = L.landmarks.filter((lm) => lm.kind !== 'district' && lm.h > 0.05);
+  // (and a line or a moving thing the level animates itself: the Monorail and its trains, the ferries)
+  const ANIMATED = /^(monorail_train|wsf_ferry|ferry_in_bay)$/;
+  const LMS = L.landmarks.filter((lm) => lm.kind !== 'district' && lm.kind !== 'line' && !ANIMATED.test(lm.id) && lm.h > 0.05);
   // A grandstand that would stand on a landmark is left out; standing room
   // takes that side (chicago_arena.js)
   const lmBox = (lm) => {
@@ -650,8 +656,12 @@ export function buildSeattle(scene, world, opts, K) {
     };
     for (let i = 0; i < pts.length; i++) {
       if (i > 0) {
+        // (sampled every 2u only where the segment comes near the venue: elsewhere the road keeps its
+        // own points, so the car graph's edges stay block-long, lamps and parking get their spacing)
         const a = pts[i - 1], b = pts[i], n = Math.floor(Math.hypot(b[0] - a[0], b[1] - a[1]) / 2);
-        for (let k = 1; k < n; k++) visit([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+        if (inRingBox((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.abs(b[0] - a[0]) / 2 + hw + 1, Math.abs(b[1] - a[1]) / 2 + hw + 1)) {
+          for (let k = 1; k < n; k++) visit([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+        }
       }
       visit(pts[i]);
     }
@@ -788,6 +798,7 @@ export function buildSeattle(scene, world, opts, K) {
     }
   }
   K.setCarNet(net);
+  stats.netEdges = net.edges.length; stats.netMajor = net.edges.filter((e) => e.laneOff * 4 >= MAJOR_W).length;
 
   // ---- parks: Seattle Center, the Olympic Sculpture Park, Occidental and Victor Steinbrueck, the plazas ----
   const onRoad = LK.roadIndex(roads, SIDEWALK_W, 2);
@@ -810,10 +821,45 @@ export function buildSeattle(scene, world, opts, K) {
   if (L.trees) {
     // (open lawns stay open: the International Fountain lawn, the Mural Amphitheatre, the ring box)
     const meadows = L.parks.filter((p) => OPEN_LAWN.test(p.name)).map((p) => p.polygon);
-    const ok = ([x, z]) => !isWater(x, z) && !onRoad(x, z, 0.3) && !onLandmark(x, z) && !inRingBox(x, z) && !meadows.some((q) => pointInPoly(x, z, q));
+    // (street trees stand on the sidewalk: only the carriageway itself is off limits for them; the
+    // rest keep the sidewalk-wide margin)
+    const carriage = LK.roadIndex(roads, 0, 2);
+    // The survey's street trees stand on the real (narrower) sidewalks, so the widened game
+    // streets (7u avenues, 4.5u side streets) swallow most of them: a street / plane tree inside
+    // a carriageway moves out square to the nearest road's edge, onto the sidewalk (+0.5u)
+    const segs = new Map(), SC = 12;
+    for (const r of roads) for (let i = 0; i + 1 < r.points.length; i++) {
+      const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1], T = r.width / 2 + 1;
+      for (let cx = Math.floor((Math.min(ax, bx) - T) / SC); cx <= Math.floor((Math.max(ax, bx) + T) / SC); cx++) {
+        for (let cz = Math.floor((Math.min(az, bz) - T) / SC); cz <= Math.floor((Math.max(az, bz) + T) / SC); cz++) {
+          const k = cx + ':' + cz;
+          if (!segs.has(k)) segs.set(k, []);
+          segs.get(k).push(r, i);
+        }
+      }
+    }
+    const toKerb = (t) => {
+      if (t[2] !== 'street' && t[2] !== 'plane') return t;
+      const [x, z] = t, list = segs.get(Math.floor(x / SC) + ':' + Math.floor(z / SC));
+      if (!list) return t;
+      let best = null, bd = Infinity;
+      for (let j = 0; j < list.length; j += 2) {
+        const r = list[j], i = list[j + 1], [ax, az] = r.points[i], [bx, bz] = r.points[i + 1];
+        const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, u = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+        const px = ax + dx * u, pz = az + dz * u, d = Math.hypot(x - px, z - pz), over = d - r.width / 2;
+        if (over < 0.4 && over - 0.4 < bd) { bd = over - 0.4; best = [px, pz, d, r.width / 2 + 0.5, dx, dz]; }
+      }
+      if (!best) return t;
+      const [px, pz, d, to, dx, dz] = best;
+      // (a tree on the centre line: off to the side square to the road)
+      const nx = d > 1e-3 ? (x - px) / d : -dz / Math.hypot(dx, dz), nz = d > 1e-3 ? (z - pz) / d : dx / Math.hypot(dx, dz);
+      return [px + nx * to, pz + nz * to, t[2], t[3]];
+    };
+    L.trees = L.trees.map(toKerb);
+    const ok = ([x, z, kind]) => !isWater(x, z) && (kind === 'street' || kind === 'plane' ? !carriage(x, z, 0.15) : !onRoad(x, z, 0.3)) && !onLandmark(x, z) && !inRingBox(x, z) && !meadows.some((q) => pointInPoly(x, z, q));
     const list = [];
-    for (const kinds of [['park', 'conifer'], ['street', null]]) {
-      const tier = L.trees.filter((t) => kinds.includes(t[2]) || (kinds.includes(null) && !['park', 'conifer', 'street'].includes(t[2]))).filter(ok);
+    for (const kinds of [['park', 'evergreen'], ['plane'], ['street', null]]) {
+      const tier = L.trees.filter((t) => kinds.includes(t[2]) || (kinds.includes(null) && !['park', 'evergreen', 'plane', 'street'].includes(t[2]))).filter(ok);
       const room = TREE_CAP - list.length;
       if (room <= 0) break;
       const step = tier.length > room ? tier.length / room : 1;
@@ -821,7 +867,19 @@ export function buildSeattle(scene, world, opts, K) {
     }
     // (seattleLandscape.js sizes each layout kind to its species' true height at s = 1)
     for (const [x, z, kind] of list) tree(x, z, 0.9 + Math.random() * 0.2, kind);
+    stats.treesSurvey = L.trees.length; stats.treesOk = L.trees.filter(ok).length;
+    // (why the rest were left out: the first test each fails)
+    const why = { water: 0, road: 0, landmark: 0, ring: 0, lawn: 0 };
+    for (const [x, z, kind] of L.trees) {
+      if (isWater(x, z)) why.water++;
+      else if (kind === 'street' || kind === 'plane' ? carriage(x, z, 0.15) : onRoad(x, z, 0.3)) why.road++;
+      else if (onLandmark(x, z)) why.landmark++;
+      else if (inRingBox(x, z)) why.ring++;
+      else if (meadows.some((q) => pointInPoly(x, z, q))) why.lawn++;
+    }
+    stats.treesDropped = why;
   }
+  stats.trees = trees;
   // The waterfront piers (parks with surface 'pier'): a concrete deck
   // 0.8u over the water on a dark pile edge, under their sheds
   const PIER_Y = 0.8, pierDecks = [], pierEdge = [[], [], []];
@@ -838,7 +896,10 @@ export function buildSeattle(scene, world, opts, K) {
     }
   }
   if (pierDecks.length) {
-    addBatch(mergeGeometries(pierDecks, false), swMat);
+    // (seattle-design's timber deck)
+    const deckMat = seattleGround(new THREE.MeshStandardMaterial({ roughness: 1 }), 'pier');
+    deckMat.userData.shared = true;
+    addBatch(mergeGeometries(pierDecks, false), deckMat);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pierEdge[0], 3));
     g.setIndex(pierEdge[2]);
@@ -962,7 +1023,9 @@ export function buildSeattle(scene, world, opts, K) {
     b.maxHp = hp; b.hp = hp;
     b.landmarkId = lm.id;
     b.landmarkName = lm.name; // "THROUGH THE SPACE NEEDLE!" (wrestling callouts)
-    if (lm.kind === 'bridge' || lm.onPier || /pier|wheel|aquarium|colman|ferry/.test(lm.id)) b.onWater = true; // (on a pier or over the bay on purpose)
+    if (lm.kind === 'bridge' || lm.onPier || lm.onWater || /pier|wheel|aquarium|colman|ferry/.test(lm.id)) b.onWater = true; // (on a pier or over the bay on purpose)
+    // (a model whose own footprint holds layout water, e.g. the Pacific Science Center's pools: manifest onWater)
+    if (_landmarkGLB(lm.id)?.onWater) b.onWater = true;
     b.debrisTint = _stoneOf(_landmarkGLB(lm.id)?.file || lm.id);
     b.group.matrixAutoUpdate = false; b.group.updateMatrix();
     scene.add(b.group); buildings.push(b); grid.add(b);
@@ -983,6 +1046,26 @@ export function buildSeattle(scene, world, opts, K) {
       }
       // (a model whose z0 is the waterline sets waterline: true: it sits at the water surface, not lifted to its keel)
       const y0 = def.waterline ? 0.2 : def.y0 != null ? def.y0 * S : undefined;
+      if (def.clone) {
+        // Own scene graph so its node can turn (the Great Wheel's 'wheel_rotor', about
+        // its local spinAxis through the hub: 'x' by default), as Chicago's Navy Pier wheel
+        K.onTemplatesReady((sc, get) => {
+          const tpl = get(url);
+          if (!tpl || b.destroyed) return;
+          const root = tpl.clone(true);
+          root.rotation.y = rotY;
+          root.scale.setScalar(S);
+          const box = new THREE.Box3().setFromObject(root);
+          root.position.set(b.x - (box.min.x + box.max.x) / 2, y0 ?? -box.min.y, b.z - (box.min.z + box.max.z) / 2);
+          scene.add(root);
+          b.customMesh = root; b.glbUrl = url; b.h = box.max.y - box.min.y;
+          const node = typeof def.clone === 'string' ? root.getObjectByName(def.clone) : null;
+          const ax = def.spinAxis || 'x';
+          if (node) animators.push({ update(dt) { if (!b.destroyed) node.rotation[ax] += dt * 0.12; } });
+        });
+        b.customMesh = new THREE.Object3D(); // (AABB hit-test marker until placed)
+        continue;
+      }
       if (def.exact) K.queueGLB({ url, h: def.trueHeightM * S, building: b, maxW: 0, maxD: 0, rotY, landmark: true, atOrigin: !!def.atOrigin, y0 });
       else if (def.fit === 'footprint') K.queueGLB({ url, h: lm.h * (def.maxH || 1.6), building: b, maxW: aw, maxD: ad, rotY, landmark: true, stretch: def.stretch || 1.3, lot: lotOf(lm.w, lm.d, lm.rotY) });
       else K.queueGLB({ url, h, building: b, maxW: 0, maxD: 0, rotY, landmark: true, y0 });
@@ -1011,23 +1094,67 @@ export function buildSeattle(scene, world, opts, K) {
   // kaiju walks into drops to the street; the two trains (seattle-design's
   // seattle_monorail_train when ready, else a procedural Alweg set) shuttle
   // end to end, one per beam, and fall off a broken span or a kaiju's shin.
-  const mono = L.detail?.monorail;
-  if (mono?.polyline?.length >= 2) {
-    const yD = (mono.deckHeightMetres || 8) * S, half = (mono.widthMetres || 4.6) * S / 2;
-    const BW = 0.24, BH = 0.42, PY = yD - BH; // beam width / depth (u), pylon top
-    // the line, resampled to spans of <= 6u, with the stretch under the Title Match venue left out
-    const line = [];
-    for (let i = 0; i + 1 < mono.polyline.length; i++) {
-      const [ax, az] = mono.polyline[i], [bx, bz] = mono.polyline[i + 1], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 6));
-      for (let k = i ? 1 : 0; k <= n; k++) line.push([ax + (bx - ax) * k / n, az + (bz - az) * k / n]);
+  // (layout monorail: beams = the two beams' polylines and the station spurs,
+  // beamHeightMetres, beamGapMetres, stations [{ name, x, z }]; the
+  // placeholder's detail.monorail: one centreline, its beams either side)
+  const offsetLine = (pts, o) => pts.map((p, k) => {
+    const a = pts[Math.max(0, k - 1)], b = pts[Math.min(pts.length - 1, k + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [p[0] + (b[1] - a[1]) / l * o, p[1] - (b[0] - a[0]) / l * o];
+  });
+  const mono = (() => {
+    const m0 = L.monorail;
+    // (only the line itself: polylines within 15u of the longest one's network; strays elsewhere are left out)
+    const near = (a, b) => a.some((p) => b.some((q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 15));
+    if (m0?.beams?.length) {
+      const all = m0.beams.filter((b) => b.length >= 2), keep = [all.reduce((a, b) => (b.length > a.length ? b : a))];
+      for (let grew = true; grew;) { grew = false; for (const b of all) if (!keep.includes(b) && keep.some((k) => near(k, b))) { keep.push(b); grew = true; } }
+      m0.beams = keep;
     }
+    if (m0?.beams?.length) return { beams: m0.beams, y: (m0.beamHeightMetres || 7.5) * S, gap: (m0.beamGapMetres || 4.5) * S, stations: m0.stations || [] };
+    const d = L.detail?.monorail;
+    if (!(d?.polyline?.length >= 2)) return null;
+    const g = (d.widthMetres || 4.6) * S;
+    return { beams: [-1, 1].map((sd) => offsetLine(d.polyline, sd * g / 2)), y: (d.deckHeightMetres || 8) * S, gap: g, stations: d.stations || [] };
+  })();
+  if (mono) {
+    const yD = mono.y, half = mono.gap / 2;
+    const BW = 0.24, BH = 0.42, PY = yD - BH; // beam width / depth (u), pylon top
+    // each beam resampled to spans of <= 6u
+    const resample = (pts) => {
+      const out = [];
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const [ax, az] = pts[i], [bx, bz] = pts[i + 1], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 6));
+        for (let k = i ? 1 : 0; k <= n; k++) out.push([ax + (bx - ax) * k / n, az + (bz - az) * k / n]);
+      }
+      return out;
+    };
+    const lenOf = (l) => l.reduce((a, p, k) => a + (k ? Math.hypot(p[0] - l[k - 1][0], p[1] - l[k - 1][1]) : 0), 0);
+    const beams = mono.beams.filter((b) => b.length >= 2).map(resample).sort((a, b) => lenOf(b) - lenOf(a));
+    // (the stretch under the Title Match venue is left out)
     const spans = [], pyl = [];
-    for (let i = 0; i + 1 < line.length; i++) {
+    for (const line of beams) for (let i = 0; i + 1 < line.length; i++) {
       const [ax, az] = line[i], [bx, bz] = line[i + 1];
       if (inRingBox((ax + bx) / 2, (az + bz) / 2, 2, 2)) continue;
-      const l = Math.hypot(bx - ax, bz - az), ry = Math.atan2(bx - ax, bz - az);
-      for (const sd of [-1, 1]) spans.push({ x: (ax + bx) / 2 + Math.cos(ry) * half * sd, z: (az + bz) / 2 - Math.sin(ry) * half * sd, l, ry, t: -1 });
-      if (!isWater(ax, az)) pyl.push({ x: ax, z: az, ry });
+      const l = Math.hypot(bx - ax, bz - az);
+      if (l < 0.05) continue;
+      spans.push({ x: (ax + bx) / 2, z: (az + bz) / 2, l, ry: Math.atan2(bx - ax, bz - az), t: -1 });
+    }
+    // T-pylons along the main beam, centred between it and its twin
+    const A = beams[0], B2 = beams[1] || null;
+    const nearOn = (x, z, line) => {
+      let best = null, bd = Infinity;
+      for (let i = 0; i + 1 < line.length; i++) {
+        const [ax, az] = line[i], [bx, bz] = line[i + 1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), px = ax + dx * t, pz = az + dz * t, d = Math.hypot(px - x, pz - z);
+        if (d < bd) { bd = d; best = { x: px, z: pz, d, ry: Math.atan2(dx, dz) }; }
+      }
+      return best;
+    };
+    for (let i = 0; i < A.length; i++) {
+      const [x, z] = A[i], o = B2 && nearOn(x, z, B2), [qx, qz] = A[Math.min(A.length - 1, i + 1)], [px, pz] = A[Math.max(0, i - 1)];
+      const cx = o && o.d < mono.gap * 2 ? (x + o.x) / 2 : x, cz = o && o.d < mono.gap * 2 ? (z + o.z) / 2 : z;
+      if (isWater(cx, cz) || inRingBox(cx, cz, 2, 2)) continue;
+      pyl.push({ x: cx, z: cz, ry: Math.atan2(qx - px, qz - pz) });
     }
     const spanIM = new THREE.InstancedMesh(new THREE.BoxGeometry(BW, BH, 1), M.concrete, spans.length);
     // a pylon: the column and its T head (one geometry, the head across both beams)
@@ -1046,9 +1173,9 @@ export function buildSeattle(scene, world, opts, K) {
     if (!pyl.length) pylIM.count = 0;
     // Stations: a platform deck and canopy beside the beams (merged into one batch)
     const st = [];
-    for (const s of mono.stations || []) {
+    for (const s of mono.stations) {
       if (inRingBox(s.x, s.z, 6, 6)) continue;
-      const r = s.rot || 0;
+      const r = s.rot ?? nearOn(s.x, s.z, A).ry;
       st.push(new THREE.BoxGeometry(half * 2 + 3.2, 0.3, 9).rotateY(r).translate(s.x, PY - 0.5, s.z));
       st.push(new THREE.BoxGeometry(half * 2 + 3.6, 0.16, 9.4).rotateY(r).translate(s.x, yD + 1.1, s.z));
     }
@@ -1063,34 +1190,35 @@ export function buildSeattle(scene, world, opts, K) {
       m.box(M.concrete, Wt * 0.7, BH * 0.9, Lt * 0.8, 0, -BH * 0.8); // the skirt that straddles the beam
       return m.build(true);
     };
-    const kitTrain = _kit('seattle_monorail_train');
+    // (seattle-design's trains: red and blue; the body straddles the beam, the beam top 1.6 m above the model's y 0)
+    const kitTrain = _kit('seattle_monorail_train'), kitTrainB = _kit('seattle_monorail_train_blue') || kitTrain;
     const trains = [M.red, M.blueGlass].map((color, i) => {
       const g = new THREE.Group();
       g.add(trainGeo(color));
       scene.add(g);
-      return { g, side: i ? 1 : -1, s: i ? 0.999 : 0, dir: i ? -1 : 1, wait: i * 4, fall: -1, base: new THREE.Vector3(), ry: 0 };
+      // (one per beam: the main beam and its twin, starting at opposite ends)
+      const line = i && B2 ? B2 : A, cum = [0];
+      for (let k = 1; k < line.length; k++) cum.push(cum[k - 1] + Math.hypot(line[k][0] - line[k - 1][0], line[k][1] - line[k - 1][1]));
+      return { g, line, cum, total: cum[cum.length - 1], s: i ? 0.999 : 0, dir: i ? -1 : 1, wait: i * 4, fall: -1, base: new THREE.Vector3(), ry: 0, side: i ? 1 : -1 };
     });
     if (kitTrain) K.onTemplatesReady((sc0, get) => {
-      const t = get(kitTrain);
-      if (!t) return;
-      for (const tr of trains) {
+      trains.forEach((tr, i) => {
+        const t = get(i ? kitTrainB : kitTrain);
+        if (!t) return;
         tr.g.clear();
         const c = t.clone(true);
-        c.scale.setScalar(S);
+        c.scale.setScalar(S); c.position.y = -1.6 * S;
         tr.g.add(c);
-      }
+      });
     });
-    // arc length along the (unclipped) line
-    const cum = [0];
-    for (let i = 1; i < line.length; i++) cum.push(cum[i - 1] + Math.hypot(line[i][0] - line[i - 1][0], line[i][1] - line[i - 1][1]));
-    const total = cum[cum.length - 1];
-    const at = (d, side, out) => {
+    // a train's point d along its beam (u), on the beam top
+    const at = (tr, d, out) => {
+      const { line, cum } = tr;
       let i = 1;
       while (i < cum.length - 1 && cum[i] < d) i++;
       const [ax, az] = line[i - 1], [bx, bz] = line[i], f = (d - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
-      const ry = Math.atan2(bx - ax, bz - az);
-      out.set(ax + (bx - ax) * f + Math.cos(ry) * half * side, yD + 0.02, az + (bz - az) * f - Math.sin(ry) * half * side);
-      return ry;
+      out.set(ax + (bx - ax) * f, yD + 0.02, az + (bz - az) * f);
+      return Math.atan2(bx - ax, bz - az);
     };
     const SPEED = 4, DWELL = 8, RT = 0.9;
     const broken = (x, z, r) => spans.some((s) => s.t >= 0 && Math.hypot(s.x - x, s.z - z) < r);
@@ -1124,11 +1252,11 @@ export function buildSeattle(scene, world, opts, K) {
           }
           if (tr.wait > 0) tr.wait -= dt;
           else {
-            const d = tr.s * total + tr.dir * SPEED * dt;
-            tr.s = Math.max(0, Math.min(1, d / total));
+            const d = tr.s * tr.total + tr.dir * SPEED * dt;
+            tr.s = Math.max(0, Math.min(1, d / tr.total));
             if (tr.s === 0 || tr.s === 1) { tr.dir = -tr.dir; tr.wait = DWELL; }
           }
-          tr.ry = at(tr.s * total, tr.side, tr.base);
+          tr.ry = at(tr, tr.s * tr.total, tr.base);
           tr.g.position.copy(tr.base);
           tr.g.rotation.set(0, tr.ry, 0);
           // a kaiju's leg or a fallen span ahead knocks it off the beam
@@ -1146,7 +1274,9 @@ export function buildSeattle(scene, world, opts, K) {
   // (seattle_detail.json ferries: [{ name, dock: { x, z, rot }, route: [[x, z], ...] }]: each ferry
   // waits in its slip, crosses out along its route past the bounds and back.
   // A kaiju that wades into one rolls it over and sinks it, like Chicago's boats.)
-  const ferryRoutes = (L.detail?.ferries || []).filter((f) => f.route?.length >= 2);
+  // (the layout's routes as points; the Washington State ferries only, one boat per route name: Bainbridge, Bremerton)
+  const ferryRoutes = (L.detail?.ferries || []).map((f) => ({ ...f, route: f.route || f.points }))
+    .filter((f, i, all) => f.route?.length >= 2 && /ferry/i.test(f.name || 'ferry') && !/fast/i.test(f.name || '') && all.findIndex((g) => g.name === f.name) === i);
   const procFerry = () => {
     // Jumbo Mark II class: ~140 x 27 m; white hull and cabins, the green stripe, the black-topped stack; front +Z
     const m = new LK.Massing(), Lf = 140 * S, Wf = 27 * S;
@@ -1229,14 +1359,18 @@ export function buildSeattle(scene, world, opts, K) {
   // The container ship at anchor and Harbor Island's cranes (detail containerShip / harborCranes;
   // seattle-design's kit models when ready, else a procedural hull and A-frame cranes): one batch each
   {
-    const ship = L.detail?.containerShip, cranes = L.detail?.harborCranes || [];
-    const kShip = _kit('seattle_container_ship'), kCrane = _kit('seattle_harbor_crane');
-    const placeKit = (url, x, z, ry) => K.onTemplatesReady((sc0, get) => {
+    // (defaults when the detail file has none: a ship at anchor off the stadiums clear of the ferry lanes, and
+    // the ship-to-shore cranes along Harbor Island's Terminal 18 apron, ~1.2 km south-west of the box; phones: three)
+    const ship = L.detail?.containerShip || { x: -480, z: 430, rot: 0.35 };
+    const cranes = L.detail?.harborCranes || [[-215, 690], [-205, 722], [-195, 754], [-185, 786], [-175, 818]].slice(0, lite ? 3 : 5).map(([x, z]) => ({ x, z, rot: 1.75, land: true }));
+    const kShip = _kit('seattle_container_ship'), kCrane = _kit('seattle_container_crane') || _kit('seattle_harbor_crane');
+    const placeKit = (url, x, z, ry, y = 0.2) => K.onTemplatesReady((sc0, get) => {
       const t = get(url);
       if (!t) return;
       const c = t.clone(true);
-      c.scale.setScalar(S); c.position.set(x, 0.2, z); c.rotation.y = ry;
+      c.scale.setScalar(S); c.position.set(x, y, z); c.rotation.y = ry;
       c.updateMatrixWorld(true);
+      c.traverse((o) => { o.matrixAutoUpdate = false; });
       scene.add(c);
     });
     if (ship && kShip) placeKit(kShip, ship.x, ship.z, ship.rot || 0);
@@ -1252,7 +1386,7 @@ export function buildSeattle(scene, world, opts, K) {
       g.traverse((o) => { o.matrixAutoUpdate = false; o.updateMatrix(); });
       scene.add(g);
     }
-    if (cranes.length && kCrane) for (const c of cranes) placeKit(kCrane, c.x, c.z, c.rot || 0);
+    if (cranes.length && kCrane) for (const c of cranes) placeKit(kCrane, c.x, c.z, c.rot || 0, 0);
     else if (cranes.length) {
       const m = new LK.Massing();
       for (const c of cranes) {
@@ -1262,6 +1396,13 @@ export function buildSeattle(scene, world, opts, K) {
         const [hx, hz] = P2(0, -1); m.box(M.red, 4, 2.2, 3, hx, 9.7, hz, r);
       }
       addBatch(m.build(true).children[0].geometry, M.red).castShadow = true;
+    }
+    // Floatplanes moored off the Lake Union seaplane dock (landmark lake_union_seaplane), on the water
+    const dock = L.landmarks.find((l) => l.id === 'lake_union_seaplane'), kPlane = _kit('seattle_floatplane') || _kit('seattle_seaplane');
+    if (dock && kPlane) {
+      for (const [dx, dz, ry] of [[-3.2, -1.5, 0.3], [3.4, -2.5, -0.25], [0.4, -5.2, 0.1]].slice(0, lite ? 1 : 3)) {
+        if (isWater(dock.x + dx, dock.z + dz)) placeKit(kPlane, dock.x + dx, dock.z + dz, ry);
+      }
     }
   }
 
@@ -1282,24 +1423,42 @@ export function buildSeattle(scene, world, opts, K) {
     // Seattle's own lamp when seattle-design ships one, else Chicago's, else the Tokyo kit lamp, else procedural
     const lampName = K.hasProp('seattle_streetlamp') ? 'seattle_streetlamp' : K.hasProp('chi_streetlamp') ? 'chi_streetlamp' : 'street_lamp';
     const hasLamp = K.hasProp(lampName);
-    // (Seattle's lamps ~35 m apart on each side; Chicago's sparser)
-    const lampEvery = lampName === 'seattle_streetlamp' ? (lite ? 26 : 14) : lite ? 56 : 34;
-    let n = 0;
+    // Seattle's lamps ~40 m apart on both sides of the avenues (staggered), every ~60 m on one side of
+    // the side streets; phones: the avenues only, sparser. Chicago's / Tokyo's stand-ins sparser still
+    const own = lampName === 'seattle_streetlamp';
+    const lampEvery = own ? (lite ? 20 : 8) : lite ? 40 : 24;
+    const putLamp = (x, z, ry) => {
+      if (isWater(x, z) || onRing(x, z) || inRingBox(x, z)) return;
+      const lamp = hasLamp ? K.cloneProp(lampName, propH(lampName, 5.6 * PS)) : LK.makeLamp();
+      if (!hasLamp) lamp.scale.setScalar(PS);
+      lamp.position.set(x, 0, z);
+      lamp.rotation.y = ry;
+      lamp.matrixAutoUpdate = false; lamp.updateMatrix();
+      lamp.userData.instance = true;
+      scene.add(lamp);
+      stats.lamps = (stats.lamps || 0) + 1;
+    };
     for (const e of net.edges) {
       const w = e.laneOff * 4;
       if (w < MAJOR_W) continue;
-      for (let t = Math.min(6, e.len / 2); t < e.len - 3; t += lampEvery) {
-        const s = (n++ % 2) ? 1 : -1;
-        const off = s * (w / 2 + 0.25);
-        const x = net.nodes[e.a].x + e.dx * t - e.dz * off, z = net.nodes[e.a].z + e.dz * t + e.dx * off;
-        if (isWater(x, z) || onRing(x, z)) continue;
-        const lamp = hasLamp ? K.cloneProp(lampName, propH(lampName, 5.6 * PS)) : LK.makeLamp();
-        if (!hasLamp) lamp.scale.setScalar(PS);
-        lamp.position.set(x, 0, z);
-        lamp.rotation.y = Math.atan2(e.dx, e.dz) + (s > 0 ? -Math.PI / 2 : Math.PI / 2);
-        lamp.matrixAutoUpdate = false; lamp.updateMatrix();
-        lamp.userData.instance = true;
-        scene.add(lamp);
+      for (const s of lite ? [1] : [-1, 1]) {
+        for (let t = Math.min(lite ? 4 : 6, e.len / 2) + (!lite && s > 0 ? lampEvery / 2 : 0); t < e.len - 3; t += lampEvery) {
+          const ss = lite ? ((Math.floor(t / lampEvery) % 2) ? 1 : -1) : s, off = ss * (w / 2 + 0.25);
+          putLamp(net.nodes[e.a].x + e.dx * t - e.dz * off, net.nodes[e.a].z + e.dz * t + e.dx * off, Math.atan2(e.dx, e.dz) + (ss > 0 ? -Math.PI / 2 : Math.PI / 2));
+        }
+      }
+    }
+    if (!lite) {
+      for (const r of roads) {
+        if (r.kind !== 'minor') continue;
+        let acc = 6;
+        for (let i = 0; i + 1 < r.points.length; i++) {
+          const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1], l = Math.hypot(bx - ax, bz - az);
+          if (l < 0.01) continue;
+          const dx = (bx - ax) / l, dz = (bz - az) / l, off = r.width / 2 + 0.25;
+          for (; acc < l; acc += own ? 12 : 30) putLamp(ax + dx * acc - dz * off, az + dz * acc + dx * off, Math.atan2(dx, dz) - Math.PI / 2);
+          acc -= l;
+        }
       }
     }
     const sigName = K.hasProp('seattle_traffic_signal') ? 'seattle_traffic_signal' : 'chi_traffic_signal';
@@ -1355,11 +1514,11 @@ export function buildSeattle(scene, world, opts, K) {
     };
     // Corners: hydrants, trash cans, newspaper boxes; coffee carts mid-block (seattle-design's props, as shipped)
     const corners = net.nodes.map((nd, i) => [nd, i]).filter(([nd]) => nd.edges.length >= 3);
-    const caps = { seattle_hydrant: lite ? 0 : 220, seattle_trash_can: lite ? 0 : 220, seattle_news_box: lite ? 0 : 60 };
+    const caps = { seattle_hydrant: lite ? 0 : 220, seattle_trash_can: lite ? 0 : 220, seattle_newspaper_box: lite ? 0 : 60 };
     const count = {};
     for (const [nd, ni] of corners) {
       const e = net.edges[nd.edges[0]], w = e.laneOff * 4, ux = e.a === ni ? e.dx : -e.dx, uz = e.a === ni ? e.dz : -e.dz;
-      for (const [name, chance, back, side] of [['seattle_hydrant', 0.5, 1.6, 0.4], ['seattle_trash_can', 0.5, 1.2, -0.4], ['seattle_news_box', 0.15, 2.2, 0.5]]) {
+      for (const [name, chance, back, side] of [['seattle_hydrant', 0.5, 1.6, 0.4], ['seattle_trash_can', 0.5, 1.2, -0.4], ['seattle_newspaper_box', 0.15, 2.2, 0.5]]) {
         if ((count[name] || 0) >= caps[name] || rng() > chance) continue;
         const o = w / 2 + SIDEWALK_W * side + 0.6, x = nd.x + ux * (w / 2 + back) - uz * o, z = nd.z + uz * (w / 2 + back) + ux * o;
         if (put(name, x, z, Math.atan2(ux, uz))) count[name] = (count[name] || 0) + 1;
@@ -1369,6 +1528,57 @@ export function buildSeattle(scene, world, opts, K) {
       const e = art[Math.floor(rng() * art.length)], w = e.laneOff * 4, t = e.len * (0.2 + rng() * 0.6), sd = rng() < 0.5 ? 1 : -1;
       const x0 = net.nodes[e.a].x + e.dx * t, z0 = net.nodes[e.a].z + e.dz * t;
       put('seattle_coffee_cart', x0 - e.dz * sd * (w / 2 + 0.5), z0 + e.dx * sd * (w / 2 + 0.5), Math.atan2(e.dx, e.dz) + (sd > 0 ? -Math.PI / 2 : Math.PI / 2));
+    }
+    // Parked cars (the level's traffic templates, instanced): kerbside on the side streets and the
+    // avenues' parking lanes, one every ~6u with gaps, and rows in the surface lots (layout parks
+    // kind plaza / surface parking). Phones: a few, nearer the cap of the draw budget
+    {
+      const capKerb = lite ? 140 : 900, capLot = lite ? 80 : 700;
+      let kerb = 0, lot = 0;
+      const park = (x, z, yaw) => {
+        if (isWater(x, z) || onRing(x, z) || inRingBox(x, z, 1.5, 1.5) || onLandmark(x, z)) return false;
+        const car = K.makeParkedCar(x, z, yaw);
+        if (!car) return false;
+        scene.add(car);
+        return true;
+      };
+      const kerbRun = (pts, w, chance) => {
+        let acc = 4;
+        for (let i = 0; i + 1 < pts.length && kerb < capKerb; i++) {
+          const [ax, az] = pts[i], [bx, bz] = pts[i + 1], l = Math.hypot(bx - ax, bz - az);
+          if (l < 0.01) continue;
+          const dx = (bx - ax) / l, dz = (bz - az) / l;
+          for (; acc < l - 4 && kerb < capKerb; acc += 6.2) {
+            for (const sd of [-1, 1]) {
+              if (rng() > chance) continue;
+              const off = sd * (w / 2 - 0.55);
+              if (park(ax + dx * acc - dz * off, az + dz * acc + dx * off, Math.atan2(dx, dz) + (rng() < 0.5 ? 0 : Math.PI))) kerb++;
+            }
+          }
+          acc -= l;
+        }
+      };
+      for (const r of roads) if (r.kind === 'minor') kerbRun(r.points, r.width, lite ? 0.12 : 0.45);
+      for (const e of net.edges) {
+        const w = e.laneOff * 4, A = net.nodes[e.a], Bn = net.nodes[e.b];
+        if (w < MAJOR_W || e.len < 14) continue;
+        kerbRun([[A.x + e.dx * 4, A.z + e.dz * 4], [Bn.x - e.dx * 4, Bn.z - e.dz * 4]], w, lite ? 0.06 : 0.25);
+      }
+      for (const p of L.parks) {
+        if (p.surface !== 'parking' || lot >= capLot) continue;
+        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (const [x, z] of p.polygon) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+        const along = x1 - x0 >= z1 - z0; // rows along the lot's long side
+        for (let v = (along ? z0 : x0) + 2.5; v < (along ? z1 : x1) - 2.5 && lot < capLot; v += 6) {
+          for (let u = (along ? x0 : z0) + 1.2; u < (along ? x1 : z1) - 1.2 && lot < capLot; u += 2.3) {
+            const x = along ? u : v, z = along ? v : u;
+            if (!pointInPoly(x, z, p.polygon) || rng() < (lite ? 0.7 : 0.3)) continue;
+            if (park(x, z, (along ? 0 : Math.PI / 2) + (rng() < 0.5 ? 0 : Math.PI))) lot++;
+          }
+        }
+      }
+      stats.parkedKerb = kerb; stats.parkedLots = lot;
+      Object.assign(stats, count);
     }
     // Park lamps and benches along the park walks (Seattle Center, the sculpture park, the waterfront promenade)
     {
@@ -1475,7 +1685,7 @@ export function buildSeattle(scene, world, opts, K) {
   // scaled to R0), so Rainier reads over the stadiums the way it does in photos.
   {
     const R0 = 1400, HK = R0 / 1750, pos = [], col = [], idx = [];
-    const haze = new THREE.Color(SEATTLE_LOOK.statics.bg), cA = new THREE.Color(), cB = new THREE.Color();
+    const haze = new THREE.Color(SEATTLE_LOOK.statics.bg), cA = new THREE.Color(), cB = new THREE.Color(), cR = new THREE.Color();
     const rock = new THREE.Color(0x5e6a78), forest = new THREE.Color(0x46584c), snow = new THREE.Color(0xf4f6fa);
     const rnd = _seeded('seattle-horizon');
     // range: bearing from north (deg, clockwise) start / end, peaks [bearing, height u, half width deg], snowline (0..1 of the peak), haze 0..1,
@@ -1488,12 +1698,15 @@ export function buildSeattle(scene, world, opts, K) {
         for (const [pb, ph, pw] of peaks) { const t = Math.abs(b - pb) / pw; if (t < 1) y = Math.max(y, ph * (1 - t) ** flank); }
         y += (rnd() - 0.5) * noise * (y / Math.max(1, base * 3));
         y *= HK;
-        const top = Math.max(...peaks.map((p) => p[1])) * HK;
-        cA.copy(y > top * snowK ? snow : rock).lerp(haze, hz);
+        // three rows: the foot (forest in the haze), the snowline (rock), the ridge (snow above the
+        // snowline, else rock): snow only on the peaks, not a pale curtain down the face
+        const top = Math.max(...peaks.map((p) => p[1])) * HK, sl = Math.min(y, top * snowK);
         cB.copy(forest).lerp(haze, Math.min(1, hz + 0.25));
-        pos.push(x, -12, z, x, y, z);
-        col.push(cB.r, cB.g, cB.b, cA.r, cA.g, cA.b);
-        if (i) { const j = i0 + i * 2; idx.push(j - 2, j - 1, j, j - 1, j + 1, j); }
+        cR.copy(rock).lerp(haze, hz);
+        cA.copy(y > sl + 0.5 ? snow : rock).lerp(haze, hz);
+        pos.push(x, -12, z, x, sl, z, x, y, z);
+        col.push(cB.r, cB.g, cB.b, cR.r, cR.g, cR.b, cA.r, cA.g, cA.b);
+        if (i) { const j = i0 + i * 3; idx.push(j - 3, j - 2, j, j - 2, j + 1, j, j - 2, j - 1, j + 1, j - 1, j + 2, j + 1); }
       }
     };
     range(128, 174, [[150, 140, 13], [147.5, 118, 5], [152.5, 122, 5]], 0.38, 0.42, 6, 2, 1.9); // Rainier (4,392 m, ~88 km): a broad snow cone

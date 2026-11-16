@@ -68,8 +68,10 @@ export function findDuelSpawns(world) {
   const area = (p) => ({ x: p.x, z: p.z, minX: p.x - 20, maxX: p.x + 20, minZ: p.z - 20, maxZ: p.z + 20 });
   const D = world.duelSpawns;
   const [first, second] = D && D.a && D.b ? [area(D.a), area(D.b)] : SPAWN_AREAS[world.level] || SPAWN_AREAS.tokyo;
-  const player = findOpenSpawn(world, first);
-  const rival = findOpenSpawn(world, second);
+  // (a layout point with no clear ground within 20u: the nearest within 60u, rather than no duel)
+  const wide = (p) => ({ ...p, minX: p.x - 60, maxX: p.x + 60, minZ: p.z - 60, maxZ: p.z + 60 });
+  const player = findOpenSpawn(world, first) || (D && D.a ? findOpenSpawn(world, wide(first)) : null);
+  const rival = findOpenSpawn(world, second) || (D && D.b ? findOpenSpawn(world, wide(second)) : null);
   if (!player || !rival) throw new Error(`No clear duel spawn in the selected arena (${!player ? 'player' : 'rival'} near ${Math.round((player ? second : first).x)}, ${Math.round((player ? second : first).z)})`);
   return {player, rival};
 }

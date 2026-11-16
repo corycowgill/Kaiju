@@ -858,6 +858,8 @@ if (DATA && res && res.bounds) {
     const bad = proc.filter((b) => !b.pendingGLB);
     if (bad.length) fail(`${level}: ${bad.length} buildings are procedural, not GLB: ${bad.slice(0, 6).map((b) => b.landmarkId || `(${b.x.toFixed(0)},${b.z.toFixed(0)} h${b.h.toFixed(1)})`).join(', ')}`);
     summary += `${res.buildings.length - proc.length} GLB buildings${pending.length ? `, ${pending.length} pending GLB (${[...new Set(pending.map((b) => b.pendingGLB))].join(', ')})` : ''}; `;
+    // (a level's own dressing counts: trees, lamps, parked cars, props; seattle.js world.levelStats)
+    if (world.levelStats && typeof world.levelStats === 'object') summary += `dressing ${JSON.stringify(world.levelStats)}; `;
   }
   // Kaijupalooza! (on by default): its stages, tents and fence runs are
   // buildings too, so the GLB check above covers them; here just that it's there

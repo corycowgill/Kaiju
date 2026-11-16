@@ -33,8 +33,8 @@ const VENUES = {
     home: { player: 'FROM THE DEPTHS OF ELLIOTT BAY', rival: 'FROM THE WRECKAGE OF PIKE PLACE' },
     swaps: [
       [/CHICAGO HEAVYWEIGHT/g, 'SEATTLE HEAVYWEIGHT'], [/Chicago Heavyweight/g, 'Seattle Heavyweight'],
-      [/LAKE MICHIGAN/g, 'ELLIOTT BAY'], [/Lake Michigan/g, 'Elliott Bay'], // (the bay: the water the Seattle Center ring looks toward)
-      [/GRANT PARK/g, 'SEATTLE CENTER'], [/Grant Park/g, 'Seattle Center'],
+      [/LAKE MICHIGAN/g, 'ELLIOTT BAY'], [/Lake Michigan/g, 'Elliott Bay'], // (the bay beside the Terminal 46 ring)
+      [/GRANT PARK/g, 'TERMINAL 46'], [/Grant Park/g, 'Terminal 46'], // (the ring's site: the port apron by the stadiums)
       [/THE LOOP/g, 'DOWNTOWN'], [/the Loop/g, 'downtown'],
       [/LAKE SHORE DRIVE/g, 'ALASKAN WAY'], [/Lake Shore Drive/g, 'Alaskan Way'],
       [/MICHIGAN AVENUE/g, 'FIFTH AVENUE'], [/Michigan Avenue/g, 'Fifth Avenue'],
