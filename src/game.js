@@ -292,6 +292,68 @@ scene.fog = new THREE.FogExp2(0x3a3048, 0.0032);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 2000);
 
+// Opaque draw order (desktop). three sorts the opaque list by material id
+// first and depth second, so the city's ~75 materials drew in effectively
+// random depth order: every pixel ran the full PBR shader 2.3-3.5 times in
+// the opaque pass (measured headless, 4 headings). Desktop GPUs reject
+// fragments behind what is already in the depth buffer before shading them
+// (early-z), so the near objects now go first, front to back: ~18% fewer
+// shaded fragments in Tokyo (13-25% by heading), ~7% in Chicago, same image
+// (the depth test decides what is visible either way; 0-3 of 518k pixels
+// differed, on faces that coincide). The rest keeps three's material order,
+// so material switches go ~75 -> ~140 instead of ~4.5x for a full depth sort.
+// City-spanning meshes (merged street strips, global window/body IMs) stay
+// in material order (their depth is meaningless), and so do flat ones (see
+// _isFlat). renderOrder groups (ground, sky, VFX) are untouched. Phones keep
+// three's order: tile-based mobile GPUs remove hidden fragments in hardware,
+// so there it would only add CPU work (~0.5 ms/frame of sort + switches).
+const _NEAR_DRAW = 120;    // u: camera distance of the front-to-back band
+const _NEAR_MAX_R = 150;   // u: bounding radius above which a mesh is city-spanning
+// NDC depth of _NEAR_DRAW (render items carry NDC z): perspective z_ndc(d)
+const _nearZ = (camera.far + camera.near) / (camera.far - camera.near)
+  - 2 * camera.far * camera.near / ((camera.far - camera.near) * _NEAR_DRAW);
+// Flat meshes (ground layers: paths, pads, lot and festival floors) stay in
+// material order too: stacked a few cm apart, their pixel ties must resolve
+// in a fixed order, or they could shimmer as the camera moves. Measured once
+// per object (world-space bounding box height).
+const _flatCache = new WeakMap();
+const _flatBox = new THREE.Box3();
+function _isFlat(o, g) {
+  let f = _flatCache.get(o);
+  if (f === undefined) {
+    if (o.isSkinnedMesh) f = false;
+    else {
+      if (o.isInstancedMesh) { if (!o.boundingBox) o.computeBoundingBox(); _flatBox.copy(o.boundingBox); }
+      else { if (!g.boundingBox) g.computeBoundingBox(); _flatBox.copy(g.boundingBox); }
+      _flatBox.applyMatrix4(o.matrixWorld);
+      f = !(_flatBox.max.y - _flatBox.min.y >= 0.5); // (an empty box counts as flat)
+    }
+    _flatCache.set(o, f);
+  }
+  return f;
+}
+// Only instanced tiles (buildings, trees, props, traffic) and skinned meshes
+// (kaiju, mechs, pedestrians) are depth-sorted: that is where the overdraw
+// was. Plain merged meshes (festival stages, signs) can carry faces that
+// coincide with another mesh's; they keep the fixed material order.
+function _nearItem(it) {
+  if (!(it.z < _nearZ)) return false;
+  if (!it.object.isInstancedMesh && !it.object.isSkinnedMesh) return false;
+  const bs = it.object.boundingSphere || it.geometry.boundingSphere;
+  return !!bs && bs.radius < _NEAR_MAX_R && !_isFlat(it.object, it.geometry);
+}
+function _opaqueSort(a, b) {
+  if (a.groupOrder !== b.groupOrder) return a.groupOrder - b.groupOrder;
+  if (a.renderOrder !== b.renderOrder) return a.renderOrder - b.renderOrder;
+  const an = _nearItem(a), bn = _nearItem(b);
+  if (an !== bn) return an ? -1 : 1;
+  if (an && a.z !== b.z) return a.z - b.z;
+  if (a.material.id !== b.material.id) return a.material.id - b.material.id;
+  if (a.z !== b.z) return a.z - b.z;
+  return a.id - b.id;
+}
+if (!isMobile) renderer.setOpaqueSort(_opaqueSort);
+
 // Postprocessing pipeline:
 //   RenderPass -> UnrealBloomPass -> OutputPass (tone-map + sRGB at the end).
 // Bloom runs at half-res to keep mobile-class GPUs in the budget.
@@ -2173,7 +2235,7 @@ window.__restartInPlace = restartInPlace;
 // ?debug test hooks (QA scripts): inspect state and trigger abilities
 if (/[?&]debug\b/.test(location.search)) {
   // composer(): the post chain (bloom, grade) for in-game-look screenshots
-  window.__qa = { state, world, camera, renderer, composer: () => composer, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on), gameOver: (v) => gameOver(!!v), upgrades: () => offerUpgrades() };
+  window.__qa = { state, world, camera, renderer, composer: () => composer, opaqueSort: isMobile ? null : _opaqueSort,ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on), gameOver: (v) => gameOver(!!v), upgrades: () => offerUpgrades() };
 }
 async function startGame(key) {
   if (_startingGame) return;

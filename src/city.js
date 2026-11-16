@@ -1973,7 +1973,10 @@ export class BuildingGrid {
     this.cellSize = cellSize;
     this.cells = new Map();
   }
-  _key(cx, cz) { return cx + ':' + cz; }
+  // Integer cell key (was the string cx + ':' + cz: a string built and
+  // hashed per cell per query, ~9 cells for each of the several grid queries
+  // a frame makes). Unique while |cz| < 4096 cells (~245k u); stays a small int.
+  _key(cx, cz) { return cx * 8192 + cz; }
   add(b) {
     const cs = this.cellSize;
     const k = this._key(Math.floor(b.x / cs), Math.floor(b.z / cs));
@@ -1984,7 +1987,7 @@ export class BuildingGrid {
     b._grid = this;
   }
   remove(b) {
-    if (!b._gridKey) return;
+    if (b._gridKey == null) return; // (0 is a valid key)
     const arr = this.cells.get(b._gridKey);
     if (arr) {
       const i = arr.indexOf(b);
