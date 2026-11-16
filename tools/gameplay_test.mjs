@@ -876,6 +876,53 @@ test('Title Match on NYC: New York place names on screen, the booth gate as off 
   assert.match(venueHome(ny, 'player', 'x'), /HUDSON/);
 });
 
+// ---- Seattle (src/levels/seattle.js) ----
+const SEATTLE_LAYOUT = (() => {
+  // The file seattle.js loads (the cartographer's, or the placeholder until it lands)
+  const src = fs.readFileSync(new URL('../src/levels/seattle.js', import.meta.url), 'utf8');
+  const url = src.match(/const LAYOUT_URL = '\.\/(assets\/levels\/[\w.]+\.json)'/)[1];
+  return JSON.parse(fs.readFileSync(new URL('../' + url, import.meta.url), 'utf8'));
+})();
+const seaWet = (x, z) => (SEATTLE_LAYOUT.water || []).some((w) => inPoly(x, z, w.polygon) && !(w.holes || []).some((h) => inPoly(x, z, h)));
+
+test('Seattle layout: kaiju, duel pair, ring site and enemy spawns are dry and inside the play area', () => {
+  const B = SEATTLE_LAYOUT.bounds, inB = (p, m = 0) => p.x >= B.minX - m && p.x <= B.maxX + m && p.z >= B.minZ - m && p.z <= B.maxZ + m;
+  assert.equal(SEATTLE_LAYOUT.meta.scale, 0.2);
+  const sp = SEATTLE_LAYOUT.spawn.player;
+  assert.ok(inB(sp), 'kaiju spawn inside the bounds');
+  if (seaWet(sp.x, sp.z)) for (const [dx, dz] of [[-10, 0], [10, 0], [0, -10], [0, 10]]) assert.ok(seaWet(sp.x + dx, sp.z + dz), 'kaiju spawn in open water');
+  const { a, b } = SEATTLE_LAYOUT.duel;
+  assert.ok(inB(a) && inB(b) && !seaWet(a.x, a.z) && !seaWet(b.x, b.z), 'duel pair dry and inside');
+  assert.ok(Math.hypot(a.x - b.x, a.z - b.z) > 245, 'duel pair far enough apart');
+  const R = SEATTLE_LAYOUT.ring;
+  assert.ok(inB(R) && !seaWet(R.x, R.z), 'ring site dry and inside');
+  for (const [dx, dz] of [[-45, -45], [45, -45], [45, 45], [-45, 45], [0, 0]]) assert.ok(!seaWet(R.x + dx, R.z + dz), 'ring mat on dry ground');
+  for (const lm of SEATTLE_LAYOUT.landmarks) assert.ok(Math.abs(lm.x - R.x) > 46 || Math.abs(lm.z - R.z) > 46, `landmark ${lm.id} under the ring`);
+  for (const e of SEATTLE_LAYOUT.spawn.enemies || []) assert.ok(inB(e, 40), `enemy spawn ${e.x},${e.z} near the bounds`);
+  // the Space Needle is on the map and stands (liftable / tearable like any tower)
+  assert.ok(SEATTLE_LAYOUT.landmarks.some((l) => l.id === 'space_needle'), 'the Space Needle is a landmark');
+});
+
+test('VS spawns on Seattle use the layout pair', async () => {
+  const { findDuelSpawns } = await import('../src/kaijuDuel.js');
+  const { a, b } = SEATTLE_LAYOUT.duel;
+  const world = { level: 'seattle', bounds: SEATTLE_LAYOUT.bounds, isWater: seaWet, buildings: [], duelSpawns: { a, b } };
+  const s = findDuelSpawns(world);
+  assert.ok(s.player.distanceTo(new THREE.Vector3(a.x, 0, a.z)) < 21 && s.rival.distanceTo(new THREE.Vector3(b.x, 0, b.z)) < 21);
+});
+
+test('Title Match on Seattle: Seattle place names on screen, no booth line naming Chicago, DC or New York places', async () => {
+  const { placeText, offChicago, venueHome, chicagoLine } = await import('../src/wrestling/venue.js');
+  const sea = { world: { level: 'seattle' } };
+  assert.ok(offChicago(sea));
+  assert.equal(placeText(sea, 'Gorrak · CHICAGO HEAVYWEIGHT CHAMPION'), 'Gorrak · SEATTLE HEAVYWEIGHT CHAMPION');
+  assert.equal(placeText(sea, 'Into Lake Michigan! That wave will reach Indiana!'), 'Into Elliott Bay! That wave will reach Bainbridge Island!');
+  assert.match(venueHome(sea, 'player', 'x'), /ELLIOTT BAY/);
+  // the gate covers DC and New York place names too
+  for (const t of ['Into the Potomac!', 'Right through Times Square!', 'Off the Empire State!']) assert.ok(chicagoLine(['x', {}, [['M', t, 'id', 1]]]), t);
+  assert.ok(!chicagoLine(['x', {}, [['M', 'What a slam!', 'id', 1]]]));
+});
+
 // ---- Up-front loading: the booth's lines are all fetched behind the loading screen ----
 test('every booth line a match can speak is in its preloaded voice set (matchVoiceIds), every pair and arena level', async () => {
   const { matchVoiceIds } = await import('../src/wrestling/commentary.js');
@@ -885,8 +932,8 @@ test('every booth line a match can speak is in its preloaded voice set (matchVoi
   const { MONSTERS } = await import('../src/monsters.js');
   const lmKey = (id) => (id || '').replace(/_(rear|twin|\d)$/, ''); // (commentary.js)
   const keys = Object.keys(MONSTERS);
-  for (const level of ['chicago', 'dc', 'nyc']) {
-    const layout = JSON.parse(fs.readFileSync(new URL(`../assets/levels/${level}_layout.json`, import.meta.url), 'utf8'));
+  for (const level of ['chicago', 'dc', 'nyc', 'seattle']) {
+    const layout = level === 'seattle' ? SEATTLE_LAYOUT : JSON.parse(fs.readFileSync(new URL(`../assets/levels/${level}_layout.json`, import.meta.url), 'utf8'));
     const lmIds = layout.landmarks.map((l) => l.id), lms = new Set(lmIds.map(lmKey));
     for (const pk of keys) for (const rk of keys) {
       if (pk === rk) continue;

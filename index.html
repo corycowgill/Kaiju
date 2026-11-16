@@ -1872,6 +1872,8 @@
   #menu .level-card[data-level="chicago"] { background-image: linear-gradient(90deg, rgba(5, 1, 2, 0.88) 15%, rgba(5, 1, 2, 0.15)), url(assets/ui/menu/stage_chicago.webp); }
   #menu .level-card[data-level="dc"] { background-image: linear-gradient(90deg, rgba(5, 1, 2, 0.88) 15%, rgba(5, 1, 2, 0.15)), url(assets/ui/menu/stage_dc.webp); }
   #menu .level-card[data-level="nyc"] { background-image: linear-gradient(90deg, rgba(5, 1, 2, 0.88) 15%, rgba(5, 1, 2, 0.15)), url(assets/ui/menu/stage_nyc.webp); }
+  /* (Seattle: a bay-and-sky gradient until seattle-design's assets/ui/menu/stage_seattle.webp exists; then url() it here and in intro.js MENU_IMAGES) */
+  #menu .level-card[data-level="seattle"] { background-image: linear-gradient(90deg, rgba(5, 1, 2, 0.88) 15%, rgba(5, 1, 2, 0.15)), linear-gradient(180deg, #6f9ccc 0%, #c9d8e6 52%, #2c4a5c 53%, #1a3040 100%); }
   #menu .level-card::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 2px rgba(255, 230, 200, 0.18); }
   #menu .level-card b { display: block; font: 400 28px/1 var(--f-display); letter-spacing: 3px; color: var(--c-cream); text-shadow: 0 2px 0 #1a0004; }
   #menu .level-card b .jp { font: 700 14px/1 var(--f-jp); color: var(--c-kanji); margin-right: 8px; letter-spacing: 1px; vertical-align: 3px; }
@@ -1884,8 +1886,14 @@
     font: 700 14px/24px var(--f-jp); color: #fff; background: var(--c-red-hi);
   }
   /* The Title Match is staged in Chicago, Washington DC and New York only: Tokyo is not offered there */
-  #menu[data-mode="title"] .level-card:not([data-level="chicago"]):not([data-level="dc"]):not([data-level="nyc"]) { display: none; }
-  #menu[data-mode="title"] .levels { grid-template-columns: minmax(0, 1fr); }
+  #menu[data-mode="title"] .level-card:not([data-level="chicago"]):not([data-level="dc"]):not([data-level="nyc"]):not([data-level="seattle"]) { display: none; }
+  /* Five stages (Havoc, VS, Lone Soldier): three across, the name under its kana; the Title Match's four stay two by two */
+  #menu:not([data-mode="title"]) .levels { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #menu:not([data-mode="title"]) .level-card { padding: 0 10px 10px; }
+  #menu:not([data-mode="title"]) .level-card b { font-size: 21px; letter-spacing: 2px; white-space: nowrap; }
+  #menu:not([data-mode="title"]) .level-card b .jp { display: block; font-size: 12px; margin: 0 0 3px; vertical-align: 0; }
+  #menu:not([data-mode="title"]) .level-card > span { font-size: 10px; letter-spacing: 1.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #menu[data-mode="title"] .levels { grid-template-columns: repeat(2, minmax(0, 1fr)); } /* (four arenas: two by two) */
 
   #menu .deployment-options { display: flex; gap: 12px; margin: 0; flex-wrap: wrap; width: auto; max-width: none; justify-content: flex-start; }
   #menu .deployment-field { position: relative; flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; }
@@ -2050,6 +2058,9 @@
     #menu .level-card b .jp { font-size: 11px; vertical-align: 2px; }
     #menu .level-card > span { display: none; }
     #menu .level-card.selected::before { top: 6px; right: 8px; width: 18px; height: 18px; font-size: 11px; line-height: 18px; }
+    #menu:not([data-mode="title"]) .level-card { padding: 0 8px 6px; }
+    #menu:not([data-mode="title"]) .level-card b { font-size: 15px; letter-spacing: 1px; }
+    #menu:not([data-mode="title"]) .level-card b .jp { display: none; }
     #menu .deployment-options { gap: 8px; flex-wrap: nowrap; }
     #menu .deployment-field { gap: 3px; flex-basis: 0; }
     #menu .deployment-field span { font-size: 11px; letter-spacing: 2px; }
@@ -2291,13 +2302,13 @@ window.__boot = (function () {
     <div class="mn-head"><b>SELECT MODE</b><span class="jp">モード選択</span></div>
     <div class="mode-cards" id="modeCards">
       <button type="button" class="mode-card" data-mode="havoc"><span class="mc-art"></span><span class="mc-no">01</span>
-        <span class="mc-body"><span class="mc-jp">怪獣大暴れ</span><b>KAIJU HAVOC</b><span class="mc-pitch">Raze the city wave after wave while the army throws everything it has at you.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC</span></span></button>
+        <span class="mc-body"><span class="mc-jp">怪獣大暴れ</span><b>KAIJU HAVOC</b><span class="mc-pitch">Raze the city wave after wave while the army throws everything it has at you.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE</span></span></button>
       <button type="button" class="mode-card" data-mode="title"><span class="mc-art"></span><span class="mc-no">02</span><span class="mc-tag">MAIN EVENT</span>
-        <span class="mc-body"><span class="mc-jp">王座決定戦</span><b>TITLE MATCH</b><span class="mc-pitch">Best of three falls for the heavyweight belt in a ring built across Grant Park, the National Mall or Central Park.</span><span class="mc-city">CHICAGO · DC · NYC</span></span></button>
+        <span class="mc-body"><span class="mc-jp">王座決定戦</span><b>TITLE MATCH</b><span class="mc-pitch">Best of three falls for the heavyweight belt in a ring built across Grant Park, the National Mall, Central Park or Seattle.</span><span class="mc-city">CHICAGO · DC · NYC · SEATTLE</span></span></button>
       <button type="button" class="mode-card" data-mode="vs"><span class="mc-art"><i class="vs-l"></i><i class="vs-r"></i><em>VS</em></span><span class="mc-no">03</span>
-        <span class="mc-body"><span class="mc-jp">怪獣対決</span><b>VS DUEL</b><span class="mc-pitch">Two kaiju enter, one leaves. Punch, grapple and throw your rival through the streets.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC</span></span></button>
+        <span class="mc-body"><span class="mc-jp">怪獣対決</span><b>VS DUEL</b><span class="mc-pitch">Two kaiju enter, one leaves. Punch, grapple and throw your rival through the streets.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE</span></span></button>
       <button type="button" class="mode-card" data-mode="lone"><span class="mc-art"></span><span class="mc-no">04</span>
-        <span class="mc-body"><span class="mc-jp">一兵卒</span><b>LONE SOLDIER</b><span class="mc-pitch">Drop in on foot, in a tank or a gunship and bring a kaiju down yourself.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC</span></span></button>
+        <span class="mc-body"><span class="mc-jp">一兵卒</span><b>LONE SOLDIER</b><span class="mc-pitch">Drop in on foot, in a tank or a gunship and bring a kaiju down yourself.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE</span></span></button>
     </div>
     <div class="menu-extras">
       <button class="trailer-btn" id="trailerBtn" type="button">▶ WATCH TRAILER</button>
@@ -2702,6 +2713,11 @@ window.__boot = (function () {
     "./src/levels/nycLook.js": "./src/levels/nycLook.js?v=1.14.1",
     "./src/levels/nycManifest.js": "./src/levels/nycManifest.js?v=1.14.1",
     "./src/levels/nycMaterials.js": "./src/levels/nycMaterials.js?v=1.14.1",
+    "./src/levels/seattle.js": "./src/levels/seattle.js?v=1.14.1",
+    "./src/levels/seattleLandscape.js": "./src/levels/seattleLandscape.js?v=1.14.1",
+    "./src/levels/seattleLook.js": "./src/levels/seattleLook.js?v=1.14.1",
+    "./src/levels/seattleManifest.js": "./src/levels/seattleManifest.js?v=1.14.1",
+    "./src/levels/seattleMaterials.js": "./src/levels/seattleMaterials.js?v=1.14.1",
     "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.14.1",
     "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.14.1",
     "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.14.1",

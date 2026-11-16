@@ -13,6 +13,8 @@ import { buildDc, loadDcLayout, dcBuildingGLBs, dcPropGLBs, dcVehicleGLBs, dcLod
 import { DC_DEBRIS_GLBS } from './levels/dcManifest.js';
 import { buildNyc, loadNycLayout, nycBuildingGLBs, nycPropGLBs, nycVehicleGLBs, nycLod1GLBs } from './levels/nyc.js';
 import { NYC_DEBRIS_GLBS } from './levels/nycManifest.js';
+import { buildSeattle, loadSeattleLayout, seattleBuildingGLBs, seattlePropGLBs, seattleVehicleGLBs, seattleLod1GLBs } from './levels/seattle.js';
+import { SEATTLE_DEBRIS_GLBS } from './levels/seattleManifest.js';
 import { setArenaSite } from './levels/chicago_arena.js';
 
 // Shared GLTFLoader instance — must be declared early because loadTreeTemplates()
@@ -226,13 +228,14 @@ for (const u of chicagoLod1GLBs()) LOD1_READY.add(u);
 const MAP_LEVELS = {
   dc: { load: loadDcLayout, build: buildDc, buildings: dcBuildingGLBs, props: dcPropGLBs, vehicles: dcVehicleGLBs, lod1: dcLod1GLBs, debris: DC_DEBRIS_GLBS, boxTint: 0xd6d0c4 },
   nyc: { load: loadNycLayout, build: buildNyc, buildings: nycBuildingGLBs, props: nycPropGLBs, vehicles: nycVehicleGLBs, lod1: nycLod1GLBs, debris: NYC_DEBRIS_GLBS, boxTint: null },
+  seattle: { load: loadSeattleLayout, build: buildSeattle, buildings: seattleBuildingGLBs, props: seattlePropGLBs, vehicles: seattleVehicleGLBs, lod1: seattleLod1GLBs, debris: SEATTLE_DEBRIS_GLBS, boxTint: null },
 };
 const _usLevel = (level) => level === 'chicago' || !!MAP_LEVELS[level];
 for (const k in MAP_LEVELS) for (const u of MAP_LEVELS[k].lod1()) LOD1_READY.add(u);
 // Twins whose shape is checked against their LOD0 on attach (DC's: a twin
 // that lost its dome failed silently at distance). Chicago's box LODs differ
 // from their LOD0 by design (the bascule leaves), so the check is opt-in.
-const LOD1_STRICT = new Set([...dcLod1GLBs(), ...nycLod1GLBs()]);
+const LOD1_STRICT = new Set([...dcLod1GLBs(), ...nycLod1GLBs(), ...seattleLod1GLBs()]);
 const _lod1Rejected = new Map(); // url -> why (smoke test lists them)
 /** LOD1 twins left out because their shape does not match their LOD0 (url -> reason). */
 export function lod1Rejected() { return _lod1Rejected; }
@@ -5651,6 +5654,14 @@ const CITY_KIT = {
   onTemplatesReady: (fn) => _flushHooks.push(fn),
   setBuildingTile: (t) => { _bldgTile = t; },
   hasTemplate: (url) => _glbTemplates.has(url),
+  /** A level's own procedural model as a building template under url (Seattle's
+   *  unready landmarks: placed through queueGLB like a GLB, so they get instance
+   *  slots and can be lifted or torn like one). Built once: a known url is kept. */
+  registerTemplate: (url, scene) => {
+    if (_glbTemplates.has(url)) return;
+    scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    _glbTemplates.set(url, { scene, box: new THREE.Box3().setFromObject(scene) });
+  },
   pickTokyoBuildingGLB: pickBuildingGLB,
   buildRoadNet,
   /** A parked car (random level-appropriate template) at x, z facing yaw, tagged for instancing; null if none loaded. */

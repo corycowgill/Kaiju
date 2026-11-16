@@ -76,7 +76,8 @@ _layoutSite();
  *  player's corner to clear it), flag the city flag the mat and signage carry
  *  ('chicago': light-blue bars, six-pointed stars; 'dc': the District's red
  *  bars and five-pointed stars; 'nyc': New York's blue, white and orange
- *  tricolour with a seal ring, five-pointed stars). Call before buildArena. */
+ *  tricolour with a seal ring, five-pointed stars; 'seattle': Seattle's
+ *  teal-green field with the white seal disc). Call before buildArena. */
 export function setArenaSite(s = {}) {
   const next = { dx: (s.x ?? 4) - 4, dz: (s.z ?? 62) - 62, title: s.title || 'CHICAGO HEAVYWEIGHT CHAMPIONSHIP', place: s.place || 'GRANT PARK', fountain: s.fountain ?? true, stands: s.stands ?? 'ns', east: s.east || 0, west: s.west || 0, gate: s.gate ?? true, flag: s.flag || 'chicago' };
   if (Object.keys(next).every((k) => next[k] === SITE[k])) return;
@@ -166,8 +167,8 @@ function _paintAtlas(cx, px, emissive) {
   const dim = emissive ? 0.42 : 1; // signage is backlit: the emissive copy is the same art, dimmer
   cx.globalAlpha = dim;
   cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineJoin = 'round';
-  // (the flag's accent: Chicago's light blue, the District's white, New York's orange)
-  const ACC = SITE.flag === 'dc' ? '#e9e7df' : SITE.flag === 'nyc' ? '#f26b21' : '#58b7e6';
+  // (the flag's accent: Chicago's light blue, the District's white, New York's orange, Seattle's green)
+  const ACC = SITE.flag === 'dc' ? '#e9e7df' : SITE.flag === 'nyc' ? '#f26b21' : SITE.flag === 'seattle' ? '#4cc29a' : '#58b7e6';
   // LOGO
   {
     const r = AT.LOGO, g = cx.createLinearGradient(0, r.y, 0, r.y + r.h);
@@ -223,6 +224,12 @@ function _paintAtlas(cx, px, emissive) {
       cx.fillStyle = '#e9e7df'; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 46, 0, Math.PI * 2); cx.fill();
       cx.strokeStyle = '#f26b21'; cx.lineWidth = 4; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 40, 0, Math.PI * 2); cx.stroke();
       _star(cx, r.x + r.w / 2, r.y + r.h / 2, 28, '#1b3f94');
+    } else if (SITE.flag === 'seattle') {
+      // Seattle: the teal-green field, the white seal disc ringed in green in the middle
+      cx.fillStyle = '#1f6f6a'; cx.fillRect(r.x, r.y, r.w, r.h);
+      cx.fillStyle = '#e9e7df'; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 60, 0, Math.PI * 2); cx.fill();
+      cx.strokeStyle = '#4cc29a'; cx.lineWidth = 6; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 50, 0, Math.PI * 2); cx.stroke();
+      _star(cx, r.x + r.w / 2, r.y + r.h / 2, 30, '#1f6f6a');
     } else {
       cx.fillStyle = '#58b7e6'; cx.fillRect(r.x, r.y + 38, r.w, 44); cx.fillRect(r.x, r.y + r.h - 82, r.w, 44);
       for (let i = 0; i < 4; i++) _star(cx, r.x + 100 + i * 104, r.y + r.h / 2, 36, '#d21c34');
@@ -291,6 +298,25 @@ function _paintMat(cx, px) {
       cx.save(); cx.translate(sx + Math.cos(a) * (R - 1.7), sy + Math.sin(a) * (R - 1.7)); cx.rotate(a + Math.PI / 2);
       cx.fillText(txt[i], 0, 0); cx.restore();
     }
+  } else if (SITE.flag === 'seattle') {
+    // Seattle's flag: the teal-green field across the mat (white-edged on the
+    // navy canvas) and the seal: a green band lettered CITY OF SEATTLE · 1869
+    // round a white disc and a star
+    const y0 = S * 0.235, y1 = S * 0.765;
+    cx.fillStyle = 'rgba(230,236,244,0.85)'; cx.fillRect(0, y0 - 0.5, S, y1 - y0 + 1);
+    cx.fillStyle = '#1f6f6a'; cx.fillRect(0, y0, S, y1 - y0);
+    const R = 15, sx = S / 2, sy = S / 2;
+    cx.fillStyle = '#e9e7df'; cx.beginPath(); cx.arc(sx, sy, R + 1, 0, Math.PI * 2); cx.fill();
+    cx.fillStyle = '#2f8f6e'; cx.beginPath(); cx.arc(sx, sy, R, 0, Math.PI * 2); cx.fill();
+    cx.fillStyle = '#e9e7df'; cx.beginPath(); cx.arc(sx, sy, R - 3.4, 0, Math.PI * 2); cx.fill();
+    _star(cx, sx, sy, 7, '#1f6f6a');
+    cx.font = FONT(2.3, 700); cx.fillStyle = '#e9e7df'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    const txt = 'CITY OF SEATTLE ★ 1869 ★ ', step = Math.PI * 2 / txt.length;
+    for (let i = 0; i < txt.length; i++) {
+      const a = -Math.PI / 2 + i * step;
+      cx.save(); cx.translate(sx + Math.cos(a) * (R - 1.7), sy + Math.sin(a) * (R - 1.7)); cx.rotate(a + Math.PI / 2);
+      cx.fillText(txt[i], 0, 0); cx.restore();
+    }
   } else {
     // the flag's two bars
     cx.fillStyle = '#2a77b3';
@@ -327,7 +353,7 @@ function _paintMat(cx, px) {
   cx.fillStyle = '#0d1226';
   cx.fillRect(0, 0, S, 3.5); cx.fillRect(0, S - 3.5, S, 3.5); cx.fillRect(0, 0, 3.5, S); cx.fillRect(S - 3.5, 0, 3.5, S);
   cx.strokeStyle = '#e6e4da'; cx.lineWidth = 0.45; cx.strokeRect(3.5, 3.5, S - 7, S - 7);
-  cx.strokeStyle = SITE.flag === 'dc' ? '#c4162c' : SITE.flag === 'nyc' ? '#e8601c' : '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
+  cx.strokeStyle = SITE.flag === 'dc' ? '#c4162c' : SITE.flag === 'nyc' ? '#e8601c' : SITE.flag === 'seattle' ? '#4cc29a' : '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
   cx.restore();
 }
 

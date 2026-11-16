@@ -29,6 +29,19 @@ const VENUES = {
       [/CHICAGO/g, 'NEW YORK'], [/Chicago/g, 'New York'],
     ],
   },
+  seattle: {
+    home: { player: 'FROM THE DEPTHS OF ELLIOTT BAY', rival: 'FROM THE WRECKAGE OF PIKE PLACE' },
+    swaps: [
+      [/CHICAGO HEAVYWEIGHT/g, 'SEATTLE HEAVYWEIGHT'], [/Chicago Heavyweight/g, 'Seattle Heavyweight'],
+      [/LAKE MICHIGAN/g, 'ELLIOTT BAY'], [/Lake Michigan/g, 'Elliott Bay'], // (the bay: the water the Seattle Center ring looks toward)
+      [/GRANT PARK/g, 'SEATTLE CENTER'], [/Grant Park/g, 'Seattle Center'],
+      [/THE LOOP/g, 'DOWNTOWN'], [/the Loop/g, 'downtown'],
+      [/LAKE SHORE DRIVE/g, 'ALASKAN WAY'], [/Lake Shore Drive/g, 'Alaskan Way'],
+      [/MICHIGAN AVENUE/g, 'FIFTH AVENUE'], [/Michigan Avenue/g, 'Fifth Avenue'],
+      [/INDIANA/g, 'BAINBRIDGE ISLAND'], [/Indiana/g, 'Bainbridge Island'],
+      [/CHICAGO/g, 'SEATTLE'], [/Chicago/g, 'Seattle'],
+    ],
+  },
 };
 const _level = (ctx) => { const l = ctx && ctx.world && ctx.world.level; return typeof l === 'string' ? l : 'chicago'; };
 /** text with the level's place names (unchanged on Chicago). */
@@ -44,10 +57,14 @@ export function venueHome(ctx, id, fallback) {
   return (v && v.home[id]) || fallback;
 }
 // Recorded booth lines that name Chicago places, the lake, the sunset or the
-// night (DC plays in late-morning light, NYC in the afternoon):
-// voiced, so they cannot be reworded; the booth skips them off Chicago
+// night (DC plays in late-morning light, NYC and Seattle in the afternoon):
+// voiced, so they cannot be reworded; the booth skips them off Chicago.
+// OTHER_PLACES: lines naming Washington DC or New York places, skipped the
+// same way (the booth was recorded for Chicago; none name them today, the
+// gate keeps any added later off Seattle and the other cities)
+const OTHER_PLACES = /Potomac|National Mall|Capitol|White House|Lincoln Memorial|Washington Monument|Smithsonian|Hudson|Manhattan|Central Park|Times Square|Broadway|Empire State|Brooklyn|New York|Big Apple|New Jersey/i;
 const CHI_PLACES = /Chicago|Grant Park|Lake Michigan|Lake Shore|\bthe Loop\b|Willis|Soldier Field|Buckingham|Michigan Ave|Navy Pier|Windy City|Hutchinson|Cloud Gate|\bthe Bean\b|Wrigley|Field Museum|Shedd|Indiana|deep.dish|\bthe L\b|Art Institute|Sears Tower|Hancock|Adler|Planetarium|Point Tower|\blake\b|\bnight\b|tonight|sunset|\bdusk\b/i;
 /** True for a booth row ([topic, cond, utterances]) that names a Chicago place. */
-export function chicagoLine(row) { return row[2].some((u) => CHI_PLACES.test(u[1])); }
+export function chicagoLine(row) { return row[2].some((u) => CHI_PLACES.test(u[1]) || OTHER_PLACES.test(u[1])); }
 /** True when the match is staged somewhere other than Chicago. */
 export function offChicago(ctx) { return _level(ctx) !== 'chicago'; }

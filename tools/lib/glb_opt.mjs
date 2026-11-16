@@ -34,6 +34,7 @@ const UPM = [
   [/^buildings\/chicago\//, 0.2],
   [/^buildings\/dc\//, 0.2], // DC landmarks + kit: metres, placed at 0.2 u/m (dc-design)
   [/^buildings\/nyc\//, 0.2], // NYC landmarks + kit + props: metres, placed at 0.2 u/m (nyc-design)
+  [/^buildings\/seattle\//, 0.2], // Seattle landmarks + kit + props + vehicles: metres, placed at 0.2 u/m (seattle-design)
 ];
 // Hard caps (longest side) where the density rule has no scale to work with
 const CAPS = [
