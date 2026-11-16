@@ -26,7 +26,7 @@ const PINNED = new Set([
   // Seattle generic kit: trimmed phone meshes (side windows painted, fewer small parts; 41-85% fewer tris), built by
   // devtools/seattle/design/tools/build_seattle_kit.py's TRIM pass; desktop keeps the full meshes (seattle-design)
   ...['belltown_a', 'belltown_b', 'belltown_c', 'pioneer_a', 'pioneer_b', 'pioneer_c', 'podium_a', 'podium_b', 'podium_c', 'podium_d', 'low_c', 'low_e',
-    'terracotta_a', 'officeslab_a', 'condotower_b', 'garage_a', 'garage_b', 'house_d', 'low_f']
+    'terracotta_a', 'officeslab_a', 'condotower_b', 'garage_a', 'garage_b', 'house_d', 'low_f', 'low_a']
     .flatMap((k) => [`buildings/seattle/seattle_${k}.glb`, `buildings/seattle/seattle_${k}_lod1.glb`]),
 ]);
 const PHONE = { texelsPerUnit: 10, floor: 128, heroCap: 1024 };

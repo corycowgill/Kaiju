@@ -359,6 +359,7 @@ export const MOBILE_VARIANTS = new Set([
   "buildings/seattle/seattle_house_d.glb",
   "buildings/seattle/seattle_house_d_lod1.glb",
   "buildings/seattle/seattle_low_a.glb",
+  "buildings/seattle/seattle_low_a_lod1.glb",
   "buildings/seattle/seattle_low_b.glb",
   "buildings/seattle/seattle_low_c.glb",
   "buildings/seattle/seattle_low_c_lod1.glb",

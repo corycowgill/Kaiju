@@ -39,7 +39,7 @@ export const SEATTLE_LANDMARK_GLBS = [
   { id: 'great_wheel', file: 'great_wheel.glb', trueHeightM: 53.3, face: 'west', stone: 0xd8dadc, clone: 'wheel_rotor', spinAxis: 'z', ready: true }, // 51 x 20 m, wheel plane faces +Z; node 'wheel_rotor' turns about its local Z (the axle), origin at the hub (28.6 m)
   { id: 'pier_57', file: 'pier_57.glb', trueHeightM: 21, face: 'east', stone: 0x8a8a84, ready: true }, // timber pier 60 x 120 m (deck top 1.2 m), gabled shed, MINER'S LANDING on the +Z street end; the pier runs toward -Z (the bay)
   { id: 'seattle_aquarium', file: 'aquarium.glb', trueHeightM: 23.3, face: 'east', stone: 0x8a9496, ready: true }, // pier 50 x 130 m, shed, timber-louvre entrance pavilion and SEATTLE AQUARIUM letters on the +Z street end
-  { id: 'colman_dock', file: 'colman_dock.glb', trueHeightM: 21.8, face: 'east', stone: 0x7a7c7a, ready: true }, // 190 x 150 m apron, terminal on the +Z (Alaskan Way) side, three slips at the -Z end (berth centrelines model x -31, 0, 31; the model is squeezed to the 111 x 204 m lot)
+  { id: 'colman_dock', file: 'colman_dock.glb', trueHeightM: 25.8, face: 'east', stone: 0x7a7c7a, shiftM: -7, ready: true }, // 190 x 150 m apron, terminal on the +Z (Alaskan Way) side, three slips at the -Z end (berth centrelines model x -32, 0, 32; built to the 110 x 204 m lot)
   { id: 'olympic_sculpture_park', file: 'olympic_sculpture_park.glb', trueHeightM: 6.8, face: 'south', stone: 0x9a968e, ready: true }, // the PACCAR pavilion only (30 x 20 m); lawns and the Z path are the layout's
   { id: 'calder_eagle', file: 'calder_eagle.glb', trueHeightM: 13.1, face: 'east', stone: 0xb03020, ready: true }, // red steel stabile, 12 x 8 m
   { id: 'echo_plensa', file: 'echo_plensa.glb', trueHeightM: 14.0, face: 'west', stone: 0xd0cec8, ready: true }, // white elongated head, face on +Z
@@ -85,7 +85,7 @@ export const SEATTLE_LANDMARK_GLBS = [
   { id: 'kexp_northwest_rooms', file: 'kexp_northwest_rooms.glb', trueHeightM: 10, face: 'south', stone: 0xd0d0cc, ready: true }, // tier C, 121.2 x 61.2 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
   { id: 'mohai', file: 'mohai.glb', trueHeightM: 26, face: 'north', stone: 0xd0d0cc, ready: true }, // tier B, 48.6 x 60.6 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
   { id: 'ivars_pier_54', file: 'ivars_pier_54.glb', trueHeightM: 21.8, face: 'east', stone: 0x8a8a84, ready: true }, // tier B, 51.1 x 120.5 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
-  { id: 'edgewater_hotel', file: 'edgewater_hotel.glb', trueHeightM: 22.8, face: 'north', stone: 0x705038, ready: true }, // tier C, 51.1 x 150.5 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
+  { id: 'edgewater_hotel', file: 'edgewater_hotel.glb', trueHeightM: 30.6, face: 'north', stone: 0x705038, ready: true }, // tier C, 51.1 x 150.5 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
   { id: 'pier_69', file: 'pier_69.glb', trueHeightM: 25, face: 'north', stone: 0x9a9a96, ready: true }, // tier C, 56.1 x 200.5 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
   { id: 'pier_62', file: 'pier_62.glb', trueHeightM: 5, face: 'west', stone: 0x8a8a84, ready: true }, // tier C, 51.1 x 140.5 m (build_sea_b.py / build_sea_center.py / build_sea_low.py)
   { id: 'bell_harbor', file: 'bell_harbor.glb', trueHeightM: 27.8, face: 'east', stone: 0xa0b0aa, ready: true }, // tier B, ~150 x 60 m along the shore (long side to the front) m (build_sea_b.py / build_sea_center.py / build_sea_low.py)

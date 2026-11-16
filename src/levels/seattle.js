@@ -824,7 +824,8 @@ export function buildSeattle(scene, world, opts, K) {
   // The surveyed trees, in order until the cap: the park trees and conifers,
   // then the street trees thinned evenly.
   // Instanced (draws by template, not by tree); phone LOW keeps the park.
-  const TREE_CAP = L.trees ? (!glb ? 1400 : lite ? 2800 : 7500) : lite ? 260 : 900;
+  // (phones with GLB trees: 2000, the survey's park and evergreen trees first; the VS walk view sat over the 2M budget)
+  const TREE_CAP = L.trees ? (!glb ? 1400 : lite ? 2000 : 7500) : lite ? 260 : 900;
   const tree = (x, z, s, kind) => { if (trees < TREE_CAP) { scene.add(makeParkTree(x, z, s * PS, kind)); trees++; } };
   if (L.trees) {
     // (open lawns stay open: the International Fountain lawn, the Mural Amphitheatre, the ring box)
@@ -1044,6 +1045,7 @@ export function buildSeattle(scene, world, opts, K) {
       const h = def.trueHeightM * S;
       const url = SEATTLE_BASE + def.file;
       const rotY = def.face ? LK.faceRot(lm.rotY || 0, def.face) : def.faceX ? LK.faceRot(lm.rotY || 0, def.faceX, true) : (lm.rotY || 0);
+      b.placedRotY = rotY; // (Colman Dock's ferry berths are placed in the model's frame)
       if (def.shiftM || def.offsetM) {
         // A model whose origin is not its building's centre: the site moves
         // shiftM metres along the model's front (+Z), and/or offsetM [east, south] metres on the map
@@ -1308,6 +1310,30 @@ export function buildSeattle(scene, world, opts, K) {
       for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
       ferries.push({ g, pts, cum, s: 0, dir: 1, wait: 6 + ferries.length * 25, sink: -1, ry: f.dock?.rot ?? 0 });
     }
+    // Docked at Colman Dock's slips (manifest colman_dock berthsM: [[x, z] metres in the model, ...], the boat's centre in
+    // each slip; berthRot: the bow's heading in the model, default along -Z, out to the bay): each route starts from
+    // the berth nearest its own first point (one ferry a slip), once the model's bounds are known (placeBuildingGLB centres
+    // its box on the site)
+    const cdDef = _landmarkGLB('colman_dock'), cdB = buildings.find((b) => b.landmarkId === 'colman_dock');
+    if (cdDef?.berthsM?.length && cdB) K.onTemplatesReady((sc0, get) => {
+      const t = get(SEATTLE_BASE + cdDef.file);
+      if (!t || cdB.destroyed) return;
+      const bb = new THREE.Box3().setFromObject(t), mcx = (bb.min.x + bb.max.x) / 2, mcz = (bb.min.z + bb.max.z) / 2;
+      const r = cdB.placedRotY || 0, c = Math.cos(r), sn = Math.sin(r);
+      const berths = cdDef.berthsM.map(([mx, mz]) => { const lx = (mx - mcx) * S, lz = (mz - mcz) * S; return [cdB.x + lx * c + lz * sn, cdB.z - lx * sn + lz * c]; });
+      const ry = r + (cdDef.berthRot ?? Math.PI);
+      const free = berths.slice();
+      for (const fe of ferries) {
+        if (!free.length) break;
+        let bi = 0, bd = Infinity;
+        free.forEach(([x, z], i) => { const d = Math.hypot(x - fe.pts[0][0], z - fe.pts[0][1]); if (d < bd) { bd = d; bi = i; } });
+        const [bx, bz] = free.splice(bi, 1)[0];
+        fe.pts = [[bx, bz], [bx + Math.sin(ry) * 25, bz + Math.cos(ry) * 25], ...fe.pts.slice(1).filter((p) => Math.hypot(p[0] - bx, p[1] - bz) > 30)];
+        fe.cum = [0];
+        for (let i = 1; i < fe.pts.length; i++) fe.cum.push(fe.cum[i - 1] + Math.hypot(fe.pts[i][0] - fe.pts[i - 1][0], fe.pts[i][1] - fe.pts[i - 1][1]));
+        fe.s = 0; fe.ry = ry;
+      }
+    });
     if (kitFerry) K.onTemplatesReady((sc0, get) => {
       const t = get(kitFerry);
       if (!t) return;
