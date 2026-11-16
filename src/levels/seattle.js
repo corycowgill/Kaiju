@@ -1486,13 +1486,14 @@ export function buildSeattle(scene, world, opts, K) {
     const sigName = K.hasProp('seattle_traffic_signal') ? 'seattle_traffic_signal' : 'chi_traffic_signal';
     if (K.hasProp(sigName)) {
       const placed = [];
-      const cap = lite ? 24 : 60;
+      // (signals at most avenue crossings downtown: one every ~80 m of grid; phones fewer)
+      const cap = lite ? 30 : 180;
       for (const node of net.nodes) {
         if (node.edges.length < 4 || placed.length >= cap) continue;
         const ni = net.nodes.indexOf(node);
         const e = net.edges[node.edges[0]];
         const w = e.laneOff * 4;
-        if (w < MAJOR_W || placed.some(([x, z]) => Math.abs(x - node.x) < 30 && Math.abs(z - node.z) < 30)) continue;
+        if (w < MAJOR_W || placed.some(([x, z]) => Math.abs(x - node.x) < (lite ? 30 : 16) && Math.abs(z - node.z) < (lite ? 30 : 16))) continue;
         const ux = e.a === ni ? e.dx : -e.dx, uz = e.a === ni ? e.dz : -e.dz;
         const back = w / 2 + SIDEWALK_W * 1.2, side = w / 2 + 0.35;
         const x = node.x + ux * back - uz * side, z = node.z + uz * back + ux * side;
@@ -1509,7 +1510,8 @@ export function buildSeattle(scene, world, opts, K) {
     // Bus shelters on the avenues
     const art = net.edges.filter((e) => e.laneOff * 4 >= MAJOR_W && e.len > 15);
     const shelterName = K.hasProp('seattle_bus_shelter') ? 'seattle_bus_shelter' : 'chi_bus_shelter';
-    for (let i = 0; i < (lite ? 6 : 14) && art.length; i++) {
+    // (Third Ave is a transit mall: shelters on many avenue blocks; phones a handful)
+    for (let i = 0; i < (lite ? 8 : 60) && art.length; i++) {
       const e = art[Math.floor(Math.random() * art.length)];
       const w = e.laneOff * 4, t = e.len * (0.2 + Math.random() * 0.6), s = Math.random() < 0.5 ? 1 : -1;
       const off = s * (w / 2 + 0.3);
@@ -1555,7 +1557,7 @@ export function buildSeattle(scene, world, opts, K) {
     // avenues' parking lanes, one every ~6u with gaps, and rows in the surface lots (layout parks
     // kind plaza / surface parking). Phones: a few, nearer the cap of the draw budget
     {
-      const capKerb = lite ? 60 : 900, capLot = lite ? 30 : 700;
+      const capKerb = lite ? 60 : 1300, capLot = lite ? 30 : 700;
       let kerb = 0, lot = 0;
       const park = (x, z, yaw) => {
         if (isWater(x, z) || onRing(x, z) || inRingBox(x, z, 1.5, 1.5) || onLandmark(x, z)) return false;
@@ -1580,12 +1582,13 @@ export function buildSeattle(scene, world, opts, K) {
           acc -= l;
         }
       };
-      for (const r of roads) if (r.kind === 'minor') kerbRun(r.points, r.width, lite ? 0.12 : 0.45);
+      // (the avenues first, so the cap never runs out before the downtown core is dressed; then the side streets)
       for (const e of net.edges) {
         const w = e.laneOff * 4, A = net.nodes[e.a], Bn = net.nodes[e.b];
         if (w < MAJOR_W || e.len < 14) continue;
-        kerbRun([[A.x + e.dx * 4, A.z + e.dz * 4], [Bn.x - e.dx * 4, Bn.z - e.dz * 4]], w, lite ? 0.06 : 0.25);
+        kerbRun([[A.x + e.dx * 4, A.z + e.dz * 4], [Bn.x - e.dx * 4, Bn.z - e.dz * 4]], w, lite ? 0.06 : 0.4);
       }
+      for (const r of roads) if (r.kind === 'minor') kerbRun(r.points, r.width, lite ? 0.12 : 0.45);
       for (const p of L.parks) {
         if (p.surface !== 'parking' || lot >= capLot) continue;
         let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;

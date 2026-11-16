@@ -423,10 +423,65 @@ function pointInPoly(x, z, poly) {
   return inside;
 }
 
-/** The hill masses as one unlit, vertex-coloured mesh with baked sun shading (one draw, fogged like the surround
- *  boxes): wooded slopes (dark evergreen stands mottled with lighter maples) and neighbourhoods (grey-green
- *  speckle of roofs and street trees), greener and darker on the crests. water: [{ polygon }] (the surround file's
- *  water; the hills stop at the shore). Lift anything standing on the hills with seattleHillHeight(x, z, B).
+// Hill ground texture: one tile = 48u (240 m) of a hillside neighbourhood seen from far off: dense dark tree canopy
+// with lighter crowns, a street grid (2 x 3 blocks) as thin grey lines, and rows of small roofs (8-14 m) in muted
+// greys, whites, browns and dark slate along the block edges, half hidden under street trees. Generated once (no
+// canvas: runs in the headless tests too).
+let _hillTex = null;
+function hillTexture() {
+  if (_hillTex) return _hillTex;
+  const N = 256, px = new Uint8Array(N * N * 4);
+  const put = (x, y, r, g, b) => { const i = (((y % N) + N) % N * N + ((x % N) + N) % N) * 4; px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = 255; };
+  // canopy: dark green with soft lighter / darker lumps (tiling value noise)
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const n = vnoise(x, y, 16, 3, N) * 0.6 + vnoise(x, y, 8, 7, N) * 0.4, f = 0.78 + 0.42 * n + (hash(x, y) - 0.5) * 0.12;
+    put(x, y, 50 * f, 74 * f, 50 * f);
+  }
+  const SX = [0, 128], SY = [0, 85, 170];                              // street lines (3 px ~ 3 m)
+  const ROOF = [[150, 148, 142], [176, 172, 164], [196, 192, 184], [118, 104, 92], [92, 92, 96], [138, 120, 104], [164, 150, 132], [72, 74, 80]];
+  let k = 0;
+  for (let bx = 0; bx < 2; bx++) for (let by = 0; by < 3; by++) {
+    const x0 = SX[bx] + 3, x1 = (bx ? N : SX[1]) - 1, y0 = SY[by] + 3, y1 = (by < 2 ? SY[by + 1] : N) - 1;
+    // two rows of houses facing the long streets, with back yards (canopy) between them; an alley strip in the middle
+    for (const [ya, yb] of [[y0 + 3, y0 + 3 + 14], [y1 - 3 - 14, y1 - 3]]) {
+      for (let x = x0 + 2; x < x1 - 8;) {
+        const w = 8 + Math.floor(hash(x, ya) * 7), d = 9 + Math.floor(hash(ya, x) * 5);
+        if (hash(x * 0.7, ya * 1.3) > 0.12) {
+          const c = ROOF[Math.floor(hash(k, x) * ROOF.length) % ROOF.length], ridge = hash(x, k) > 0.5;
+          const yt = ya + Math.floor((yb - ya - d) * hash(k, ya));
+          for (let yy = yt; yy < yt + d; yy++) for (let xx = x; xx < x + w; xx++) {
+            const sh = ridge && (yy - yt) < d / 2 ? 0.86 : 1;              // the two pitches of a gable roof
+            put(xx, yy, c[0] * sh, c[1] * sh, c[2] * sh);
+          }
+        }
+        x += w + 2 + Math.floor(hash(k, x) * 5); k++;
+      }
+    }
+  }
+  for (const x of SX) for (let y = 0; y < N; y++) for (let w = 0; w < 3; w++) put(x + w, y, 118, 116, 110);
+  for (const y of SY) for (let x = 0; x < N; x++) for (let w = 0; w < 3; w++) put(x, y + w, 118, 116, 110);
+  // street trees over the kerbs and scattered crowns in the yards (round dark-green blobs)
+  for (let i = 0; i < 520; i++) {
+    const cx = Math.floor(hash(i, 1.7) * N), cy = Math.floor(hash(2.3, i) * N), r = 2 + Math.floor(hash(i, i) * 4);
+    const g = 0.8 + hash(i, 9) * 0.45;
+    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r) {
+      const l = 1 - 0.25 * (x + y) / (2 * r);                        // lit on the upper-left (sun side)
+      put(cx + x, cy + y, 54 * g * l, 82 * g * l, 50 * g * l);
+    }
+  }
+  const t = new THREE.DataTexture(px, N, N);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 8;
+  t.needsUpdate = true;
+  _hillTex = t;
+  return t;
+}
+const HILL_TILE = 48;
+
+/** The hill masses as one unlit mesh (one draw, fogged like the surround boxes): the hillTexture neighbourhood tiled
+ *  in world space, tinted per vertex - wooded (near-black evergreen) on the steep flanks and in the ravines, open
+ *  neighbourhood on the gentler tops and lower slopes - with baked sun shading. water: [{ polygon }] (the surround
+ *  file's water; the hills stop at the shore). Lift anything standing on the hills with seattleHillHeight(x, z, B).
  *  opts.lite: coarser grid. */
 export function createSeattleHills(B, water = [], opts = {}) {
   const cell = opts.lite ? 18 : 10;
@@ -437,14 +492,12 @@ export function createSeattleHills(B, water = [], opts = {}) {
     return { p, x0, x1, z0, z1 };
   });
   const wet = (x, z) => polys.some((w) => x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1 && pointInPoly(x, z, w.p));
-  const noise = (x, z) => {
-    const v = Math.sin(x * 0.071 + Math.sin(z * 0.053) * 2.1) * Math.cos(z * 0.067 - Math.sin(x * 0.041) * 1.7);
+  const woodsAt = (x, z) => {                                          // smooth 0..1: parks and greenbelts
+    const v = Math.sin(x * 0.031 + Math.sin(z * 0.023) * 2.1) * Math.cos(z * 0.029 - Math.sin(x * 0.019) * 1.7);
     return v * 0.5 + 0.5;
   };
-  const speck = (x, z) => hash(Math.floor(x / 3), Math.floor(z / 3));
-  const C_TREE = new THREE.Color(0x34503a), C_MAPLE = new THREE.Color(0x5e7646), C_HOOD = new THREE.Color(0x7f857a),
-    C_ROOF = new THREE.Color(0xa29c90), C_ROOF2 = new THREE.Color(0x6a6460);
-  const pos = [], col = [], idx = [];
+  const C_WOOD = new THREE.Color(0x7c9a78), C_HOOD = new THREE.Color(0xffffff);
+  const pos = [], col = [], uv = [], idx = [];
   const cc = new THREE.Color(), n = new THREE.Vector3();
   for (const [, cx, cz, rx, rz] of HILLS) {
     const R = Math.max(rx, rz) * 1.05, nx = Math.ceil(2 * R / cell), base = pos.length / 3, H = [];
@@ -457,13 +510,11 @@ export function createSeattleHills(B, water = [], opts = {}) {
       const hx = H[j * (nx + 1) + Math.min(nx, i + 1)] - H[j * (nx + 1) + Math.max(0, i - 1)];
       const hz = H[Math.min(nx, j + 1) * (nx + 1) + i] - H[Math.max(0, j - 1) * (nx + 1) + i];
       n.set(-hx / (2 * cell), 1, -hz / (2 * cell)).normalize();
-      const shade = 0.62 + 0.48 * Math.max(0, n.dot(sun));
-      // wooded where the noise is high and on the steep flanks, neighbourhoods on the gentle tops and lower slopes
-      const steep = 1 - n.y, wood = noise(x, z) * 0.8 + steep * 3.5;
-      if (wood > 0.62) cc.copy(C_TREE).lerp(C_MAPLE, speck(x, z) * 0.45);
-      else cc.copy(C_HOOD).lerp(speck(x, z) > 0.55 ? C_ROOF : C_ROOF2, speck(z, x) * 0.6);
-      cc.multiplyScalar(shade * 0.92);
-      pos.push(x, h + 0.08, z); col.push(cc.r, cc.g, cc.b);
+      const shade = 0.66 + 0.44 * Math.max(0, n.dot(sun));
+      // steep flanks and the greenbelt noise go to woods (the texture's roofs darken into canopy)
+      const steep = 1 - n.y, w = Math.min(1, Math.max(0, (woodsAt(x, z) - 0.62) * 4 + steep * 9));
+      cc.copy(C_HOOD).lerp(C_WOOD, w).multiplyScalar(shade * (1 - 0.45 * w));
+      pos.push(x, h + 0.08, z); col.push(cc.r, cc.g, cc.b); uv.push(x / HILL_TILE, z / HILL_TILE);
     }
     for (let j = 0; j < nx; j++) for (let i = 0; i < nx; i++) {
       const a = j * (nx + 1) + i, b = a + 1, c = a + nx + 1, d = c + 1;
@@ -474,9 +525,10 @@ export function createSeattleHills(B, water = [], opts = {}) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geo.setIndex(idx);
   geo.computeBoundingSphere();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, fog: true }));
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: hillTexture(), vertexColors: true, fog: true }));
   mesh.name = 'seattle_hills';
   mesh.frustumCulled = false;
   mesh.userData.backdrop = true;
