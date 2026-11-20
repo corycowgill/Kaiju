@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.14.1', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.15.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -44,6 +44,7 @@ import { matchVoiceIds } from './wrestling/commentary.js';
 import { DC_LOOK } from './levels/dcLook.js';
 import { NYC_LOOK } from './levels/nycLook.js';
 import { SEATTLE_LOOK } from './levels/seattleLook.js';
+import { SF_LOOK } from './levels/sfLook.js';
 import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, lookSunUp, withLookEnvSky, setLookDip } from './look.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
@@ -85,6 +86,7 @@ const LEVELS = {
   dc: { name: 'WASHINGTON DC', jp: 'ワシントン', tag: 'LATE MORNING · THE NATIONAL MALL', h2: 'WASHINGTON DC DESTRUCTION', h2jp: 'ワシントン破壊', arena: true, data: true, title: 'NATIONAL MALL HEAVYWEIGHT TITLE' },
   nyc: { name: 'NEW YORK CITY', jp: 'ニューヨーク', tag: 'AFTERNOON · MIDTOWN MANHATTAN', h2: 'NEW YORK CITY DESTRUCTION', h2jp: 'ニューヨーク破壊', arena: true, data: true, title: 'NEW YORK HEAVYWEIGHT TITLE' },
   seattle: { name: 'SEATTLE', jp: 'シアトル', tag: 'LATE AFTERNOON · ELLIOTT BAY', h2: 'SEATTLE DESTRUCTION', h2jp: 'シアトル破壊', arena: true, data: true, title: 'SEATTLE HEAVYWEIGHT TITLE' },
+  sf: { name: 'SAN FRANCISCO', jp: 'サンフランシスコ', tag: 'MORNING · SAN FRANCISCO BAY', h2: 'SAN FRANCISCO DESTRUCTION', h2jp: 'サンフランシスコ破壊', arena: true, data: true, title: 'SAN FRANCISCO HEAVYWEIGHT TITLE' },
 };
 // data: built from a map layout (src/levels/<level>.js): GLB buildings on
 // every tier, the look layer, open water, explicit bounds and spawns
@@ -1245,7 +1247,12 @@ const _SEATTLE_LOOK = {
   ..._CHICAGO_LOOK, ...SEATTLE_LOOK.statics,
   bloom: bloomPass && { threshold: SEATTLE_LOOK.statics.bloomThreshold, strength: bloomPass.strength * SEATTLE_LOOK.statics.bloomK },
 };
-const _LAYER_LOOKS = { chicago: _CHICAGO_LOOK, dc: _DC_LOOK, nyc: _NYC_LOOK, seattle: _SEATTLE_LOOK };
+// San Francisco: one morning key held all match (src/levels/sfLook.js)
+const _SF_LOOK = {
+  ..._CHICAGO_LOOK, ...SF_LOOK.statics,
+  bloom: bloomPass && { threshold: SF_LOOK.statics.bloomThreshold, strength: bloomPass.strength * SF_LOOK.statics.bloomK },
+};
+const _LAYER_LOOKS = { chicago: _CHICAGO_LOOK, dc: _DC_LOOK, nyc: _NYC_LOOK, seattle: _SEATTLE_LOOK, sf: _SF_LOOK };
 // Sun position relative to the kaiju (shadow camera follows it). Tokyo's
 // low west rake; levels may override (see sunOffset in the looks above)
 const _TOKYO_SUN = [-100, 100, 45];
@@ -1264,9 +1271,9 @@ function applyLevelLook(level) {
   // (1600u square centred 200u west of the map)
   resetLookClock();
   setLookLevel(level);
-  // (DC, NYC, Seattle: centred on the map, a long fade from its corners out over the surround)
+  // (DC, NYC, Seattle, San Francisco: centred on the map, a long fade from its corners out over the surround)
   buildLookMap(world, level === 'chicago' ? { x: world.center.x - 200, z: world.center.z, r0: 520, r1: 775 }
-    : level === 'dc' || level === 'nyc' || level === 'seattle' ? { x: world.center.x, z: world.center.z, r0: _dcEdge(world.bounds, 0), r1: _dcEdge(world.bounds, 650) } : null);
+    : level === 'dc' || level === 'nyc' || level === 'seattle' || level === 'sf' ? { x: world.center.x, z: world.center.z, r0: _dcEdge(world.bounds, 0), r1: _dcEdge(world.bounds, 650) } : null);
   if (_LAYER_LOOKS[level]) sun.position.copy(_sunOffset); // until a kaiju exists to follow
   if (changed && Q_HIGH) _captureEnv();
 }
@@ -2535,8 +2542,8 @@ function _showMobileDataWarning() {
     // phone MED 37.0 / 28.5, phone LOW 31.7 / 10.3 MB.
     // Washington DC (2026-11-15, after dc-design's detail passes; every response
     // counted incl. code and audio, 30 s of play): desktop 58.6, phone MED 35.4, phone LOW 30.1 MB.
-    // New York City, Seattle: DC's figures until measured (nyc-integrator, seattle-integrator)
-    const chi = selectedLevel === 'chicago', dc = selectedLevel === 'dc' || selectedLevel === 'nyc' || selectedLevel === 'seattle';
+    // New York City, Seattle, San Francisco: DC's figures until measured
+    const chi = selectedLevel === 'chicago', dc = selectedLevel === 'dc' || selectedLevel === 'nyc' || selectedLevel === 'seattle' || selectedLevel === 'sf';
     if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? (chi ? '~37 MB' : dc ? '~35 MB' : '~29 MB') : (chi ? '~32 MB' : dc ? '~30 MB' : '~10 MB')) : (chi ? '~65 MB' : dc ? '~59 MB' : '~74 MB');
     warn.classList.remove('hidden');
     warn.style.display = 'flex';

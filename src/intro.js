@@ -67,7 +67,7 @@ async function bootFonts() {
 // and first frames are up before the first hover.
 const MENU_IMAGES = ['assets/ui/menu/bg_still.webp', 'assets/ui/menu/mode_havoc.webp', 'assets/ui/menu/mode_title.webp',
   'assets/ui/menu/mode_lone.webp', 'assets/ui/menu/stage_tokyo.webp', 'assets/ui/menu/stage_chicago.webp',
-  'assets/ui/menu/stage_dc.webp', 'assets/ui/menu/stage_nyc.webp',
+  'assets/ui/menu/stage_dc.webp', 'assets/ui/menu/stage_nyc.webp', 'assets/ui/menu/stage_sf.webp',
   ...Object.values(MONSTERS).map((m) => `assets/${m.portrait}`)];
 // The desktop backdrop reel (game.js _menuReel; phones and reduced motion keep the still)
 const REEL_OK = !isMobile && !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);

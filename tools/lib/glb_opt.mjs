@@ -34,6 +34,7 @@ const UPM = [
   [/^buildings\/chicago\//, 0.2],
   [/^buildings\/dc\//, 0.2], // DC landmarks + kit: metres, placed at 0.2 u/m (dc-design)
   [/^buildings\/nyc\//, 0.2], // NYC landmarks + kit + props: metres, placed at 0.2 u/m (nyc-design)
+  [/^buildings\/sf\//, 0.2], // San Francisco landmarks + kit + props + vehicles: metres, placed at 0.2 u/m
   [/^buildings\/seattle\//, 0.2], // Seattle landmarks + kit + props + vehicles: metres, placed at 0.2 u/m (seattle-design)
 ];
 // Hard caps (longest side) where the density rule has no scale to work with
@@ -50,6 +51,9 @@ const FLOORS = [
   // Seattle landmarks (tiling facade maps; the generic kit seattle_* keeps the density rule) and kit atlases: seattle-design
   [/^buildings\/seattle\/(?!seattle_|debris_)[a-z0-9_]+?(_lod1)?\.glb$/, 512],
   [/^buildings\/seattle\/seattle_(pioneer|belltown|terracotta|warehouse|garage|podium|officeslab|glasstower|condotower)_[a-d](_lod1)?\.glb$/, 1024],
+  // San Francisco landmarks (tiling facade maps; the generic kit sf_* keeps the density rule) and the building kit's atlases
+  [/^buildings\/sf\/(?!sf_|debris_)[a-z0-9_]+?(_lod1)?\.glb$/, 512],
+  [/^buildings\/sf\/sf_(victorian|brick|warehouse|lowrise|midrise|apartment|glassslab|glasstower)_[a-h](_lod1)?\.glb$/, 1024],
   // DC headline landmarks (tiling stone / facade maps, seen close at kaiju-eye): dc-design
   [/^buildings\/dc\/(us_capitol|white_house|lincoln_memorial|jefferson_memorial|washington_monument)(_lod1)?\.glb$/, 1024],
   [/^buildings\/dc\/(smithsonian_castle|natural_history_museum|air_and_space_museum|national_gallery_west|national_gallery_east|nmaahc|hirshhorn_museum|wwii_memorial|national_archives|old_post_office|treasury_building|supreme_court|library_of_congress|eeob|nmah|nmai)(_lod1)?\.glb$/, 512],

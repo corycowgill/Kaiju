@@ -77,7 +77,8 @@ _layoutSite();
  *  ('chicago': light-blue bars, six-pointed stars; 'dc': the District's red
  *  bars and five-pointed stars; 'nyc': New York's blue, white and orange
  *  tricolour with a seal ring, five-pointed stars; 'seattle': Seattle's
- *  teal-green field with the white seal disc); hardAz: the side (azimuth of
+ *  teal-green field with the white seal disc; 'sf': San Francisco's white
+ *  field in a gold border with the phoenix seal); hardAz: the side (azimuth of
  *  the camera from the ring, atan2(dx, dz)) the fight camera takes when it
  *  settles on the pair, so a chosen skyline is behind them (null: none). Call before buildArena. */
 export function setArenaSite(s = {}) {
@@ -169,8 +170,8 @@ function _paintAtlas(cx, px, emissive) {
   const dim = emissive ? 0.42 : 1; // signage is backlit: the emissive copy is the same art, dimmer
   cx.globalAlpha = dim;
   cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineJoin = 'round';
-  // (the flag's accent: Chicago's light blue, the District's white, New York's orange, Seattle's green)
-  const ACC = SITE.flag === 'dc' ? '#e9e7df' : SITE.flag === 'nyc' ? '#f26b21' : SITE.flag === 'seattle' ? '#4cc29a' : '#58b7e6';
+  // (the flag's accent: Chicago's light blue, the District's white, New York's orange, Seattle's green, San Francisco's gold)
+  const ACC = SITE.flag === 'dc' ? '#e9e7df' : SITE.flag === 'nyc' ? '#f26b21' : SITE.flag === 'seattle' ? '#4cc29a' : SITE.flag === 'sf' ? '#e2b23c' : '#58b7e6';
   // LOGO
   {
     const r = AT.LOGO, g = cx.createLinearGradient(0, r.y, 0, r.y + r.h);
@@ -232,6 +233,12 @@ function _paintAtlas(cx, px, emissive) {
       cx.fillStyle = '#e9e7df'; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 60, 0, Math.PI * 2); cx.fill();
       cx.strokeStyle = '#4cc29a'; cx.lineWidth = 6; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 50, 0, Math.PI * 2); cx.stroke();
       _star(cx, r.x + r.w / 2, r.y + r.h / 2, 30, '#1f6f6a');
+    } else if (SITE.flag === 'sf') {
+      // San Francisco: the white field in its gold border, the phoenix seal (a red disc ringed in gold) in the middle
+      cx.strokeStyle = '#e2b23c'; cx.lineWidth = 14; cx.strokeRect(r.x + 7, r.y + 7, r.w - 14, r.h - 14);
+      cx.fillStyle = '#e2b23c'; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 58, 0, Math.PI * 2); cx.fill();
+      cx.fillStyle = '#b8202a'; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 46, 0, Math.PI * 2); cx.fill();
+      _star(cx, r.x + r.w / 2, r.y + r.h / 2, 30, '#e2b23c');
     } else {
       cx.fillStyle = '#58b7e6'; cx.fillRect(r.x, r.y + 38, r.w, 44); cx.fillRect(r.x, r.y + r.h - 82, r.w, 44);
       for (let i = 0; i < 4; i++) _star(cx, r.x + 100 + i * 104, r.y + r.h / 2, 36, '#d21c34');
@@ -319,6 +326,23 @@ function _paintMat(cx, px) {
       cx.save(); cx.translate(sx + Math.cos(a) * (R - 1.7), sy + Math.sin(a) * (R - 1.7)); cx.rotate(a + Math.PI / 2);
       cx.fillText(txt[i], 0, 0); cx.restore();
     }
+  } else if (SITE.flag === 'sf') {
+    // San Francisco's flag: the white field across the mat in its gold border and the seal: a gold band
+    // lettered CITY AND COUNTY OF SAN FRANCISCO round a red disc and the phoenix's star
+    const y0 = S * 0.235, y1 = S * 0.765;
+    cx.fillStyle = '#e2b23c'; cx.fillRect(0, y0 - 0.5, S, y1 - y0 + 1);
+    cx.fillStyle = '#e9e7df'; cx.fillRect(0, y0 + 2.2, S, y1 - y0 - 4.4);
+    const R = 15, sx = S / 2, sy = S / 2;
+    cx.fillStyle = '#c99a2e'; cx.beginPath(); cx.arc(sx, sy, R, 0, Math.PI * 2); cx.fill();
+    cx.fillStyle = '#b8202a'; cx.beginPath(); cx.arc(sx, sy, R - 3.4, 0, Math.PI * 2); cx.fill();
+    _star(cx, sx, sy, 7, '#e2b23c');
+    cx.font = FONT(1.9, 700); cx.fillStyle = '#1a1c24'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    const txt = 'CITY AND COUNTY OF SAN FRANCISCO ★ 1850 ★ ', step = Math.PI * 2 / txt.length;
+    for (let i = 0; i < txt.length; i++) {
+      const a = -Math.PI / 2 + i * step;
+      cx.save(); cx.translate(sx + Math.cos(a) * (R - 1.7), sy + Math.sin(a) * (R - 1.7)); cx.rotate(a + Math.PI / 2);
+      cx.fillText(txt[i], 0, 0); cx.restore();
+    }
   } else {
     // the flag's two bars
     cx.fillStyle = '#2a77b3';
@@ -355,7 +379,7 @@ function _paintMat(cx, px) {
   cx.fillStyle = '#0d1226';
   cx.fillRect(0, 0, S, 3.5); cx.fillRect(0, S - 3.5, S, 3.5); cx.fillRect(0, 0, 3.5, S); cx.fillRect(S - 3.5, 0, 3.5, S);
   cx.strokeStyle = '#e6e4da'; cx.lineWidth = 0.45; cx.strokeRect(3.5, 3.5, S - 7, S - 7);
-  cx.strokeStyle = SITE.flag === 'dc' ? '#c4162c' : SITE.flag === 'nyc' ? '#e8601c' : SITE.flag === 'seattle' ? '#4cc29a' : '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
+  cx.strokeStyle = SITE.flag === 'dc' ? '#c4162c' : SITE.flag === 'nyc' ? '#e8601c' : SITE.flag === 'seattle' ? '#4cc29a' : SITE.flag === 'sf' ? '#e2b23c' : '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
   cx.restore();
 }
 

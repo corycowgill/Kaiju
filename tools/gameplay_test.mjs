@@ -923,6 +923,75 @@ test('Title Match on Seattle: Seattle place names on screen, no booth line namin
   assert.ok(!chicagoLine(['x', {}, [['M', 'What a slam!', 'id', 1]]]));
 });
 
+// ---- San Francisco (src/levels/sf.js) ----
+const SF_LAYOUT = (() => {
+  const src = fs.readFileSync(new URL('../src/levels/sf.js', import.meta.url), 'utf8');
+  const url = src.match(/const LAYOUT_URL = '\.\/(assets\/levels\/[\w.]+\.json)'/)[1];
+  return JSON.parse(fs.readFileSync(new URL('../' + url, import.meta.url), 'utf8'));
+})();
+const sfWet = (x, z) => (SF_LAYOUT.water || []).some((w) => inPoly(x, z, w.polygon) && !(w.holes || []).some((h) => inPoly(x, z, h)));
+
+test('San Francisco layout: kaiju, duel pair, ring site and enemy spawns are placed on the right ground inside the play area', () => {
+  const B = SF_LAYOUT.bounds, inB = (p, m = 0) => p.x >= B.minX - m && p.x <= B.maxX + m && p.z >= B.minZ - m && p.z <= B.maxZ + m;
+  assert.equal(SF_LAYOUT.meta.scale, 0.2);
+  const sp = SF_LAYOUT.spawn.player;
+  assert.ok(inB(sp), 'kaiju spawn inside the bounds');
+  assert.ok(sfWet(sp.x, sp.z), 'the kaiju rises from the Bay');
+  for (const [dx, dz] of [[-10, 0], [10, 0], [0, -10], [0, 10]]) assert.ok(sfWet(sp.x + dx, sp.z + dz), 'kaiju spawn in open water');
+  const { a, b } = SF_LAYOUT.duel;
+  assert.ok(inB(a) && inB(b) && !sfWet(a.x, a.z) && !sfWet(b.x, b.z), 'duel pair dry and inside');
+  assert.ok(Math.hypot(a.x - b.x, a.z - b.z) > 245, 'duel pair far enough apart');
+  const R = SF_LAYOUT.ring;
+  assert.ok(inB(R) && !sfWet(R.x, R.z), 'ring site dry and inside');
+  for (const [dx, dz] of [[-45, -45], [45, -45], [45, 45], [-45, 45], [0, 0]]) assert.ok(!sfWet(R.x + dx, R.z + dz), 'ring mat on dry ground');
+  for (const lm of SF_LAYOUT.landmarks) assert.ok(Math.abs(lm.x - R.x) > 46 || Math.abs(lm.z - R.z) > 46, `landmark ${lm.id} under the ring`);
+  for (const e of SF_LAYOUT.spawn.enemies || []) assert.ok(inB(e, 40), `enemy spawn ${e.x},${e.z} near the bounds`);
+  const sd = SF_LAYOUT.soldier;
+  assert.ok(inB(sd) && !sfWet(sd.x, sd.z), 'the Lone Soldier starts on dry ground inside the bounds');
+  // the signature landmarks are on the map and stand (liftable / tearable like any tower)
+  for (const id of ['transamerica_pyramid', 'salesforce_tower', 'ferry_building', 'coit_tower', 'sf_city_hall', 'oracle_park', 'pier_39']) {
+    assert.ok(SF_LAYOUT.landmarks.some((l) => l.id === id), `${id} is a landmark`);
+  }
+});
+
+test('San Francisco assets: every manifest model marked ready is on disk with its LOD1 twin, and every layout landmark has a model or a procedural builder', async () => {
+  const M = await import('../src/levels/sfManifest.js');
+  const dir = new URL('../assets/buildings/sf/', import.meta.url);
+  const need = (file, lod1 = true) => {
+    assert.ok(fs.existsSync(new URL(file, dir)), `${file} is missing`);
+    if (lod1) assert.ok(fs.existsSync(new URL(file.replace(/\.glb$/, '_lod1.glb'), dir)), `${file} has no LOD1 twin`);
+  };
+  for (const g of [...M.SF_LANDMARK_GLBS, ...M.SF_GENERIC_GLBS, ...M.SF_PROP_GLBS, ...Object.values(M.SF_KIT_GLBS)]) if (g.ready) need(g.file, g.lod1 !== false);
+  for (const v of M.SF_VEHICLE_GLBS) if (v.ready) need(v.url.replace(M.SF_BASE, ''), v.lod1 !== false);
+  for (const u of M.SF_DEBRIS_GLBS) need(u.replace(M.SF_BASE, ''), false);
+  const ids = new Set(M.SF_LANDMARK_GLBS.filter((g) => g.ready).flatMap((g) => g.ids || [g.id]));
+  const built = SF_LAYOUT.landmarks.filter((l) => l.kind !== 'district' && l.kind !== 'line');
+  const modelled = built.filter((l) => ids.has(l.id));
+  assert.ok(modelled.length >= built.length * 0.9, `only ${modelled.length} of ${built.length} landmarks have a model: ${built.filter((l) => !ids.has(l.id)).map((l) => l.id).join(', ')}`);
+  // a manifest id that is not on the map is a typo
+  const onMap = new Set(SF_LAYOUT.landmarks.map((l) => l.id));
+  for (const g of M.SF_LANDMARK_GLBS) for (const id of g.ids || [g.id]) assert.ok(onMap.has(id), `manifest landmark ${id} is not in the layout`);
+});
+
+test('VS spawns on San Francisco use the layout pair', async () => {
+  const { findDuelSpawns } = await import('../src/kaijuDuel.js');
+  const { a, b } = SF_LAYOUT.duel;
+  const world = { level: 'sf', bounds: SF_LAYOUT.bounds, isWater: sfWet, buildings: [], duelSpawns: { a, b } };
+  const s = findDuelSpawns(world);
+  assert.ok(s.player.distanceTo(new THREE.Vector3(a.x, 0, a.z)) < 21 && s.rival.distanceTo(new THREE.Vector3(b.x, 0, b.z)) < 21);
+});
+
+test('Title Match on San Francisco: San Francisco place names on screen, no booth line naming another city', async () => {
+  const { placeText, offChicago, venueHome, chicagoLine } = await import('../src/wrestling/venue.js');
+  const sf = { world: { level: 'sf' } };
+  assert.ok(offChicago(sf));
+  assert.equal(placeText(sf, 'Gorrak · CHICAGO HEAVYWEIGHT CHAMPION'), 'Gorrak · SAN FRANCISCO HEAVYWEIGHT CHAMPION');
+  assert.equal(placeText(sf, 'Into Lake Michigan! That wave will reach Indiana!'), 'Into the Bay! That wave will reach Oakland!');
+  assert.equal(placeText(sf, 'Welcome to Grant Park'), 'Welcome to South of Market');
+  assert.match(venueHome(sf, 'player', 'x'), /THE BAY/);
+  assert.ok(chicagoLine(['x', {}, [['M', 'Clear to Navy Pier!', 'id', 1]]]));
+});
+
 // ---- Up-front loading: the booth's lines are all fetched behind the loading screen ----
 test('every booth line a match can speak is in its preloaded voice set (matchVoiceIds), every pair and arena level', async () => {
   const { matchVoiceIds } = await import('../src/wrestling/commentary.js');
@@ -932,8 +1001,8 @@ test('every booth line a match can speak is in its preloaded voice set (matchVoi
   const { MONSTERS } = await import('../src/monsters.js');
   const lmKey = (id) => (id || '').replace(/_(rear|twin|\d)$/, ''); // (commentary.js)
   const keys = Object.keys(MONSTERS);
-  for (const level of ['chicago', 'dc', 'nyc', 'seattle']) {
-    const layout = level === 'seattle' ? SEATTLE_LAYOUT : JSON.parse(fs.readFileSync(new URL(`../assets/levels/${level}_layout.json`, import.meta.url), 'utf8'));
+  for (const level of ['chicago', 'dc', 'nyc', 'seattle', 'sf']) {
+    const layout = level === 'seattle' ? SEATTLE_LAYOUT : level === 'sf' ? SF_LAYOUT : JSON.parse(fs.readFileSync(new URL(`../assets/levels/${level}_layout.json`, import.meta.url), 'utf8'));
     const lmIds = layout.landmarks.map((l) => l.id), lms = new Set(lmIds.map(lmKey));
     for (const pk of keys) for (const rk of keys) {
       if (pk === rk) continue;

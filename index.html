@@ -1874,6 +1874,7 @@
   #menu .level-card[data-level="nyc"] { background-image: linear-gradient(90deg, rgba(5, 1, 2, 0.88) 15%, rgba(5, 1, 2, 0.15)), url(assets/ui/menu/stage_nyc.webp); }
   /* (Seattle: a bay-and-sky gradient until seattle-design's assets/ui/menu/stage_seattle.webp exists; then url() it here and in intro.js MENU_IMAGES) */
   #menu .level-card[data-level="seattle"] { background-image: linear-gradient(90deg, rgba(5, 1, 2, 0.88) 15%, rgba(5, 1, 2, 0.15)), linear-gradient(180deg, #6f9ccc 0%, #c9d8e6 52%, #2c4a5c 53%, #1a3040 100%); }
+  #menu .level-card[data-level="sf"] { background-image: linear-gradient(90deg, rgba(5, 1, 2, 0.88) 15%, rgba(5, 1, 2, 0.15)), url(assets/ui/menu/stage_sf.webp); }
   #menu .level-card::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 2px rgba(255, 230, 200, 0.18); }
   #menu .level-card b { display: block; font: 400 28px/1 var(--f-display); letter-spacing: 3px; color: var(--c-cream); text-shadow: 0 2px 0 #1a0004; }
   #menu .level-card b .jp { font: 700 14px/1 var(--f-jp); color: var(--c-kanji); margin-right: 8px; letter-spacing: 1px; vertical-align: 3px; }
@@ -1886,7 +1887,7 @@
     font: 700 14px/24px var(--f-jp); color: #fff; background: var(--c-red-hi);
   }
   /* The Title Match is staged in Chicago, Washington DC and New York only: Tokyo is not offered there */
-  #menu[data-mode="title"] .level-card:not([data-level="chicago"]):not([data-level="dc"]):not([data-level="nyc"]):not([data-level="seattle"]) { display: none; }
+  #menu[data-mode="title"] .level-card:not([data-level="chicago"]):not([data-level="dc"]):not([data-level="nyc"]):not([data-level="seattle"]):not([data-level="sf"]) { display: none; }
   /* Five stages (Havoc, VS, Lone Soldier): three across, the name under its kana; the Title Match's four stay two by two */
   #menu:not([data-mode="title"]) .levels { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #menu:not([data-mode="title"]) .level-card { padding: 0 10px 10px; }
@@ -2302,13 +2303,13 @@ window.__boot = (function () {
     <div class="mn-head"><b>SELECT MODE</b><span class="jp">モード選択</span></div>
     <div class="mode-cards" id="modeCards">
       <button type="button" class="mode-card" data-mode="havoc"><span class="mc-art"></span><span class="mc-no">01</span>
-        <span class="mc-body"><span class="mc-jp">怪獣大暴れ</span><b>KAIJU HAVOC</b><span class="mc-pitch">Raze the city wave after wave while the army throws everything it has at you.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE</span></span></button>
+        <span class="mc-body"><span class="mc-jp">怪獣大暴れ</span><b>KAIJU HAVOC</b><span class="mc-pitch">Raze the city wave after wave while the army throws everything it has at you.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE · SF</span></span></button>
       <button type="button" class="mode-card" data-mode="title"><span class="mc-art"></span><span class="mc-no">02</span><span class="mc-tag">MAIN EVENT</span>
-        <span class="mc-body"><span class="mc-jp">王座決定戦</span><b>TITLE MATCH</b><span class="mc-pitch">Best of three falls for the heavyweight belt in a ring built across Grant Park, the National Mall, Central Park or Seattle.</span><span class="mc-city">CHICAGO · DC · NYC · SEATTLE</span></span></button>
+        <span class="mc-body"><span class="mc-jp">王座決定戦</span><b>TITLE MATCH</b><span class="mc-pitch">Best of three falls for the heavyweight belt in a ring built across Grant Park, the National Mall, Central Park, Seattle or San Francisco.</span><span class="mc-city">CHICAGO · DC · NYC · SEATTLE · SF</span></span></button>
       <button type="button" class="mode-card" data-mode="vs"><span class="mc-art"><i class="vs-l"></i><i class="vs-r"></i><em>VS</em></span><span class="mc-no">03</span>
-        <span class="mc-body"><span class="mc-jp">怪獣対決</span><b>VS DUEL</b><span class="mc-pitch">Two kaiju enter, one leaves. Punch, grapple and throw your rival through the streets.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE</span></span></button>
+        <span class="mc-body"><span class="mc-jp">怪獣対決</span><b>VS DUEL</b><span class="mc-pitch">Two kaiju enter, one leaves. Punch, grapple and throw your rival through the streets.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE · SF</span></span></button>
       <button type="button" class="mode-card" data-mode="lone"><span class="mc-art"></span><span class="mc-no">04</span>
-        <span class="mc-body"><span class="mc-jp">一兵卒</span><b>LONE SOLDIER</b><span class="mc-pitch">Drop in on foot, in a tank or a gunship and bring a kaiju down yourself.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE</span></span></button>
+        <span class="mc-body"><span class="mc-jp">一兵卒</span><b>LONE SOLDIER</b><span class="mc-pitch">Drop in on foot, in a tank or a gunship and bring a kaiju down yourself.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE · SF</span></span></button>
     </div>
     <div class="menu-extras">
       <button class="trailer-btn" id="trailerBtn" type="button">▶ WATCH TRAILER</button>
@@ -2675,90 +2676,95 @@ window.__boot = (function () {
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.14.1",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.14.1",
-    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.14.1",
-    "./src/audio.js": "./src/audio.js?v=1.14.1",
-    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.14.1",
-    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.14.1",
-    "./src/carBatch.js": "./src/carBatch.js?v=1.14.1",
-    "./src/city.js": "./src/city.js?v=1.14.1",
-    "./src/effects.js": "./src/effects.js?v=1.14.1",
-    "./src/enemies.js": "./src/enemies.js?v=1.14.1",
-    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.14.1",
-    "./src/game.js": "./src/game.js?v=1.14.1",
-    "./src/intro.js": "./src/intro.js?v=1.14.1",
-    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.14.1",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.14.1",
-    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.14.1",
-    "./src/kaijuPowers.js": "./src/kaijuPowers.js?v=1.14.1",
-    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.14.1",
-    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.14.1",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.14.1",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.14.1",
-    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.14.1",
-    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.14.1",
-    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.14.1",
-    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.14.1",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.14.1",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.14.1",
-    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.14.1",
-    "./src/levels/dc.js": "./src/levels/dc.js?v=1.14.1",
-    "./src/levels/dcLandscape.js": "./src/levels/dcLandscape.js?v=1.14.1",
-    "./src/levels/dcLook.js": "./src/levels/dcLook.js?v=1.14.1",
-    "./src/levels/dcManifest.js": "./src/levels/dcManifest.js?v=1.14.1",
-    "./src/levels/dcMaterials.js": "./src/levels/dcMaterials.js?v=1.14.1",
-    "./src/levels/nyc.js": "./src/levels/nyc.js?v=1.14.1",
-    "./src/levels/nycLandscape.js": "./src/levels/nycLandscape.js?v=1.14.1",
-    "./src/levels/nycLook.js": "./src/levels/nycLook.js?v=1.14.1",
-    "./src/levels/nycManifest.js": "./src/levels/nycManifest.js?v=1.14.1",
-    "./src/levels/nycMaterials.js": "./src/levels/nycMaterials.js?v=1.14.1",
-    "./src/levels/seattle.js": "./src/levels/seattle.js?v=1.14.1",
-    "./src/levels/seattleLandscape.js": "./src/levels/seattleLandscape.js?v=1.14.1",
-    "./src/levels/seattleLook.js": "./src/levels/seattleLook.js?v=1.14.1",
-    "./src/levels/seattleManifest.js": "./src/levels/seattleManifest.js?v=1.14.1",
-    "./src/levels/seattleMaterials.js": "./src/levels/seattleMaterials.js?v=1.14.1",
-    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.14.1",
-    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.14.1",
-    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.14.1",
-    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.14.1",
-    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.14.1",
-    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.14.1",
-    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.14.1",
-    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.14.1",
-    "./src/look.js": "./src/look.js?v=1.14.1",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.14.1",
-    "./src/modelGallery.js": "./src/modelGallery.js?v=1.14.1",
-    "./src/monsters.js": "./src/monsters.js?v=1.14.1",
-    "./src/pickups.js": "./src/pickups.js?v=1.14.1",
-    "./src/powerVfx.js": "./src/powerVfx.js?v=1.14.1",
-    "./src/quality.js": "./src/quality.js?v=1.14.1",
-    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.14.1",
-    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.14.1",
-    "./src/vfx.js": "./src/vfx.js?v=1.14.1",
-    "./src/waterPlay.js": "./src/waterPlay.js?v=1.14.1",
-    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.14.1",
-    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.14.1",
-    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.14.1",
-    "./src/wrestling/carve.js": "./src/wrestling/carve.js?v=1.14.1",
-    "./src/wrestling/commentary.js": "./src/wrestling/commentary.js?v=1.14.1",
-    "./src/wrestling/venue.js": "./src/wrestling/venue.js?v=1.14.1",
-    "./src/wrestling/commentaryLines.js": "./src/wrestling/commentaryLines.js?v=1.14.1",
-    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.14.1",
-    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.14.1",
-    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.14.1",
-    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.14.1",
-    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.14.1",
-    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.14.1",
-    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.14.1",
-    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.14.1",
-    "./src/wrestling/props.js": "./src/wrestling/props.js?v=1.14.1",
-    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.14.1",
-    "./src/wrestling/roster.js": "./src/wrestling/roster.js?v=1.14.1",
-    "./src/wrestling/signatures.js": "./src/wrestling/signatures.js?v=1.14.1",
-    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.14.1",
-    "./src/wrestling/spots.js": "./src/wrestling/spots.js?v=1.14.1",
-    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.14.1"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.15.0",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.15.0",
+    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.15.0",
+    "./src/audio.js": "./src/audio.js?v=1.15.0",
+    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.15.0",
+    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.15.0",
+    "./src/carBatch.js": "./src/carBatch.js?v=1.15.0",
+    "./src/city.js": "./src/city.js?v=1.15.0",
+    "./src/effects.js": "./src/effects.js?v=1.15.0",
+    "./src/enemies.js": "./src/enemies.js?v=1.15.0",
+    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.15.0",
+    "./src/game.js": "./src/game.js?v=1.15.0",
+    "./src/intro.js": "./src/intro.js?v=1.15.0",
+    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.15.0",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.15.0",
+    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.15.0",
+    "./src/kaijuPowers.js": "./src/kaijuPowers.js?v=1.15.0",
+    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.15.0",
+    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.15.0",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.15.0",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.15.0",
+    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.15.0",
+    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.15.0",
+    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.15.0",
+    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.15.0",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.15.0",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.15.0",
+    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.15.0",
+    "./src/levels/dc.js": "./src/levels/dc.js?v=1.15.0",
+    "./src/levels/dcLandscape.js": "./src/levels/dcLandscape.js?v=1.15.0",
+    "./src/levels/dcLook.js": "./src/levels/dcLook.js?v=1.15.0",
+    "./src/levels/dcManifest.js": "./src/levels/dcManifest.js?v=1.15.0",
+    "./src/levels/dcMaterials.js": "./src/levels/dcMaterials.js?v=1.15.0",
+    "./src/levels/nyc.js": "./src/levels/nyc.js?v=1.15.0",
+    "./src/levels/nycLandscape.js": "./src/levels/nycLandscape.js?v=1.15.0",
+    "./src/levels/nycLook.js": "./src/levels/nycLook.js?v=1.15.0",
+    "./src/levels/nycManifest.js": "./src/levels/nycManifest.js?v=1.15.0",
+    "./src/levels/nycMaterials.js": "./src/levels/nycMaterials.js?v=1.15.0",
+    "./src/levels/seattle.js": "./src/levels/seattle.js?v=1.15.0",
+    "./src/levels/seattleLandscape.js": "./src/levels/seattleLandscape.js?v=1.15.0",
+    "./src/levels/seattleLook.js": "./src/levels/seattleLook.js?v=1.15.0",
+    "./src/levels/seattleManifest.js": "./src/levels/seattleManifest.js?v=1.15.0",
+    "./src/levels/seattleMaterials.js": "./src/levels/seattleMaterials.js?v=1.15.0",
+    "./src/levels/sf.js": "./src/levels/sf.js?v=1.15.0",
+    "./src/levels/sfLandscape.js": "./src/levels/sfLandscape.js?v=1.15.0",
+    "./src/levels/sfLook.js": "./src/levels/sfLook.js?v=1.15.0",
+    "./src/levels/sfManifest.js": "./src/levels/sfManifest.js?v=1.15.0",
+    "./src/levels/sfMaterials.js": "./src/levels/sfMaterials.js?v=1.15.0",
+    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.15.0",
+    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.15.0",
+    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.15.0",
+    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.15.0",
+    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.15.0",
+    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.15.0",
+    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.15.0",
+    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.15.0",
+    "./src/look.js": "./src/look.js?v=1.15.0",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.15.0",
+    "./src/modelGallery.js": "./src/modelGallery.js?v=1.15.0",
+    "./src/monsters.js": "./src/monsters.js?v=1.15.0",
+    "./src/pickups.js": "./src/pickups.js?v=1.15.0",
+    "./src/powerVfx.js": "./src/powerVfx.js?v=1.15.0",
+    "./src/quality.js": "./src/quality.js?v=1.15.0",
+    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.15.0",
+    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.15.0",
+    "./src/vfx.js": "./src/vfx.js?v=1.15.0",
+    "./src/waterPlay.js": "./src/waterPlay.js?v=1.15.0",
+    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.15.0",
+    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.15.0",
+    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.15.0",
+    "./src/wrestling/carve.js": "./src/wrestling/carve.js?v=1.15.0",
+    "./src/wrestling/commentary.js": "./src/wrestling/commentary.js?v=1.15.0",
+    "./src/wrestling/venue.js": "./src/wrestling/venue.js?v=1.15.0",
+    "./src/wrestling/commentaryLines.js": "./src/wrestling/commentaryLines.js?v=1.15.0",
+    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.15.0",
+    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.15.0",
+    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.15.0",
+    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.15.0",
+    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.15.0",
+    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.15.0",
+    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.15.0",
+    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.15.0",
+    "./src/wrestling/props.js": "./src/wrestling/props.js?v=1.15.0",
+    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.15.0",
+    "./src/wrestling/roster.js": "./src/wrestling/roster.js?v=1.15.0",
+    "./src/wrestling/signatures.js": "./src/wrestling/signatures.js?v=1.15.0",
+    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.15.0",
+    "./src/wrestling/spots.js": "./src/wrestling/spots.js?v=1.15.0",
+    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.15.0"
   }
 }
 </script>
@@ -2772,7 +2778,7 @@ window.__boot = (function () {
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.14.1"></script>
-<script type="module" async src="./src/intro.js?v=1.14.1"></script>
+<script type="module" src="./src/game.js?v=1.15.0"></script>
+<script type="module" async src="./src/intro.js?v=1.15.0"></script>
 </body>
 </html>

@@ -25,7 +25,7 @@ const REPO = process.env.KAIJU_REPO || path.resolve(path.dirname(fileURLToPath(i
 const A = `${REPO}/assets`;
 const OUT = `${A}/ktx2`;
 // Only folders whose GLBs are parsed by city.js's loader (the one with the KTX2Loader)
-const DIRS = ['buildings/chicago', 'buildings/dc', 'buildings/nyc', 'buildings/seattle', 'trees', 'props', 'vehicles'];
+const DIRS = ['buildings/chicago', 'buildings/dc', 'buildings/nyc', 'buildings/seattle', 'buildings/sf', 'trees', 'props', 'vehicles'];
 const MIN_SIDE = 16, MIN_PSNR = 30;
 const filter = process.argv[2] ? new RegExp(process.argv[2]) : null;
 const io = makeIO();

@@ -42,6 +42,19 @@ const VENUES = {
       [/CHICAGO/g, 'SEATTLE'], [/Chicago/g, 'Seattle'],
     ],
   },
+  sf: {
+    home: { player: 'FROM THE DEPTHS OF THE BAY', rival: 'FROM THE WRECKAGE OF MARKET STREET' },
+    swaps: [
+      [/CHICAGO HEAVYWEIGHT/g, 'SAN FRANCISCO HEAVYWEIGHT'], [/Chicago Heavyweight/g, 'San Francisco Heavyweight'],
+      [/LAKE MICHIGAN/g, 'THE BAY'], [/Lake Michigan/g, 'the Bay'],
+      [/GRANT PARK/g, 'SOUTH OF MARKET'], [/Grant Park/g, 'South of Market'], // (the ring's site: the low blocks of SoMa)
+      [/THE LOOP/g, 'THE FINANCIAL DISTRICT'], [/the Loop/g, 'the Financial District'],
+      [/LAKE SHORE DRIVE/g, 'THE EMBARCADERO'], [/Lake Shore Drive/g, 'the Embarcadero'],
+      [/MICHIGAN AVENUE/g, 'MARKET STREET'], [/Michigan Avenue/g, 'Market Street'],
+      [/INDIANA/g, 'OAKLAND'], [/Indiana/g, 'Oakland'],
+      [/CHICAGO/g, 'SAN FRANCISCO'], [/Chicago/g, 'San Francisco'],
+    ],
+  },
 };
 const _level = (ctx) => { const l = ctx && ctx.world && ctx.world.level; return typeof l === 'string' ? l : 'chicago'; };
 /** text with the level's place names (unchanged on Chicago). */
@@ -57,7 +70,7 @@ export function venueHome(ctx, id, fallback) {
   return (v && v.home[id]) || fallback;
 }
 // Recorded booth lines that name Chicago places, the lake, the sunset or the
-// night (DC plays in late-morning light, NYC and Seattle in the afternoon):
+// night (DC and San Francisco play in morning light, NYC and Seattle in the afternoon):
 // voiced, so they cannot be reworded; the booth skips them off Chicago.
 // OTHER_PLACES: lines naming Washington DC or New York places, skipped the
 // same way (the booth was recorded for Chicago; none name them today, the
