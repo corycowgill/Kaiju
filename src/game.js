@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.15.0', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.15.1', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -81,12 +81,12 @@ function trySetHighScore(s) {
 // ------------------------- Level select -------------------------
 // ?level= wins (testing), then the saved menu pick, then Tokyo.
 const LEVELS = {
-  tokyo:   { name: 'TOKYO',   jp: '東京', tag: 'NEON DUSK · SHINJUKU', h2: 'TOKYO DESTRUCTION', h2jp: '東京破壊' },
-  chicago: { name: 'CHICAGO', jp: 'シカゴ', tag: 'GOLDEN HOUR · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊', arena: true, data: true, title: 'CHICAGO HEAVYWEIGHT TITLE' },
-  dc: { name: 'WASHINGTON DC', jp: 'ワシントン', tag: 'LATE MORNING · THE NATIONAL MALL', h2: 'WASHINGTON DC DESTRUCTION', h2jp: 'ワシントン破壊', arena: true, data: true, title: 'NATIONAL MALL HEAVYWEIGHT TITLE' },
-  nyc: { name: 'NEW YORK CITY', jp: 'ニューヨーク', tag: 'AFTERNOON · MIDTOWN MANHATTAN', h2: 'NEW YORK CITY DESTRUCTION', h2jp: 'ニューヨーク破壊', arena: true, data: true, title: 'NEW YORK HEAVYWEIGHT TITLE' },
-  seattle: { name: 'SEATTLE', jp: 'シアトル', tag: 'LATE AFTERNOON · ELLIOTT BAY', h2: 'SEATTLE DESTRUCTION', h2jp: 'シアトル破壊', arena: true, data: true, title: 'SEATTLE HEAVYWEIGHT TITLE' },
-  sf: { name: 'SAN FRANCISCO', jp: 'サンフランシスコ', tag: 'MORNING · SAN FRANCISCO BAY', h2: 'SAN FRANCISCO DESTRUCTION', h2jp: 'サンフランシスコ破壊', arena: true, data: true, title: 'SAN FRANCISCO HEAVYWEIGHT TITLE' },
+  tokyo:   { name: 'TOKYO', short: 'TOKYO',   jp: '東京', tag: 'NEON DUSK · SHINJUKU', h2: 'TOKYO DESTRUCTION', h2jp: '東京破壊' },
+  chicago: { name: 'CHICAGO', short: 'CHICAGO', jp: 'シカゴ', tag: 'GOLDEN HOUR · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊', arena: true, data: true, title: 'CHICAGO HEAVYWEIGHT TITLE' },
+  dc: { name: 'WASHINGTON DC', short: 'DC', jp: 'ワシントン', tag: 'LATE MORNING · THE NATIONAL MALL', h2: 'WASHINGTON DC DESTRUCTION', h2jp: 'ワシントン破壊', arena: true, data: true, title: 'NATIONAL MALL HEAVYWEIGHT TITLE' },
+  nyc: { name: 'NEW YORK CITY', short: 'NYC', jp: 'ニューヨーク', tag: 'AFTERNOON · MIDTOWN MANHATTAN', h2: 'NEW YORK CITY DESTRUCTION', h2jp: 'ニューヨーク破壊', arena: true, data: true, title: 'NEW YORK HEAVYWEIGHT TITLE' },
+  seattle: { name: 'SEATTLE', short: 'SEATTLE', jp: 'シアトル', tag: 'LATE AFTERNOON · ELLIOTT BAY', h2: 'SEATTLE DESTRUCTION', h2jp: 'シアトル破壊', arena: true, data: true, title: 'SEATTLE HEAVYWEIGHT TITLE' },
+  sf: { name: 'SAN FRANCISCO', short: 'SF', jp: 'サンフランシスコ', tag: 'MORNING · SAN FRANCISCO BAY', h2: 'SAN FRANCISCO DESTRUCTION', h2jp: 'サンフランシスコ破壊', arena: true, data: true, title: 'SAN FRANCISCO HEAVYWEIGHT TITLE' },
 };
 // data: built from a map layout (src/levels/<level>.js): GLB buildings on
 // every tier, the look layer, open water, explicit bounds and spawns
@@ -129,11 +129,7 @@ console.info('[KAIJU HAVOC] quality tier =', QUALITY);
 // Highlight the active quality pick on the title screen.
 {
   const pick = document.querySelector(`#quality-picker a[href="?q=${QUALITY}"]`);
-  if (pick) {
-    pick.style.color = '#ffe6c8';
-    pick.style.borderColor = '#ffcc66';
-    pick.style.background = 'rgba(255,200,100,0.12)';
-  }
+  if (pick) { pick.classList.add('on'); pick.setAttribute('aria-current', 'true'); }
 }
 // Persist the choice (localStorage) so it sticks across visits. The picker
 // is also cloned into the pause sheet so phones (no title screen mid-run)
@@ -147,8 +143,25 @@ const _pauseMenu = document.getElementById('pause-menu');
   el.id = 'quality-picker-pause';
   slot.appendChild(el);
 })();
+let _qualityArmed = null, _qualityArmT = 0;
 document.querySelectorAll('#quality-picker a, #quality-picker-pause a').forEach((a) => {
-  const pick = (e) => { e.preventDefault(); setQualityAndReload(a.getAttribute('href').replace('?q=', '')); };
+  const pick = (e) => {
+    e.preventDefault();
+    const tier = a.getAttribute('href').replace('?q=', '');
+    // In the pause sheet the run would be thrown away by the reload: the first press only warns
+    // (the sheet's hint line says what will happen), a second press of the same tier within 4 s goes
+    if (a.closest('#quality-picker-pause') && state.kaiju && !state.gameOver && tier !== QUALITY) {
+      const now = performance.now();
+      if (_qualityArmed !== tier || now - _qualityArmT > 4000) {
+        _qualityArmed = tier; _qualityArmT = now;
+        document.querySelectorAll('#quality-picker-pause a').forEach((x) => x.classList.toggle('armed', x === a));
+        const hint = document.querySelector('#pause-menu .sheet-hint');
+        if (hint) { hint.dataset.idle ??= hint.textContent; hint.textContent = `PRESS ${tier.toUpperCase()} AGAIN TO RELOAD · THIS RUN ENDS`; hint.classList.add('warn'); }
+        return;
+      }
+    }
+    setQualityAndReload(tier);
+  };
   a.addEventListener('click', pick);
   a.addEventListener('touchend', pick);
 });
@@ -158,6 +171,13 @@ function _syncPauseMenu() {
   const show = !!(state.paused && state.kaiju && !state.gameOver && !state.upgradePending);
   if (!_pauseMenu || show === _pauseMenuShown) return;
   _pauseMenuShown = show;
+  _qualityArmed = null;
+  document.querySelectorAll('#quality-picker-pause a.armed').forEach((x) => x.classList.remove('armed'));
+  { const hint = document.querySelector('#pause-menu .sheet-hint'); if (hint && hint.dataset.idle) { hint.textContent = hint.dataset.idle; hint.classList.remove('warn'); } }
+  // (keys / pad: the cursor starts on RESUME)
+  _menuPad.focused = show ? 0 : -1;
+  // (after this frame: the sheet is shown below, and only a shown button is a target)
+  if (show) requestAnimationFrame(() => _setFocus(_sheetTargets(), _menuPad.focused)); else _setFocus(_sheetTargets(true), -1);
   _pauseMenu.classList.toggle('hidden', !show);
 }
 /** Pause / resume from Esc, the HUD menu button, the sheet or a gamepad's Start. */
@@ -1696,8 +1716,19 @@ function _menuRows() {
 function _menuTargets() {
   if (_upgradeVisible()) return Array.from(document.querySelectorAll('#upgrade-cards .ucard'));
   if (_menuVisible()) return _menuRows().flat();
-  return [];
+  return _sheetTargets();
 }
+/** The buttons of the sheet on screen over a run: the pause menu, or the result screen (any: every
+ *  button in both, for clearing the cursor). Top to bottom; the keys and the pad step through them. */
+function _sheetTargets(any = false) {
+  const shown = (el) => el.getClientRects().length > 0 && !el.disabled;
+  const go = document.getElementById('gameover');
+  const out = [];
+  if (any || (state.gameOver && !go.classList.contains('hidden'))) out.push(...[...go.querySelectorAll('button')].filter((b) => any || shown(b)));
+  if (any || (_pauseMenuShown && !state.gameOver)) out.push(...[...document.querySelectorAll('#pause-menu .sheet > button, #quality-picker-pause a')].filter((b) => any || shown(b)));
+  return out;
+}
+let _sheetWasUp = false;
 /** Title menu cursor: dx steps along the focused row (or through an option
  *  list), dy jumps rows, landing on the row's selected card when it has one.
  *  With nothing focused yet, the first press shows the cursor where it starts. */
@@ -1747,7 +1778,9 @@ function confirmMenu() {
   if (target.classList.contains('monster-card') && _menuVisible()) _menuFocus(document.getElementById('startBtn'));
 }
 function pollMenuGamepad(dt) {
-  if (!_menuVisible() && !_upgradeVisible()) return;
+  const sheet = !_menuVisible() && !_upgradeVisible() && _sheetTargets().length > 0;
+  if (!sheet) _sheetWasUp = false;
+  if (!_menuVisible() && !_upgradeVisible() && !sheet) return;
   if (window.__boot && !window.__boot.done && !_upgradeVisible()) return; // (not under the boot screen)
   if (!navigator.getGamepads) return;
   const pads = navigator.getGamepads();
@@ -1801,6 +1834,21 @@ function pollMenuGamepad(dt) {
       if (step === 'mode') confirmMenu();
       else { const start = document.getElementById('startBtn'); if (start && !start.disabled) start.click(); }
     }
+  } else if (sheet) {
+    // Pause / result sheet: up and down (or left and right) through its buttons, A presses. A button
+    // still held from play when the sheet comes up (the punch that ended the fight) is not a press.
+    if (!_sheetWasUp) {
+      _sheetWasUp = true;
+      _menuPad.cool = 0.5;
+      for (const i of [0, 1, 9, 12, 13, 14, 15]) _menuPad.prevDown[i] = !!(pad.buttons[i] && pad.buttons[i].pressed);
+      return;
+    }
+    const ay = pad.axes[1] || 0;
+    if (_menuPad.cool === 0) {
+      const d = (wantLeft || dpadU || ay < -0.6) ? -1 : (wantRight || dpadD || ay > 0.6) ? 1 : 0;
+      if (d) { navigateMenu(d); _menuPad.cool = 0.2; audio.ui?.('move'); }
+    }
+    if (aPressed) confirmMenu();
   } else {
     if (_menuPad.cool === 0) {
       if (wantLeft)  { navigateMenu(-1); _menuPad.cool = 0.20; }
@@ -1816,6 +1864,12 @@ function pollMenuGamepad(dt) {
 
 // Keyboard fallback: arrow keys + Enter while the menu / upgrade modal are open.
 window.addEventListener('keydown', (e) => {
+  // Pause / result sheet: arrows step through its buttons, Enter / Space presses (Esc stays the pause key)
+  if (!galleryDialog.open && !_menuVisible() && !_upgradeVisible() && _sheetTargets().length) {
+    const d = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 }[e.key];
+    if (d) { e.preventDefault(); navigateMenu(d); audio.ui?.('move'); return; }
+    if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); confirmMenu(); return; }
+  }
   if (galleryDialog.open || (!_menuVisible() && !_upgradeVisible())) return;
   if (e.target?.closest?.('.menu-extras') && (e.key === 'Enter' || e.key === ' ')) return;
   if (_menuVisible() && !_upgradeVisible()) {
@@ -1955,6 +2009,7 @@ document.getElementById('resume-btn')?.addEventListener('click', () => {
   togglePause(false);
   if (!touchUI && state.kaiju) _requestPointerLock();
 });
+document.getElementById('goRetryBtn')?.addEventListener('click', _playAgain);
 document.getElementById('quit-btn')?.addEventListener('click', () => {
   if (!state.kaiju || state.gameOver) return;
   state.paused = false;
@@ -2021,7 +2076,8 @@ let _showLevel = () => {}; // highlights a level card (set by the block below)
       const card = document.createElement('div');
       card.className = 'level-card';
       card.dataset.level = lv;
-      card.innerHTML = `<b><span class="jp">${L.jp}</span>${L.name}</b><span>${L.tag}</span>`;
+      card.innerHTML = `<b><span class="jp">${L.jp}</span><span class="nm">${L.name}</span><span class="sn">${L.short || L.name}</span></b><span>${L.tag}</span>`;
+      card.title = L.name;
       card.addEventListener('click', () => {
         // The Title Match needs an arena: another city goes back to Kaiju Havoc
         if (modePicker.value === 'title' && !L.arena) modePicker.value = 'havoc';
@@ -2091,6 +2147,8 @@ function rivalKey(playerKey) {
   return rivalPicker.value || Object.keys(MONSTERS).find(key => key !== playerKey);
 }
 
+/** A stage's name for a narrow label: the full name and the short one, CSS shows the one that fits (.lv-nm / .lv-sn). */
+const _lvName = (lv) => `<span class="lv-nm">${LEVELS[lv].name}</span><span class="lv-sn">${LEVELS[lv].short || LEVELS[lv].name}</span>`;
 function _syncDeployment() {
   const active = modePicker.value === 'lone';
   const vs = modePicker.value === 'vs';
@@ -2104,6 +2162,7 @@ function _syncDeployment() {
   document.getElementById('vs-rival-label').hidden = !vs;
   document.getElementById('vs-menu-help').hidden = !vs;
   document.getElementById('title-menu-help').hidden = !title;
+  if (title) document.getElementById('title-menu-help').textContent = `Best of three falls in a ring raised in the middle of ${LEVELS[selectedLevel].name === 'WASHINGTON DC' ? 'Washington DC' : LEVELS[selectedLevel].name.replace(/\B\w+/g, (w) => w.toLowerCase())}. Strike, grapple, whip your rival through the streets and pin for the three-count.`;
   document.getElementById('lone-role-label').hidden = !active;
   document.getElementById('lone-menu-help').hidden = !active;
   document.getElementById('startBtn').textContent = active ? 'DEPLOY · LONE SOLDIER' : vs ? 'FIGHT · VS' : title ? 'RING THE BELL · TITLE MATCH' : 'UNLEASH HAVOC';
@@ -2116,8 +2175,8 @@ function _syncDeployment() {
     : 'WASD MOVE · MOUSE LOOK · LMB ATTACK<br>1-3 POWERS · SPACE STOMP · ESC PAUSE';
   const monster=MONSTERS[state.monsterKey],role=document.getElementById('lone-role').selectedOptions[0]?.textContent.split(' · ')[0];
   const matchup = vs && monster ? `${monster.name} vs ${MONSTERS[rivalKey(state.monsterKey)].name}` : null;
-  document.getElementById('deployment-selection').textContent=monster
-    ? `${matchup || `${active?`${role} vs `:''}${monster.name}`} · ${LEVELS[selectedLevel].name}${title ? ' · TITLE MATCH' : ''}`
+  document.getElementById('deployment-selection').innerHTML=monster
+    ? `${matchup || `${active?`${role} vs `:''}${monster.name}`} · ${_lvName(selectedLevel)}${title ? ' · TITLE MATCH' : ''}`
     : active?'CHOOSE YOUR OPPONENT':'CHOOSE YOUR KAIJU';
   _menuSyncMode();
 }
@@ -2198,6 +2257,28 @@ for (const key of Object.keys(MONSTERS)) {
   _cardEls[key] = card;
 }
 console.info('[KAIJU HAVOC] menu cards built:', cardsDiv.children.length, 'isMobile:', isMobile);
+// The last run's choices come back (mode, fighter, VS rival, soldier role; the stage has its own key,
+// LEVEL_KEY), and a fighter is always picked, so GO works the moment the fighter step opens: the one
+// played last, else the first in the roster (the one the showcase opens on)
+const MENU_PICK_KEY = 'kaijuMenuPick';
+function _saveMenuPick() {
+  try {
+    localStorage.setItem(MENU_PICK_KEY, JSON.stringify({ mode: modePicker.value, monster: state.monsterKey,
+      rival: rivalPicker.value, role: document.getElementById('lone-role').value }));
+  } catch (e) { /* not persisted */ }
+}
+{
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(MENU_PICK_KEY) || 'null'); } catch (e) { /* none */ }
+  const has = (sel, v) => v != null && [...sel.options].some((o) => o.value === v);
+  if (saved && !/[?&]mode=/.test(location.search) && has(modePicker, saved.mode)) modePicker.value = saved.mode;
+  if (saved && has(rivalPicker, saved.rival)) rivalPicker.value = saved.rival;
+  const role = document.getElementById('lone-role');
+  if (saved && has(role, saved.role)) role.value = saved.role;
+  const key = saved && MONSTERS[saved.monster] ? saved.monster : Object.keys(MONSTERS)[0];
+  _cardEls[key]?.click();
+  _syncDeployment();
+}
 window.__dbg && window.__dbg('DBG · cards built: ' + cardsDiv.children.length + ' · isMobile=' + isMobile, '#9f9');
 // Portrait priority chain:
 //   1. Static image at assets/<key>.{png,jpg,jpeg,webp}  (artist-supplied; wins)
@@ -2247,6 +2328,7 @@ const _portraitsReady = Promise.all(Object.keys(MONSTERS).map(_tryStaticImage)).
 });
 document.getElementById('startBtn').addEventListener('click', () => {
   if (!state.monsterKey) return;
+  _saveMenuPick();
   audio.init();
   audio.resume();
   startGame(state.monsterKey);
@@ -2275,7 +2357,7 @@ function _menuSyncMode() {
   const mode = document.getElementById('game-mode').value;
   document.getElementById('menu').dataset.mode = mode;
   for (const c of document.querySelectorAll('#modeCards .mode-card')) c.classList.toggle('current', c.dataset.mode === mode);
-  document.getElementById('mn-modechip').textContent = `${_modeName(mode)} · ${LEVELS[selectedLevel].name}`;
+  document.getElementById('mn-modechip').innerHTML = `${_modeName(mode)} · ${_lvName(selectedLevel)}`;
   document.getElementById('fs-role').textContent = mode === 'lone' ? 'YOUR OPPONENT' : 'PLAYER 1';
 }
 const menuEl = document.getElementById('menu');
@@ -2293,7 +2375,7 @@ function _menuLegend() {
   back.textContent = pad ? 'B' : 'ESC';
   back.hidden = _menuInput === 'touch';
   document.getElementById('mn-legend').innerHTML = _menuInput === 'touch'
-    ? `<span>${step === 'mode' ? 'TAP A MODE' : 'TAP A FIGHTER · THEN GO'}</span>`
+    ? `<span>${step === 'mode' ? 'TAP A MODE' : 'TAP TO PICK'}</span>`
     : `<span>${pad ? g('✥', ' pad') : g('←') + g('→')} SELECT</span><span>${pad ? g('A', ' pad') : g('ENTER')} CONFIRM</span>`
       + (step === 'fighter' ? `<span>${pad ? g('START') + ' FIGHT' : g('↑') + g('↓') + ' ROWS'}</span>` : '');
 }
@@ -3100,6 +3182,13 @@ async function _preuploadTextures(roots) {
 // added since boot (kaiju, enemies, effects, debris, cars, civilians and
 // the city itself), rebuilds a fresh city from the cached templates,
 // resets per-run state and returns to the monster-select menu.
+/** The result screen's PLAY AGAIN: the same fighter, mode, stage (and rival / unit) straight into loading. */
+function _playAgain() {
+  const key = state.monsterKey;
+  if (!key || _startingGame) return;
+  restartInPlace();
+  startGame(key);
+}
 function restartInPlace() {
   _mode.dispose(); // the mode's own objects, DOM and listeners (before the scene goes)
   _resetSeams();
@@ -4389,7 +4478,12 @@ function gameOver(victory, text) {
   const mins = Math.floor(state.elapsedTime / 60);
   const secs = Math.floor(state.elapsedTime % 60);
   document.getElementById('finalTime').textContent = mins + ':' + String(secs).padStart(2, '0');
+  // PLAY AGAIN says what it replays; the cursor (keys / pad) starts on it, or on the Title Match's own first button
+  { const rs = document.querySelector('#goRetryBtn small'), m = MONSTERS[state.monsterKey];
+    if (rs) rs.textContent = m ? `${m.name.toUpperCase()} · ${LEVELS[world.level || selectedLevel]?.name || ''}` : ''; }
   goEl.classList.remove('hidden');
+  _menuPad.focused = 0; _sheetWasUp = false;
+  requestAnimationFrame(() => _setFocus(_sheetTargets(), 0));
 }
 
 // ------------------------- Powers / damage -------------------------

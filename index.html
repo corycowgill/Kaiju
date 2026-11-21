@@ -1831,7 +1831,7 @@
 
   #menu .monsters { --roster-columns: 3; display: grid; grid-template-columns: repeat(var(--roster-columns), minmax(0, 1fr)); gap: 10px; }
   #menu .monster-card {
-    position: relative; width: auto; padding: 0; cursor: pointer; overflow: hidden; height: clamp(54px, 13vh, 138px);
+    position: relative; width: auto; padding: 0; cursor: pointer; overflow: hidden; height: clamp(54px, 10.4vh, 138px);
     container-type: inline-size;
     background: #12040a; border: 0; border-radius: 0; box-shadow: none; text-align: left;
     clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
@@ -1886,15 +1886,16 @@
     content: '✓'; position: absolute; right: 12px; top: 10px; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 50%;
     font: 700 14px/24px var(--f-jp); color: #fff; background: var(--c-red-hi);
   }
-  /* The Title Match is staged in Chicago, Washington DC and New York only: Tokyo is not offered there */
+  /* The Title Match has no arena in Tokyo: the other five cities only */
   #menu[data-mode="title"] .level-card:not([data-level="chicago"]):not([data-level="dc"]):not([data-level="nyc"]):not([data-level="seattle"]):not([data-level="sf"]) { display: none; }
-  /* Five stages (Havoc, VS, Lone Soldier): three across, the name under its kana; the Title Match's four stay two by two */
-  #menu:not([data-mode="title"]) .levels { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  #menu:not([data-mode="title"]) .level-card { padding: 0 10px 10px; }
-  #menu:not([data-mode="title"]) .level-card b { font-size: 21px; letter-spacing: 2px; white-space: nowrap; }
-  #menu:not([data-mode="title"]) .level-card b .jp { display: block; font-size: 12px; margin: 0 0 3px; vertical-align: 0; }
-  #menu:not([data-mode="title"]) .level-card > span { font-size: 10px; letter-spacing: 1.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #menu[data-mode="title"] .levels { grid-template-columns: repeat(2, minmax(0, 1fr)); } /* (four arenas: two by two) */
+  /* Six stages (five in the Title Match): three across in every mode, the name under its kana. Sized so the
+     whole roster, every stage and the mode's own option fit without scrolling the panel on a 720p screen */
+  #menu .levels { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #menu .level-card { height: clamp(52px, 8.4vh, 84px); padding: 0 10px 8px; }
+  #menu .level-card b { font-size: 21px; letter-spacing: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #menu .level-card b .jp { display: block; font-size: 12px; margin: 0 0 3px; vertical-align: 0; }
+  #menu .level-card b .sn { display: none; }
+  #menu .level-card > span { font-size: 10px; letter-spacing: 1.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   #menu .deployment-options { display: flex; gap: 12px; margin: 0; flex-wrap: wrap; width: auto; max-width: none; justify-content: flex-start; }
   #menu .deployment-field { position: relative; flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; }
@@ -1930,7 +1931,7 @@
   }
   .mn-back .g[hidden] { display: none; }
   .mn-legend .g.pad { border-radius: 50%; min-width: 22px; padding: 4px 0 3px; }
-  .mn-legend { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px 18px; flex-wrap: wrap; font: 400 15px/1 var(--f-display); letter-spacing: 2px; color: var(--c-muted); }
+  .mn-legend { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px 18px; flex-wrap: nowrap; overflow: hidden; font: 400 15px/1 var(--f-display); letter-spacing: 2px; color: var(--c-muted); }
   .mn-legend span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
   .fs-controls { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
   #menu .menu-hint { margin: 0; font: 400 16px/1.6 var(--f-display); color: var(--c-muted); letter-spacing: 3px; }
@@ -1951,6 +1952,52 @@
   #menu .deployment-bar #startBtn:is(:hover, .pad-focus):not(:disabled) { transform: scale(1.05); outline: none; background: linear-gradient(180deg, #ffd27a 0%, #ff8a3c 40%, #d3253c 100%); color: #1a0004; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
   #menu .deployment-bar #startBtn:disabled { opacity: 1; cursor: not-allowed; background: linear-gradient(180deg, #4a3036, #2a1519); color: rgba(255, 230, 200, 0.4); text-shadow: none; }
   @keyframes goPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+  /* the key legend's least needed hint (rows) goes first on a narrower bar */
+  @media (max-width: 1180px) { .mn-legend span:nth-child(3) { display: none; } }
+
+  /* ---- quality picker (title footer and the pause sheet) ---- */
+  .q-picker { margin-top: 8px; display: flex; gap: 8px; justify-content: center; align-items: center; font: 400 12px/1 var(--f-display); letter-spacing: 3px; color: #aa9988; }
+  .q-picker .q-label { opacity: 0.75; white-space: nowrap; }
+  .q-picker a {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 56px; min-height: 34px; padding: 4px 12px;
+    color: #c8b4a4; text-decoration: none; border: 1px solid #553344; border-radius: 2px; transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+  }
+  .q-picker a:is(:hover, :focus-visible, .pad-focus) { color: #fff; border-color: var(--c-gold); outline: none; }
+  .q-picker a.on { color: #ffe6c8; border-color: #ffcc66; background: rgba(255, 200, 100, 0.12); }
+  .q-picker a.armed { color: #fff; border-color: var(--c-red-hi); background: rgba(255, 51, 68, 0.25); animation: qArm 0.8s ease-in-out infinite alternate; }
+  @keyframes qArm { to { background: rgba(255, 51, 68, 0.45); } }
+  #pause-menu .sheet-hint.warn { color: #ff8a8a; letter-spacing: 2px; }
+  @media (max-height: 540px) { .q-picker a { min-height: 30px; min-width: 48px; } }
+
+  /* ---- pause and result sheets: the keys / pad cursor ---- */
+  .sheet-btn.pad-focus { border-color: var(--c-gold); color: #fff; outline: none; box-shadow: 0 0 0 2px var(--c-gold); }
+  #gameover .start-btn.pad-focus { outline: 3px solid var(--c-gold); outline-offset: 4px; }
+  .ucard.pad-focus { outline: 3px solid var(--c-gold); outline-offset: 3px; }
+
+  /* ---- result screen: PLAY AGAIN (what it replays under it), the menu as the quieter second choice ---- */
+  #gameover #goRetryBtn small { display: block; margin-top: 4px; font: 400 0.55em/1 var(--f-display); letter-spacing: 0.25em; color: var(--c-gold); text-shadow: none; }
+  #gameover #goRetryBtn small:empty { display: none; }
+  #gameover #goRetryBtn::before, #gameover #goRetryBtn::after { display: none; }
+  /* (city names: the full one, or the short one where the bar or the chip is narrow) */
+  .lv-sn { display: none; }
+  @media (max-width: 1000px), (max-height: 540px) { .lv-nm { display: none; } .lv-sn { display: inline; } }
+  /* the ✓ on the picked stage sits clear of its name */
+  @media (min-height: 541px) { #menu .level-card.selected::before { top: 6px; right: 8px; width: 18px; height: 18px; font-size: 11px; line-height: 18px; } }
+  #gameover .go-menu-btn { display: block; margin: 10px auto 0; padding: 8px 30px; font-size: 15px; letter-spacing: 6px; background: rgba(20, 2, 6, 0.7); border-color: #883344; box-shadow: none; }
+  #gameover .go-menu-btn::before, #gameover .go-menu-btn::after { display: none; }
+  #gameover.wr-win #goRetryBtn { display: none; }
+  #gameover .go-actions { display: flex; flex-direction: column; align-items: center; }
+  #gameover .stats-grid { gap: 6px 40px; max-width: 500px; }
+  #gameover .stats-row { gap: 16px; }
+  #gameover .stats-row span { white-space: nowrap; }
+  @media (max-height: 540px) {
+    /* short screens: the two choices side by side, so both stay on screen */
+    #gameover:not(.wr) .go-actions { flex-direction: row; justify-content: center; gap: 12px; }
+    #gameover:not(.wr) .go-actions .start-btn { margin: 4px 0 0; }
+    #gameover .go-menu-btn { min-height: 42px; padding: 8px 18px; font-size: 12px; letter-spacing: 3px; }
+    #gameover #goRetryBtn small { margin-top: 2px; }
+    #gameover.wr .go-menu-btn { margin-top: 6px; padding: 5px 20px; }
+  }
 
   /* ---- loading screen: the picked fighter behind the bar ---- */
   /* (stays fully opaque: the HUD prewarm draws under it) */
@@ -2049,27 +2096,33 @@
     .fs-label .jp { font-size: 10px; }
     #menu .fs-label #levelTitle { display: none; }
     #menu .monsters { gap: 8px; }
-    #menu .monster-card { height: clamp(48px, 14vh, 82px); }
+    #menu .monster-card { height: clamp(38px, 13vh, 82px); }
+    #menu .fs-side > .fs-label:first-child { display: none; }
+    #menu:is([data-mode="vs"], [data-mode="lone"]) .monster-card { height: clamp(34px, 11.2vh, 72px); }
     #menu .monster-card h3 { font-size: clamp(10px, 11cqi, 18px); left: 6px; right: 4px; bottom: 5px; }
     #menu .monster-card .preview { font-size: 30px; }
     #menu .monster-card.selected::before { top: 6px; font-size: 12px; padding: 3px 6px 2px 10px; }
-    #menu .levels { gap: 8px; }
-    #menu .level-card { height: 46px; padding: 0 10px 6px; }
+    #menu .levels { gap: 6px; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+    #menu .level-card { height: 32px; padding: 0 6px 5px; justify-content: center; align-items: center; }
     #menu .level-card b { font-size: 19px; letter-spacing: 2px; }
     #menu .level-card b .jp { font-size: 11px; vertical-align: 2px; }
     #menu .level-card > span { display: none; }
     #menu .level-card.selected::before { top: 6px; right: 8px; width: 18px; height: 18px; font-size: 11px; line-height: 18px; }
-    #menu:not([data-mode="title"]) .level-card { padding: 0 8px 6px; }
-    #menu:not([data-mode="title"]) .level-card b { font-size: 15px; letter-spacing: 1px; }
-    #menu:not([data-mode="title"]) .level-card b .jp { display: none; }
+    #menu .level-card { padding: 4px 4px 2px; }
+    #menu .level-card b { font-size: 15px; letter-spacing: 1px; text-align: center; }
+    #menu .level-card b .jp, #menu .level-card b .nm { display: none; }
+    #menu .level-card b .sn { display: inline; }
+    #menu .level-card.selected::before { top: 3px; right: 3px; width: 12px; height: 12px; font-size: 8px; line-height: 12px; }
     #menu .deployment-options { gap: 8px; flex-wrap: nowrap; }
-    #menu .deployment-field { gap: 3px; flex-basis: 0; }
+    #menu .deployment-field { gap: 8px; flex-basis: 0; flex-direction: row; align-items: center; }
+    #menu .deployment-field span { flex: none; }
+    #menu .deployment-field select { flex: 1 1 auto; min-width: 0; }
     #menu .deployment-field span { font-size: 11px; letter-spacing: 2px; }
     #menu .deployment-field select { min-height: 34px; padding: 6px 30px 5px 10px; font-size: 15px; }
     #menu .deployment-field::after { bottom: 11px; right: 8px; }
     #menu .mn-help { display: none; }
     #menu > .deployment-bar { gap: 12px; }
-    #menu .mn-back { padding: 8px 12px 7px 8px; font-size: 15px; }
+    #menu .mn-back { min-height: 40px; padding: 8px 12px 7px 8px; font-size: 15px; }
     .mn-legend { font-size: 12px; gap: 6px 12px; }
     #menu #deployment-selection { font-size: 13px; max-width: 200px; }
     #menu .deployment-bar #startBtn { min-height: 44px; padding: 10px 26px 8px; font-size: 16px; letter-spacing: 2px; clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
@@ -2303,13 +2356,13 @@ window.__boot = (function () {
     <div class="mn-head"><b>SELECT MODE</b><span class="jp">モード選択</span></div>
     <div class="mode-cards" id="modeCards">
       <button type="button" class="mode-card" data-mode="havoc"><span class="mc-art"></span><span class="mc-no">01</span>
-        <span class="mc-body"><span class="mc-jp">怪獣大暴れ</span><b>KAIJU HAVOC</b><span class="mc-pitch">Raze the city wave after wave while the army throws everything it has at you.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE · SF</span></span></button>
+        <span class="mc-body"><span class="mc-jp">怪獣大暴れ</span><b>KAIJU HAVOC</b><span class="mc-pitch">Raze the city wave after wave while the army throws everything it has at you.</span><span class="mc-city" title="Tokyo, Chicago, Washington DC, New York City, Seattle, San Francisco">ALL 6 CITIES</span></span></button>
       <button type="button" class="mode-card" data-mode="title"><span class="mc-art"></span><span class="mc-no">02</span><span class="mc-tag">MAIN EVENT</span>
-        <span class="mc-body"><span class="mc-jp">王座決定戦</span><b>TITLE MATCH</b><span class="mc-pitch">Best of three falls for the heavyweight belt in a ring built across Grant Park, the National Mall, Central Park, Seattle or San Francisco.</span><span class="mc-city">CHICAGO · DC · NYC · SEATTLE · SF</span></span></button>
+        <span class="mc-body"><span class="mc-jp">王座決定戦</span><b>TITLE MATCH</b><span class="mc-pitch">Best of three falls for the heavyweight belt, in a ring built downtown.</span><span class="mc-city" title="Chicago, Washington DC, New York City, Seattle, San Francisco">5 US ARENAS</span></span></button>
       <button type="button" class="mode-card" data-mode="vs"><span class="mc-art"><i class="vs-l"></i><i class="vs-r"></i><em>VS</em></span><span class="mc-no">03</span>
-        <span class="mc-body"><span class="mc-jp">怪獣対決</span><b>VS DUEL</b><span class="mc-pitch">Two kaiju enter, one leaves. Punch, grapple and throw your rival through the streets.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE · SF</span></span></button>
+        <span class="mc-body"><span class="mc-jp">怪獣対決</span><b>VS DUEL</b><span class="mc-pitch">Two kaiju enter, one leaves. Punch, grapple and throw your rival through the streets.</span><span class="mc-city" title="Tokyo, Chicago, Washington DC, New York City, Seattle, San Francisco">ALL 6 CITIES</span></span></button>
       <button type="button" class="mode-card" data-mode="lone"><span class="mc-art"></span><span class="mc-no">04</span>
-        <span class="mc-body"><span class="mc-jp">一兵卒</span><b>LONE SOLDIER</b><span class="mc-pitch">Drop in on foot, in a tank or a gunship and bring a kaiju down yourself.</span><span class="mc-city">TOKYO · CHICAGO · DC · NYC · SEATTLE · SF</span></span></button>
+        <span class="mc-body"><span class="mc-jp">一兵卒</span><b>LONE SOLDIER</b><span class="mc-pitch">Drop in on foot, in a tank or a gunship and bring a kaiju down yourself.</span><span class="mc-city" title="Tokyo, Chicago, Washington DC, New York City, Seattle, San Francisco">ALL 6 CITIES</span></span></button>
     </div>
     <div class="menu-extras">
       <button class="trailer-btn" id="trailerBtn" type="button">▶ WATCH TRAILER</button>
@@ -2356,11 +2409,11 @@ window.__boot = (function () {
     <button class="start-btn" id="startBtn" disabled>UNLEASH HAVOC</button>
   </div>
   <div class="mn-foot">
-    <div id="quality-picker" style="margin-top:8px; font-size:11px; color:#aa9988; letter-spacing:3px; display:flex; gap:8px; justify-content:center; align-items:center;">
-      <span style="opacity:0.7;">QUALITY · 画質</span>
-      <a href="?q=low"  style="color:#aa9988; text-decoration:none; padding:2px 8px; border:1px solid #553344; border-radius:2px;">LOW</a>
-      <a href="?q=med"  style="color:#aa9988; text-decoration:none; padding:2px 8px; border:1px solid #553344; border-radius:2px;">MED</a>
-      <a href="?q=high" style="color:#aa9988; text-decoration:none; padding:2px 8px; border:1px solid #553344; border-radius:2px;">HIGH</a>
+    <div id="quality-picker" class="q-picker" role="group" aria-label="Graphics quality">
+      <span class="q-label">QUALITY · 画質</span>
+      <a href="?q=low">LOW</a>
+      <a href="?q=med">MED</a>
+      <a href="?q=high">HIGH</a>
     </div>
     <div class="studio">PRESENTED BY · <b>HALLUCINATED GAMES</b> · ハルシネイテッド ゲームズ</div>
   </div>
@@ -2582,7 +2635,10 @@ window.__boot = (function () {
   </div>
   <div class="stats-divider"></div>
   <button class="start-btn" id="wr-defend-btn" type="button">DEFEND THE TITLE<small></small></button>
-  <button class="start-btn" id="goAgainBtn" onclick="window.__restartInPlace ? window.__restartInPlace() : location.reload()">UNLEASH AGAIN</button>
+  <div class="go-actions">
+    <button class="start-btn" id="goRetryBtn" type="button">PLAY AGAIN<small></small></button>
+    <button class="start-btn go-menu-btn" id="goAgainBtn" type="button" onclick="window.__restartInPlace ? window.__restartInPlace() : location.reload()">CHANGE FIGHTER</button>
+  </div>
   </div>
 </div>
 
@@ -2676,95 +2732,95 @@ window.__boot = (function () {
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "./src/assetCache.js": "./src/assetCache.js?v=1.15.0",
-    "./src/assetManifest.js": "./src/assetManifest.js?v=1.15.0",
-    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.15.0",
-    "./src/audio.js": "./src/audio.js?v=1.15.0",
-    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.15.0",
-    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.15.0",
-    "./src/carBatch.js": "./src/carBatch.js?v=1.15.0",
-    "./src/city.js": "./src/city.js?v=1.15.0",
-    "./src/effects.js": "./src/effects.js?v=1.15.0",
-    "./src/enemies.js": "./src/enemies.js?v=1.15.0",
-    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.15.0",
-    "./src/game.js": "./src/game.js?v=1.15.0",
-    "./src/intro.js": "./src/intro.js?v=1.15.0",
-    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.15.0",
-    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.15.0",
-    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.15.0",
-    "./src/kaijuPowers.js": "./src/kaijuPowers.js?v=1.15.0",
-    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.15.0",
-    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.15.0",
-    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.15.0",
-    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.15.0",
-    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.15.0",
-    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.15.0",
-    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.15.0",
-    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.15.0",
-    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.15.0",
-    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.15.0",
-    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.15.0",
-    "./src/levels/dc.js": "./src/levels/dc.js?v=1.15.0",
-    "./src/levels/dcLandscape.js": "./src/levels/dcLandscape.js?v=1.15.0",
-    "./src/levels/dcLook.js": "./src/levels/dcLook.js?v=1.15.0",
-    "./src/levels/dcManifest.js": "./src/levels/dcManifest.js?v=1.15.0",
-    "./src/levels/dcMaterials.js": "./src/levels/dcMaterials.js?v=1.15.0",
-    "./src/levels/nyc.js": "./src/levels/nyc.js?v=1.15.0",
-    "./src/levels/nycLandscape.js": "./src/levels/nycLandscape.js?v=1.15.0",
-    "./src/levels/nycLook.js": "./src/levels/nycLook.js?v=1.15.0",
-    "./src/levels/nycManifest.js": "./src/levels/nycManifest.js?v=1.15.0",
-    "./src/levels/nycMaterials.js": "./src/levels/nycMaterials.js?v=1.15.0",
-    "./src/levels/seattle.js": "./src/levels/seattle.js?v=1.15.0",
-    "./src/levels/seattleLandscape.js": "./src/levels/seattleLandscape.js?v=1.15.0",
-    "./src/levels/seattleLook.js": "./src/levels/seattleLook.js?v=1.15.0",
-    "./src/levels/seattleManifest.js": "./src/levels/seattleManifest.js?v=1.15.0",
-    "./src/levels/seattleMaterials.js": "./src/levels/seattleMaterials.js?v=1.15.0",
-    "./src/levels/sf.js": "./src/levels/sf.js?v=1.15.0",
-    "./src/levels/sfLandscape.js": "./src/levels/sfLandscape.js?v=1.15.0",
-    "./src/levels/sfLook.js": "./src/levels/sfLook.js?v=1.15.0",
-    "./src/levels/sfManifest.js": "./src/levels/sfManifest.js?v=1.15.0",
-    "./src/levels/sfMaterials.js": "./src/levels/sfMaterials.js?v=1.15.0",
-    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.15.0",
-    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.15.0",
-    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.15.0",
-    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.15.0",
-    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.15.0",
-    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.15.0",
-    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.15.0",
-    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.15.0",
-    "./src/look.js": "./src/look.js?v=1.15.0",
-    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.15.0",
-    "./src/modelGallery.js": "./src/modelGallery.js?v=1.15.0",
-    "./src/monsters.js": "./src/monsters.js?v=1.15.0",
-    "./src/pickups.js": "./src/pickups.js?v=1.15.0",
-    "./src/powerVfx.js": "./src/powerVfx.js?v=1.15.0",
-    "./src/quality.js": "./src/quality.js?v=1.15.0",
-    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.15.0",
-    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.15.0",
-    "./src/vfx.js": "./src/vfx.js?v=1.15.0",
-    "./src/waterPlay.js": "./src/waterPlay.js?v=1.15.0",
-    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.15.0",
-    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.15.0",
-    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.15.0",
-    "./src/wrestling/carve.js": "./src/wrestling/carve.js?v=1.15.0",
-    "./src/wrestling/commentary.js": "./src/wrestling/commentary.js?v=1.15.0",
-    "./src/wrestling/venue.js": "./src/wrestling/venue.js?v=1.15.0",
-    "./src/wrestling/commentaryLines.js": "./src/wrestling/commentaryLines.js?v=1.15.0",
-    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.15.0",
-    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.15.0",
-    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.15.0",
-    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.15.0",
-    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.15.0",
-    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.15.0",
-    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.15.0",
-    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.15.0",
-    "./src/wrestling/props.js": "./src/wrestling/props.js?v=1.15.0",
-    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.15.0",
-    "./src/wrestling/roster.js": "./src/wrestling/roster.js?v=1.15.0",
-    "./src/wrestling/signatures.js": "./src/wrestling/signatures.js?v=1.15.0",
-    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.15.0",
-    "./src/wrestling/spots.js": "./src/wrestling/spots.js?v=1.15.0",
-    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.15.0"
+    "./src/assetCache.js": "./src/assetCache.js?v=1.15.1",
+    "./src/assetManifest.js": "./src/assetManifest.js?v=1.15.1",
+    "./src/atomicBlast.js": "./src/atomicBlast.js?v=1.15.1",
+    "./src/audio.js": "./src/audio.js?v=1.15.1",
+    "./src/buildingCollision.js": "./src/buildingCollision.js?v=1.15.1",
+    "./src/buildingGrid.js": "./src/buildingGrid.js?v=1.15.1",
+    "./src/carBatch.js": "./src/carBatch.js?v=1.15.1",
+    "./src/city.js": "./src/city.js?v=1.15.1",
+    "./src/effects.js": "./src/effects.js?v=1.15.1",
+    "./src/enemies.js": "./src/enemies.js?v=1.15.1",
+    "./src/firstPersonLighting.js": "./src/firstPersonLighting.js?v=1.15.1",
+    "./src/game.js": "./src/game.js?v=1.15.1",
+    "./src/intro.js": "./src/intro.js?v=1.15.1",
+    "./src/kaijuDuel.js": "./src/kaijuDuel.js?v=1.15.1",
+    "./src/kaijuLoader.js": "./src/kaijuLoader.js?v=1.15.1",
+    "./src/kaijuMelee.js": "./src/kaijuMelee.js?v=1.15.1",
+    "./src/kaijuPowers.js": "./src/kaijuPowers.js?v=1.15.1",
+    "./src/kaijuPursuit.js": "./src/kaijuPursuit.js?v=1.15.1",
+    "./src/kaijuWrestling.js": "./src/kaijuWrestling.js?v=1.15.1",
+    "./src/ktx2Assets.js": "./src/ktx2Assets.js?v=1.15.1",
+    "./src/levels/chicago.js": "./src/levels/chicago.js?v=1.15.1",
+    "./src/levels/chicagoLandscape.js": "./src/levels/chicagoLandscape.js?v=1.15.1",
+    "./src/levels/chicagoMaterials.js": "./src/levels/chicagoMaterials.js?v=1.15.1",
+    "./src/levels/chicagoWear.js": "./src/levels/chicagoWear.js?v=1.15.1",
+    "./src/levels/chicago_arena.js": "./src/levels/chicago_arena.js?v=1.15.1",
+    "./src/levels/chicago_fest.js": "./src/levels/chicago_fest.js?v=1.15.1",
+    "./src/levels/chicago_harbor.js": "./src/levels/chicago_harbor.js?v=1.15.1",
+    "./src/levels/chicago_water.js": "./src/levels/chicago_water.js?v=1.15.1",
+    "./src/levels/dc.js": "./src/levels/dc.js?v=1.15.1",
+    "./src/levels/dcLandscape.js": "./src/levels/dcLandscape.js?v=1.15.1",
+    "./src/levels/dcLook.js": "./src/levels/dcLook.js?v=1.15.1",
+    "./src/levels/dcManifest.js": "./src/levels/dcManifest.js?v=1.15.1",
+    "./src/levels/dcMaterials.js": "./src/levels/dcMaterials.js?v=1.15.1",
+    "./src/levels/nyc.js": "./src/levels/nyc.js?v=1.15.1",
+    "./src/levels/nycLandscape.js": "./src/levels/nycLandscape.js?v=1.15.1",
+    "./src/levels/nycLook.js": "./src/levels/nycLook.js?v=1.15.1",
+    "./src/levels/nycManifest.js": "./src/levels/nycManifest.js?v=1.15.1",
+    "./src/levels/nycMaterials.js": "./src/levels/nycMaterials.js?v=1.15.1",
+    "./src/levels/seattle.js": "./src/levels/seattle.js?v=1.15.1",
+    "./src/levels/seattleLandscape.js": "./src/levels/seattleLandscape.js?v=1.15.1",
+    "./src/levels/seattleLook.js": "./src/levels/seattleLook.js?v=1.15.1",
+    "./src/levels/seattleManifest.js": "./src/levels/seattleManifest.js?v=1.15.1",
+    "./src/levels/seattleMaterials.js": "./src/levels/seattleMaterials.js?v=1.15.1",
+    "./src/levels/sf.js": "./src/levels/sf.js?v=1.15.1",
+    "./src/levels/sfLandscape.js": "./src/levels/sfLandscape.js?v=1.15.1",
+    "./src/levels/sfLook.js": "./src/levels/sfLook.js?v=1.15.1",
+    "./src/levels/sfManifest.js": "./src/levels/sfManifest.js?v=1.15.1",
+    "./src/levels/sfMaterials.js": "./src/levels/sfMaterials.js?v=1.15.1",
+    "./src/levels/crowdRoutes.js": "./src/levels/crowdRoutes.js?v=1.15.1",
+    "./src/levels/festivalCrowd.js": "./src/levels/festivalCrowd.js?v=1.15.1",
+    "./src/levels/festivalDressing.js": "./src/levels/festivalDressing.js?v=1.15.1",
+    "./src/levels/festivalPeople.js": "./src/levels/festivalPeople.js?v=1.15.1",
+    "./src/loneInstruments.js": "./src/loneInstruments.js?v=1.15.1",
+    "./src/loneKaijuAI.js": "./src/loneKaijuAI.js?v=1.15.1",
+    "./src/loneSoldier.js": "./src/loneSoldier.js?v=1.15.1",
+    "./src/loneSoldierView.js": "./src/loneSoldierView.js?v=1.15.1",
+    "./src/look.js": "./src/look.js?v=1.15.1",
+    "./src/mobileAssets.js": "./src/mobileAssets.js?v=1.15.1",
+    "./src/modelGallery.js": "./src/modelGallery.js?v=1.15.1",
+    "./src/monsters.js": "./src/monsters.js?v=1.15.1",
+    "./src/pickups.js": "./src/pickups.js?v=1.15.1",
+    "./src/powerVfx.js": "./src/powerVfx.js?v=1.15.1",
+    "./src/quality.js": "./src/quality.js?v=1.15.1",
+    "./src/soldierSpawn.js": "./src/soldierSpawn.js?v=1.15.1",
+    "./src/structureRayQuery.js": "./src/structureRayQuery.js?v=1.15.1",
+    "./src/vfx.js": "./src/vfx.js?v=1.15.1",
+    "./src/waterPlay.js": "./src/waterPlay.js?v=1.15.1",
+    "./src/wrestling/animDefs.js": "./src/wrestling/animDefs.js?v=1.15.1",
+    "./src/wrestling/animRig.js": "./src/wrestling/animRig.js?v=1.15.1",
+    "./src/wrestling/anims.js": "./src/wrestling/anims.js?v=1.15.1",
+    "./src/wrestling/carve.js": "./src/wrestling/carve.js?v=1.15.1",
+    "./src/wrestling/commentary.js": "./src/wrestling/commentary.js?v=1.15.1",
+    "./src/wrestling/venue.js": "./src/wrestling/venue.js?v=1.15.1",
+    "./src/wrestling/commentaryLines.js": "./src/wrestling/commentaryLines.js?v=1.15.1",
+    "./src/wrestling/events.js": "./src/wrestling/events.js?v=1.15.1",
+    "./src/wrestling/fightCam.js": "./src/wrestling/fightCam.js?v=1.15.1",
+    "./src/wrestling/fighter.js": "./src/wrestling/fighter.js?v=1.15.1",
+    "./src/wrestling/grapple.js": "./src/wrestling/grapple.js?v=1.15.1",
+    "./src/wrestling/hud.js": "./src/wrestling/hud.js?v=1.15.1",
+    "./src/wrestling/index.js": "./src/wrestling/index.js?v=1.15.1",
+    "./src/wrestling/input.js": "./src/wrestling/input.js?v=1.15.1",
+    "./src/wrestling/match.js": "./src/wrestling/match.js?v=1.15.1",
+    "./src/wrestling/props.js": "./src/wrestling/props.js?v=1.15.1",
+    "./src/wrestling/rivalAI.js": "./src/wrestling/rivalAI.js?v=1.15.1",
+    "./src/wrestling/roster.js": "./src/wrestling/roster.js?v=1.15.1",
+    "./src/wrestling/signatures.js": "./src/wrestling/signatures.js?v=1.15.1",
+    "./src/wrestling/sfx.js": "./src/wrestling/sfx.js?v=1.15.1",
+    "./src/wrestling/spots.js": "./src/wrestling/spots.js?v=1.15.1",
+    "./src/wrestling/vfx.js": "./src/wrestling/vfx.js?v=1.15.1"
   }
 }
 </script>
@@ -2778,7 +2834,7 @@ window.__boot = (function () {
     document.body.appendChild(s);
   })();
 </script>
-<script type="module" src="./src/game.js?v=1.15.0"></script>
-<script type="module" async src="./src/intro.js?v=1.15.0"></script>
+<script type="module" src="./src/game.js?v=1.15.1"></script>
+<script type="module" async src="./src/intro.js?v=1.15.1"></script>
 </body>
 </html>
