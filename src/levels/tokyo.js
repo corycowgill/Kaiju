@@ -20,6 +20,7 @@ import { bakeShoreField, makeWaterMaterial, waterUniforms, waterFX } from './chi
 import { buildArena, arenaNoTree, setArenaSite } from './chicago_arena.js';
 import { setLookLayerKey } from '../look.js';
 import { TOKYO_LOOK } from './tokyoLook.js';
+import { buildTokyoSigns } from './tokyoSigns.js';
 import { TOKYO_BASE, TOKYO_LANDMARK_GLBS, TOKYO_GENERIC_GLBS, TOKYO_PROP_GLBS, TOKYO_VEHICLE_GLBS, TOKYO_KIT_GLBS } from './tokyoManifest.js';
 
 // The cartographer's layout (the integrator's placeholder before it: tokyo_layout_placeholder.json,
@@ -64,6 +65,9 @@ export async function loadTokyoLayout() {
     lm.frontDir = Array.isArray(r.frontDir) ? [+r.frontDir[0], +r.frontDir[1]] : null;
     lm.onPier = !!r.onPier; lm.onWater = !!r.onWater;
   }
+  // (and a lot's district: the signage dresses the commercial blocks of Ginza, Shimbashi and Yurakucho)
+  const zoneOf = new Map((raw.buildings || []).filter((o) => o.zone).map((o) => [o.id, o.zone]));
+  for (const o of _layout.buildings) if (zoneOf.has(o.id)) o.zone = zoneOf.get(o.id);
   _layout.approaches = (raw.approaches || []).map((p) => (Array.isArray(p) ? [+p[0], +p[1]] : [+p.x, +p.z]));
   // Optional: the parks are scattered procedurally without it (meta.trees
   // false: no survey, no fetch and no 404)
@@ -865,6 +869,8 @@ export function buildTokyo(scene, world, opts, K) {
     const spot = () => [(rnd() - 0.5) * 0.66, (rnd() - 0.5) * 0.66];
     return rnd() < 0.55 ? [{ url: MECH, fx: spot()[0], fz: spot()[1], ry: Math.round(rnd() * 4) * Math.PI / 2, s: S }] : null;
   };
+  const signLots = []; // (the commercial lots as placed, for the signage pass)
+  const signLot = (o, b) => { if (o.zone) signLots.push({ b, x: o.x, z: o.z, w: o.w, d: o.d, rotY: o.rotY || 0, h: o.h, style: o.style, zone: o.zone, id: o.id }); };
   const placeBlock = (o) => {
     const color = LK.facadeColor();
     const c = Math.abs(Math.cos(o.rotY || 0)), s = Math.abs(Math.sin(o.rotY || 0));
@@ -884,6 +890,7 @@ export function buildTokyo(scene, world, opts, K) {
       b.debrisTint = _stoneOf(own.file);
       orient(b, o.w, o.d, o.rotY);
       K.queueGLB({ url: TOKYO_BASE + own.file, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, stretch: 1.6, lot: lotOf(o.w, o.d, o.rotY) });
+      signLot(o, b);
       return;
     }
     const rnd = _seeded(o.id + ':' + Math.round(o.x) + ':' + Math.round(o.z));
@@ -929,6 +936,7 @@ export function buildTokyo(scene, world, opts, K) {
     Object.defineProperty(b, 'debrisTint', { get() { return _stoneOf(this.glbUrl || pick); } });
     orient(b, o.w, o.d, o.rotY);
     K.queueGLB({ url: pick, h: o.h, building: b, maxW: aw, maxD: ad, rotY: o.rotY || 0, pool: _sizedDefs(o.h, o.style).map((g) => g.url), stretch: 1.3, fill, lot: lotOf(o.w, o.d, o.rotY), roof: roofFor(o, rnd) });
+    signLot(o, b);
   };
   for (const o of L.buildings) if (!(lite && o.phoneSkip)) placeBlock(o);
 
@@ -1373,6 +1381,7 @@ export function buildTokyo(scene, world, opts, K) {
   if (windowPulse) animators.push(windowPulse);
 
   // ---- street dressing: lamps, signals, shelters, corner furniture, the park ----
+  const wireSpans = []; // (utility-pole spans down the side streets, for the overhead wires)
   {
     // Tokyo props at true size (manifest heightM x 0.2), Chicago's at their kit height
     const propH = (name, chi) => { const d = TOKYO_PROP_GLBS.find((p) => p.name === name); return d && d.heightM ? d.heightM * S : chi; };
@@ -1390,7 +1399,7 @@ export function buildTokyo(scene, world, opts, K) {
     const own = /^tokyo_/.test(lampName);
     const lampEvery = own ? (lite ? 20 : 8) : lite ? 40 : 24;
     const putLamp = (x, z, ry, pole = false) => {
-      if (isWater(x, z) || onRing(x, z) || inRingBox(x, z)) return;
+      if (isWater(x, z) || onRing(x, z) || inRingBox(x, z)) return false;
       const name = pole && K.hasProp('tokyo_utility_pole') ? 'tokyo_utility_pole' : market.length && onMarket(x, z) ? 'tokyo_streetlamp_ginza' : lampName;
       const lamp = hasLamp ? K.cloneProp(name, propH(name, 5.6 * PS)) : LK.makeLamp();
       if (!hasLamp) lamp.scale.setScalar(PS);
@@ -1400,6 +1409,7 @@ export function buildTokyo(scene, world, opts, K) {
       lamp.userData.instance = true;
       scene.add(lamp);
       stats.lamps = (stats.lamps || 0) + 1;
+      return true;
     };
     for (const e of net.edges) {
       const w = e.laneOff * 4;
@@ -1414,12 +1424,22 @@ export function buildTokyo(scene, world, opts, K) {
     if (!lite) {
       for (const r of roads) {
         if (r.kind !== 'minor') continue;
-        let acc = 6;
+        let acc = 6, prev = null;
         for (let i = 0; i + 1 < r.points.length; i++) {
           const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1], l = Math.hypot(bx - ax, bz - az);
           if (l < 0.01) continue;
           const dx = (bx - ax) / l, dz = (bz - az) / l, off = r.width / 2 + 0.25;
-          for (; acc < l; acc += own ? 12 : 30) putLamp(ax + dx * acc - dz * off, az + dz * acc + dx * off, Math.atan2(dx, dz) - Math.PI / 2, true);
+          // (the pole's crossarms across the street; the wires strung pole to pole along it - poles more than
+          // ~20 m off the line, round a bend, or past a gap, are not wired together)
+          for (; acc < l; acc += own ? 12 : 30) {
+            const x = ax + dx * acc - dz * off, z = az + dz * acc + dx * off;
+            if (!putLamp(x, z, Math.atan2(dx, dz), true)) { prev = null; continue; }
+            const here = { x, z, across: [dz, -dx] };
+            if (prev && K.hasProp('tokyo_utility_pole') && Math.hypot(x - prev.x, z - prev.z) < (own ? 16 : 34)) {
+              wireSpans.push({ a: [prev.x, prev.z], b: [x, z], across: here.across, drop: (wireSpans.length % 3 === 0) ? r.width + 1.2 : 0 });
+            }
+            prev = here;
+          }
           acc -= l;
         }
       }
@@ -1737,6 +1757,13 @@ export function buildTokyo(scene, world, opts, K) {
     outer.userData.outerGround = true;
     outer.matrixAutoUpdate = false; outer.updateMatrix();
     scene.add(outer);
+  }
+
+  // ---- signage and street clutter: Ginza, Shimbashi and Yurakucho's blade signs, rooftop boards, big screens; the wires ----
+  {
+    const onMajor = LK.roadIndex(roads.filter((r) => r.width >= MAJOR_W), SIDEWALK_W, 2);
+    const signs = buildTokyoSigns(scene, { lots: signLots, onRoad, onMajor, spans: wireSpans, lite, world, stats });
+    animators.push(...signs.animators);
   }
 
   // ---- play-area barrier ----
