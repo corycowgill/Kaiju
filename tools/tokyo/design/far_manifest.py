@@ -24,7 +24,7 @@ PROPS = [
     ('tokyo_guard_rail', 'white pedestrian guard-pipe segment along X (posts 3 m apart at the ends: tile at 3 m)'),
     ('tokyo_torii', 'vermilion myojin torii: X across (6 m kasagi), walk through along Z; black kasagi cap and pillar feet'),
     ('tokyo_stone_lantern', 'granite kasuga lantern, warm emissive fire box'),
-    ('tokyo_mailbox', 'red pillar-box-style post box on a pedestal, slots face +Z (no lettering)'),
+    ('tokyo_mailbox', 'red rectangular post box on a pedestal, slots face +Z (no lettering)'),
     ('tokyo_bicycle_rack', 'row of five parked bicycles along X on a low rail, wheels along Z'),
     ('tokyo_subway_entrance', 'stair canopy: glass sides, lit sign blank across the front (+Z), stairs descend toward -Z; base y 0 (the stair well is not cut)'),
     ('tokyo_yatai', 'festival food stall: red-and-white awning, noren along the front (+Z), red lanterns (emissive) on the eave'),

@@ -307,7 +307,7 @@ raw = []
 for ref, t, p in prep['bld']:
     c = p.representative_point()
     if not BOXP.contains(c) or p.area < 0.6: continue
-    if t.get('location') == 'underground' or t.get('building') in ('ship', 'no') or UNDER.search(t.get('name', '') + t.get('name:en', '')): continue
+    if t.get('location') == 'underground' or t.get('building') in ('ship', 'no') or UNDER.search((t.get('name:en') or t.get('name', '')) + t.get('name:en', '')): continue
     if str(t.get('layer', '0')).strip().startswith('-') or str(t.get('level', '0')).strip().startswith('-') or str(t.get('building:levels', '1')).strip() in ('0',): continue
     if t.get('building') == 'construction' and not (t.get('height') or t.get('building:levels')): continue
     if t.get('building') in ('roof', 'carport', 'bridge') and not t.get('name'): continue
@@ -325,7 +325,7 @@ for i in order:
         if j == i or j in drop: continue
         q = raw[j][2]
         if q.area <= p.area * 1.0001 and p.intersection(q).area > 0.85 * q.area and (q.area > 0.5 * p.area or raw[j][0].startswith('relation')):
-            if not raw[i][1].get('name') and raw[j][1].get('name'): raw[i][1] = dict(raw[i][1], name=raw[j][1]['name'])
+            if not (raw[i][1].get('name:en') or raw[i][1].get('name')) and (raw[j][1].get('name:en') or raw[j][1].get('name')): raw[i][1] = dict(raw[i][1], name=raw[j][1]['name'])
             if not raw[i][1].get('height') and raw[j][1].get('height'): raw[i][1] = dict(raw[i][1], height=raw[j][1]['height'])
             drop.add(j)
 raw = [r for i, r in enumerate(raw) if i not in drop]
@@ -362,15 +362,15 @@ for ref, t, p in raw:
             ph = (sum(x[0] * x[1].area for x in low) / la) if la > 0 else None
             if h is not None and h < 0.6 * hmax: ph = h
             if ph is None: ph = min(datasf_h(rest) or 18, 0.4 * hmax)
-            nm = next((x[2].get('name') for x in tall if x[2].get('name')), None) or t.get('name', '')
+            nm = next(((x[2].get('name:en') or x[2].get('name')) for x in tall if (x[2].get('name:en') or x[2].get('name'))), None) or (t.get('name:en') or t.get('name', ''))
             B.append(dict(poly=tower, hm=hmax, src='osm:part height (tower)', name=nm, osm=tall[0][3], tags=t, tower=True, key=ref))
             for q in polys_of(rest):
-                if q.area > 6: B.append(dict(poly=q, hm=ph, src='osm:part height (podium)', name=t.get('name', ''), osm=ref, tags=t, podiumKey=ref))
+                if q.area > 6: B.append(dict(poly=q, hm=ph, src='osm:part height (podium)', name=(t.get('name:en') or t.get('name', '')), osm=ref, tags=t, podiumKey=ref))
             continue
         h = max(h or 0, hmax); src = 'osm:part height'
     elif ps and h is None:
         a = sum(x[1].area for x in ps); h = sum(x[0] * x[1].area for x in ps) / a; src = 'osm:part height'
-    B.append(dict(poly=p, hm=h, src=src if h else None, name=t.get('name', ''), osm=ref, tags=t))
+    B.append(dict(poly=p, hm=h, src=src if h else None, name=(t.get('name:en') or t.get('name', '')), osm=ref, tags=t))
 # landmark flags
 ltree = shapely.STRtree([unary_union([e['_poly']] + e.get('_extraPolys', [])) for e in lms])
 for b in B:

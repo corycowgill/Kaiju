@@ -80,9 +80,9 @@ def rail_viaduct_segment(b):
                 (z0, y0), (z1, y1) = pts[i], pts[i + 1]
                 za = zc - 5 if i == 0 else z0
                 zb = zc + 5 if i == n - 1 else z1
-                b.face([F(z0, y0), F(z1, y1), F(zb, YT), F(za, YT)][::-1], 'brick' if (i + bi) % 2 == 0 or not b.hi else 'brick_l')
+                b.face([F(z0, y0), F(z1, y1), F(zb, YT), F(za, YT)][::-1], 'brick')
             # recessed infill: lit shopfront below the springing, dim lunette above, awning band
-            xi = X - .6
+            xi = X - (.6 if b.hi else .03)
             G = lambda z, y: (xi, y, z)
             b.face([G(zc - R, 0), G(zc + R, 0), G(zc + R, YS), G(zc - R, YS)][::-1], 'shop')
             b.face([G(z, y) for z, y in pts][::-1], 'shop_d')

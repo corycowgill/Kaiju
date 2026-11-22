@@ -47,6 +47,11 @@ export const TOKYO_LANDMARK_GLBS = [
 // Generic blocks by height bucket (game units: low < 7, short 7-18, medium 18-40, tall > 40).
 // { file, bucket, style, trueM [w, h, d], stone, share?, maxH?, ready }
 export const TOKYO_GENERIC_GLBS = [
+  { file: 'tokyo_apartment_a.glb', bucket: 'low', style: 'apartment', trueM: [24.2, 24.1, 15.9], stone: 0xc4beb2, ready: true },
+  { file: 'tokyo_apartment_b.glb', bucket: 'low', style: 'apartment', trueM: [38.2, 19, 11.7], stone: 0xc4beb2, ready: true },
+  { file: 'tokyo_apartment_c.glb', bucket: 'low', style: 'apartment', trueM: [20.2, 30, 21.7], stone: 0xc4beb2, ready: true },
+  { file: 'tokyo_apartment_d.glb', bucket: 'short', style: 'apartment', trueM: [40.2, 48.3, 16.2], stone: 0xc4beb2, ready: true },
+  { file: 'tokyo_apartment_e.glb', bucket: 'short', style: 'apartment', trueM: [37, 61, 27.5], stone: 0xc4beb2, ready: true },
   { file: 'tokyo_house_a.glb', bucket: 'low', style: 'house', trueM: [23.1, 9.6, 14.4], stone: 0xb8a890, ready: true },
   { file: 'tokyo_house_b.glb', bucket: 'low', style: 'house', trueM: [12.5, 9.4, 14.1], stone: 0xb8a890, ready: true },
   { file: 'tokyo_house_c.glb', bucket: 'low', style: 'house', trueM: [16, 12.6, 13.7], stone: 0xb8a890, ready: true },
@@ -68,7 +73,7 @@ export const TOKYO_PROP_GLBS = [
   { name: 'tokyo_bus_stop', file: 'tokyo_bus_stop.glb', heightM: 3, ready: true }, // pole sign (round head, blank) at -X end beside a small roofed bench shelter, long axis X, open toward +Z; bbox [3.63, 3.00, 1.45] (x -2.13..1.50, z -0.70..0.75), tris 208 / 62
   { name: 'tokyo_guard_rail', file: 'tokyo_guard_rail.glb', heightM: 0.9, ready: true }, // white pedestrian guard-pipe segment along X (posts 3 m apart at the ends: tile at 3 m); bbox [3.14, 0.93, 0.14] (x -1.57..1.57, z -0.07..0.07), tris 180 / 58
   { name: 'tokyo_koban', file: 'tokyo_koban.glb', heightM: 7, ready: true }, // two-storey police box, door and lit windows face +Z, red lamp over the door (no lettering); bbox [6.16, 7.00, 6.23] (x -3.08..3.08, z -2.58..3.65), tris 278 / 91
-  { name: 'tokyo_mailbox', file: 'tokyo_mailbox.glb', heightM: 1.3, ready: true }, // red pillar-box-style post box on a pedestal, slots face +Z (no lettering); bbox [0.62, 1.30, 0.56] (x -0.31..0.31, z -0.26..0.30), tris 110 / 38
+  { name: 'tokyo_mailbox', file: 'tokyo_mailbox.glb', heightM: 1.3, ready: true }, // red rectangular post box on a pedestal, slots face +Z (no lettering); bbox [0.62, 1.30, 0.56] (x -0.31..0.31, z -0.26..0.30), tris 110 / 38
   { name: 'tokyo_park_lamp', file: 'tokyo_park_lamp.glb', heightM: 4, ready: true }, // park globe lamp, warm emissive globe; bbox [0.56, 4.00, 0.56] (x -0.28..0.28, z -0.28..0.28), tris 166 / 58
   { name: 'tokyo_pedestrian_signal', file: 'tokyo_pedestrian_signal.glb', heightM: 2.8, ready: true }, // two-lens pedestrian head (red over blue-green, emissive) on a short pole, faces +Z; bbox [0.38, 2.82, 0.38] (x -0.19..0.19, z -0.12..0.26), tris 160 / 52
   { name: 'tokyo_pier_pilings', file: 'tokyo_pier_pilings.glb', heightM: 5, ready: true }, // mooring dolphin: steel pipe piles with a concrete cap and tyre fender, base at the waterline; bbox [1.90, 5.01, 2.10] (x -0.95..0.95, z -0.95..1.15), tris 260 / 76
