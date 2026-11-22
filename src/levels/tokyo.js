@@ -45,6 +45,8 @@ export async function loadTokyoLayout() {
   const r = await fetch(LAYOUT_URL, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`tokyo layout: HTTP ${r.status}`);
   const raw = await r.json();
+  // (the Shuto Expressway's tunnels - the C1 under the palace moats and Yaesu - are below the street: not drawn)
+  raw.roads = (raw.roads || []).filter((r) => !(r.expressway && r.tunnel));
   _layout = LK.normalizeLayout(raw, STREET_MIN || undefined);
   const pt = (p) => (p ? { x: +p.x, z: +p.z, rot: p.rot !== undefined ? +p.rot : undefined } : null);
   // Layout extras (DC's): the ring site, VS spawns, the Lone Soldier start, wave entry points
@@ -870,7 +872,8 @@ export function buildTokyo(scene, world, opts, K) {
     if (inRingBox(o.x, o.z, aw / 2, ad / 2)) return; // the Title Match venue stands here
     if (o.x < B.minX || o.x > B.maxX || o.z < B.minZ || o.z > B.maxZ) return; // (a lot whose centre lies past the edge)
     // a split lot's cell out over the river (a lot's rect overhanging the bulkhead): left out
-    if (o.cell && isWater(o.x, o.z) && !L.onPier.has(o.id) && !pierPolys.some((q) => pointInPoly(o.x, o.z, q))) return;
+    // (a lot - or a split lot's cell - whose centre ends up over a canal once trimmed back from the widened streets)
+    if (isWater(o.x, o.z) && !L.onPier.has(o.id) && !pierPolys.some((q) => pointInPoly(o.x, o.z, q))) return;
     // A kit piece made for this very footprint (tokyoManifest layoutIds)
     const own = Object.values(TOKYO_KIT_GLBS).find((d) => d.ready && d.layoutIds && d.layoutIds.includes(o.id));
     if (own) {
@@ -1021,7 +1024,10 @@ export function buildTokyo(scene, world, opts, K) {
   });
   /** An elevated run along pts: deck top at y (u), segments segLen long. kit: { seg, pier } urls (true-size models, the
    *  segment segM metres long along Z with its origin at ground level); proc: { w, t, color, pierW } for the box stand-in. */
-  const elevatedRun = (ptsIn, y, segLen, kit, proc, overWater = false) => {
+  // (a deck segment inside a bridge landmark's own footprint - Route 11 on the Rainbow Bridge - is the model's deck)
+  const bridgeBoxes = LMS.filter((lm) => lm.kind === 'bridge').map((lm) => ({ x: lm.x, z: lm.z, c: Math.cos(lm.rotY || 0), s: Math.sin(lm.rotY || 0), hw: lm.w / 2 + 2, hd: lm.d / 2 + 2 }));
+  const inBridge = (x, z) => bridgeBoxes.some((b) => { const dx = x - b.x, dz = z - b.z; return Math.abs(dx * b.c - dz * b.s) < b.hw && Math.abs(dx * b.s + dz * b.c) < b.hd; });
+  const elevatedRun = (ptsIn, y, segLen, kit, proc, overWater = false, kx = 1) => {
     // (one polyline, or several drawn as one batch: the expressway's many ramps and carriageways)
     const segs = [];
     for (const pts of (Array.isArray(ptsIn[0][0]) ? ptsIn : [ptsIn])) {
@@ -1035,14 +1041,14 @@ export function buildTokyo(scene, world, opts, K) {
         return { x: ax + (bx - ax) * f, z: az + (bz - az) * f, ry: Math.atan2(bx - ax, bz - az) };
       };
       // (n segments spread over the whole run, so the two ends meet the next polyline)
-      for (let i = 0; i < n; i++) { const p = at((i + 0.5) * total / n); if (overWater || !isWater(p.x, p.z)) segs.push({ ...p, t: -1 }); }
+      for (let i = 0; i < n; i++) { const p = at((i + 0.5) * total / n); if ((overWater || !isWater(p.x, p.z)) && !inBridge(p.x, p.z)) segs.push({ ...p, t: -1 }); }
     }
     if (!segs.length) return null;
     const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v3 = new THREE.Vector3(), sc = new THREE.Vector3(), roll = new THREE.Quaternion(), zAx = new THREE.Vector3(0, 0, 1);
     const run = { segs, y, im: null, k: 1, kz: 1, y0: 0 };
     const pose = (s, i, k) => {
       q.setFromAxisAngle(up, s.ry).multiply(roll.setFromAxisAngle(zAx, k * 0.5));
-      run.im.setMatrixAt(i, mtx.compose(v3.set(s.x, run.y0 - k * run.drop, s.z), q, sc.set(run.k, run.k, run.k * run.kz)));
+      run.im.setMatrixAt(i, mtx.compose(v3.set(s.x, run.y0 - k * run.drop, s.z), q, sc.set(run.k * kx, run.k, run.k * run.kz)));
     };
     const set = (geom, mat, k, kz, y0, drop) => {
       if (run.im) { scene.remove(run.im); run.im.dispose(); }
@@ -1072,7 +1078,7 @@ export function buildTokyo(scene, world, opts, K) {
       // (the piers: a second instanced mesh, one under every segment; they stay standing when a segment falls)
       if (geoms[1]) {
         const pim = new THREE.InstancedMesh(geoms[1].g, geoms[1].mat, segs.length);
-        segs.forEach((s, i) => pim.setMatrixAt(i, mtx.compose(v3.set(s.x, 0, s.z), q.setFromAxisAngle(up, s.ry), sc.set(S, S * (y / (kit.topM * S)), S))));
+        segs.forEach((s, i) => pim.setMatrixAt(i, mtx.compose(v3.set(s.x, 0, s.z), q.setFromAxisAngle(up, s.ry), sc.set(S * kx, S * (y / (kit.topM * S)), S))));
         pim.castShadow = true; pim.receiveShadow = true; pim.frustumCulled = false;
         scene.add(pim);
       }
@@ -1083,7 +1089,11 @@ export function buildTokyo(scene, world, opts, K) {
   const brickMat = D.brick, deckMat = M.concrete;
   const trainLines = (L.detail?.trains || []).map((t) => ({ ...t, pts: cleanRun(t.points) })).filter((t) => t.pts.length >= 2 && runLen(t.pts) > 40);
   const trains = [];
-  const addTrain = (pts, y, kitId, lenM, speed, phase, color) => {
+  /** A train on pts at deck height y. opts.through: a line that runs on past both ends of the map (the Yamanote,
+   *  the Keihin-Tohoku): one way, and round again from the start; else it shuttles end to end (a terminus inside the
+   *  map: the Shinkansen at Tokyo Station, the Monorail at Hamamatsucho, the Yurikamome at Shimbashi). opts.stops:
+   *  [{ x, z }] stations it halts at for a few seconds. */
+  const addTrain = (pts, y, kitId, lenM, speed, phase, color, opts = {}) => {
     const cum = [0];
     for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
     const g = new THREE.Group(), Lt = lenM * S;
@@ -1093,7 +1103,17 @@ export function buildTokyo(scene, world, opts, K) {
     scene.add(g);
     const kit = _kit(kitId);
     if (kit) K.onTemplatesReady((sc0, get) => { const t = get(kit); if (!t) return; g.clear(); const c = t.clone(true); c.scale.setScalar(S); g.add(c); });
-    trains.push({ g, pts, cum, total: cum[cum.length - 1], s: phase, dir: phase > 0.5 ? -1 : 1, wait: 0, fall: -1, base: new THREE.Vector3(), ry: 0, side: trains.length % 2 ? 1 : -1, speed, y, half: Lt / 2 });
+    // stations as distances along the line (the nearest point of the line within 8u of the stop)
+    const stopAt = (opts.stops || []).map((st) => {
+      let best = -1, bd = 8;
+      for (let k = 1; k < pts.length; k++) {
+        const [ax, az] = pts[k - 1], [bx, bz] = pts[k], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+        const u = Math.max(0, Math.min(1, ((st.x - ax) * dx + (st.z - az) * dz) / l2)), d = Math.hypot(ax + dx * u - st.x, az + dz * u - st.z);
+        if (d < bd) { bd = d; best = cum[k - 1] + Math.sqrt(l2) * u; }
+      }
+      return best;
+    }).filter((d) => d >= 0).sort((a, b) => a - b);
+    trains.push({ g, pts, cum, total: cum[cum.length - 1], s: phase, dir: opts.dir || (phase > 0.5 ? -1 : 1), through: !!opts.through, stopAt, lastStop: -1, wait: 0, fall: -1, base: new THREE.Vector3(), ry: 0, side: trains.length % 2 ? 1 : -1, speed, y, half: Lt / 2 });
   };
   const green = new THREE.MeshStandardMaterial({ color: 0x9ccc4a, roughness: 0.6 }), blue = new THREE.MeshStandardMaterial({ color: 0x4aa8d8, roughness: 0.6 });
   green.userData.shared = blue.userData.shared = true;
@@ -1102,8 +1122,9 @@ export function buildTokyo(scene, world, opts, K) {
     if (t.kind === 'yamanote') {
       // the brick viaduct under the whole corridor; the Yamanote, the Keihin-Tohoku and (when its own line is not given) the Shinkansen on it
       if (t.elevated !== false) elevatedRun(t.pts, y, 6, { seg: _kit('rail_viaduct_segment'), segM: 30, topM: 7 }, { w: 4.4, t: y, pierW: 0.1, mat: brickMat });
-      addTrain(offsetRun(t.pts, -1.1), y, 'tokyo_yamanote_train', 100, 3.4, 0.1, green);
-      if (!lite) addTrain(offsetRun(t.pts, -0.3), y, _kit('tokyo_keihin_train') ? 'tokyo_keihin_train' : 'tokyo_yamanote_train', 100, 3.0, 0.7, blue);
+      // (the outer track southbound, the inner northbound: both run through and come round again)
+      addTrain(offsetRun(t.pts, -1.1), y, 'tokyo_yamanote_train', 100, 3.4, 0.1, green, { through: true, dir: 1, stops: t.stops });
+      if (!lite) addTrain(offsetRun(t.pts, -0.3), y, _kit('tokyo_keihin_train') ? 'tokyo_keihin_train' : 'tokyo_yamanote_train', 100, 3.0, 0.7, blue, { through: true, dir: -1, stops: t.stops });
       if (!trainLines.some((q) => q.kind === 'shinkansen')) addTrain(offsetRun(t.pts, 1.3), y, 'tokyo_shinkansen', 200, 6, 0.4, M.white);
     } else if (t.kind === 'shinkansen') {
       addTrain(t.pts, y, 'tokyo_shinkansen', 200, 6, 0.4, M.white);
@@ -1112,14 +1133,23 @@ export function buildTokyo(scene, world, opts, K) {
       addTrain(t.pts, y, 'tokyo_monorail_train', 90, 3.6, 0.2, M.white);
     } else {
       if (t.elevated !== false) elevatedRun(t.pts, y, 6, null, { w: 1.5, t: 0.3, pierW: 0.4, mat: deckMat });
-      addTrain(t.pts, y, 'tokyo_yurikamome_train', 54, 2.8, 0.3, M.white);
+      addTrain(t.pts, y, 'tokyo_yurikamome_train', 54, 2.8, 0.3, M.white, { stops: t.stops });
     }
   }
-  // The Shuto Expressway's elevated decks, all its lines and ramps as one batch (phones: left out; the streets
-  // under them are the layout's roads)
-  if (!lite) {
-    const runs = (L.detail?.expressways || []).map((e) => cleanRun(e.points)).filter((pts) => pts.length >= 2 && runLen(pts) > 12);
-    if (runs.length) elevatedRun(runs, 15.5 * S, 6, { seg: _kit('expressway_deck_segment'), pier: _kit('expressway_pier'), segM: 30, topM: 15.5 }, { w: 3.4, t: 0.4, pierW: 0.5, mat: deckMat }, true);
+  // The Shuto Expressway's viaducts (tokyo_detail.json expressways: the bridge-tagged pieces, both carriageways,
+  // each with its deck height from its OSM layer), one instanced batch per deck level: each carriageway its own
+  // deck a little over half the kit's width, as the Shuto's paired viaducts are; the stacked junctions at their own
+  // heights. Phones: the same at longer segments.
+  {
+    const byY = new Map();
+    for (const e of L.detail?.expressways || []) {
+      const pts = cleanRun(e.points);
+      if (pts.length < 2 || runLen(pts) < 6) continue;
+      const y = (e.deckMetres || 15.5) * S;
+      if (!byY.has(y)) byY.set(y, []);
+      byY.get(y).push(pts);
+    }
+    for (const [y, runs] of byY) elevatedRun(runs, y, lite ? 9 : 6, { seg: _kit('expressway_deck_segment'), pier: _kit('expressway_pier'), segM: 30, topM: 15.5 }, { w: 1.9, t: 0.4, pierW: 0.45, mat: deckMat }, true, 0.55);
   }
   stats.trains = trains.length; stats.elevatedRuns = elevated.length; stats.elevatedSegs = elevated.reduce((a, r) => a + r.segs.length, 0);
   if (trains.length || elevated.length) {
@@ -1161,8 +1191,17 @@ export function buildTokyo(scene, world, opts, K) {
           }
           if (tr.wait > 0) tr.wait -= dt;
           else {
+            const d0 = tr.s * tr.total;
             tr.s = Math.max(0, Math.min(1, tr.s + tr.dir * tr.speed * dt / tr.total));
-            if (tr.s === 0 || tr.s === 1) { tr.dir = -tr.dir; tr.wait = 8; }
+            const d1 = tr.s * tr.total;
+            // a station passed this step: halt there for a few seconds (each one once a run)
+            const si = tr.stopAt.findIndex((d) => (d - d0) * (d - d1) <= 0 && d !== d0);
+            if (si >= 0 && si !== tr.lastStop) { tr.lastStop = si; tr.wait = 6; tr.s = tr.stopAt[si] / tr.total; }
+            if (tr.s === 0 || tr.s === 1) {
+              tr.lastStop = -1;
+              // through-running: off the map at one end, back on at the other; else turn round at the terminus
+              if (tr.through) { tr.s = tr.dir > 0 ? 0 : 1; tr.wait = 4; } else { tr.dir = -tr.dir; tr.wait = 8; }
+            }
           }
           tr.ry = at(tr, tr.s * tr.total, tr.base) + (tr.dir < 0 ? Math.PI : 0);
           tr.g.position.copy(tr.base);
