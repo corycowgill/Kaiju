@@ -1886,8 +1886,8 @@
     content: '✓'; position: absolute; right: 12px; top: 10px; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 50%;
     font: 700 14px/24px var(--f-jp); color: #fff; background: var(--c-red-hi);
   }
-  /* The Title Match has no arena in Tokyo: the other five cities only */
-  #menu[data-mode="title"] .level-card:not([data-level="chicago"]):not([data-level="dc"]):not([data-level="nyc"]):not([data-level="seattle"]):not([data-level="sf"]) { display: none; }
+  /* (every city has a Title Match arena) */
+  #menu[data-mode="title"] .level-card:not([data-level="tokyo"]):not([data-level="chicago"]):not([data-level="dc"]):not([data-level="nyc"]):not([data-level="seattle"]):not([data-level="sf"]) { display: none; }
   /* Six stages (five in the Title Match): three across in every mode, the name under its kana. Sized so the
      whole roster, every stage and the mode's own option fit without scrolling the panel on a 720p screen */
   #menu .levels { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -2358,7 +2358,7 @@ window.__boot = (function () {
       <button type="button" class="mode-card" data-mode="havoc"><span class="mc-art"></span><span class="mc-no">01</span>
         <span class="mc-body"><span class="mc-jp">怪獣大暴れ</span><b>KAIJU HAVOC</b><span class="mc-pitch">Raze the city wave after wave while the army throws everything it has at you.</span><span class="mc-city" title="Tokyo, Chicago, Washington DC, New York City, Seattle, San Francisco">ALL 6 CITIES</span></span></button>
       <button type="button" class="mode-card" data-mode="title"><span class="mc-art"></span><span class="mc-no">02</span><span class="mc-tag">MAIN EVENT</span>
-        <span class="mc-body"><span class="mc-jp">王座決定戦</span><b>TITLE MATCH</b><span class="mc-pitch">Best of three falls for the heavyweight belt, in a ring built downtown.</span><span class="mc-city" title="Chicago, Washington DC, New York City, Seattle, San Francisco">5 US ARENAS</span></span></button>
+        <span class="mc-body"><span class="mc-jp">王座決定戦</span><b>TITLE MATCH</b><span class="mc-pitch">Best of three falls for the heavyweight belt, in a ring built downtown.</span><span class="mc-city" title="Tokyo, Chicago, Washington DC, New York City, Seattle, San Francisco">ALL 6 CITIES</span></span></button>
       <button type="button" class="mode-card" data-mode="vs"><span class="mc-art"><i class="vs-l"></i><i class="vs-r"></i><em>VS</em></span><span class="mc-no">03</span>
         <span class="mc-body"><span class="mc-jp">怪獣対決</span><b>VS DUEL</b><span class="mc-pitch">Two kaiju enter, one leaves. Punch, grapple and throw your rival through the streets.</span><span class="mc-city" title="Tokyo, Chicago, Washington DC, New York City, Seattle, San Francisco">ALL 6 CITIES</span></span></button>
       <button type="button" class="mode-card" data-mode="lone"><span class="mc-art"></span><span class="mc-no">04</span>
@@ -2776,6 +2776,11 @@ window.__boot = (function () {
     "./src/levels/seattleManifest.js": "./src/levels/seattleManifest.js?v=1.15.1",
     "./src/levels/seattleMaterials.js": "./src/levels/seattleMaterials.js?v=1.15.1",
     "./src/levels/sf.js": "./src/levels/sf.js?v=1.15.1",
+    "./src/levels/tokyo.js": "./src/levels/tokyo.js?v=1.15.1",
+    "./src/levels/tokyoLandscape.js": "./src/levels/tokyoLandscape.js?v=1.15.1",
+    "./src/levels/tokyoLook.js": "./src/levels/tokyoLook.js?v=1.15.1",
+    "./src/levels/tokyoManifest.js": "./src/levels/tokyoManifest.js?v=1.15.1",
+    "./src/levels/tokyoMaterials.js": "./src/levels/tokyoMaterials.js?v=1.15.1",
     "./src/levels/sfLandscape.js": "./src/levels/sfLandscape.js?v=1.15.1",
     "./src/levels/sfLook.js": "./src/levels/sfLook.js?v=1.15.1",
     "./src/levels/sfManifest.js": "./src/levels/sfManifest.js?v=1.15.1",

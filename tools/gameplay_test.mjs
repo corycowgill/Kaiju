@@ -992,6 +992,82 @@ test('Title Match on San Francisco: San Francisco place names on screen, no boot
   assert.ok(chicagoLine(['x', {}, [['M', 'Clear to Navy Pier!', 'id', 1]]]));
 });
 
+// ---- Tokyo (src/levels/tokyo.js) ----
+const TOKYO_LAYOUT = (() => {
+  const src = fs.readFileSync(new URL('../src/levels/tokyo.js', import.meta.url), 'utf8');
+  const url = src.match(/const LAYOUT_URL = '\.\/(assets\/levels\/[\w.]+\.json)'/)[1];
+  return JSON.parse(fs.readFileSync(new URL('../' + url, import.meta.url), 'utf8'));
+})();
+const tokyoWet = (x, z) => (TOKYO_LAYOUT.water || []).some((w) => inPoly(x, z, w.polygon) && !(w.holes || []).some((h) => inPoly(x, z, h)));
+
+test('Tokyo layout: kaiju, duel pair, ring site and enemy spawns are placed on the right ground inside the play area', () => {
+  const B = TOKYO_LAYOUT.bounds, inB = (p, m = 0) => p.x >= B.minX - m && p.x <= B.maxX + m && p.z >= B.minZ - m && p.z <= B.maxZ + m;
+  assert.equal(TOKYO_LAYOUT.meta.scale, 0.2);
+  const sp = TOKYO_LAYOUT.spawn.player;
+  assert.ok(inB(sp), 'kaiju spawn inside the bounds');
+  assert.ok(tokyoWet(sp.x, sp.z), 'the kaiju rises from the Bay');
+  for (const [dx, dz] of [[-10, 0], [10, 0], [0, -10], [0, 10]]) assert.ok(tokyoWet(sp.x + dx, sp.z + dz), 'kaiju spawn in open water');
+  const { a, b } = TOKYO_LAYOUT.duel;
+  assert.ok(inB(a) && inB(b) && !tokyoWet(a.x, a.z) && !tokyoWet(b.x, b.z), 'duel pair dry and inside');
+  assert.ok(Math.hypot(a.x - b.x, a.z - b.z) > 245, 'duel pair far enough apart');
+  const R = TOKYO_LAYOUT.ring;
+  assert.ok(inB(R) && !tokyoWet(R.x, R.z), 'ring site dry and inside');
+  for (const [dx, dz] of [[-45, -45], [45, -45], [45, 45], [-45, 45], [0, 0]]) assert.ok(!tokyoWet(R.x + dx, R.z + dz), 'ring mat on dry ground');
+  for (const lm of TOKYO_LAYOUT.landmarks) assert.ok(Math.abs(lm.x - R.x) > 46 || Math.abs(lm.z - R.z) > 46, `landmark ${lm.id} under the ring`);
+  for (const e of TOKYO_LAYOUT.spawn.enemies || []) assert.ok(inB(e, 40), `enemy spawn ${e.x},${e.z} near the bounds`);
+  const sd = TOKYO_LAYOUT.soldier;
+  assert.ok(inB(sd) && !tokyoWet(sd.x, sd.z), 'the Lone Soldier starts on dry ground inside the bounds');
+  // the signature landmarks are on the map and stand (liftable / tearable like any tower)
+  for (const id of ['tokyo_tower', 'tokyo_skytree', 'tokyo_station', 'national_diet_building', 'rainbow_bridge', 'zojoji', 'kabukiza']) {
+    assert.ok(TOKYO_LAYOUT.landmarks.some((l) => l.id === id), `${id} is a landmark`);
+  }
+});
+
+test('Tokyo assets: every manifest model marked ready is on disk with its LOD1 twin, and every layout landmark has a model or a procedural builder', async () => {
+  const M = await import('../src/levels/tokyoManifest.js');
+  const dir = new URL('../assets/buildings/tokyo/', import.meta.url);
+  const need = (file, lod1 = true) => {
+    assert.ok(fs.existsSync(new URL(file, dir)), `${file} is missing`);
+    if (lod1) assert.ok(fs.existsSync(new URL(file.replace(/\.glb$/, '_lod1.glb'), dir)), `${file} has no LOD1 twin`);
+  };
+  for (const g of [...M.TOKYO_LANDMARK_GLBS, ...M.TOKYO_GENERIC_GLBS, ...M.TOKYO_PROP_GLBS, ...Object.values(M.TOKYO_KIT_GLBS)]) if (g.ready) need(g.file, g.lod1 !== false);
+  for (const v of M.TOKYO_VEHICLE_GLBS) if (v.ready) need(v.url.replace(M.TOKYO_BASE, ''), v.lod1 !== false);
+  for (const u of M.TOKYO_DEBRIS_GLBS) need(u.replace(M.TOKYO_BASE, ''), false);
+  const ids = new Set(M.TOKYO_LANDMARK_GLBS.filter((g) => g.ready).flatMap((g) => g.ids || [g.id]));
+  const built = TOKYO_LAYOUT.landmarks.filter((l) => l.kind !== 'district' && l.kind !== 'line');
+  const modelled = built.filter((l) => ids.has(l.id));
+  assert.ok(modelled.length >= built.length * 0.9, `only ${modelled.length} of ${built.length} landmarks have a model: ${built.filter((l) => !ids.has(l.id)).map((l) => l.id).join(', ')}`);
+  // a manifest id that is not on the map is a typo
+  const onMap = new Set(TOKYO_LAYOUT.landmarks.map((l) => l.id));
+  for (const g of M.TOKYO_LANDMARK_GLBS) for (const id of g.ids || [g.id]) assert.ok(onMap.has(id), `manifest landmark ${id} is not in the layout`);
+});
+
+test('VS spawns on Tokyo use the layout pair', async () => {
+  const { findDuelSpawns } = await import('../src/kaijuDuel.js');
+  const { a, b } = TOKYO_LAYOUT.duel;
+  const world = { level: 'tokyo', bounds: TOKYO_LAYOUT.bounds, isWater: tokyoWet, buildings: [], duelSpawns: { a, b } };
+  const s = findDuelSpawns(world);
+  assert.ok(s.player.distanceTo(new THREE.Vector3(a.x, 0, a.z)) < 21 && s.rival.distanceTo(new THREE.Vector3(b.x, 0, b.z)) < 21);
+});
+
+test('Title Match on Tokyo: Tokyo place names on screen', async () => {
+  const { placeText, offChicago, venueHome } = await import('../src/wrestling/venue.js');
+  const tk = { world: { level: 'tokyo' } };
+  assert.ok(offChicago(tk));
+  assert.equal(placeText(tk, 'Gorrak · CHICAGO HEAVYWEIGHT CHAMPION'), 'Gorrak · TOKYO HEAVYWEIGHT CHAMPION');
+  assert.equal(placeText(tk, 'Into Lake Michigan! That wave will reach Indiana!'), 'Into Tokyo Bay! That wave will reach Chiba!');
+  assert.match(venueHome(tk, 'player', 'x'), /TOKYO BAY/);
+});
+
+test('the old procedural Tokyo is gone: no Tokyo builder in city.js, none of its models on disk', () => {
+  const city = fs.readFileSync(new URL('../src/city.js', import.meta.url), 'utf8');
+  assert.ok(!/function buildTokyo\b/.test(city), 'city.js still has the procedural Tokyo builder');
+  for (const f of ['buildings/tokyo_tower.glb', 'buildings/skyscraper_large_1.glb', 'vehicles/kei_van.glb', 'props/koban.glb']) {
+    assert.ok(!fs.existsSync(new URL('../assets/' + f, import.meta.url)), `${f} is still on disk`);
+  }
+});
+
+
 // ---- Up-front loading: the booth's lines are all fetched behind the loading screen ----
 test('every booth line a match can speak is in its preloaded voice set (matchVoiceIds), every pair and arena level', async () => {
   const { matchVoiceIds } = await import('../src/wrestling/commentary.js');
@@ -1001,8 +1077,8 @@ test('every booth line a match can speak is in its preloaded voice set (matchVoi
   const { MONSTERS } = await import('../src/monsters.js');
   const lmKey = (id) => (id || '').replace(/_(rear|twin|\d)$/, ''); // (commentary.js)
   const keys = Object.keys(MONSTERS);
-  for (const level of ['chicago', 'dc', 'nyc', 'seattle', 'sf']) {
-    const layout = level === 'seattle' ? SEATTLE_LAYOUT : level === 'sf' ? SF_LAYOUT : JSON.parse(fs.readFileSync(new URL(`../assets/levels/${level}_layout.json`, import.meta.url), 'utf8'));
+  for (const level of ['tokyo', 'chicago', 'dc', 'nyc', 'seattle', 'sf']) {
+    const layout = level === 'seattle' ? SEATTLE_LAYOUT : level === 'sf' ? SF_LAYOUT : level === 'tokyo' ? TOKYO_LAYOUT : JSON.parse(fs.readFileSync(new URL(`../assets/levels/${level}_layout.json`, import.meta.url), 'utf8'));
     const lmIds = layout.landmarks.map((l) => l.id), lms = new Set(lmIds.map(lmKey));
     for (const pk of keys) for (const rk of keys) {
       if (pk === rk) continue;

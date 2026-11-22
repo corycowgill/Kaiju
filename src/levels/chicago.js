@@ -297,15 +297,8 @@ const CHICAGO_KIT_GLBS = {
 };
 const _kit = (id) => (CHICAGO_KIT_GLBS[id]?.ready ? CHI_BASE + CHICAGO_KIT_GLBS[id].file : null);
 
-// Tokyo generic towers used while (or where) no Chicago block GLB is ready:
-// plain glass/concrete towers only (the shopping blocks and narrow towers
-// carry Japanese billboards). An empty bucket builds Chicago-coloured boxes.
-const TOKYO_GENERIC = {
-  tall: ['skyscraper_large_1', 'skyscraper_large_2', 'skyscraper_large_3'],
-  medium: ['skyscraper_medium_1', 'skyscraper_medium_2', 'condo_1', 'condo_2'],
-  short: [],
-  low: [],
-};
+// (a bucket with no Chicago block GLB ready builds Chicago-coloured boxes)
+const TOKYO_GENERIC = { tall: [], medium: [], short: [], low: [] };
 
 // Front (+Z) direction of the procedural massing, where it matters
 const PROC_FACE = { chicago_theatre: 'west' }; // faces State St

@@ -171,7 +171,7 @@ function _paintAtlas(cx, px, emissive) {
   cx.globalAlpha = dim;
   cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineJoin = 'round';
   // (the flag's accent: Chicago's light blue, the District's white, New York's orange, Seattle's green, San Francisco's gold)
-  const ACC = SITE.flag === 'dc' ? '#e9e7df' : SITE.flag === 'nyc' ? '#f26b21' : SITE.flag === 'seattle' ? '#4cc29a' : SITE.flag === 'sf' ? '#e2b23c' : '#58b7e6';
+  const ACC = SITE.flag === 'dc' ? '#e9e7df' : SITE.flag === 'nyc' ? '#f26b21' : SITE.flag === 'seattle' ? '#4cc29a' : SITE.flag === 'sf' ? '#e2b23c' : SITE.flag === 'tokyo' ? '#b89be0' : '#58b7e6';
   // LOGO
   {
     const r = AT.LOGO, g = cx.createLinearGradient(0, r.y, 0, r.y + r.h);
@@ -233,6 +233,12 @@ function _paintAtlas(cx, px, emissive) {
       cx.fillStyle = '#e9e7df'; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 60, 0, Math.PI * 2); cx.fill();
       cx.strokeStyle = '#4cc29a'; cx.lineWidth = 6; cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 50, 0, Math.PI * 2); cx.stroke();
       _star(cx, r.x + r.w / 2, r.y + r.h / 2, 30, '#1f6f6a');
+    } else if (SITE.flag === 'tokyo') {
+      // Tokyo: the Edo-purple field, the white six-rayed sun emblem in the middle
+      cx.fillStyle = '#5a3d8c'; cx.fillRect(r.x, r.y, r.w, r.h);
+      cx.fillStyle = '#e9e7df';
+      for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; cx.beginPath(); cx.arc(r.x + r.w / 2 + Math.cos(a) * 34, r.y + r.h / 2 + Math.sin(a) * 34, 15, 0, Math.PI * 2); cx.fill(); }
+      cx.beginPath(); cx.arc(r.x + r.w / 2, r.y + r.h / 2, 22, 0, Math.PI * 2); cx.fill();
     } else if (SITE.flag === 'sf') {
       // San Francisco: the white field in its gold border, the phoenix seal (a red disc ringed in gold) in the middle
       cx.strokeStyle = '#e2b23c'; cx.lineWidth = 14; cx.strokeRect(r.x + 7, r.y + 7, r.w - 14, r.h - 14);
@@ -326,6 +332,15 @@ function _paintMat(cx, px) {
       cx.save(); cx.translate(sx + Math.cos(a) * (R - 1.7), sy + Math.sin(a) * (R - 1.7)); cx.rotate(a + Math.PI / 2);
       cx.fillText(txt[i], 0, 0); cx.restore();
     }
+  } else if (SITE.flag === 'tokyo') {
+    // Tokyo's flag: the Edo-purple field across the mat (white-edged on the navy canvas) and the metropolitan
+    // emblem: a white six-rayed sun
+    const y0 = S * 0.235, y1 = S * 0.765, sx = S / 2, sy = S / 2;
+    cx.fillStyle = 'rgba(230,236,244,0.85)'; cx.fillRect(0, y0 - 0.5, S, y1 - y0 + 1);
+    cx.fillStyle = '#5a3d8c'; cx.fillRect(0, y0, S, y1 - y0);
+    cx.fillStyle = '#e9e7df';
+    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + Math.PI / 6; cx.beginPath(); cx.arc(sx + Math.cos(a) * 9.5, sy + Math.sin(a) * 9.5, 4.2, 0, Math.PI * 2); cx.fill(); }
+    cx.beginPath(); cx.arc(sx, sy, 6.2, 0, Math.PI * 2); cx.fill();
   } else if (SITE.flag === 'sf') {
     // San Francisco's flag: the white field across the mat in its gold border and the seal: a gold band
     // lettered CITY AND COUNTY OF SAN FRANCISCO round a red disc and the phoenix's star
@@ -379,7 +394,7 @@ function _paintMat(cx, px) {
   cx.fillStyle = '#0d1226';
   cx.fillRect(0, 0, S, 3.5); cx.fillRect(0, S - 3.5, S, 3.5); cx.fillRect(0, 0, 3.5, S); cx.fillRect(S - 3.5, 0, 3.5, S);
   cx.strokeStyle = '#e6e4da'; cx.lineWidth = 0.45; cx.strokeRect(3.5, 3.5, S - 7, S - 7);
-  cx.strokeStyle = SITE.flag === 'dc' ? '#c4162c' : SITE.flag === 'nyc' ? '#e8601c' : SITE.flag === 'seattle' ? '#4cc29a' : SITE.flag === 'sf' ? '#e2b23c' : '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
+  cx.strokeStyle = SITE.flag === 'dc' ? '#c4162c' : SITE.flag === 'nyc' ? '#e8601c' : SITE.flag === 'seattle' ? '#4cc29a' : SITE.flag === 'sf' ? '#e2b23c' : SITE.flag === 'tokyo' ? '#b89be0' : '#58b7e6'; cx.lineWidth = 0.3; cx.strokeRect(1.6, 1.6, S - 3.2, S - 3.2);
   cx.restore();
 }
 
@@ -1514,7 +1529,8 @@ export function buildArena(scene, world, o) {
       let x = x0, z = z0, ok = false;
       const dx = x0 - cx, dz = z0 - cz, l = Math.hypot(dx, dz) || 1, ux = dx / l, uz = dz / l;
       // the spot, then sideways along the venue, then further out (the festival's stages and stalls stand round here too)
-      for (let t = 0; t < 4 && !ok; t++) for (const side of [0, 14, -14, 28, -28]) {
+      // (a tight site - Tokyo's ring between the palace moats - looks further along and out before giving a spot up)
+      for (let t = 0; t < 7 && !ok; t++) for (const side of (t < 4 ? [0, 14, -14, 28, -28] : [0, 14, -14, 28, -28, 42, -42, 56, -56])) {
         x = x0 + ux * 10 * t - uz * side; z = z0 + uz * 10 * t + ux * side;
         if (clearAt(x, z, r) && !plan.some((p) => Math.hypot(p.x - x, p.z - z) < r + 12)) { ok = true; break; }
       }

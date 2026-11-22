@@ -45,6 +45,7 @@ import { DC_LOOK } from './levels/dcLook.js';
 import { NYC_LOOK } from './levels/nycLook.js';
 import { SEATTLE_LOOK } from './levels/seattleLook.js';
 import { SF_LOOK } from './levels/sfLook.js';
+import { TOKYO_LOOK } from './levels/tokyoLook.js';
 import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, lookSunUp, withLookEnvSky, setLookDip } from './look.js';
 window.__dbg && window.__dbg('DBG · all imports OK');
 
@@ -81,7 +82,7 @@ function trySetHighScore(s) {
 // ------------------------- Level select -------------------------
 // ?level= wins (testing), then the saved menu pick, then Tokyo.
 const LEVELS = {
-  tokyo:   { name: 'TOKYO', short: 'TOKYO',   jp: '東京', tag: 'NEON DUSK · SHINJUKU', h2: 'TOKYO DESTRUCTION', h2jp: '東京破壊' },
+  tokyo: { name: 'TOKYO', short: 'TOKYO', jp: '東京', tag: 'NEON DUSK · TOKYO BAY', h2: 'TOKYO DESTRUCTION', h2jp: '東京破壊', arena: true, data: true, title: 'TOKYO HEAVYWEIGHT TITLE' },
   chicago: { name: 'CHICAGO', short: 'CHICAGO', jp: 'シカゴ', tag: 'GOLDEN HOUR · THE LOOP', h2: 'CHICAGO DESTRUCTION', h2jp: 'シカゴ破壊', arena: true, data: true, title: 'CHICAGO HEAVYWEIGHT TITLE' },
   dc: { name: 'WASHINGTON DC', short: 'DC', jp: 'ワシントン', tag: 'LATE MORNING · THE NATIONAL MALL', h2: 'WASHINGTON DC DESTRUCTION', h2jp: 'ワシントン破壊', arena: true, data: true, title: 'NATIONAL MALL HEAVYWEIGHT TITLE' },
   nyc: { name: 'NEW YORK CITY', short: 'NYC', jp: 'ニューヨーク', tag: 'AFTERNOON · MIDTOWN MANHATTAN', h2: 'NEW YORK CITY DESTRUCTION', h2jp: 'ニューヨーク破壊', arena: true, data: true, title: 'NEW YORK HEAVYWEIGHT TITLE' },
@@ -815,89 +816,9 @@ function _captureEnv() {
 }
 if (Q_HIGH) _captureEnv();
 
-// Tokyo's backdrop (skyline ring, mountains, barrier): hidden on levels that
-// bring their own (see applyLevelLook).
+// The default play-limit barrier (every level brings its own: see applyLevelLook)
 const _horizon = [];
-// Distant horizon scenery: silhouette skyline + far mountains. Without
-// this, walking to the edge of the play area shows blank ground meeting
-// blank sky. This populates the 480-1300u radius zone with non-interactive
-// dark scenery so the boundary reads as "city continues into haze."
 {
-  // ---- Silhouette skyline ring ----
-  // ~120 dark buildings ringed around the play area at radius 480-720.
-  // Single InstancedMesh, no shadows, frustum-cull off (it's not worth
-  // computing per-instance bounds for a backdrop).
-  const RING_COUNT = 120;
-  const ringMat = new THREE.MeshStandardMaterial({
-    color: 0x141022, roughness: 0.95, metalness: 0.0,
-    emissive: 0x2a1a3a, emissiveIntensity: 0.15,
-  });
-  const ringGeom = new THREE.BoxGeometry(1, 1, 1);
-  const ringIM = new THREE.InstancedMesh(ringGeom, ringMat, RING_COUNT);
-  ringIM.frustumCulled = false;
-  _horizon.push(ringIM);
-  const ringDummy = new THREE.Object3D();
-  for (let i = 0; i < RING_COUNT; i++) {
-    const a = (i / RING_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.04;
-    const r = 480 + Math.random() * 240;
-    const w = 18 + Math.random() * 36;
-    const d = 18 + Math.random() * 36;
-    const h = 30 + Math.random() * 110;
-    ringDummy.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r);
-    ringDummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
-    ringDummy.scale.set(w, h, d);
-    ringDummy.updateMatrix();
-    ringIM.setMatrixAt(i, ringDummy.matrix);
-  }
-  ringIM.instanceMatrix.needsUpdate = true;
-  scene.add(ringIM);
-
-  // ---- A few "lit" silhouette towers with a faint emissive face ----
-  // Just enough scattered glow so the backdrop reads as alive at night.
-  const litMat = new THREE.MeshStandardMaterial({
-    color: 0x1a1430, roughness: 0.85,
-    emissive: 0xff66cc, emissiveIntensity: 0.45,
-  });
-  const litIM = new THREE.InstancedMesh(ringGeom, litMat, 14);
-  litIM.frustumCulled = false;
-  _horizon.push(litIM);
-  for (let i = 0; i < 14; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = 500 + Math.random() * 200;
-    const w = 14 + Math.random() * 18;
-    const d = 14 + Math.random() * 18;
-    const h = 80 + Math.random() * 100;
-    ringDummy.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r);
-    ringDummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
-    ringDummy.scale.set(w, h, d);
-    ringDummy.updateMatrix();
-    litIM.setMatrixAt(i, ringDummy.matrix);
-  }
-  litIM.instanceMatrix.needsUpdate = true;
-  scene.add(litIM);
-
-  // ---- Distant mountain silhouettes ----
-  // 9 low-poly cones at radius ~1000, dark blue-purple matching the
-  // horizon haze. Inside the fog falloff so they fade to sky color.
-  const mountMat = new THREE.MeshStandardMaterial({
-    color: 0x2a1f3a, roughness: 1.0, metalness: 0.0,
-    emissive: 0x1a0f2a, emissiveIntensity: 0.2,
-  });
-  const mountGeom = new THREE.ConeGeometry(1, 1, 6);
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
-    const r = 950 + Math.random() * 350;
-    const baseR = 120 + Math.random() * 180;
-    const h = 180 + Math.random() * 220;
-    const m = new THREE.Mesh(mountGeom, mountMat);
-    m.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r);
-    m.rotation.y = Math.random() * Math.PI * 2;
-    m.scale.set(baseR, h, baseR * (0.8 + Math.random() * 0.5));
-    m.matrixAutoUpdate = false; m.updateMatrix();
-    scene.add(m);
-    _horizon.push(m);
-  }
-
   // ---- Soft barrier ring at the play limit ----
   // Faint cyan vertical band at radius 330 to give the player a visible
   // edge they're not meant to push against. Low opacity, no z-write so
@@ -1272,7 +1193,12 @@ const _SF_LOOK = {
   ..._CHICAGO_LOOK, ...SF_LOOK.statics,
   bloom: bloomPass && { threshold: SF_LOOK.statics.bloomThreshold, strength: bloomPass.strength * SF_LOOK.statics.bloomK },
 };
-const _LAYER_LOOKS = { chicago: _CHICAGO_LOOK, dc: _DC_LOOK, nyc: _NYC_LOOK, seattle: _SEATTLE_LOOK, sf: _SF_LOOK };
+// Tokyo: one blue-hour dusk key held all match (src/levels/tokyoLook.js)
+const _TOKYO_MAP_LOOK = {
+  ..._CHICAGO_LOOK, ...TOKYO_LOOK.statics,
+  bloom: bloomPass && { threshold: TOKYO_LOOK.statics.bloomThreshold, strength: bloomPass.strength * TOKYO_LOOK.statics.bloomK },
+};
+const _LAYER_LOOKS = { tokyo: _TOKYO_MAP_LOOK, chicago: _CHICAGO_LOOK, dc: _DC_LOOK, nyc: _NYC_LOOK, seattle: _SEATTLE_LOOK, sf: _SF_LOOK };
 // Sun position relative to the kaiju (shadow camera follows it). Tokyo's
 // low west rake; levels may override (see sunOffset in the looks above)
 const _TOKYO_SUN = [-100, 100, 45];
@@ -1293,7 +1219,7 @@ function applyLevelLook(level) {
   setLookLevel(level);
   // (DC, NYC, Seattle, San Francisco: centred on the map, a long fade from its corners out over the surround)
   buildLookMap(world, level === 'chicago' ? { x: world.center.x - 200, z: world.center.z, r0: 520, r1: 775 }
-    : level === 'dc' || level === 'nyc' || level === 'seattle' || level === 'sf' ? { x: world.center.x, z: world.center.z, r0: _dcEdge(world.bounds, 0), r1: _dcEdge(world.bounds, 650) } : null);
+    : level === 'dc' || level === 'nyc' || level === 'seattle' || level === 'sf' || level === 'tokyo' ? { x: world.center.x, z: world.center.z, r0: _dcEdge(world.bounds, 0), r1: _dcEdge(world.bounds, 650) } : null);
   if (_LAYER_LOOKS[level]) sun.position.copy(_sunOffset); // until a kaiju exists to follow
   if (changed && Q_HIGH) _captureEnv();
 }
@@ -2625,7 +2551,7 @@ function _showMobileDataWarning() {
     // Washington DC (2026-11-15, after dc-design's detail passes; every response
     // counted incl. code and audio, 30 s of play): desktop 58.6, phone MED 35.4, phone LOW 30.1 MB.
     // New York City, Seattle, San Francisco: DC's figures until measured
-    const chi = selectedLevel === 'chicago', dc = selectedLevel === 'dc' || selectedLevel === 'nyc' || selectedLevel === 'seattle' || selectedLevel === 'sf';
+    const chi = selectedLevel === 'chicago', dc = selectedLevel === 'dc' || selectedLevel === 'nyc' || selectedLevel === 'seattle' || selectedLevel === 'sf' || selectedLevel === 'tokyo';
     if (sizeEl) sizeEl.textContent = isMobile ? (GLB_CONTENT ? (chi ? '~37 MB' : dc ? '~35 MB' : '~29 MB') : (chi ? '~32 MB' : dc ? '~30 MB' : '~10 MB')) : (chi ? '~65 MB' : dc ? '~59 MB' : '~74 MB');
     warn.classList.remove('hidden');
     warn.style.display = 'flex';

@@ -42,6 +42,19 @@ const VENUES = {
       [/CHICAGO/g, 'SEATTLE'], [/Chicago/g, 'Seattle'],
     ],
   },
+  tokyo: {
+    home: { player: 'FROM THE DEPTHS OF TOKYO BAY', rival: 'FROM THE WRECKAGE OF GINZA' },
+    swaps: [
+      [/CHICAGO HEAVYWEIGHT/g, 'TOKYO HEAVYWEIGHT'], [/Chicago Heavyweight/g, 'Tokyo Heavyweight'],
+      [/LAKE MICHIGAN/g, 'TOKYO BAY'], [/Lake Michigan/g, 'Tokyo Bay'],
+      [/GRANT PARK/g, 'KOKYO GAIEN'], [/Grant Park/g, 'Kokyo Gaien'], // (the ring's site: the palace's outer garden)
+      [/THE LOOP/g, 'MARUNOUCHI'], [/the Loop/g, 'Marunouchi'],
+      [/LAKE SHORE DRIVE/g, 'HIBIYA-DORI'], [/Lake Shore Drive/g, 'Hibiya-dori'],
+      [/MICHIGAN AVENUE/g, 'CHUO-DORI'], [/Michigan Avenue/g, 'Chuo-dori'],
+      [/INDIANA/g, 'CHIBA'], [/Indiana/g, 'Chiba'],
+      [/CHICAGO/g, 'TOKYO'], [/Chicago/g, 'Tokyo'],
+    ],
+  },
   sf: {
     home: { player: 'FROM THE DEPTHS OF THE BAY', rival: 'FROM THE WRECKAGE OF MARKET STREET' },
     swaps: [

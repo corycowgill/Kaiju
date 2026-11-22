@@ -30,7 +30,8 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Washington DC (src/levels/dc.js) runs the same six data-level configs as Chicago; New York
 // (src/levels/nyc.js), Seattle (src/levels/seattle.js) and San Francisco (src/levels/sf.js) desktop HIGH, desktop LOW and
 // iPhone LOW in both builds.
-const CONFIGS = [['desktop', 'high', 'tokyo'], ['iphone', 'med', 'tokyo'], ['desktop', 'high', 'chicago'], ['iphone', 'med', 'chicago'], ['iphone', 'low', 'chicago'],
+const CONFIGS = [['desktop', 'high', 'tokyo'], ['desktop', 'low', 'tokyo'], ['iphone', 'low', 'tokyo'],
+  ['desktop', 'high', 'tokyo', 'waves'], ['desktop', 'low', 'tokyo', 'waves'], ['iphone', 'low', 'tokyo', 'waves'], ['desktop', 'high', 'chicago'], ['iphone', 'med', 'chicago'], ['iphone', 'low', 'chicago'],
   ['desktop', 'high', 'chicago', 'waves'], ['iphone', 'med', 'chicago', 'waves'], ['iphone', 'low', 'chicago', 'waves'],
   ['desktop', 'high', 'dc'], ['iphone', 'med', 'dc'], ['iphone', 'low', 'dc'],
   ['desktop', 'high', 'dc', 'waves'], ['iphone', 'med', 'dc', 'waves'], ['iphone', 'low', 'dc', 'waves'],
@@ -69,7 +70,7 @@ if (argv[0] !== '--run') {
       return (j.nodes || []).reduce((n, nd) => n + (nd.mesh !== undefined ? j.meshes[nd.mesh].primitives.length : 0), 0);
     };
     let lodPairs = 0;
-    for (const tree of ['assets', 'assets/m', 'assets/ktx2']) for (const sub of ['buildings/chicago', 'buildings/dc', 'buildings/nyc', 'buildings/seattle', 'buildings/sf', 'trees', 'props', 'vehicles']) {
+    for (const tree of ['assets', 'assets/m', 'assets/ktx2']) for (const sub of ['buildings/chicago', 'buildings/dc', 'buildings/nyc', 'buildings/seattle', 'buildings/sf', 'buildings/tokyo', 'trees', 'props', 'vehicles']) {
       const dir = path.join(REPO, tree, sub);
       if (!fs.existsSync(dir)) continue;
       for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('_lod1.glb'))) {
@@ -93,7 +94,7 @@ if (argv[0] !== '--run') {
 
 const [, device, tier, level = 'tokyo', modeArg = ''] = argv;
 // Levels built from a map layout (GLB buildings on every tier, a ring, bounds and water)
-const DATA = level === 'chicago' || level === 'dc' || level === 'nyc' || level === 'seattle' || level === 'sf';
+const DATA = level === 'tokyo' || level === 'chicago' || level === 'dc' || level === 'nyc' || level === 'seattle' || level === 'sf';
 const failures = [];
 const fail = (msg) => failures.push(msg);
 
@@ -683,7 +684,7 @@ if (res?.buildings?.length) {
     level, bounds: res.bounds, isWater: res.isWater, buildings: res.buildings, buildingGrid: res.grid, duelSpawns: res.duelSpawns,
   });
   if (player.distanceTo(rival) < (level === 'chicago' ? 295 : 245)) fail('VS spawns are too close');
-  if ((level === 'dc' || level === 'nyc' || level === 'seattle' || level === 'sf') && res.isWater && (res.isWater(player.x, player.z) || res.isWater(rival.x, rival.z))) fail(`${level}: a VS spawn is on water`);
+  if ((level === 'dc' || level === 'nyc' || level === 'seattle' || level === 'sf' || level === 'tokyo') && res.isWater && (res.isWater(player.x, player.z) || res.isWater(rival.x, rival.z))) fail(`${level}: a VS spawn is on water`);
   log(`VS SPAWNS ${player.toArray()} / ${rival.toArray()}`);
 }
 
@@ -837,7 +838,7 @@ if (DATA && res && res.bounds) {
     if (near.length) fail(`${level}: ${near.length} buildings within 10u of the kaiju spawn`);
   }
   // DC / NYC on land: clear of buildings
-  if ((level === 'dc' || level === 'nyc' || level === 'seattle' || level === 'sf') && !(res.isWater && res.isWater(res.spawn.x, res.spawn.z))) {
+  if ((level === 'dc' || level === 'nyc' || level === 'seattle' || level === 'sf' || level === 'tokyo') && !(res.isWater && res.isWater(res.spawn.x, res.spawn.z))) {
     const { x, z } = res.spawn;
     const near = res.buildings.filter((b) => !b.destroyed && Math.abs(b.x - x) < b.w / 2 + 8 && Math.abs(b.z - z) < b.d / 2 + 8);
     if (near.length) fail(`${level}: ${near.length} buildings within 8u of the kaiju spawn`);
@@ -850,7 +851,7 @@ if (DATA && res && res.bounds) {
   const tokyoOnly = /^(tree_sakura|tree_black_pine|koban|yatai_stall|torii_gate|vending_machine|subway_entrance|street_sign|traffic_signal)$/;
   const leaks = new Set();
   scene.traverse((o) => { if (o.isMesh && tokyoOnly.test(o.material?.name || '')) leaks.add(o.material.name); });
-  if (leaks.size) fail(`${level}: Tokyo-only meshes in the scene: ${[...leaks].join(', ')}`);
+  if (leaks.size && level !== 'tokyo') fail(`${level}: Tokyo-only meshes in the scene: ${[...leaks].join(', ')}`);
   // Every Chicago building and landmark is a pipeline GLB once templates load:
   // procedural massing or a box is only a load-failure fallback. Assets still
   // marked pending in chicago.js (not delivered) are listed, not failed.
