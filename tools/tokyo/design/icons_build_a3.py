@@ -6,19 +6,6 @@ import numpy as np
 from icons_lib import *
 
 
-def p_shiro(c):
-    """white plastered castle wall: stone footing line, small barred windows, dark eave shadow"""
-    c.rect(0, 0, 1, 1, 0xdcd8cc); c.noise(0.04, 5)
-    for i in range(4): c.rect(i / 4 + 0.09, 0.42, i / 4 + 0.16, 0.7, 0x3a3630); c.rect(i / 4 + 0.122, 0.42, i / 4 + 0.128, 0.7, 0xdcd8cc)
-    c.rect(0, 0, 1, 0.1, 0x8a867c); c.rect(0, 0.92, 1, 1, 0xb8b4a8); c.flood(0.3, 0xfff0d8)
-
-
-def p_stone(col=0x8e8a80):
-    def fn(c):
-        c.rect(0, 0, 1, 1, col); c.noise(0.16, 8); c.joints(7, 5, 0.72, 1.6); c.noise(0.08, 3); c.grain(0.04); c.flood(0.1, 0xfff0d8)
-    return fn
-
-
 # ------------------------------------------------------------------ Nijubashi (Seimon Ishibashi) + Fushimi-yagura
 # X = along the stone bridge (plaza side +X, the main gate -X); the moat lies in front (+Z) and passes under the arches;
 # the high rampart with the Fushimi-yagura stands behind (-Z). y 0 = moat water level.

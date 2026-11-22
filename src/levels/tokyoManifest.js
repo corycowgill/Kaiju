@@ -8,24 +8,43 @@ export const TOKYO_BASE = './assets/buildings/tokyo/';
 // own frontDir for the landmark. fit 'footprint' (+ stretch): fill the layout outline. onWater: on a pier or afloat.
 // waterline: y 0 is the water surface. stone: debris tint.
 export const TOKYO_LANDMARK_GLBS = [
+  { id: 'ark_mori_building', file: 'ark_mori_building.glb', trueHeightM: 153, ready: true }, // 53 x 86.5 m
   { id: 'atago_green_hills_mori_tower', file: 'atago_green_hills_mori_tower.glb', trueHeightM: 187, ready: true }, // 52.5 x 46 m
   { id: 'azabudai_hills_mori_jp_tower', file: 'azabudai_hills_mori_jp_tower.glb', trueHeightM: 330, ready: true }, // 74 x 74.5 m
+  { id: 'bank_of_japan', file: 'bank_of_japan.glb', trueHeightM: 36.4, ready: true }, // 85 x 79.8 m
   { id: 'dentsu_building', file: 'dentsu_building.glb', trueHeightM: 213, ready: true }, // 128 x 56 m
   { id: 'fuji_tv_building', file: 'fuji_tv_building.glb', trueHeightM: 123, face: 'north', stone: 0xb9bec4, ready: true }, // 240 x 70.5 m; tier A, 203.0 x 77.5 m, 3037 / 759 tris; Tange megastructure, 200 x 62 m: the wide office tower and the media tower joined by three levels of twin sky corridors on a grid of megacolumns, the 32 m titanium sphere in the top bay, studio podium with the grand stair and tube escalator, roof mast
+  { id: 'fujimi_yagura', file: 'fujimi_yagura.glb', trueHeightM: 34.7, ready: true }, // 58.6 x 32.9 m
+  { id: 'ginza_place', file: 'ginza_place.glb', trueHeightM: 57.5, ready: true }, // 28.4 x 30.4 m
   { id: 'gran_tokyo', ids: ['gran_tokyo_north', 'gran_tokyo_south'], file: 'gran_tokyo.glb', trueHeightM: 205, ready: true }, // 46 x 77.5 m
+  { id: 'harumi_triton', file: 'harumi_triton.glb', trueHeightM: 195, ready: true }, // 115.5 x 175.5 m
+  { id: 'hie_shrine', file: 'hie_shrine.glb', trueHeightM: 17.8, ready: true }, // 68.9 x 90.9 m
+  { id: 'imperial_palace_kyuden', file: 'imperial_palace_kyuden.glb', trueHeightM: 23.6, ready: true }, // 176.9 x 126 m
   { id: 'imperial_palace_nijubashi', file: 'imperial_palace_nijubashi.glb', trueHeightM: 25.1, ready: true }, // 126.5 x 81.6 m
   { id: 'izumi_garden_tower', file: 'izumi_garden_tower.glb', trueHeightM: 201, ready: true }, // 71 x 100.5 m
   { id: 'jp_tower_kitte', file: 'jp_tower_kitte.glb', trueHeightM: 200, ready: true }, // 128 x 88.5 m
   { id: 'kabukiza', file: 'kabukiza.glb', trueHeightM: 149, face: 'northwest', stone: 0xd8d4c8, ready: true }, // 82.2 x 99.5 m; tier A, 82.2 x 99.5 m, 3376 / 718 tris; Kabuki-za: white Momoyama-revival theatre front on +Z: the great karahafu entrance gable with gold fittings and purple curtain, the big front-facing irimoya roof over the centre, gabled end pavilions with their own karahafu doors, tiled eaves, vermilion balustrades, rows of red lanterns and the drum-tower box; the plain pale 145 m office tower with vertical fins rising behind
+  { id: 'kachidoki_bridge', file: 'kachidoki_bridge.glb', trueHeightM: 23.6, onWater: true, ready: true }, // 246 x 32.4 m
   { id: 'kasumigaseki_building', file: 'kasumigaseki_building.glb', trueHeightM: 147, ready: true }, // 43.5 x 83.5 m
+  { id: 'kasumigaseki_common_gate', file: 'kasumigaseki_common_gate.glb', trueHeightM: 176, ready: true }, // 56 x 50 m
   { id: 'marunouchi_building', file: 'marunouchi_building.glb', trueHeightM: 180, ready: true }, // 80 x 95 m
+  { id: 'ministry_of_justice_red_brick', file: 'ministry_of_justice_red_brick.glb', trueHeightM: 33.5, ready: true }, // 131.9 x 40 m
+  { id: 'mitsukoshi_nihonbashi', file: 'mitsukoshi_nihonbashi.glb', trueHeightM: 62.2, ready: true }, // 74 x 102.9 m
   { id: 'national_diet_building', file: 'national_diet_building.glb', trueHeightM: 65.5, face: 'east', stone: 0xc4c0b4, ready: true }, // 210.9 x 124.4 m; tier A, 210.9 x 124.5 m, 3000 / 672 tris; National Diet Building: pale granite, 206 m symmetric front with giant pilasters between window strips over a rusticated base, projecting end pavilions, the two chamber blocks with hipped roofs behind, the pillared centre porch with its steps and the 65 m tower with a columned stage under the stepped pyramid; courtyards and rear range
   { id: 'nec_supertower', file: 'nec_supertower.glb', trueHeightM: 180, ready: true }, // 95 x 91.5 m
+  { id: 'nihonbashi_bridge', file: 'nihonbashi_bridge.glb', trueHeightM: 15, onWater: true, ready: true }, // 55 x 33.6 m
   { id: 'nittele_tower', file: 'nittele_tower.glb', trueHeightM: 193, ready: true }, // 35 x 105 m
+  { id: 'odaiba_statue_of_liberty', file: 'odaiba_statue_of_liberty.glb', trueHeightM: 12.9, onWater: true, ready: true }, // 12 x 12 m
+  { id: 'otemachi_tower', file: 'otemachi_tower.glb', trueHeightM: 200, ready: true }, // 56 x 102.5 m
+  { id: 'prince_park_tower', file: 'prince_park_tower.glb', trueHeightM: 104, ready: true }, // 53 x 46.5 m
   { id: 'rainbow_bridge', file: 'rainbow_bridge.glb', trueHeightM: 128.6, face: 'south', onWater: true, waterline: true, stone: 0xd4d4ce, ready: true }, // 1000 x 60 m; tier A, 1000 x 60 m, 4366 / 594 tris; Rainbow Bridge, whole bridge at true size, X along it: towers at x +-285 (126 m, legs at z +-17, three cross-beams), 570 m main span, side spans to the anchorage blocks (faces at x +-399, cables anchored at +-432 = 147 m), blocks to +-465, approach stubs to +-500. Double deck: upper road y 60, lower deck y 50.8 with the transit guideway; z +-14.5. Main cables are true parabolic catenaries (lit white), sparse strip suspenders, strip truss diagonals; floodlit white towers, red aviation lights. y 0 = waterline
+  { id: 'river_city_21', ids: ['river_city_21_a', 'river_city_21_b'], file: 'river_city_21.glb', trueHeightM: 180, ready: true }, // 43 x 57 m
+  { id: 'sanno_park_tower', file: 'sanno_park_tower.glb', trueHeightM: 194, ready: true }, // 104.5 x 55 m
   { id: 'shin_marunouchi_building', file: 'shin_marunouchi_building.glb', trueHeightM: 198, ready: true }, // 80 x 99 m
   { id: 'shiodome_city_center', file: 'shiodome_city_center.glb', trueHeightM: 216, ready: true }, // 92 x 52.5 m
+  { id: 'shiodome_media_tower', file: 'shiodome_media_tower.glb', trueHeightM: 172, ready: true }, // 62 x 53.5 m
   { id: 'st_lukes_tower', file: 'st_lukes_tower.glb', trueHeightM: 221, ready: true }, // 66.5 x 132.5 m
+  { id: 'takanawa_gateway_station', file: 'takanawa_gateway_station.glb', trueHeightM: 29.7, ready: true }, // 140 x 57.1 m
   { id: 'the_tokyo_towers', ids: ['the_tokyo_towers_mid', 'the_tokyo_towers_sea'], file: 'the_tokyo_towers.glb', trueHeightM: 194, ready: true }, // 71.5 x 68 m
   { id: 'tokiwabashi_tower', file: 'tokiwabashi_tower.glb', trueHeightM: 212, ready: true }, // 55.5 x 78 m
   { id: 'tokyo_international_forum', file: 'tokyo_international_forum.glb', trueHeightM: 60.8, ready: true }, // 210 x 122 m
@@ -33,6 +52,7 @@ export const TOKYO_LANDMARK_GLBS = [
   { id: 'tokyo_midtown_hibiya', file: 'tokyo_midtown_hibiya.glb', trueHeightM: 192, ready: true }, // 100 x 81 m
   { id: 'tokyo_midtown_yaesu', file: 'tokyo_midtown_yaesu.glb', trueHeightM: 240, ready: true }, // 77 x 97 m
   { id: 'tokyo_port_city_takeshiba', file: 'tokyo_port_city_takeshiba.glb', trueHeightM: 208, ready: true }, // 141.5 x 105 m
+  { id: 'tokyo_shiodome_building', file: 'tokyo_shiodome_building.glb', trueHeightM: 173, ready: true }, // 140 x 43 m
   { id: 'tokyo_skytree', file: 'tokyo_skytree.glb', trueHeightM: 634, face: 'south', stone: 0xdfe6ee, ready: true }, // 69.6 x 65.4 m; tier A, 60.9 x 60.4 m, 6350 / 1566 tris; 68 m rounded-triangle base morphing to a circle by 300 m: sparse white lattice skin (columns, rings, diagonals as strips) over a pale core, the flared Tembo Deck at 340-360 m and Galleria at 445-455 m with its spiral glass ramp, gain tower to 634 m; pale blue core light and blue-violet deck lighting emissive
   { id: 'tokyo_station', file: 'tokyo_station.glb', trueHeightM: 43, face: 'west', stone: 0x93402f, ready: true }, // 339 x 68 m; tier A, 339 x 68 m, 4064 / 982 tris; Tokyo Station, Marunouchi building: the 335 m red-brick 1914 front with white stone banding and pilasters, slate mansard roofs with dormers, the two octagonal ribbed domes over the north / south entrances, the gabled centre pavilion with the imperial porch, paired turrets and end pavilions; four platform canopies with trains on the viaduct behind (-Z)
   { id: 'tokyo_tower', file: 'tokyo_tower.glb', trueHeightM: 333, face: 'south', stone: 0xd9531e, ready: true }, // 95.6 x 95.6 m; tier A, 98.0 x 98.0 m, 5300 / 1372 tris; 94 m square at the feet: true open lattice (corner chords as tubes, X-bracing as strips), four splayed lattice legs with the arch between them, lift shaft, two-storey main deck at 150 m, top deck at 250 m, antenna, FootTown block under the legs; international-orange and white bands, warm floodlight emissive on the steel, lit decks, red warning lights
@@ -57,6 +77,13 @@ export const TOKYO_GENERIC_GLBS = [
   { file: 'tokyo_house_c.glb', bucket: 'low', style: 'house', trueM: [16, 12.6, 13.7], stone: 0xb8a890, ready: true },
   { file: 'tokyo_house_d.glb', bucket: 'low', style: 'house', trueM: [11.5, 9.9, 12], stone: 0xb8a890, ready: true },
   { file: 'tokyo_house_e.glb', bucket: 'low', style: 'house', trueM: [19.4, 9.4, 13.6], stone: 0xb8a890, ready: true },
+  { file: 'tokyo_lowrise_a.glb', bucket: 'low', style: 'lowrise', trueM: [22.4, 10.1, 13.4], stone: 0xbcb4a6, ready: true },
+  { file: 'tokyo_lowrise_b.glb', bucket: 'low', style: 'lowrise', trueM: [18.5, 9.4, 17.1], stone: 0xbcb4a6, ready: true },
+  { file: 'tokyo_lowrise_c.glb', bucket: 'low', style: 'lowrise', trueM: [21, 10.3, 14.6], stone: 0xbcb4a6, ready: true },
+  { file: 'tokyo_lowrise_d.glb', bucket: 'low', style: 'lowrise', trueM: [18.5, 13.9, 12.3], stone: 0xbcb4a6, ready: true },
+  { file: 'tokyo_warehouse_a.glb', bucket: 'low', style: 'warehouse', trueM: [36.3, 11.4, 28.1], stone: 0x9a9690, ready: true },
+  { file: 'tokyo_warehouse_b.glb', bucket: 'low', style: 'warehouse', trueM: [38.3, 11.4, 31.6], stone: 0x9a9690, ready: true },
+  { file: 'tokyo_warehouse_c.glb', bucket: 'low', style: 'warehouse', trueM: [48.1, 27.6, 38.6], stone: 0x9a9690, ready: true },
   { file: 'tokyo_zakkyo_a.glb', bucket: 'low', style: 'zakkyo tile', trueM: [7.2, 26.9, 15.9], stone: 0xdedbd2, ready: true }, // 7-storey white-tile pencil building: ramen shop with noren and lanterns, a different tenant per floor, corner sign stack, rear steel stair, rooftop billboard and panel tank
   { file: 'tokyo_zakkyo_b.glb', bucket: 'short', style: 'zakkyo tile glass', trueM: [10, 37.7, 18.1], stone: 0x7f8d9a, ready: true }, // 10-storey blue-grey tile and glass tenant building: convenience store on the ground, open steel stair up the front, sign stack and roof sign
   { file: 'tokyo_zakkyo_c.glb', bucket: 'low', style: 'zakkyo tile pair', trueM: [13.1, 32.8, 17.4], stone: 0x8a6a50, share: 2, ready: true }, // fused pair: 6-storey beige-tile izakaya building and a 9-storey brown-tile tenant block with a bar and a shuttered shop

@@ -1060,7 +1060,7 @@ def jroof(b, cx, cz, w, d, y, h, tile, ridge, style='irimoya', up=None, hipf=0.4
                 Q([(q[0], q[1], cz + q[2]) for q in (a0, a1, b1, b0)], us, ts)
                 Q([(q[0], q[1], cz - q[2]) for q in (a1, a0, b0, b1)], [-a1[0], -a0[0], -b0[0], -b1[0]], ts)
                 if soffit and (j == 0):
-                    b.face([(q[0], q[1] - th, cz + q[2]) for q in (b0, b1, a1, a0)], under); b.face([(q[0], q[1] - th, cz - q[2]) for q in (b1, b0, a0, a1)], under)
+                    b.face([(q[0], q[1] - (th if k_ < 2 else 0), cz + q[2]) for k_, q in enumerate((b0, b1, a1, a0))], under); b.face([(q[0], q[1] - (th if k_ < 2 else 0), cz - q[2]) for k_, q in enumerate((b1, b0, a0, a1))], under)
                     if i == 0: yq = R[1][0][1] - th - up * (1 - lv[1]) ** 2; zq = R[1][0][2]; b.face([(cx - w / 2, yq, cz - zq), (cx + w / 2, yq, cz - zq), (cx + w / 2, yq, cz + zq), (cx - w / 2, yq, cz + zq)], under)
         gi = min(0.6, w * 0.04)
         for sx in (-1, 1):
@@ -1089,8 +1089,7 @@ def jroof(b, cx, cz, w, d, y, h, tile, ridge, style='irimoya', up=None, hipf=0.4
                     Q([A[i0], A[i1], Bq[i1], Bq[i0]], [t0 * ha, t1 * ha, t1 * hb, t0 * hb], [lv[j] * tk, lv[j] * tk, lv[j + 1] * tk, lv[j + 1] * tk])
                     if j == 0 and soffit:
                         dn = lambda q: (q[0], q[1] - th, q[2])
-                        b.face([dn(Bq[i0]), dn(Bq[i1]), dn(A[i1]), dn(A[i0])], under)
-                        if b.hi: b.face([dn(A[i0]), dn(A[i1]), A[i1], A[i0]], under)
+                        b.face([dn(Bq[i0]), dn(Bq[i1]), A[i1], A[i0]], under)
             if j == 0 and soffit: b.face([(q[0], y + hh * lv[1] ** p - th, q[2]) for q in Bq][::-1], under)
             if b.hi:
                 for k in range(4):
@@ -1263,6 +1262,9 @@ def winwall(b, p0, p1, y0, y1, n, wall, decs, rng, lod_band, sill=0.22, head=0.1
     if not b.hi:
         b.wall(p0, p1, y0, y1, lod_band); return
     H = y1 - y0; ys = y0 + H * sill
+    # hidden band quad just behind the window plane: keeps the LOD0 facade primitive's box equal to the LOD1's
+    L_ = math.hypot(p1[0] - p0[0], p1[1] - p0[1]); ox, oz = (p1[1] - p0[1]) / L_ * (depth + 0.06), -(p1[0] - p0[0]) / L_ * (depth + 0.06)
+    b.face([(p0[0], y0, p0[1]), (p1[0], y0, p1[1]), (p1[0] + ox * 0, y1, p1[1]), (p0[0], y1, p0[1])], lod_band) if False else b.wall((p0[0] + ox, p0[1] + oz), (p1[0] + ox, p1[1] + oz), y0, y1, lod_band)
     if sill > 0: b.wall(p0, p1, y0, ys, wall)
     pick = lambda i: decs[rng.randint(nlit)] if rng.rand() < plit else decs[nlit + rng.randint(len(decs) - nlit)]
     L = math.hypot(p1[0] - p0[0], p1[1] - p0[1]); ow = L / n * (1 - pier)
@@ -1301,3 +1303,16 @@ def arch_bridge(b, x0, x1, zc, width, n, y0, ys, rise, yt, skin, soffit, pier=0.
                 z = zc + sz * width / 2; pw = (bw - ow)
                 b.prism([(a - pw / 2, z), (a + pw / 2, z), (a, z + sz * pw * 0.9)], y0, ys + rise * 0.55, cutwater, top=cutwater)
     if deck is not None: b.face([(x0, yt, zc + width / 2), (x1, yt, zc + width / 2), (x1, yt, zc - width / 2), (x0, yt, zc - width / 2)], deck)
+
+
+def p_shiro(c):
+    """white plastered castle wall: stone footing line, small barred windows, dark eave shadow"""
+    c.rect(0, 0, 1, 1, 0xdcd8cc); c.noise(0.04, 5)
+    for i in range(4): c.rect(i / 4 + 0.09, 0.42, i / 4 + 0.16, 0.7, 0x3a3630); c.rect(i / 4 + 0.122, 0.42, i / 4 + 0.128, 0.7, 0xdcd8cc)
+    c.rect(0, 0, 1, 0.1, 0x8a867c); c.rect(0, 0.92, 1, 1, 0xb8b4a8); c.flood(0.3, 0xfff0d8)
+
+
+def p_stone(col=0x8e8a80):
+    def fn(c):
+        c.rect(0, 0, 1, 1, col); c.noise(0.16, 8); c.joints(7, 5, 0.72, 1.6); c.noise(0.08, 3); c.grain(0.04); c.flood(0.1, 0xfff0d8)
+    return fn

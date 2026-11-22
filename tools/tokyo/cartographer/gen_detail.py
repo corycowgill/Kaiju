@@ -66,37 +66,44 @@ for ref, t, g in prep['rail']:
 # ---------------- trains: one clean polyline a line
 trains = []
 def add_train(name, kind, pts, elevated, deck, ns=None, note=''):
-    pts = clip_longest(pts)
+    pts = ring1(pts)
     e = dict(name=name, kind=kind, points=pts, elevated=elevated, deckMetres=deck, lengthU=r1(LineString(pts).length), stops=stops_of(ns or [], pts) if ns else [], note=note)
     trains.append(e); print(' train', name, len(pts), 'pts', e['lengthU'], 'u', pts[0], pts[-1], len(e['stops']), 'stops')
-parts, ns = route_line(1972920)
-add_train('JR Yamanote Line', 'yamanote', north_first(clip_longest(chain(parts))), True, 7.0, ns,
-          'the Yamanote loop / Keihin-Tohoku corridor on its 1910 red-brick arch viaduct from Tokyo Station through Yurakucho and Shimbashi, then on embankment and bridges past Hamamatsucho, Tamachi and Takanawa Gateway to the south edge (outer-loop track of route relation 1972920)')
-# Tokaido Shinkansen: the merged line of the mapped tracks that reaches furthest through the box
-sk = [LineString(g) for ref, t, g in prep['rail'] if '東海道新幹線' in t.get('name', '') and t.get('railway') == 'rail' and t.get('service') not in ('yard', 'siding', 'spur', 'crossover') and len(g) > 1]
-m = linemerge(unary_union(sk)); cands = []
-for l in lines_of(m):
-    for q in lines_of(l.intersection(BOXP)): cands.append(q)
-# stitch pieces of one track greedily from the southern edge northward
-cands.sort(key=lambda q: -q.length)
-best = list(cands[0].coords)
-for _ in range(40):
-    grew = False
-    for q in cands[1:]:
-        c = list(q.coords)
+def stitch(test, tol=0.8):
+    """One track of a line as a single polyline: merge the mapped ways, clip to the box, then grow the longest piece through its neighbours end to end."""
+    sk = [LineString(g) for ref, t, g in prep['rail'] if len(g) > 1 and t.get('service') not in ('yard', 'siding', 'spur', 'crossover') and test(t)]
+    m = unary_union(sk); m = linemerge(m) if m.geom_type != 'LineString' else m
+    cands = [q for l in lines_of(m) for q in lines_of(l.intersection(BOXP)) if q.length > 0.5]
+    cands.sort(key=lambda q: -q.length)
+    best = list(cands[0].coords); used = {0}
+    for _ in range(200):
+        grew = False
         for end in (0, -1):
-            e = best[end]
-            for cc in (c, c[::-1]):
-                if math.dist(e, cc[0]) < 0.6 and LineString(best).distance(Point(cc[-1])) > 3:
-                    best = (cc[::-1] + best) if end == 0 else (best + cc); grew = True; break
-            if grew: break
-        if grew: break
-    if not grew: break
-add_train('Tokaido Shinkansen', 'shinkansen', north_first(best), True, 8.0, None, 'the Tokaido Shinkansen from its Tokyo Station platforms south beside the Yamanote viaduct through Yurakucho, Shimbashi and Hamamatsucho to the south edge (toward Shinagawa)')
-parts, ns = route_line(3417174)
-add_train('Tokyo Monorail', 'monorail', north_first(clip_longest(chain(parts))), True, 12.0, ns, 'the Tokyo Monorail (straddle-beam, 1964) from Monorail Hamamatsucho station south over the Shibaura canals and along the Keihin canal toward Haneda')
-parts, ns = route_line(3300716)
-yk = clip_longest(chain(parts))
+            e = best[end]; opts = []
+            for i, q in enumerate(cands):
+                if i in used: continue
+                c = list(q.coords)
+                for cc in (c, c[::-1]):
+                    if math.dist(e, cc[0]) < tol and LineString(best[-40:] if end else best[:40]).distance(q.interpolate(0.5, normalized=True)) > 0.3:
+                        # keep going straight: prefer the continuation with the smallest turn
+                        a = best[1] if end == 0 else best[-2]
+                        v1 = (e[0] - a[0], e[1] - a[1]); k = min(len(cc) - 1, 3); v2 = (cc[k][0] - cc[0][0], cc[k][1] - cc[0][1])
+                        turn = abs(math.atan2(v1[0] * v2[1] - v1[1] * v2[0], v1[0] * v2[0] + v1[1] * v2[1]))
+                        opts.append((turn, -q.length, i, cc))
+            if opts:
+                turn, _, i, cc = min(opts)
+                if turn < 1.2:
+                    used.add(i); best = (cc[::-1] + best) if end == 0 else (best + cc); grew = True
+        if not grew: break
+    return best
+ns = route_line(1972920)[1]
+add_train('JR Yamanote Line', 'yamanote', north_first(stitch(lambda t: t.get('railway') == 'rail' and '山手線' in t.get('name', ''))), True, 7.0, ns,
+          'the Yamanote loop / Keihin-Tohoku corridor on its 1910 red-brick arch viaduct from Tokyo Station through Yurakucho and Shimbashi, then on embankment and bridges past Hamamatsucho, Tamachi and Takanawa Gateway to Shinagawa at the south edge (one track of the mapped pair)')
+add_train('Tokaido Shinkansen', 'shinkansen', north_first(stitch(lambda t: t.get('railway') == 'rail' and '東海道新幹線' in t.get('name', ''))), True, 8.0, None, 'the Tokaido Shinkansen from its Tokyo Station platforms south beside the Yamanote viaduct through Yurakucho, Shimbashi and Hamamatsucho to the south edge (toward Shinagawa)')
+ns = route_line(3417174)[1]
+add_train('Tokyo Monorail', 'monorail', north_first(stitch(lambda t: t.get('railway') == 'monorail')), True, 12.0, ns, 'the Tokyo Monorail (straddle-beam, 1964) from Monorail Hamamatsucho station south over the Shibaura canals and along the Keihin canal toward Haneda')
+ns = route_line(3300716)[1]
+yk = stitch(lambda t: t.get('railway') == 'light_rail' and 'ゆりかもめ' in t.get('name', ''))
 if yk and math.dist(yk[0], [-36, -9]) > math.dist(yk[-1], [-36, -9]): yk = yk[::-1]
 add_train('Yurikamome', 'yurikamome', yk, True, 14.0, ns, 'the Yurikamome automated guideway from Shimbashi through Shiodome, Takeshiba, Hinode and Shibaura-futo, round the 270-degree loop and over the Rainbow Bridge (lower deck, about 50 m up) to Odaiba-kaihinkoen and Daiba, leaving the box toward Aomi and Toyosu')
 # ---------------- ferries / water buses
@@ -104,7 +111,7 @@ ferries = []
 FAR = sbox(-1900, -1900, 1900, 2300)
 FN = [('way/905003475', 'Sumida River Water Bus: Hinode Pier - Hama-rikyu', False), ('way/905003476', 'Sumida River Water Bus: Hama-rikyu - Asakusa', False), ('way/905018176', 'Odaiba Water Bus: Hinode Pier - Odaiba Seaside Park', True),
       ('way/1286900865', 'Blue Ferry: Hinode Pier - Harumi', False), ('way/424083558', 'Tokai Kisen Izu Islands Ferry: Takeshiba - Miyake / Hachijo', False), ('way/202535053', 'Tokai Kisen Ferry: Takeshiba - Oshima', False), ('way/837995827', 'Ogasawara Maru Ferry: Takeshiba - Chichijima', False),
-      ('way/905252387', 'Tokyo Mizube Line Water Bus: Asakusa - Odaiba - Kasai', False)]
+      ]
 misc = {ref: (t, g) for ref, t, g in prep['misc']}
 for ref, name, rev in FN:
     if ref not in misc: print('  !! ferry missing', ref); continue
@@ -148,7 +155,7 @@ for r in L['roads']:
         ex[r['name'] or 'Shuto Expressway ramp'].append(LineString(r['points']))
 expressways = []
 for name, ls in ex.items():
-    m = linemerge(unary_union(ls))
+    m = unary_union(ls); m = linemerge(m) if m.geom_type != 'LineString' else m
     kept = []
     for l in sorted(lines_of(m), key=lambda q: -q.length):
         if l.length < 14: continue

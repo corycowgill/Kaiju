@@ -5,7 +5,7 @@ from PIL import Image
 Z = 12; out = sys.argv[1]; os.makedirs(out, exist_ok=True)
 def tx(lon): return (lon + 180) / 360 * 2 ** Z
 def ty(lat): return (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * 2 ** Z
-x0, x1 = int(tx(-122.53)), int(tx(-122.29)); y0, y1 = int(ty(37.90)), int(ty(37.69))
+x0, x1 = int(tx(139.62)), int(tx(139.90)); y0, y1 = int(ty(35.79)), int(ty(35.54))
 A = np.zeros(((y1 - y0 + 1) * 256, (x1 - x0 + 1) * 256), np.float32)
 for x in range(x0, x1 + 1):
     for y in range(y0, y1 + 1):

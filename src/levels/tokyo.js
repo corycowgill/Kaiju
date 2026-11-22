@@ -377,7 +377,7 @@ export function buildTokyo(scene, world, opts, K) {
   // (instancing tiles as NYC's)
   // (a long map, 4.4 x 7.2 km: wider instancing tiles than the other levels' 300 keep the draw count in budget)
   const instance = () => K.instanceStaticClones(scene, !glb ? Infinity : lite ? 640 : 480, lite ? 185 : 150, smallCull);
-  K.setBuildingTile(!glb || lite ? Infinity : 400);
+  K.setBuildingTile(!glb || lite ? Infinity : 640);
   const B = L.bounds;
   const S = L.scale || 0.2;
   const cxB = (B.minX + B.maxX) / 2, czB = (B.minZ + B.maxZ) / 2;
@@ -1021,19 +1021,22 @@ export function buildTokyo(scene, world, opts, K) {
   });
   /** An elevated run along pts: deck top at y (u), segments segLen long. kit: { seg, pier } urls (true-size models, the
    *  segment segM metres long along Z with its origin at ground level); proc: { w, t, color, pierW } for the box stand-in. */
-  const elevatedRun = (pts, y, segLen, kit, proc, overWater = false) => {
-    const cum = [0];
-    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-    const total = cum[cum.length - 1], n = Math.floor(total / segLen);
-    if (n < 2) return null;
-    const at = (d) => {
-      let i = 1;
-      while (i < cum.length - 1 && cum[i] < d) i++;
-      const [ax, az] = pts[i - 1], [bx, bz] = pts[i], f = (d - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
-      return { x: ax + (bx - ax) * f, z: az + (bz - az) * f, ry: Math.atan2(bx - ax, bz - az) };
-    };
+  const elevatedRun = (ptsIn, y, segLen, kit, proc, overWater = false) => {
+    // (one polyline, or several drawn as one batch: the expressway's many ramps and carriageways)
     const segs = [];
-    for (let i = 0; i < n; i++) { const p = at((i + 0.5) * segLen); if (overWater || !isWater(p.x, p.z)) segs.push({ ...p, t: -1 }); }
+    for (const pts of (Array.isArray(ptsIn[0][0]) ? ptsIn : [ptsIn])) {
+      const cum = [0];
+      for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+      const total = cum[cum.length - 1], n = Math.floor(total / segLen);
+      const at = (d) => {
+        let i = 1;
+        while (i < cum.length - 1 && cum[i] < d) i++;
+        const [ax, az] = pts[i - 1], [bx, bz] = pts[i], f = (d - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
+        return { x: ax + (bx - ax) * f, z: az + (bz - az) * f, ry: Math.atan2(bx - ax, bz - az) };
+      };
+      // (n segments spread over the whole run, so the two ends meet the next polyline)
+      for (let i = 0; i < n; i++) { const p = at((i + 0.5) * total / n); if (overWater || !isWater(p.x, p.z)) segs.push({ ...p, t: -1 }); }
+    }
     if (!segs.length) return null;
     const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v3 = new THREE.Vector3(), sc = new THREE.Vector3(), roll = new THREE.Quaternion(), zAx = new THREE.Vector3(0, 0, 1);
     const run = { segs, y, im: null, k: 1, kz: 1, y0: 0 };
@@ -1112,10 +1115,11 @@ export function buildTokyo(scene, world, opts, K) {
       addTrain(t.pts, y, 'tokyo_yurikamome_train', 54, 2.8, 0.3, M.white);
     }
   }
-  // The Shuto Expressway's elevated decks (phones: left out; the streets under them are the layout's roads)
-  if (!lite) for (const e of L.detail?.expressways || []) {
-    const pts = cleanRun(e.points);
-    if (pts.length >= 2 && runLen(pts) > 30) elevatedRun(pts, (e.deckMetres || 15.5) * S, 6, { seg: _kit('expressway_deck_segment'), pier: _kit('expressway_pier'), segM: 30, topM: 15.5 }, { w: 3.4, t: 0.4, pierW: 0.5, mat: deckMat });
+  // The Shuto Expressway's elevated decks, all its lines and ramps as one batch (phones: left out; the streets
+  // under them are the layout's roads)
+  if (!lite) {
+    const runs = (L.detail?.expressways || []).map((e) => cleanRun(e.points)).filter((pts) => pts.length >= 2 && runLen(pts) > 12);
+    if (runs.length) elevatedRun(runs, 15.5 * S, 6, { seg: _kit('expressway_deck_segment'), pier: _kit('expressway_pier'), segM: 30, topM: 15.5 }, { w: 3.4, t: 0.4, pierW: 0.5, mat: deckMat }, true);
   }
   stats.trains = trains.length; stats.elevatedRuns = elevated.length; stats.elevatedSegs = elevated.reduce((a, r) => a + r.segs.length, 0);
   if (trains.length || elevated.length) {

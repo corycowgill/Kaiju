@@ -408,7 +408,7 @@ export function createTokyoTrees(K, lite = false, glb = true) {
     const k = scale * trueM * UPM / (template.h * REF_SCALE);
     root.scale.set(k * (.94 + seed * .14), k * (.91 + hash(z, x) * .16), k);
     root.userData.instance = true;
-    root.userData.instanceTile = !glb ? 4000 : lite ? 640 : 480; // (a long map: wide tiles)
+    root.userData.instanceTile = !glb ? 4000 : lite ? 720 : 720; // (a long map: wide tiles)
     root.userData.instanceLodDistance = lite ? 360 : 240;
     root.name = 'Tokyo ' + species;
     return root;
