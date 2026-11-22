@@ -147,10 +147,10 @@ def glassslab_c(k):
     yc = crown(k, 0, W, -D, 0, y2, 3.6, 0xc8c8c0, 0xffe2b0, inset=1.5, gl=0.8); top_lights(k, 1.5, W - 1.5, -D + 1.5, -1.5, yc, 0)
 
 
-@K.piece('tokyo_glassslab_d', style='glassslab precast grid', stone=0xe0dcd0, share=2, desc='pale precast-grid office tower of 18 floors: recessed window bands between projecting piers, stone lobby, plant screen and rooftop sign')
+@K.piece('tokyo_glassslab_d', style='glassslab precast grid', stone=0xe0dcd0, share=2, desc='pale precast-grid office tower of 14 floors: recessed window bands between projecting piers, stone lobby, plant screen and rooftop sign')
 def glassslab_d(k):
     fh, bay = 3.9, 3.2; c = C(0xe2ded2)
-    y, yc = simple(k, 32.0, 28.0, 6.0, 18, fh, 6, precast(c, 0x34424f, bay, fh, 0.48, OFF, 0.7, 1.05, 2.0), relief(fh, bay, fins=0.4, finw=0.7, ribbon=0.4, sph=1.05), seed=4, crown_c=0xcfcabd, crown_h=3.5)
+    y, yc = simple(k, 32.0, 28.0, 6.0, 14, fh, 5, precast(c, 0x34424f, bay, fh, 0.48, OFF, 0.7, 1.05, 2.0), relief(fh, bay, fins=0.4, finw=0.7, ribbon=0.4, sph=1.05), seed=4, crown_c=0xcfcabd, crown_h=3.5)
     S = Signs(k, 10); S.roof_sign(8.0, 24.0, yc, -3.2, h=3.2, legs=0.6, glow=0.9)
 
 
@@ -199,15 +199,15 @@ def round_deck(k, rs, x0, x1, z0, z1, y, c, n=3, X0=0.0, Z1=0.0):
 
 @K.piece('tokyo_glasstower_b', style='glasstower glass rounded', stone=0x9cc0c0, desc='160 m green-glass tower with rounded corners: horizontal spandrel bands on every floor, a double-height lit lobby, a recessed lit crown and a roof mast')
 def glasstower_b(k):
-    W, D, g, fh, bay, nfl, c = 38.0, 38.0, 8.0, 4.2, 1.9, 34, 6.0
+    W, D, g, fh, bay, nfl, c = 38.0, 38.0, 8.0, 4.2, 1.9, 33, 6.0
     paint = curtain(0x4a7470, 0x3a5c58, 0xb0c0bc, bay, fh, 0.5, OFF, hi=0x9cd0c8); rs = roof_plan(k, W, D, None, 6)
     def lp(s, w, H, var): cells(s, 0, 0, w, H, H, 2.4, 0x3c4c5c, 0x8a8e88, 1.2, 0x55595c, 0.9, [0xffe9c8], mw=0.14, floors=[0.9])
     y = round_tier(k, 0, W, -D, 0, 0, 1, g, 1, lp, lambda Fm, m, sd, j: Fm.box(0, g - 0.7, Fm.w, 0.7, 0.4, faces='ftb'), c, key='lob')
-    y = round_tier(k, 0, W, -D, 0, y, nfl, fh, 6, paint, relief(fh, bay, bands=0.3, sph=1.0), c)
+    y = round_tier(k, 0, W, -D, 0, y, nfl, fh, 6, paint, relief(fh, bay, bands=0.3, sph=1.0, fins=0.2, every=3, finw=0.16), c)
     round_deck(k, rs, 0, W, -D, 0, y, c)
     y2 = round_tier(k, 2.5, W - 2.5, -D + 2.5, -2.5, y, 1, 5.0, 1, lambda s, w, H, var: (s.rect(0, 0, w, H, 0xa8b8b4), s.vlines(0, 0, w, H, 0x7a8a86, 0.9, 0.14), s.rect(0, H * 0.3, w, H * 0.35, 0xe0ecea), s.em.grad(0, H * 0.3, w, H * 0.35, col(0xbff0e0) * 0.7, col(0xbff0e0) * 0.95)), None, c - 2.0, key='crown')
     round_deck(k, rs, 2.5, W - 2.5, -D + 2.5, -2.5, y2, c - 2.0)
-    top_lights(k, 6, W - 6, -D + 6, -6, y2, 14.0); plant(k, 12, y2, -24, 6, 2.5, 5); plant(k, 21, y2, -16, 5, 2.2, 4)
+    top_lights(k, 6, W - 6, -D + 6, -6, y2, 8.0); plant(k, 12, y2, -24, 6, 2.5, 5); plant(k, 21, y2, -16, 5, 2.2, 4)
 
 
 @K.piece('tokyo_glasstower_c', style='glasstower glass setback', stone=0x8a98a8, desc='190 m stepped tower: three glass-and-fin tiers setting back at the 26th and 38th floors, each terrace edged with a lit band, mast on the top tier')
@@ -216,14 +216,14 @@ def glasstower_c(k):
     paint = curtain(0x3e4c62, 0x2c3848, 0x8a94a4, bay, fh, 0.48, OFF, hi=0x8aa0c0); rel = relief(fh, bay, fins=0.4, every=2, bands=0.12)
     y = lobby(k, 0, W, -W, 0, g, 0xa8a8a8, seed=7); rs = roof_plan(k, W, W, None, 7)
     x0, x1 = 0.0, W
-    for i, (nf, ins) in enumerate(((25, 0.0), (12, 5.0), (7, 4.5))):
+    for i, (nf, ins) in enumerate(((25, 0.0), (11, 5.0), (6, 4.5))):
         x0 += ins; x1 -= ins
         y = stack(k, x0, x1, -x1, -x0, y, nf, fh, 6, paint, rel)
         deck(k, rs, x0, x1, -x1, -x0, y, par=0.0)
         yc = crown(k, x0, x1, -x1, -x0, y, 1.6, 0x8a94a4, 0xcfe4ff, inset=0.0 if i < 2 else 0.0, gl=0.85)
         for (x, z) in ((x0 + 0.4, -x0 - 0.4), (x1 - 0.4, -x0 - 0.4), (x0 + 0.4, -x1 + 0.4), (x1 - 0.4, -x1 + 0.4)): avi(k, x, yc, z, 0.7)
         y = y   # next tier starts at the deck (the lit band wraps its foot)
-    plant(k, x0 + 3, yc, -x1 + 3, 8, 3.5, 6, lod=1); antenna(k, (x0 + x1) / 2, yc, -(x0 + x1) / 2 + 3, 16.0)
+    plant(k, x0 + 3, yc, -x1 + 3, 8, 3.5, 6, lod=1); antenna(k, (x0 + x1) / 2, yc, -(x0 + x1) / 2 + 3, 8.0)
 
 
 @K.piece('tokyo_glasstower_d', style='glasstower mansion crown', stone=0xc8ccd0, desc='230 m tower-mansion: 68 residential floors ringed by glass-railed balconies between white corner piers, podium with shops, a brightly lit crown ring and aviation lights')

@@ -12,7 +12,7 @@ from kit_lib import Kit, export_kit
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
 OUT = os.path.join(ROOT, 'assets', 'buildings', 'tokyo')
 SCRATCH = os.environ.get('KIT_SCRATCH', '/tmp/tokyo_kit')
-MODULES = ['kit_zakkyo', 'kit_house', 'kit_lowrise', 'kit_apartment', 'kit_midrise', 'kit_warehouse', 'kit_towers', 'kit_debris']
+MODULES = ['kit_zakkyo', 'kit_house', 'kit_lowrise', 'kit_apartment', 'kit_warehouse', 'kit_towers', 'kit_midrise', 'kit_debris', 'kit_extras']
 
 REG = {}
 def piece(name, **meta):
@@ -35,6 +35,7 @@ def main():
             k = Kit(n, seed=sum(map(ord, n)) + meta.get('seed', 0))
             kit_lib.ATLAS = meta.get('atlas', 1024)
             k.em_size = meta.get('em', kit_lib.ATLAS)
+            if meta.get('debris'): k.max_ppm = 160.0
             fn(k)
             # two tiny LOD1-only triangles at the LOD0 box corners, so the twin's box is exactly the LOD0's
             mn, mx = k.bbox(0); s0 = k.faces[0][0][1]; import numpy as np

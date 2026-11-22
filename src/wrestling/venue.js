@@ -47,7 +47,7 @@ const VENUES = {
     swaps: [
       [/CHICAGO HEAVYWEIGHT/g, 'TOKYO HEAVYWEIGHT'], [/Chicago Heavyweight/g, 'Tokyo Heavyweight'],
       [/LAKE MICHIGAN/g, 'TOKYO BAY'], [/Lake Michigan/g, 'Tokyo Bay'],
-      [/GRANT PARK/g, 'KOKYO GAIEN'], [/Grant Park/g, 'Kokyo Gaien'], // (the ring's site: the palace's outer garden)
+      [/GRANT PARK/g, 'HIBIYA PARK'], [/Grant Park/g, 'Hibiya Park'], // (the ring's site)
       [/THE LOOP/g, 'MARUNOUCHI'], [/the Loop/g, 'Marunouchi'],
       [/LAKE SHORE DRIVE/g, 'HIBIYA-DORI'], [/Lake Shore Drive/g, 'Hibiya-dori'],
       [/MICHIGAN AVENUE/g, 'CHUO-DORI'], [/Michigan Avenue/g, 'Chuo-dori'],

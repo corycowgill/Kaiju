@@ -126,8 +126,8 @@ def tokyo_station(b):
 
 # ------------------------------------------------------------------ Zojo-ji
 @model('zojoji', tier='A', face='east', stone=0x8a3a2a,
-       close=((-28, 9, 118), (0, 9, 74), 28),
-       desc="Zojo-ji: the vermilion two-storey Sangedatsumon gate (five bays, pent roof and hip-and-gable upper roof with curved eaves) on +Z, the stone-paved approach with lanterns and pines, the great hall (Daiden) on its stone terrace with the skirt roof, the sweeping irimoya main roof and stepped porch, the Ankokuden hall (+X) and the bell tower (-X)")
+       close=((-28, 9, 144), (0, 9, 100), 28),
+       desc="Zojo-ji: the vermilion two-storey Sangedatsumon gate (five bays, pent roof and hip-and-gable upper roof with curved eaves) on +Z, the stone-paved approach with lanterns and pines, the great hall (Daiden, its centre 155 m behind the gate: after centring the hall sits at z -62, the gate at z +93) on its stone terrace with the skirt roof, the sweeping irimoya main roof and stepped porch, the Ankokuden hall (+X) and the bell tower (-X)")
 def zojoji(b):
     VM = 0xa83a26; verm = b.cf(VM, 0.22); verm2 = b.cf(mul(VM, 0.8), 0.18); white = b.cf(0xd8d2c4, 0.14); wood = b.c(0x4a3226); stone = b.c(0x9a968a); stone2 = b.c(0x86837a)
     gold = b.c(0xc4a24a, 0.45, 0.7, emit=(0.25, 0.2, 0.08)); pav = b.c(0x8f8c84); gravel = b.c(0x9c9889); dk = b.c(0x2a2622); glow = b.glow(WARM, 0.85, 0x6a5238); ridge = b.c(0x3a3e42); under = b.c(0x5a3a2a)
@@ -159,7 +159,7 @@ def zojoji(b):
         c.rect(0, 0.45, 1, 0.5, 0x4a3226); c.rect(0, 0.92, 1, 1, 0x4a3226); c.rect(0, 0, 1, 0.07, 0x4a3226); c.flood(0.14)
     hs = b.band('hallside', 32, hallside, bay=12.0)
     st = b.band('stone', 32, p_ashlar(0x98948a, 4, 6), bay=8.0)
-    b.cap(B.rect(-50, 50, -85, 86), 0.06, gravel); b.cap(B.rect(-5, 5, -18, 80), 0.1, pav)
+    b.cap(B.rect(-50, 50, -98, 112), 0.06, gravel); b.cap(B.rect(-5, 5, -30, 106), 0.1, pav)
 
     # ---- Sangedatsumon
     g = b.sub(); W, D = 19.5, 9.0
@@ -184,7 +184,7 @@ def zojoji(b):
     jroof(g, 0, 0, W + 8.0, D + 8.0, 15.3, 6.4, kw, ridge, style='irimoya', under=verm2, gable=white, up=1.1)
     for x in (-W * 0.2, W * 0.2): lantern(g, x, 4.6, D / 2 + 0.3, 0.55, 1.3)
     g.face([(-2.2, 12.3, D / 2 - 0.5), (2.2, 12.3, D / 2 - 0.5), (2.2, 13.5, D / 2 - 0.5), (-2.2, 13.5, D / 2 - 0.5)], gold)
-    b.add(g, t=(0, 0, 74))
+    b.add(g, t=(0, 0, 100))
 
     # ---- Daiden (great hall)
     h = b.sub(); HW, HD = 40.0, 32.0
@@ -206,7 +206,7 @@ def zojoji(b):
     if h.hi:
         for i in range(n - 1): lantern(h, -HW / 2 + 0.6 + (i + 0.5) * (HW - 1.2) / (n - 1), 8.0, HD / 2 - 0.5, 0.28, 0.6, WARM)
         for x in (-11, 11): h.cyl(x, HD / 2 + 9, 0.9, 0, 1.5, 8, b.c(0x5a6a5a, 0.5, 0.5))
-    b.add(h, t=(0, 0, -42))
+    b.add(h, t=(0, 0, -55))
 
     # ---- Ankokuden (+X) and the bell tower (-X)
     a = b.sub()
@@ -215,7 +215,7 @@ def zojoji(b):
     jroof(a, 0, 0, 28, 22, 6.9, 7.2, kw, ridge, style='irimoya', under=under, gable=white, up=1.0)
     jroof(a, 0, 11, 9, 7, 6.2, 2.2, kw, ridge, style='gable', axis='z', under=under, gable=white, up=0.3)
     for x in (-3.8, 3.8): a.bx(x, 13.6, 0.45, 0.45, 0, 6.2, wood)
-    b.add(a, t=(34, 0, -34))
+    b.add(a, t=(34, 0, -46))
     s = b.sub()
     s.box(-4.5, 4.5, 0, 1.6, -4.5, 4.5, st, top=stone)
     for (x, z) in ((-3, -3), (3, -3), (3, 3), (-3, 3)): s.bx(x, z, 0.55, 0.55, 1.6, 5.4, wood)
@@ -225,10 +225,10 @@ def zojoji(b):
     b.add(s, t=(-30, 0, 30))
     # ---- lanterns, pines, the precinct wall either side of the gate
     for sx in (-1, 1):
-        b.box(sx * 13 if sx > 0 else -50, 50 if sx > 0 else -13, 0, 3.0, 73.4, 74.6, white); b.box(sx * 13 if sx > 0 else -50, 50 if sx > 0 else -13, 2.9, 3.0, 72.9, 75.1, white, bot=True); b.gable(sx * 13 if sx > 0 else -50, 50 if sx > 0 else -13, 72.9, 75.1, 3.0, 0.8, kw, white, axis='x')
-        for z in (58, 40, 22, 4): stone_lantern(b, sx * 7.5, z, 2.6)
+        b.box(sx * 13 if sx > 0 else -50, 50 if sx > 0 else -13, 0, 3.0, 99.4, 100.6, white); b.box(sx * 13 if sx > 0 else -50, 50 if sx > 0 else -13, 2.9, 3.0, 98.9, 101.1, white, bot=True); b.gable(sx * 13 if sx > 0 else -50, 50 if sx > 0 else -13, 98.9, 101.1, 3.0, 0.8, kw, white, axis='x')
+        for z in (84, 62, 40, 18, -4): stone_lantern(b, sx * 7.5, z, 2.6)
     rng = np.random.RandomState(7)
-    for (x, z) in ((-22, 64), (24, 62), (-36, 52), (38, 44), (-40, 8), (-18, 44), (20, 26), (-44, -30), (44, 4), (-42, -70), (42, -72), (-16, 82), (17, 83), (-34, 80), (36, 81)):
+    for (x, z) in ((-22, 86), (24, 84), (-36, 70), (38, 60), (-40, 14), (-18, 54), (20, 34), (-44, -30), (44, 10), (-42, -88), (42, -90), (-16, 108), (17, 109), (-34, 106), (36, 107)):
         pine(b, x, z, 8 + rng.rand() * 5, 2.8 + rng.rand() * 1.4, lean=rng.rand() * 1.6 - 0.8)
 
 

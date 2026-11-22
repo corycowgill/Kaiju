@@ -11,7 +11,7 @@ from icons_lib import *
 @model('rainbow_bridge', tier='A', face='south', stone=0xd4d4ce, water=True, waterline=True, ground=False, center=False,
        close=((-90, 30, 210), (-285, 66, 0), 26), dusk=0,
        extra="origin: 'midspan', ",
-       desc="Rainbow Bridge, whole bridge at true size, X along it: towers at x +-285 (126 m, legs at z +-17, three cross-beams), 570 m main span, side spans to the anchorage blocks (faces at x +-399, cables anchored at +-432 = 147 m), blocks to +-465, approach stubs to +-500. Double deck: upper road y 60, lower deck y 50.8 with the transit guideway; z +-14.5. Main cables are true parabolic catenaries (lit white), sparse strip suspenders, strip truss diagonals; floodlit white towers, red aviation lights. y 0 = waterline")
+       desc="Rainbow Bridge, whole bridge at true size, X along it: towers at x +-285 (126 m, legs at z +-17, three cross-beams), 570 m main span, side spans to the anchorage blocks (faces at x +-399, cables anchored at +-432 = 147 m), blocks to +-465, deck ends at +-470. Double deck: upper road y 60, lower deck y 50.8 with the transit guideway; z +-14.5. Main cables are true parabolic catenaries (lit white), sparse strip suspenders, strip truss diagonals; floodlit white towers, red aviation lights. y 0 = waterline")
 def rainbow_bridge(b):
     WH = 0xdcdcd6; wht = b.cf(WH, 0.42, tint=0xf0f4ff); wht2 = b.cf(mul(WH, 0.9), 0.3, tint=0xf0f4ff); conc = b.c(0xa4a29a); conc2 = b.c(0x8c8a84); asph = b.c(0x3c3e42); steel = b.cf(0xc8cac8, 0.1)
     cable = b.glow(WHITEL, 0.85, 0xe4e4e0); lamp = b.glow(0xffe2b0, 0.9, 0xd8d0c0); dark = b.c(0x2c2e32); fasc = b.cf(0xd0d0cc, 0.22)
@@ -24,7 +24,7 @@ def rainbow_bridge(b):
         c.rect(0, 0, 1, 1, 0xd0d2d4); c.rect(0, 0, 1, 0.2, 0x4a4e52); c.rect(0, 0.28, 1, 0.36, 0x3a6ab0); c.litp = 1.0
         for i in range(6): c.window(0.04 + i * 0.16, 0.44, 0.17 + i * 0.16, 0.84, 0x39434c, 0x8a8c8c, mull=(1, 1), sill=False)
     tr_s = b.band('train', 32, train, bay=9.0)
-    XT, XA0, XC, XA1, XE = 285.0, 399.0, 432.0, 465.0, 500.0; ZD = 14.5; ZC = 15.6; YL, YU = 50.0, 60.0; YTOP = 126.0; YSAD = 124.0; YMID = 64.5
+    XT, XA0, XC, XA1, XE = 285.0, 399.0, 432.0, 465.0, 470.0; ZD = 14.5; ZC = 15.6; YL, YU = 50.0, 60.0; YTOP = 126.0; YSAD = 124.0; YMID = 64.5
     # ---- deck: upper road slab, lower deck slab + guideway, chords, strip truss
     b.box(-XE, XE, YU - 1.0, YU, -ZD, ZD, fasc, top=asph, bot=True)
     b.box(-XE, XE, YL, YL + 0.8, -ZD, ZD, fasc, top=asph, bot=True)
@@ -74,7 +74,6 @@ def rainbow_bridge(b):
             b.face([(xi, yi, z0), (xi, yi, z1), (xo + (xi - xo) * 0.45, yi, z1), (xo + (xi - xo) * 0.45, yi, z0)][::sx], conc2)
             b.face([(xo + (xi - xo) * 0.45, yi, z0), (xo + (xi - xo) * 0.45, yi, z1), (xo, yo, z1), (xo, yo, z0)][::sx], conc2)
             b.face([(xi, yo, z1), (xi, yo, z0), (xi, yi, z0), (xi, yi, z1)][::sx], wht2)
-        b.bx(sx * 490, 0, 5, 24, 0, YL, conc)
         # ---- main cables + suspenders
         for sz in (-1, 1):
             z = sz * ZC
@@ -168,7 +167,7 @@ def national_diet_building(b):
 
 
 # ------------------------------------------------------------------ Kabuki-za
-@model('kabukiza', tier='A', face='northwest', stone=0xd8d4c8,
+@model('kabukiza', tier='A', face='southwest', stone=0xd8d4c8,
        close=((-34, 9, 92), (0, 15, 30), 30), dusk=2,
        desc="Kabuki-za: white Momoyama-revival theatre front on +Z: the great karahafu entrance gable with gold fittings and purple curtain, the big front-facing irimoya roof over the centre, gabled end pavilions with their own karahafu doors, tiled eaves, vermilion balustrades, rows of red lanterns and the drum-tower box; the plain pale 145 m office tower with vertical fins rising behind")
 def kabukiza(b):

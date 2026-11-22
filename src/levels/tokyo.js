@@ -430,7 +430,7 @@ export function buildTokyo(scene, world, opts, K) {
     });
   };
   // (the layout's ring entry may trim the runway (east) and the west screens (west) or drop the gateway)
-  if (ring) setArenaSite({ x: ring.x, z: ring.z, title: TOKYO_TITLE, place: ring.place || 'KOKYO GAIEN', fountain: false, stands: ['n', 's'].filter(standsFree).join(''), east: ring.east || 0, west: ring.west || 0, gate: ring.gate ?? true, flag: 'tokyo',
+  if (ring) setArenaSite({ x: ring.x, z: ring.z, title: TOKYO_TITLE, place: ring.place || 'HIBIYA PARK', fountain: false, stands: ['n', 's'].filter(standsFree).join(''), east: ring.east || 0, west: ring.west || 0, gate: ring.gate ?? true, flag: 'tokyo',
     // (the fight camera settles south-west of the pair, looking north-east: the Financial District skyline behind them)
     hardAz: ring.hardAz ?? -0.785 });
   const ringPoly = ring ? arenaNoTree() : null;

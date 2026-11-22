@@ -4,16 +4,19 @@ import json, os
 SCR = '/tmp/claude-0/-home-user-Kaiju/7f476fa8-12a3-5755-a2d5-0a21ceb1bd4a/scratchpad/tk_icons'
 OUT = '/home/user/Kaiju/assets/buildings/tokyo'
 ORDER = "tokyo_station national_diet_building imperial_palace_nijubashi imperial_palace_kyuden fujimi_yagura edo_castle_otemon kabukiza wako_ginza ginza_place mitsukoshi_ginza zojoji tsukiji_honganji hie_shrine atago_shrine tokyo_international_forum imperial_hotel ministry_of_justice_red_brick kantei supreme_court_japan national_theatre bank_of_japan mitsukoshi_nihonbashi nihonbashi_bridge takashimaya_nihonbashi rainbow_bridge odaiba_statue_of_liberty aqua_city_odaiba kachidoki_bridge tsukiji_outer_market toyosu_market hamarikyu_teahouse takeshiba_pier takanawa_gateway_station shimbashi_sl_plaza ginza_six".split()
+try: SITE = {e['id']: e for e in json.load(open('/home/user/Kaiju/tools/tokyo/data/landmark_sites.json'))['sites']}
+except Exception: SITE = {}
 lines = ["// Tokyo landmark models by design-icons (tools/tokyo/design/icons_build_*.py + icons_lib.py, Blender 4.5).",
          "// Paste into the level manifest. All: metres, Y up, base y = 0 (bridges / waterline models: y 0 = water level), centred X/Z, front +Z, LOD1 twin.",
          "// Every material carries an emissive map (dusk: lit windows, lanterns, floodlights; emissiveFactor 1, scale it in the look layer).",
-         "// trueHeightM = exported bbox height; face = compass word the model's +Z front should point to.",
+         "// trueHeightM = exported bbox height; face = compass word the model's +Z front should point to (nearest to landmark_sites.json frontBearing).",
          "export const TOKYO_ICON_GLBS = ["]
 for id in ORDER:
     p = os.path.join(SCR, 'stats_%s.json' % id)
     if not os.path.exists(p) or not os.path.exists(os.path.join(OUT, id + '.glb')):
         lines.append("  // %s: not built" % id); continue
     s = json.load(open(p)); w, h, d = s['bbox']
+    if id in SITE and SITE[id].get('frontBearing') is not None: s['face'] = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'][int((SITE[id]['frontBearing'] % 360) / 45 + 0.5) % 8]
     key = ("ids: [%s]" % ', '.join("'%s'" % i for i in s['ids'])) if s.get('ids') else "id: '%s'" % id
     ex = s.get('extra') or ''
     if s.get('waterline'): ex += 'onWater: true, waterline: true, '

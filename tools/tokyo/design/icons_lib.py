@@ -1045,6 +1045,7 @@ def jroof(b, cx, cz, w, d, y, h, tile, ridge, style='irimoya', up=None, hipf=0.4
     h = height to the ridge top, ridge along X (axis 'z': along Z). style: 'irimoya' (hip-and-gable), 'hip' (yosemune / hogyo), 'gable' (kirizuma)."""
     if axis == 'z':
         s = b.sub(); jroof(s, 0, 0, d, w, y, h, tile, ridge, style, up, hipf, gable, under, 'x', th, rl, orn, p, soffit); b.add(s, t=(cx, 0, cz), ry=90); return y + h
+    soffit = soffit and not os.environ.get("NOSOFFIT")
     up = h * 0.14 if up is None else up; gable = gable or b.c(0xd8d4c8); under = under or b.c(0x4a3a30)
     isf = tile[0] == 'f'; bay = tile[2] if isf else 1.0; n = b.d(4, 2)
     def Q(pts, us, ts):
@@ -1303,6 +1304,8 @@ def arch_bridge(b, x0, x1, zc, width, n, y0, ys, rise, yt, skin, soffit, pier=0.
                 z = zc + sz * width / 2; pw = (bw - ow)
                 b.prism([(a - pw / 2, z), (a + pw / 2, z), (a, z + sz * pw * 0.9)], y0, ys + rise * 0.55, cutwater, top=cutwater)
     if deck is not None: b.face([(x0, yt, zc + width / 2), (x1, yt, zc + width / 2), (x1, yt, zc - width / 2), (x0, yt, zc - width / 2)], deck)
+    za, zb = zc - width / 2, zc + width / 2
+    b.face([(x0, y0, za), (x0, y0, zb), (x0, yt, zb), (x0, yt, za)], soffit); b.face([(x1, y0, zb), (x1, y0, za), (x1, yt, za), (x1, yt, zb)], soffit)
 
 
 def p_shiro(c):

@@ -45,7 +45,7 @@ export function tokyoFacade(material, file) {
   material.roughness = glass ? 0.35 : Math.max(material.roughness, /roof/i.test(material.name) ? 0.8 : 0.7);
   material.metalness = 0;
   // (dusk: a model's own emissive map - lit windows, signboards, lanterns - glows; a flat emissive colour stays low)
-  material.emissiveIntensity = material.emissiveMap ? 1.0 : Math.min(material.emissiveIntensity, 0.25);
+  material.emissiveIntensity = material.emissiveMap ? 0.55 : Math.min(material.emissiveIntensity, 0.25);
 }
 /** Per frame (world time). */
 export function tickTokyoMaterials(time) { tickChicagoMaterials(time); }

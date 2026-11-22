@@ -32,17 +32,18 @@ def ginza_place(b):
     shop = b.band('shop', 64, p_curtain(0x566a78, 4, 2, 0x3a3e42, 2.0, 0.15, lit=1.0, k=1.0), bay=8.0)
     slot = b.band('slot', 32, p_curtain(0x566a78, 8, 1, 0x4a4e52, 1.4, 0.1, lit=0.9, k=0.9), bay=10.0)
     HX, HZ, RC = 13.0, 14.0, 3.0; ns = b.d(3, 1)
+    b.box(-4, 4, 3.4, 3.8, HZ - 0.6, HZ + 1.6, wh2, bot=True); b.box(HX - 0.6, HX + 1.6, 3.4, 3.8, -4, 4, wh2, bot=True)
     def ring(k, y, ins=0.0):
         pts = []
         for (cx, cz, a0) in ((HX - RC, HZ - RC, 0), (HX - RC, -HZ + RC, 90), (-HX + RC, -HZ + RC, 180), (-HX + RC, HZ - RC, 270)):
             for i in range(ns + 1):
                 a = math.radians(a0 + 90 * i / ns); pts.append(((cx + (RC - ins) * math.sin(a)) * k, y, (cz + (RC - ins) * math.cos(a)) * k))
-        return pts[::-1]
+        return pts
     def band(y0, y1, n, skin=lt):
         h = (y1 - y0) / n
-        for i in range(n if b.hi else 1):
-            ya, yb = (y0 + i * h, y0 + (i + 1) * h) if b.hi else (y0, y1)
-            b.loft([ring(1.0, ya), ring(1.035, yb)], F(skin, bay=10.0)); b.face(ring(1.035, yb)[::-1], wh2) if b.hi else None
+        for i in range(n):
+            ya, yb = (y0 + i * h, y0 + (i + 1) * h)
+            b.loft([ring(1.0, ya), ring(1.035, yb)], F(skin, bay=10.0)); b.face(ring(1.035, yb)[::-1], wh2)
             if b.hi:   # diagonal ribs on each flat side
                 for (p0, p1, m) in (((-HX + RC, HZ), (HX - RC, HZ), 5), ((HX, HZ - RC), (HX, -HZ + RC), 5), ((HX - RC, -HZ), (-HX + RC, -HZ), 3), ((-HX, -HZ + RC), (-HX, HZ - RC), 3)):
                     ox, oz = (p1[1] - p0[1]), -(p1[0] - p0[0]); L = math.hypot(ox, oz); ox, oz = -ox / L * 0.2, -oz / L * 0.2
@@ -63,7 +64,6 @@ def ginza_place(b):
         for y in (24.0, 44.5):
             r = ring(1.0, y + 1.1, 0.15)
             for i in range(len(r)): b.beam(r[i], r[(i + 1) % len(r)], 0.08, 0.08, rail)
-        b.box(-4, 4, 3.4, 3.8, HZ - 0.6, HZ + 1.6, wh2, bot=True); b.box(HX - 0.6, HX + 1.6, 3.4, 3.8, -4, 4, wh2, bot=True)
     for (x, z) in ((-6.5, -7.5), (6.5, 7.5)): avlight(b, x, 57.0, z, 0.5)
 
 
@@ -102,7 +102,7 @@ def ministry_of_justice(b):
             for i in range(4): dormer(sx * (19 + i * 8.2), -10.2, 17.6, -1)
             for i in range(3): b.bx(sx * (22 + i * 11), 0, 1.6, 2.6, 21.5, 3.2, brc, top=dark); b.bx(sx * (22 + i * 11), 0, 2.0, 3.0, 24.3, 0.4, wh)
         for x in (-7, 7): dormer(x, 13.2, 22.0)
-        b.tube((0, 28.9, 1), (0, 33.5, 1), 0.2, cu, seg=4, r1=0.03)
+    b.tube((0, 28.9, 1), (0, 33.5, 1), 0.2, cu, seg=4, r1=0.03)
     for sx in (-1, 1):
         x0, x1 = (49, 65) if sx > 0 else (-65, -49)
         b.stack(B.rect(x0, x1, -20, 16), 0, [(6.0, g_s), (10.5, u_s), (3.5, a_s)], top=slc); mansard(x0, x1, -20, 16, 20.0, 27.0, 5.0)
@@ -252,6 +252,12 @@ def takanawa_gateway(b):
     else:
         for sz in (-1, 1):
             for x in (-40, 0, 40): b.bx(x, sz * (ZW - 2.4), 0.8, 0.8, YD + 0.8, 13.6, wood2)
+    if b.hi:
+        for i in range(14):
+            x = -XW + 5 + i * (2 * XW - 10) / 13
+            for sz in (-1, 1): b.bx(x, sz * (ZW - 2.9), 0.3, 0.3, YD + 0.8, 12.2, wood); b.bx(x, sz * ZW, 0.9, 0.5, 0, YD, conc)
+        for y in (12.8, 16.8): b.box(-XW + 3.8, XW - 3.8, y, y + 0.3, -ZW + 2.8, ZW - 2.8, wood2, bot=True, notop=True)
+        for x in (-30, -10, 10, 30): b.box(x - 3, x + 3, YD + 0.8, YD + 4.2, -3, 3, wh, top=wood2)
     # plaza stairs + escalator box on +Z, entrance canopy
     ns = b.d(8, 2)
     for k in range(ns): b.box(-12, 12, 0, YD * (ns - k) / ns - 0.001, ZW + 3 + 14.0 * k / ns, ZW + 3 + 14.0 * (k + 1) / ns, pav if k % 2 else conc)

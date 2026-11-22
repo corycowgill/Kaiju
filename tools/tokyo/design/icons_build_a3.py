@@ -99,6 +99,7 @@ def wako_ginza(b):
         for (x0, x1, z0, z1) in ((-11, -4, -14, -6), (-10, -6, 2, 8)): b.box(x0, x1, 31.0, 33.4, z0, z1, gr2, top=roof)
     b.box(-2, 3, 3.6, 4.0, 18, 20.2, bronze, bot=True)
     if not b.hi:
+        for (x, z) in arc: b.tube((x, 6.9, z), (x, 27.4, z), 0.42, gr, seg=4)
         for (p0, p1, n) in segs:
             if n > 1: pilasters(b, p0, p1, 6.9, 27.4, n + 1, 0.8, 0.3, gr)
     else:
@@ -192,6 +193,9 @@ def tsukiji_honganji(b):
             b.bx(px, pz, 2.2, 2.2, 19.0, 1.6, gr2); b.lathe(px, pz, b.d([(1.0, 20.6), (1.1, 21.6), (0.5, 22.6), (0.2, 23.0), (0.0, 24.2)], [(1.0, 20.6), (0.9, 22.0), (0.0, 24.2)]), b.d(8, 4), cop)
         b.box(x0, x1, 3.0, 12.0, -30, -22, ash, top=roof)
         stone_lantern(b, sx * 18, 26, 3.0)
+        if b.hi:
+            pilasters(b, (sx * 37, 12) if sx > 0 else (sx * 37, -22), (sx * 37, -22) if sx > 0 else (sx * 37, 12), 3.0, 15.0, 6, 0.9, 0.35, gr2)
+            for x in (5, 10): b.bx(sx * x, 14.2, 1.6, 0.5, 3.0, 16.0, gr2)
 
 
 # ------------------------------------------------------------------ Tokyo International Forum

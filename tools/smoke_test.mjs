@@ -70,7 +70,7 @@ if (argv[0] !== '--run') {
       return (j.nodes || []).reduce((n, nd) => n + (nd.mesh !== undefined ? j.meshes[nd.mesh].primitives.length : 0), 0);
     };
     let lodPairs = 0;
-    for (const tree of ['assets', 'assets/m', 'assets/ktx2']) for (const sub of ['buildings/chicago', 'buildings/dc', 'buildings/nyc', 'buildings/seattle', 'buildings/sf', 'buildings/tokyo', 'trees', 'props', 'vehicles']) {
+    for (const tree of ['assets', 'assets/m', 'assets/ktx2']) for (const sub of ['buildings/chicago', 'buildings/dc', 'buildings/nyc', 'buildings/seattle', 'buildings/sf', 'buildings/tokyo', 'trees', 'props']) {
       const dir = path.join(REPO, tree, sub);
       if (!fs.existsSync(dir)) continue;
       for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('_lod1.glb'))) {

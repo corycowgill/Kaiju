@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.15.1', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.16.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -816,8 +816,8 @@ function _captureEnv() {
 }
 if (Q_HIGH) _captureEnv();
 
-// The default play-limit barrier (every level brings its own: see applyLevelLook)
-const _horizon = [];
+// A stand-in play-limit barrier until the first city is built (every level brings its own: buildWorldCity
+// swaps it in); never added to the scene
 {
   // ---- Soft barrier ring at the play limit ----
   // Faint cyan vertical band at radius 330 to give the player a visible
@@ -830,11 +830,9 @@ const _horizon = [];
   const barrierGeom = new THREE.CylinderGeometry(338, 338, 22, 64, 1, true);
   const barrier = new THREE.Mesh(barrierGeom, barrierMat);
   barrier.position.y = 11;
-  scene.add(barrier);
   // Animate barrier opacity each frame so it pulses faintly when the
   // kaiju gets close. Stash refs for the main update loop to read.
   window.__barrier = { mesh: barrier, mat: barrierMat };
-  _horizon.push(barrier);
 }
 
 // ------------------------- World object -------------------------
@@ -1240,7 +1238,7 @@ function _applyLevelStatics(level) {
   // light-uniform uploads. Hide them outside Tokyo; the lit programs relink
   // once on a level switch (accepted on phones). A/B, emulated phone MED at
   // 4x CPU: composer CPU p50 17.7 -> 16.9 ms, frame p50 22.5 -> 21.9 ms.
-  if (isMobile) _neonLights.forEach((l) => { l.visible = level === 'tokyo'; });
+  if (isMobile) _neonLights.forEach((l) => { l.visible = false; }); // (the old Tokyo's neon: off on every level)
   for (const k of Object.keys(L.sky)) skyMat.uniforms[k].value.fromArray(L.sky[k]);
   skyMat.uniforms.nebula.value = L.nebula;
   _sunOffset.fromArray(L.sunOffset || _TOKYO_SUN);
@@ -1248,7 +1246,7 @@ function _applyLevelStatics(level) {
   if (L.sunOffset) skyMat.uniforms.sunDir.value.fromArray(L.sunOffset).normalize();
   else skyMat.uniforms.sunDir.value.set(-0.55, 0.12, 0.25).normalize();
   // Until a kaiju exists to follow; Tokyo's boot position otherwise
-  if (level !== 'tokyo') sun.position.copy(_sunOffset); else sun.position.set(-90, 60, 40);
+  sun.position.copy(_sunOffset);
   if (bloomPass && L.bloom) { bloomPass.threshold = L.bloom.threshold; bloomPass.strength = L.bloom.strength; }
   const cine = window.__cinePass;
   if (cine && L.grade) {
@@ -1257,7 +1255,6 @@ function _applyLevelStatics(level) {
     cine.uniforms.highTint.value.fromArray(L.grade.high);
   }
   // The Tokyo backdrop ring/mountains/barrier would stand in Lake Michigan
-  for (const o of _horizon) o.visible = level === 'tokyo';
   // Chicago's dome follows the camera (look.js); Tokyo's stays at the origin
   sky.material = _LAYER_LOOKS[level] ? _chiSkyMat : skyMat;
   sky.position.set(0, 0, 0);
@@ -3995,7 +3992,7 @@ function startWave(n) {
   const maxSpawnR = cityRadius - spawnMargin;
   // Levels with explicit bounds (Chicago) spawn inside the play rectangle and
   // off the water; ground units retry until both hold.
-  const bd = world.level !== 'tokyo' ? world.bounds : null;
+  const bd = world.bounds || null;
   const spawnOK = (x, z, air) => (bd
     ? x > bd.minX + spawnMargin && x < bd.maxX - spawnMargin && z > bd.minZ + spawnMargin && z < bd.maxZ - spawnMargin
       && (air || !world.isWater || !world.isWater(x, z))
