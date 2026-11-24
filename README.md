@@ -2,7 +2,7 @@
 
 > A 100% browser-based, three.js-powered Tokyo destruction simulator. Pick a giant monster. Stomp the city. Vaporize the army. Repeat until the high score weeps.
 
-**Play it:** [corycowgill.github.io/Kaiju](https://corycowgill.github.io/Kaiju/). Works on iPhone Safari (landscape) too.
+**GitHub Pages URL (once enabled):** [corycowgill.github.io/Kaiju](https://corycowgill.github.io/Kaiju/). Works on iPhone Safari (landscape) too.
 
 A [Hallucinated Games](https://www.hallucinatedgames.com) joint -- the studio that lets the model cook, then eats whatever comes out of the oven.
 
@@ -191,9 +191,11 @@ The speaker button mutes everything (SFX + music).
 
 ## Run It Locally
 
-The hosted game is published by GitHub Pages from the root of `main`.
-Pushing changes to `main` automatically updates the site. `.nojekyll` keeps
-the HTML, ES modules, and game assets served as static files without Jekyll processing.
+To enable hosting, open the repository's **Settings → Pages**, choose
+**Deploy from a branch**, select **main** and **/ (root)**, then save.
+Once enabled, pushing changes to `main` automatically updates the site.
+`.nojekyll` keeps the HTML, ES modules, and game assets served as static files
+without Jekyll processing.
 
 Any static server will do. Pick whichever doesn't make you sigh:
 
