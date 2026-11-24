@@ -351,7 +351,10 @@ if (mode === 'wrestling') await step('wrestling', async () => {
     }
   };
   world.bounds = res.bounds || { minX: -330, maxX: 330, minZ: -330, maxZ: 330 };
+  const { createAchievementTracker } = await imp('achievements.js');
+  const achievements = createAchievementTracker({ storage: globalThis.localStorage });
   const ctx = {
+    achievements,
     scene, camera: new THREE.PerspectiveCamera(), world, audio: new Proxy({}, { get: () => noop }), debug: true, MONSTERS: MON,
     quality: { tier: tier, isMobile: Q.isMobile, particleMul: 1 }, events: null, renderer: null, vfx, frozen: false,
     get rival() { return { key: 'mecha', cfg: MON.mecha, glb: kaijuGLB.mecha }; },
@@ -424,6 +427,7 @@ if (mode === 'wrestling') await step('wrestling', async () => {
     blocks.length = 0;
     drive.player = {}; drive.rival = {};
     kaijuGLB.godzilla.root.position.set(res.spawn.x, 0, res.spawn.z);
+    achievements.beginRun({ mode: 'wrestling', monster: 'godzilla', level });
     wr.start({ rival: { key: 'mecha', cfg: MON.mecha, glb: kaijuGLB.mecha } });
     const { W } = wr, qa = wr.qa, M = W.match.state;
     const pl = W.player;
@@ -667,6 +671,8 @@ if (mode === 'wrestling') await step('wrestling', async () => {
     if (rivalRoot.parent || kaijuGLB.mecha.root.parent) fail('wrestling: dispose() left the rival in the scene');
     if (rivalBody !== null || control.external) fail('wrestling: dispose() left the rival registered / the player under external control');
     if (kaijuGLB.godzilla.root.rotation.order !== 'XYZ' || kaijuGLB.godzilla.root.rotation.x !== 0) fail('wrestling: dispose() left the player root tilted / with a changed rotation order');
+    if (achievements.unlockedAt('main-event-debut') === null || achievements.unlockedAt('and-new') === null) fail('wrestling: real match start / victory did not award trophies');
+    achievements.endRun();
   }
   scene.remove(kaijuGLB.godzilla.root);
   if (!(A.throwables && A.throwables.items.length >= 8)) fail(`wrestling: only ${A.throwables ? A.throwables.items.length : 0} park throwables placed round the ring (spots)`);

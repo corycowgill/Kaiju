@@ -76,6 +76,37 @@ Plug it in. The game auto-detects it via the Gamepad API.
 
 Chained kills/destruction ramp a **combo multiplier** up to 5x. Big kills and the Ultimate trigger a **brief slow-mo** because we're not above it.
 
+### Achievements and trophies
+
+Open **Trophy Room** from the mode menu, pause menu, or results screen to browse
+48 achievements: 24 for Havoc, 20 for wrestling, and four Legacy milestones.
+Each has a custom illustrated badge, a Bronze / Silver / Gold / Platinum tier,
+trophy points, and visible progress. Search by name or requirement and filter
+by mode or unlock status. The final Platinum requires every other trophy.
+
+Havoc trophies cover destruction, military kills, combos, score, cleared waves,
+objectives, pickups, powers, and active survival time. Wrestling trophies track
+pins, knockouts, reversals, suplexes, signatures, finishers, near-fall escapes,
+environmental throws, match wins, and title defenses. Legacy trophies reward
+playing all nine kaiju, visiting all six cities, and winning all six city titles.
+VS Duel and Lone Soldier do not advance these trophies.
+
+Unlocks display a queued in-game toast with the badge and a short chime that
+respects the sound setting. Progress and unlock dates save automatically in
+this browser on this device, across restarts and visits. Run and match targets
+must be completed together; their progress shows your previous best. Loading,
+pausing, and background time do not count toward survival. With browser storage
+disabled or full, trophies still work for the current session.
+
+Trophy Room supports mouse, touch, keyboard (Tab / Shift+Tab; Esc to close), and
+gamepad (left/right to filter, up/down to scroll, A to activate, B/Start to close).
+Opening it during a paused run preserves the pause when you close it.
+
+The ledger lives in `src/achievements.js`, its collection and toasts in
+`src/achievementUI.js` and `src/achievements.css`, and wrestling event subscriptions
+in `src/wrestling/achievements.js`. Run `npm test` for progression and save tests;
+`npm run smoke` also checks trophy unlocks through the real wrestling director.
+
 ---
 
 ## How It Was Built

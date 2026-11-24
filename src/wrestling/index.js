@@ -23,6 +23,7 @@ import { createSfx } from './sfx.js';
 import { createArena } from '../levels/chicago_arena.js';
 import { createSpots } from './spots.js';
 import { createCommentary } from './commentary.js';
+import { bindWrestlingAchievements } from './achievements.js';
 
 /**
  * @param ctx  the context game.js builds (see notes/wrestling_api.md)
@@ -31,6 +32,7 @@ import { createCommentary } from './commentary.js';
  */
 export function createWrestling(ctx) {
   const bus = createBus();
+  let releaseAchievements = () => {};
   ctx.events = bus;
   /** The wrestling runtime every module factory receives next to ctx. */
   const W = {
@@ -128,6 +130,7 @@ export function createWrestling(ctx) {
       W.running = true;
       W.input.start(); W.ai.start(); W.grapple.start(); W.anims.start();
       for (const m of show) m.start();
+      releaseAchievements = bindWrestlingAchievements(bus, ctx.achievements);
       W.match.start(); // last: its opening events reach every listener
     },
     /** dt: simulation seconds (0 during hit-stop, scaled in slow-mo). dtReal: real seconds, clamped to 0.05. */
@@ -168,6 +171,7 @@ export function createWrestling(ctx) {
     dispose() {
       if (!W.running) return;
       W.running = false;
+      releaseAchievements();
       for (const m of show) m.dispose();
       W.match.dispose(); W.anims.dispose(); W.input.dispose(); W.ai.dispose(); W.grapple.dispose();
       ctx.setRivalBody(null);

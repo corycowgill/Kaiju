@@ -358,6 +358,17 @@ class Audio {
     UI_CUE[kind](this, t + 0.005);
   }
 
+  // A short original trophy flourish through the existing master/mute control.
+  achievement(tier) {
+    if (!this.ctx || this.muted || this.ctx.state !== 'running') return;
+    const t = this.ctx.currentTime + 0.01;
+    const notes = tier === 'platinum' ? [523.25, 659.25, 783.99, 1046.5] : [659.25, 783.99, 1046.5];
+    notes.forEach((hz, i) => {
+      this._uiTone(t + i * 0.11, 'sine', hz, hz, 0, 0.012, 0.6, 0.13);
+      this._uiTone(t + i * 0.11, 'triangle', hz * 0.5, hz * 0.5, 0, 0.012, 0.4, 0.055);
+    });
+  }
+
   // A pitch-gliding oscillator: f0 -> f1 Hz over glide s, attack att, exponential decay to dur.
   _uiTone(t, type, f0, f1, glide, att, dur, vol) {
     const c = this.ctx, o = c.createOscillator(), g = c.createGain();

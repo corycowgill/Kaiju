@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.16.2', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.17.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -39,6 +39,8 @@ import { releasePowerPart, warmPowerPool } from './powerVfx.js';
 import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk, waterDepth } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures, flipbooksReady } from './vfx.js';
 import { createWrestling } from './wrestling/index.js';
+import { createAchievementTracker } from './achievements.js';
+import { createAchievementUI } from './achievementUI.js';
 import { prebakeAnims } from './wrestling/anims.js';
 import { matchVoiceIds } from './wrestling/commentary.js';
 import { DC_LOOK } from './levels/dcLook.js';
@@ -1400,6 +1402,34 @@ for (const k of Object.keys(state)) {
   _STATE_INIT[k] = (v && v.isVector3) ? v.clone() : (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
 }
 
+// The career ledger lives outside per-run state, so restart and title defenses
+// retain earned trophies. Storage can be disabled without breaking gameplay.
+let trophyUI;
+let trophyStorage;
+try { trophyStorage = window.localStorage; } catch { /* session-only */ }
+const achievements = createAchievementTracker({ storage: trophyStorage,
+  onUnlock: (a) => trophyUI?.enqueue(a), onChange: () => trophyUI?.refresh(),
+});
+let _trophyWasPaused = false;
+trophyUI = createAchievementUI(achievements, {
+  onOpen() {
+    _trophyWasPaused = state.paused;
+    if (state.kaiju && !state.gameOver) state.paused = true;
+    state.mouseDown = false;
+    for (const code of Object.keys(keys)) _setKey(code, false);
+    document.exitPointerLock?.();
+  },
+  onClose() {
+    if (state.kaiju && !state.gameOver && !state.upgradePending) state.paused = _trophyWasPaused;
+    const pad = [...(navigator.getGamepads?.() || [])].find((p) => p?.connected);
+    if (pad) for (const i of [0, 1, 9, 12, 13, 14, 15]) _menuPad.prevDown[i] = !!pad.buttons[i]?.pressed;
+  },
+  chime: (tier) => audio.achievement(tier),
+});
+trophyUI.refresh();
+window.addEventListener('pagehide', () => achievements.flush());
+document.addEventListener('visibilitychange', () => { if (document.hidden) achievements.flush(); });
+
 // requestPointerLock() returns a Promise in modern browsers and rejects
 // (WrongDocumentError, or "user exited lock too recently") when called
 // from a non-focused/transitioning document. Swallow those so they don't
@@ -1701,6 +1731,7 @@ function confirmMenu() {
   if (target.classList.contains('monster-card') && _menuVisible()) _menuFocus(document.getElementById('startBtn'));
 }
 function pollMenuGamepad(dt) {
+  if (trophyUI.isOpen) return;
   const sheet = !_menuVisible() && !_upgradeVisible() && _sheetTargets().length > 0;
   if (!sheet) _sheetWasUp = false;
   if (!_menuVisible() && !_upgradeVisible() && !sheet) return;
@@ -1946,7 +1977,7 @@ const _touchControls = []; // extra control elements a mode registered (ctx.inpu
 function isOnControl(target) {
   if (!target || !target.closest) return false;
   for (let i = 0; i < _touchControls.length; i++) if (_touchControls[i].contains(target)) return true;
-  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #vs-moves, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal');
+  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #vs-moves, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal, #trophy-room');
 }
 window.addEventListener('touchstart', (e) => {
   if (!touchUI || state.gameOver || !state.kaiju) return;
@@ -3113,6 +3144,7 @@ function _playAgain() {
   startGame(key);
 }
 function restartInPlace() {
+  achievements.endRun();
   _mode.dispose(); // the mode's own objects, DOM and listeners (before the scene goes)
   _resetSeams();
   clearDuel();
@@ -3222,6 +3254,7 @@ async function startGame(key) {
     await _startGameInner(key);
   } catch (e) {
     reportLoadError('startGame', key, e);
+    achievements.endRun();
     if (modePicker.value === 'vs') {
       clearDuel();
       state.kaiju?.root.removeFromParent();
@@ -3584,6 +3617,8 @@ async function _startGameInner(key) {
   // falls back to a procedural ambient drone if no asset is present.
   audio.startMusic();
 
+  achievements.beginRun({ mode: gameMode === 'title' ? 'wrestling' : gameMode === 'havoc' ? 'havoc' : null,
+    monster: key, level: world.level || selectedLevel });
   if (gameMode === 'lone') {
     const role = document.getElementById('lone-role').value;
     const viewModel = await loadLoneView(role);
@@ -4097,6 +4132,7 @@ function comboMult() { return Math.min(5, 1 + state.combo * 0.1); }
 function bumpCombo() {
   if (_dmgSrc) return;
   state.combo += 1;
+  achievements.havoc('combo', state.combo);
   state.comboTimer = state.comboMaxTimer;
   if (state.combo === 10) toastMini('COMBO x2!', 'good');
   if (state.combo === 25) toastMini('UNSTOPPABLE!', 'good');
@@ -4123,6 +4159,7 @@ function registerKill() {
     state._multikill = 1;
   }
   state._lastKillT = now;
+  achievements.havoc('multikill', state._multikill);
   const tier = MULTIKILL_TIERS[Math.min(state._multikill, MULTIKILL_TIERS.length - 1)];
   if (tier) {
     toastMini(`${tier.label} +${tier.score}`, tier.color);
@@ -4173,35 +4210,42 @@ function maybeDropPickup(pos, source = 'building') {
 }
 
 world.onTankKilled = () => {
+  if (!_dmgSrc) achievements.havoc('kill', 'tank');
   if (!_dmgSrc) state.tanksKilled++;
   audio.vehicleDestroyed('tank');
   addScore(250); addRage(8); bumpCombo(); registerKill();
   progressObjective('tanks');
 };
 world.onHeliKilled = () => {
+  if (!_dmgSrc) achievements.havoc('kill', 'heli');
   if (!_dmgSrc) state.helisKilled++;
   audio.vehicleDestroyed('heli');
   addScore(350); addRage(10); bumpCombo(); registerKill();
 };
 world.onMechKilled = () => {
+  if (!_dmgSrc) achievements.havoc('kill', 'mech');
   if (!_dmgSrc) state.mechsKilled++;
   addScore(700); addRage(18); bumpCombo(); registerKill();
 };
 world.onJetKilled = () => {
+  if (!_dmgSrc) achievements.havoc('kill', 'jet');
   if (!_dmgSrc) state.jetsKilled++;
   audio.vehicleDestroyed('jet');
   addScore(450); addRage(12); bumpCombo(); registerKill();
   toastMini('JET DOWN!', 'good');
 };
 world.onArtilleryKilled = () => {
+  if (!_dmgSrc) achievements.havoc('kill', 'artillery');
   if (!_dmgSrc) state.artilleryKilled++;
   addScore(400); addRage(10); bumpCombo(); registerKill();
 };
 world.onSoldierKilled = () => {
+  if (!_dmgSrc) achievements.havoc('kill', 'soldier');
   if (!_dmgSrc) state.soldiersKilled++;
   addScore(50); addRage(2); registerKill();
 };
 world.onBossKilled = () => {
+  if (!_dmgSrc) achievements.havoc('kill', 'boss');
   state.bossesKilled++;
   addScore(5000); addRage(40);
   toast('BOSS DESTROYED · +5000', 'good');
@@ -4226,6 +4270,7 @@ world.onCarDestroyed = () => {
   audio.carCrush();
   if (_dmgSrc) return; // not the player's doing
   state.carsCrushed++;
+  achievements.havoc('cars');
   addScore(80); addRage(2);
   progressObjective('cars');
 };
@@ -4237,6 +4282,7 @@ world.onCivilianStomped = () => {
   progressObjective('civilians');
 };
 world.onPickup = (type, pos) => {
+  achievements.havoc('pickups');
   audio.pickup(type);
   if (pos) world.spawnSparks(pos.clone().setY(2.5), 12);
   if (type === 'hp') {
@@ -4276,6 +4322,7 @@ function progressObjective(kind) {
   let shown = 0;
   if (obj.current >= obj.goal) {
     obj.complete = true;
+    achievements.havoc('objectives');
     const bonus = 1500 + state.wave * 250;
     addScore(bonus);
     shown = Math.floor(bonus * comboMult());
@@ -4298,6 +4345,7 @@ world.onBuildingDestroyed = (b) => {
   // Brought down by someone else (the rival kaiju): no score, rage, combo, objective or pickup
   if (_dmgSrc) { audio.collapse(); return; }
   state.buildingsDestroyed++;
+  achievements.havoc('building');
   if (_mode.id !== 'wrestling') havocBuildingCall(b); // (the title match calls its own: spots.js, match.js)
   audio.collapse();
   progressObjective('buildings');
@@ -4344,6 +4392,9 @@ world.spawnArtilleryShell = (origin, target) => {
 //   keepPose (the mode has posed the kaiju: no death / dance clip from here) }
 function gameOver(victory, text) {
   if (state.gameOver) return;
+  achievements.havoc('score', state.score);
+  achievements.flush();
+  if (achievements.mode === 'havoc') achievements.endRun();
   state.gameOver = true;
   wrestling?.reset();
   text = text || _mode.gameOverText(victory) || null;
@@ -4701,6 +4752,7 @@ function fireBeam() {
   const cfg = state.monsterCfg.beam;
   if (state.rage < cfg.cost || state.cooldowns.beam > 0) return;
   state.rage -= cfg.cost;
+  achievements.havoc('power', 'beam');
   const variant = state.monsterCfg.variant;
   const profile = KAIJU_POWERS[variant];
   // Gorrak's breath ends in an atomic detonation: a longer recharge
@@ -4875,6 +4927,7 @@ function fireRoar() {
   const profile = KAIJU_POWERS[variant];
   if (state.rage < cfg.cost || state.cooldowns.roar > 0) return;
   state.rage -= cfg.cost;
+  achievements.havoc('power', 'roar');
   state.cooldowns.roar = 5.0;
   state._roarStanceT = 0.7; // pose: head tilts BACK, jaw wide open
   if (state.kaiju.glb) {
@@ -4945,6 +4998,7 @@ function fireCharge() {
   const profile = KAIJU_POWERS[variant];
   if (state.rage < cfg.cost || state.cooldowns.charge > 0) return;
   state.rage -= cfg.cost;
+  achievements.havoc('power', 'charge');
   state.cooldowns.charge = 6.0;
   state._chargeStanceT = 0.45; // pose: deep forward lean, head down
   if (state.kaiju.glb) {
@@ -5035,6 +5089,7 @@ function fireStomp() {
   if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   if (state.rage < 15 || state.cooldowns.stomp > 0) return;
   state.rage -= 15;
+  achievements.havoc('power', 'stomp');
   state.cooldowns.stomp = 1.5;
   // Begin a JUMP. The actual ground impact (shockwave + AOE damage) fires
   // at the apex's down-leg in updateKaijuAnim when the jump phase lands.
@@ -5055,6 +5110,7 @@ function fireUltimate() {
   if (lone || (wrestling && wrestling.locked(wrestling.player))) return;
   if (state.rage < 100 || state.cooldowns.ult > 0) return;
   state.rage = 0;
+  achievements.havoc('power', 'ult');
   // Long cooldown to keep ultimates as a real moment of power instead
   // of a spammable spell. The HUD power bar already shows the countdown
   // generically from state.cooldowns[id].
@@ -7087,6 +7143,7 @@ const _playerView = {
 
 // ---- ctx: the one object the wrestling modules get ----
 const ctx = {
+  achievements,
   scene, camera, renderer, world, audio, vfx, MONSTERS,
   debug: /[?&]debug\b/.test(location.search),
   quality: Object.freeze({ tier: QUALITY, high: Q_HIGH, med: Q_MED, low: Q_LOW, isMobile, touchUI, glbContent: GLB_CONTENT,
@@ -7196,6 +7253,7 @@ function _wavesUpdate() {
   // Wave check
   if (state.inWave && world.enemies.length === 0) {
     state.inWave = false;
+    achievements.havoc('wave', state.wave);
     setTimeout(() => {
       if (state.gameOver) return;
       state.score += 1000;
@@ -7325,10 +7383,11 @@ function tick(now) {
   const dt = frozen ? 0 : dtReal * (slowActive ? state.slowMoScale : 1);
   _lastDt = dt;
   if(state.paused&&state.kaiju&&!state.gameOver&&!state.upgradePending){
-    readGamepad();if(padInput.pressed.pause)togglePause(false);
+    readGamepad();if(padInput.pressed.pause&&!trophyUI.isOpen)togglePause(false);
   }
   const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible') && !_settling; // (_settleGpu: the first frames play under it)
   if (!state.paused && !state.gameOver && !loadingUp) {
+    if (state.kaiju && !_startingGame) achievements.advance(dtRaw, state.score);
     state.elapsedTime += dtRaw;
     world.time += dt;
     skyMat.uniforms.time.value = world.time;
@@ -7359,7 +7418,9 @@ function tick(now) {
   _in.wheel = 0;
   // Menu navigation (gamepad) -- runs whenever the menu or upgrade modal
   // is on screen, regardless of paused/gameOver state.
-  pollMenuGamepad(dtRaw);
+  const trophyWasOpen = trophyUI.isOpen;
+  trophyUI.update(dtRaw, !_startingGame && !_loadingScreenEl?.classList.contains('visible'));
+  if (!trophyWasOpen) pollMenuGamepad(dtRaw);
   // Look layer (look.js): the slide toward dusk advances with play time; the
   // kaiju positions feed the analytic shadows. The ultimate's additive domes
   // fill the frame for ~2 s after it fires (its 20 s cooldown is the clock):

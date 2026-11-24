@@ -1,0 +1,130 @@
+/* One custom image atlas: all 48 badge illustrations, one small request. */
+.trophy-art { display: block; flex: none; width: 82px; height: 82px; background: url('../assets/ui/achievements/trophies.webp') 0 0 / 800% 600% no-repeat; border-radius: 10px; }
+#trophy-room { --tr-accent: #f4c772; position: fixed; inset: 0; margin: auto; width: min(1180px, calc(100vw - 48px)); height: min(900px, calc(100dvh - 48px)); max-width: none; max-height: none; padding: 30px 32px 16px; border: 1px solid #58606d; border-radius: 18px; color: #edf1f7; background: radial-gradient(ellipse at 15% 0, #222738 0, transparent 60%), #0c101b; box-shadow: 0 30px 100px #000b; font: 14px/1.5 'Noto Sans JP', system-ui, sans-serif; overflow: hidden; touch-action: pan-y; }
+#trophy-room[open] { display: flex; flex-direction: column; gap: 20px; }
+#trophy-room::backdrop { background: #03050cea; backdrop-filter: blur(8px); }
+#trophy-room *, #trophy-room button, #trophy-room input, #trophy-room select { touch-action: pan-y; }
+.trophy-header { display: flex; align-items: center; gap: 20px; flex: none; }
+.trophy-hero { width: 96px; height: 96px; }
+.trophy-eyebrow { color: #f4c772; font-size: 10px; font-weight: 700; letter-spacing: 3px; }
+.trophy-eyebrow span { color: #8d97aa; }
+#trophy-room h2 { margin: 2px 0; color: #fff1d4; font: 48px/1.1 'Bebas Neue', Impact, sans-serif; letter-spacing: 3px; }
+.trophy-intro { color: #a1adc0; font-size: 12px; }
+#trophy-room button, #trophy-room select, #trophy-room input { min-height: 42px; color: #dbe3f0; background: #151c29; border: 1px solid #354052; border-radius: 7px; font: inherit; }
+#trophy-room button { padding: 8px 13px; cursor: pointer; }
+#trophy-room button:hover { background: #283044; border-color: #d1ad68; }
+#trophy-room :focus-visible { outline: 2px solid #f4c772; outline-offset: 3px; }
+#trophy-room .trophy-close { margin-left: auto; align-self: flex-start; white-space: nowrap; font-size: 10px; letter-spacing: 1px; }
+.trophy-close kbd { margin-left: 8px; padding: 2px 4px; background: #ffffff12; color: #b0bed1; border-radius: 3px; }
+.trophy-summary { display: flex; flex: none; gap: 40px; padding: 16px 24px; background: #ffffff04; border: 1px solid #ffffff14; border-radius: 10px; }
+.trophy-summary > div { display: flex; flex-direction: column; }
+.trophy-summary b { font: 32px/1.2 'Bebas Neue', Impact, sans-serif; letter-spacing: 1px; color: #f4c772; }
+.trophy-summary small { color: #77849a; font-size: 21px; }
+.trophy-summary span { color: #94a1b5; font-size: 9px; letter-spacing: 1.5px; }
+.trophy-summary .trophy-completion { margin-left: auto; width: 38%; }
+#trophy-room progress { display: block; appearance: none; -webkit-appearance: none; width: 100%; height: 4px; border: 0; border-radius: 8px; overflow: hidden; background: #2a3343; color: var(--tr-accent); }
+#trophy-room progress::-webkit-progress-bar { background: #2a3343; border-radius: 8px; }
+#trophy-room progress::-webkit-progress-value { background: var(--tr-accent); border-radius: 8px; }
+#trophy-room progress::-moz-progress-bar { background: var(--tr-accent); border-radius: 8px; }
+.trophy-completion progress { margin-top: 10px; }
+.trophy-tools { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 14px; flex: none; }
+.trophy-filters, .trophy-search-tools { display: flex; gap: 6px; }
+#trophy-room .trophy-filters button { font-size: 10px; font-weight: 700; letter-spacing: 1px; }
+.trophy-filters button span { color: #8291a8; margin-left: 5px; }
+#trophy-room .trophy-filters [aria-pressed='true'] { background: #e8bf73; border-color: #e8bf73; color: #161822; }
+.trophy-filters [aria-pressed='true'] span { color: #624d28; }
+#trophy-room input { padding: 8px 12px; width: 190px; user-select: text; -webkit-user-select: text; }
+#trophy-room select { padding: 8px 10px; font-size: 11px; }
+#trophy-room input::placeholder { color: #8996ab; }
+.trophy-results { color: #8996ac; font-size: 10px; letter-spacing: 1px; margin: -8px 0 -10px; flex: none; }
+.trophy-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; overflow-y: auto; min-height: 0; padding: 2px 6px 10px 2px; scrollbar-color: #586278 #121826; align-content: start; overscroll-behavior: contain; }
+.trophy-card { --tr-accent: #d3a27c; min-width: 0; border: 1px solid #2a3444; border-radius: 10px; background: linear-gradient(145deg, #19212e, #111723); padding: 14px; display: flex; flex-direction: column; }
+.trophy-card.earned { border-color: color-mix(in srgb, var(--tr-accent) 45%, #293044); background: linear-gradient(145deg, #262a30, #131b27); }
+.tier-bronze { --tr-accent: #d3a27c; }
+.tier-silver { --tr-accent: #bed2e4; }
+.tier-gold { --tr-accent: #f4c772; }
+.tier-platinum { --tr-accent: #93e3fc; }
+.trophy-card-top { display: flex; gap: 10px; align-items: center; }
+.trophy-card-top > div { min-width: 0; }
+.trophy-card .trophy-art { width: 68px; height: 68px; }
+.trophy-card.locked .trophy-art { filter: grayscale(.85); opacity: .5; }
+.trophy-category { display: block; color: #8493aa; font-size: 8px; letter-spacing: 1.4px; }
+#trophy-room h3 { font-size: 15px; color: #f0ece4; font-weight: 700; line-height: 1.4; margin: 3px 0; }
+.trophy-tier { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--tr-accent); }
+.trophy-tier i { font-style: normal; color: #626c7c; }
+.trophy-state { margin-left: auto; align-self: flex-start; color: #5b687a; font-size: 15px; }
+.earned .trophy-state { color: var(--tr-accent); }
+.trophy-description { color: #a6b2c4; font-size: 11px; line-height: 1.65; margin: 12px 0 18px; flex: 1; }
+.trophy-progress-label { display: flex; gap: 6px; justify-content: space-between; align-items: baseline; font-size: 8px; letter-spacing: .7px; color: #8895ab; margin: 0 0 7px; }
+.trophy-progress-label b { color: #bfcbda; font-weight: 500; white-space: nowrap; }
+.earned .trophy-progress-label b { color: var(--tr-accent); }
+.trophy-footer { display: flex; flex: none; justify-content: space-between; gap: 14px; font-size: 9px; color: #7d8b9f; letter-spacing: .5px; }
+.trophy-empty { grid-column: 1 / -1; padding: 60px 20px; text-align: center; color: #c6d0df; }
+.trophy-empty p { margin-top: 6px; font-size: 12px; color: #8e9bb0; }
+[data-trophy-count] { font-size: .8em; opacity: .7; margin-left: 8px; }
+
+#achievement-toast { --tr-accent: #f4c772; position: fixed; z-index: 9900; left: 50%; top: max(22px, env(safe-area-inset-top)); width: min(500px, calc(100vw - 28px)); display: flex; align-items: center; gap: 14px; padding: 12px 18px 15px 12px; border: 1px solid #69798b; border-bottom-color: var(--tr-accent); border-radius: 14px; background: linear-gradient(115deg, #1b2738f5, #0c121ef5); color: #edf2fa; box-shadow: 0 15px 50px #000a, 0 0 25px #6dbbff12; pointer-events: none; opacity: 0; transform: translate(-50%, -135%); transition: transform .45s cubic-bezier(.2,.85,.2,1), opacity .25s; overflow: hidden; }
+#achievement-toast.visible { opacity: 1; transform: translate(-50%, 0); }
+#achievement-toast .trophy-art { width: 74px; height: 74px; }
+.achievement-toast-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.achievement-toast-eyebrow { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: var(--tr-accent); }
+.achievement-toast-eyebrow b { white-space: nowrap; opacity: .75; font-size: 8px; margin-left: 4px; }
+.achievement-toast-copy strong { font-size: 20px; font-weight: 700; line-height: 1.2; color: #fff5dc; }
+.achievement-toast-description { font-size: 10px; line-height: 1.5; color: #aab9ce; }
+.achievement-toast-check { color: var(--tr-accent); font-size: 22px; }
+.achievement-toast-timer { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--tr-accent); transform-origin: left; }
+#achievement-toast.visible .achievement-toast-timer { animation: trophy-toast-timer 4.8s linear both; }
+@keyframes trophy-toast-timer { to { transform: scaleX(0); } }
+@media (max-width: 900px) {
+  .trophy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #trophy-room { padding: 22px; }
+  .trophy-tools { gap: 10px; }
+  .trophy-search-tools { flex: 1; }
+  #trophy-room input { flex: 1; min-width: 80px; }
+}
+@media (max-width: 560px) {
+  #trophy-room { width: calc(100vw - 16px); height: calc(100dvh - 16px); border-radius: 12px; padding: 16px 12px 12px; }
+  #trophy-room[open] { gap: 16px; }
+  .trophy-header { gap: 10px; }
+  .trophy-hero { width: 52px; height: 52px; }
+  #trophy-room h2 { font-size: 30px; letter-spacing: 2px; }
+  .trophy-eyebrow { font-size: 7px; letter-spacing: 1.5px; }
+  .trophy-intro { font-size: 9px; }
+  #trophy-room .trophy-close { padding: 7px; font-size: 8px; }
+  .trophy-close kbd { display: none; }
+  .trophy-summary { gap: 16px; padding: 12px; }
+  .trophy-summary b { font-size: 27px; }
+  .trophy-summary span { font-size: 7px; letter-spacing: .5px; }
+  .trophy-summary .trophy-completion { width: 30%; }
+  .trophy-summary small { font-size: 17px; }
+  .trophy-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .trophy-filters { width: 100%; }
+  #trophy-room .trophy-filters button { flex: 1; padding: 6px; font-size: 9px; letter-spacing: .4px; }
+  .trophy-filters button span { margin-left: 2px; }
+  .trophy-footer { font-size: 8px; }
+  .trophy-footer > span:last-child { display: none; }
+  .achievement-toast-copy strong { font-size: 17px; }
+  .achievement-toast-eyebrow { font-size: 7px; letter-spacing: .8px; }
+  #achievement-toast { gap: 10px; padding: 10px; }
+  #achievement-toast .trophy-art { width: 60px; height: 60px; }
+}
+@media (max-height: 550px) and (min-width: 561px) {
+  #trophy-room { width: calc(100vw - 24px); height: calc(100dvh - 16px); padding: 12px 18px; }
+  #trophy-room[open] { gap: 10px; }
+  .trophy-hero { width: 46px; height: 46px; }
+  #trophy-room h2 { font-size: 30px; }
+  .trophy-intro { display: none; }
+  .trophy-summary { padding: 8px 14px; gap: 30px; }
+  .trophy-summary b { font-size: 23px; }
+  .trophy-summary > div { flex-direction: row; align-items: center; gap: 10px; }
+  .trophy-summary .trophy-completion { width: 36%; flex-wrap: wrap; gap: 3px 10px; }
+  .trophy-completion progress { margin: 0; }
+  #trophy-room button, #trophy-room input, #trophy-room select { min-height: 34px; }
+  .trophy-tools { gap: 6px; }
+  .trophy-results { margin: 0; }
+  #achievement-toast { top: max(8px, env(safe-area-inset-top)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #achievement-toast { transition: opacity .15s; transform: translate(-50%, 0); }
+  #achievement-toast.visible .achievement-toast-timer { animation: none; }
+}
