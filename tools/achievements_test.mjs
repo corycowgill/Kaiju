@@ -17,17 +17,19 @@ function fixture(t, initial) {
   return { tracker, earned, storage, begin, has, progress, saved: () => saved };
 }
 
-test('catalogue has 54 unique illustrated trophies with mode, tier and valid targets', () => {
-  assert.equal(ACHIEVEMENTS.length, 54);
-  assert.equal(new Set(ACHIEVEMENTS.map((a) => a.id)).size, 54);
-  assert.equal(new Set(ACHIEVEMENTS.map((a) => a.icon)).size, 54);
-  assert.deepEqual(['havoc', 'wrestling', 'legacy'].map((mode) => ACHIEVEMENTS.filter((a) => a.mode === mode).length), [30, 20, 4]);
+test('catalogue has 55 unique illustrated trophies with mode, tier and valid targets', () => {
+  assert.equal(ACHIEVEMENTS.length, 55);
+  assert.equal(new Set(ACHIEVEMENTS.map((a) => a.id)).size, 55);
+  assert.equal(new Set(ACHIEVEMENTS.map((a) => a.icon)).size, 55);
+  assert.deepEqual(['havoc', 'wrestling', 'legacy'].map((mode) => ACHIEVEMENTS.filter((a) => a.mode === mode).length), [31, 20, 4]);
   for (const a of ACHIEVEMENTS) { assert.ok(a.goal > 0); assert.ok(a.points > 0); assert.ok(a.description); }
   const atlas = fs.readFileSync(new URL('../assets/ui/achievements/trophies.webp', import.meta.url));
   assert.equal(atlas.toString('ascii', 8, 12), 'WEBP');
   const extra = fs.readFileSync(new URL('../assets/ui/achievements/challenges.webp', import.meta.url));
   assert.equal(extra.toString('ascii', 8, 12), 'WEBP');
-  assert.deepEqual(ACHIEVEMENTS.slice(48).map((a) => a.artIndex), [0, 1, 2, 3, 4, 5]);
+  assert.match(fs.readFileSync(new URL('../assets/ui/achievements/america-first.svg', import.meta.url), 'utf8'), /<svg/);
+  assert.equal(ACHIEVEMENTS.find((a) => a.id === 'america-first').art, 'america-first');
+  assert.deepEqual(ACHIEVEMENTS.slice(48, 54).map((a) => a.artIndex), [0, 1, 2, 3, 4, 5]);
 });
 
 test('unlocks are saved before the callback, delivered once and never replayed on reload', (t) => {
@@ -159,7 +161,30 @@ test('challenge trophies award once, persist, and leave original Platinum requir
   const summary = { completed: 24, gold: 24, siege: 6, precision: 6, trials: 6 };
   f.tracker.challenges(summary); f.tracker.challenges(summary);
   assert.equal(f.earned.length, 6); assert.ok(!f.has('kaiju-immortal'));
-  assert.ok(ACHIEVEMENTS.slice(48).every((a) => f.has(a.id)));
+  assert.ok(ACHIEVEMENTS.slice(48, 54).every((a) => f.has(a.id)));
   const reload = fixture(t, f.saved()); assert.equal(reload.earned.length, 0);
   assert.ok(reload.has('medal-titan')); assert.equal(reload.progress('kaiju-immortal'), 0);
+});
+
+
+test('America First requires Trump Tower destruction in an active Havoc run, saves once and does not affect Platinum', (t) => {
+  const f = fixture(t);
+  for (const mode of [null, 'vs', 'lone', 'wrestling', 'local-title', 'local-vs']) {
+    f.begin(mode); f.tracker.havoc('building', { landmarkId: 'trump_tower' });
+    assert.ok(!f.has('america-first'));
+  }
+  f.begin('havoc', 'godzilla', 'nyc');
+  for (const landmarkId of [undefined, 'trump_world_tower', 'empire_state', 'trump_tower_rear']) f.tracker.havoc('building', { landmarkId });
+  assert.ok(!f.has('america-first'));
+  f.tracker.havoc('building', { landmarkId: 'trump_tower' });
+  assert.ok(f.has('america-first'));
+  assert.ok(JSON.parse(f.saved()).unlocked['america-first']);
+  assert.equal(f.progress('kaiju-immortal'), 1); // Only First Impact is an original requirement.
+  assert.ok(!f.has('kaiju-immortal'));
+  f.tracker.havoc('building', { landmarkId: 'trump_tower' });
+  assert.equal(f.earned.filter((id) => id === 'america-first').length, 1);
+  const reload = fixture(t, f.saved());
+  assert.ok(reload.has('america-first')); assert.equal(reload.earned.length, 0);
+  reload.tracker.havoc('building', { landmarkId: 'trump_tower' });
+  assert.equal(reload.earned.length, 0);
 });

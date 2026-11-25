@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.24.1', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.25.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -4526,7 +4526,7 @@ world.onBuildingDestroyed = (b) => {
   // Brought down by someone else (the rival kaiju): no score, rage, combo, objective or pickup
   if (_dmgSrc) { audio.collapse(); return; }
   state.buildingsDestroyed++;
-  achievements.havoc('building');
+  achievements.havoc('building', b);
   if (_mode.id !== 'wrestling') havocBuildingCall(b); // (the title match calls its own: spots.js, match.js)
   audio.collapse();
   progressObjective('buildings');

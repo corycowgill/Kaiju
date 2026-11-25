@@ -65,6 +65,7 @@ export const ACHIEVEMENTS = Object.freeze([
     trophy('power-specialist', 'Power Specialist', 'Complete Power Trial in all six cities.', 'havoc', 'gold', 'c.trials', 6),
     trophy('medal-titan', 'Medal Titan', 'Earn gold medals in all 24 City Challenges.', 'havoc', 'gold', 'c.gold', 24),
   ].map((a, artIndex) => ({ ...a, art: 'challenges', artIndex })),
+  { ...trophy('america-first', 'America First', 'Destroyed Trump Tower in Havoc mode.', 'havoc', 'gold', 'h.trumpTower', 1), art: 'america-first' },
 ].map((a, icon) => Object.freeze({ ...a, icon })));
 
 // New content never revokes or expands the original Platinum requirement.
@@ -148,7 +149,10 @@ export function createAchievementTracker({ storage, now = Date.now, onUnlock = (
     endRun() { run = null; flush(); },
     havoc(event, value = 1) {
       if (run?.mode !== 'havoc') return;
-      if (event === 'building') { inc('h.buildings'); max('h.buildingsRun', ++run.buildings); }
+      if (event === 'building') {
+        inc('h.buildings'); max('h.buildingsRun', ++run.buildings);
+        if (value?.landmarkId === 'trump_tower') max('h.trumpTower', 1);
+      }
       else if (event === 'kill') {
         if (!['tank', 'heli', 'jet', 'mech', 'boss', 'soldier', 'artillery'].includes(value)) return;
         inc('h.kills');

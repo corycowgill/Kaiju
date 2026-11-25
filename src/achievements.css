@@ -128,3 +128,5 @@
   #achievement-toast { transition: opacity .15s; transform: translate(-50%, 0); }
   #achievement-toast.visible .achievement-toast-timer { animation: none; }
 }
+
+.america-first-trophy-art { background-image:url('../assets/ui/achievements/america-first.svg');background-size:contain; }

@@ -177,11 +177,13 @@ storage failures, profile management, history retention, and interrupted runs.
 ### Achievements and trophies
 
 Open **Trophy Room** from the mode menu, pause menu, or results screen to browse
-54 achievements: 30 for Havoc, 20 for wrestling, and four Legacy milestones.
+55 achievements: 31 for Havoc, 20 for wrestling, and four Legacy milestones.
 Each has a custom illustrated badge, a Bronze / Silver / Gold / Platinum tier,
 trophy points, and visible progress. Search by name or requirement and filter
 by mode or unlock status. The original Platinum still requires the same 47
-original trophies; the six City Challenge trophies are additional rewards.
+original trophies; the six City Challenge trophies and **America First** are additional rewards.
+Unlock **America First** (Gold, 90 TP) by destroying Trump Tower in New York
+during Havoc. It has its own tower-and-stars badge and the in-game unlock toast.
 
 Havoc trophies cover destruction, military kills, combos, score, cleared waves,
 objectives, pickups, powers, and active survival time. Wrestling trophies track

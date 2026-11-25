@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">America First achievement</title>
+  <desc id="desc">A fractured bronze glass tower against red and ivory stripes, surrounded by gold trim and stars on navy.</desc>
+  <defs>
+    <linearGradient id="gold" x2=".8" y2="1"><stop stop-color="#fff1b1"/><stop offset=".45" stop-color="#d9a647"/><stop offset="1" stop-color="#8a5420"/></linearGradient>
+    <linearGradient id="glass" x2="1" y2=".6"><stop stop-color="#ebba70"/><stop offset=".42" stop-color="#815333"/><stop offset="1" stop-color="#291e23"/></linearGradient>
+    <radialGradient id="night"><stop stop-color="#264967"/><stop offset="1" stop-color="#0b1529"/></radialGradient>
+    <clipPath id="shield"><path d="M128 19 220 52v87c0 44-52 76-92 98-40-22-92-54-92-98V52Z"/></clipPath>
+    <path id="star" d="m0-8 2.4 5.3 5.6.8-4 4 .9 5.7L0 3.1l-4.9 2.7.9-5.7-4-4 5.6-.8Z"/>
+  </defs>
+  <rect x="3" y="3" width="250" height="250" rx="28" fill="#0a111f" stroke="#d6a94f" stroke-width="5"/>
+  <path d="M128 19 220 52v87c0 44-52 76-92 98-40-22-92-54-92-98V52Z" fill="url(#night)" stroke="url(#gold)" stroke-width="6"/>
+  <g clip-path="url(#shield)" opacity=".8" fill="#ad3940">
+    <path d="m33 116 197-31v17L33 133Zm0 32 197-31v17L33 165Zm0 32 197-31v17L33 197Zm0 32 197-31v17L33 229Z"/>
+    <path d="m33 133 197-31v15L33 148Zm0 32 197-31v15L33 180Zm0 32 197-31v15L33 212Z" fill="#eee2c5"/>
+  </g>
+  <g fill="#ffe2a0"><use href="#star" x="72" y="60"/><use href="#star" x="100" y="48"/><use href="#star" x="128" y="43"/><use href="#star" x="156" y="48"/><use href="#star" x="184" y="60"/></g>
+  <path d="M92 182V108h14V89h14V70h37v112Z" fill="url(#glass)" stroke="#f0ca80" stroke-width="3"/>
+  <path d="M157 70 175 81v101h-18Z" fill="#332d35" stroke="#c89352" stroke-width="2"/>
+  <g stroke="#f3cb88" stroke-width="1.6" opacity=".65"><path d="M120 84h37m-51 19h51m-65 19h65m-65 19h65m-65 19h65M132 72v109m13-109v109m-27-90v90m-14-71v71"/><path d="m160 91 12 7m-12 13 12 7m-12 13 12 7m-12 13 12 7"/></g>
+  <path d="m148 88-21 40 17-3-28 41 10-25-14 3Z" fill="#fff3c8" stroke="#3c2023" stroke-width="3" stroke-linejoin="round"/>
+  <path d="m83 186 16-10 18 9 15-8 17 9 15-6 17 8 11 13H69Z" fill="#8d6245" stroke="#e8b65b" stroke-width="3"/>
+  <path d="m72 186-10-16 15 7m107-2 9-16-2 26M88 109l-13-9m104 25 15-7" fill="none" stroke="#ffe1a0" stroke-width="3" stroke-linecap="round"/>
+  <path d="M61 200h134l-12 22H73Z" fill="#101c30" stroke="url(#gold)" stroke-width="3"/>
+  <g fill="#ffe0a0"><use href="#star" x="103" y="210" transform="translate(36 74) scale(.65)"/><path d="m128 201 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z"/><circle cx="99" cy="211" r="3"/><circle cx="157" cy="211" r="3"/></g>
+</svg>

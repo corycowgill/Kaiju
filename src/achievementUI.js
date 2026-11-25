@@ -1,7 +1,13 @@
 import { ACHIEVEMENTS } from './achievements.js';
 
 const number = (n) => Math.floor(n).toLocaleString();
-const icon = (a, extra = '') => `<span class="trophy-art ${a.art === 'challenges' ? 'challenge-trophy-art' : ''} ${extra}" aria-hidden="true" style="background-position:${a.art === 'challenges' ? a.artIndex % 3 * 50 : a.icon % 8 * 100 / 7}% ${a.art === 'challenges' ? Math.floor(a.artIndex / 3) * 100 : Math.floor(a.icon / 8) * 20}%"></span>`;
+const icon = (a, extra = '') => {
+  const artClass = a.art === 'america-first' ? 'america-first-trophy-art' : a.art === 'challenges' ? 'challenge-trophy-art' : '';
+  const position = a.art === 'america-first' ? '50% 50%' : a.art === 'challenges'
+    ? `${a.artIndex % 3 * 50}% ${Math.floor(a.artIndex / 3) * 100}%`
+    : `${a.icon % 8 * 100 / 7}% ${Math.floor(a.icon / 8) * 20}%`;
+  return `<span class="trophy-art ${artClass} ${extra}" aria-hidden="true" style="background-position:${position}"></span>`;
+};
 
 /** Native modal for focus containment; toasts never take focus or block play. */
 export function createAchievementUI(tracker, { onOpen = () => {}, onClose = () => {}, chime = () => {} } = {}) {
