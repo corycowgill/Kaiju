@@ -188,3 +188,32 @@ test('America First requires Trump Tower destruction in an active Havoc run, sav
   reload.tracker.havoc('building', { landmarkId: 'trump_tower' });
   assert.equal(reload.earned.length, 0);
 });
+
+
+test('Chicago Trump Tower uses its real street-address landmark ID and shares the New York unlock', (t) => {
+  const layout = JSON.parse(fs.readFileSync(new URL('../assets/levels/chicago_layout.json', import.meta.url), 'utf8'));
+  const tower = layout.landmarks.find((b) => b.id === 'tower_401_n_wabash');
+  assert.ok(tower, 'Chicago landmark must exist in the actual city layout');
+  const f = fixture(t);
+  for (const mode of [null, 'wrestling', 'vs', 'lone', 'local-vs', 'local-title']) {
+    f.begin(mode, 'godzilla', 'chicago'); f.tracker.havoc('building', { landmarkId: tower.id });
+    assert.ok(!f.has('america-first'));
+  }
+  f.begin('havoc', 'godzilla', 'nyc');
+  f.tracker.havoc('building', { landmarkId: tower.id }); // Address alias belongs to Chicago only.
+  assert.ok(!f.has('america-first'));
+  f.begin('havoc', 'godzilla', 'chicago');
+  f.tracker.havoc('building', { landmarkId: 'ama_plaza_330_n_wabash' });
+  assert.ok(!f.has('america-first'));
+  f.tracker.havoc('building', { landmarkId: tower.id });
+  assert.ok(f.has('america-first'));
+  assert.ok(JSON.parse(f.saved()).unlocked['america-first']);
+  f.begin('havoc', 'godzilla', 'nyc');
+  f.tracker.havoc('building', { landmarkId: 'trump_tower' });
+  assert.equal(f.earned.filter((id) => id === 'america-first').length, 1);
+  assert.ok(fixture(t, f.saved()).has('america-first'));
+  const reverse = fixture(t);
+  reverse.begin('havoc', 'godzilla', 'nyc'); reverse.tracker.havoc('building', { landmarkId: 'trump_tower' });
+  reverse.begin('havoc', 'godzilla', 'chicago'); reverse.tracker.havoc('building', { landmarkId: tower.id });
+  assert.equal(reverse.earned.filter((id) => id === 'america-first').length, 1);
+});

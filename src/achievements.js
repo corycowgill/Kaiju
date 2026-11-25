@@ -151,7 +151,7 @@ export function createAchievementTracker({ storage, now = Date.now, onUnlock = (
       if (run?.mode !== 'havoc') return;
       if (event === 'building') {
         inc('h.buildings'); max('h.buildingsRun', ++run.buildings);
-        if (value?.landmarkId === 'trump_tower') max('h.trumpTower', 1);
+        if (value?.landmarkId === 'trump_tower' || (run.level === 'chicago' && value?.landmarkId === 'tower_401_n_wabash')) max('h.trumpTower', 1);
       }
       else if (event === 'kill') {
         if (!['tank', 'heli', 'jet', 'mech', 'boss', 'soldier', 'artillery'].includes(value)) return;
