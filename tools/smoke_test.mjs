@@ -255,6 +255,14 @@ else if (DATA) await step('car templates', () => city.loadCarTemplates(undefined
 // Chicago without a mode argument: the Title Match build, ring included (game.js: MODE = Title Match)
 const mode = modeArg || (DATA ? 'wrestling' : 'waves');
 const res = await step('buildCity', () => city.buildCity(scene, world, { lite: Q.isMobile, glb: Q.GLB_CONTENT, level, mode }));
+if (res) await step('City Challenge objectives', async () => {
+  const { CHALLENGES, selectChallengeTargets } = await imp('havocChallenges.js');
+  for (const mission of CHALLENGES.filter((m) => m.city === level)) {
+    const selected = selectChallengeTargets(mission, res.buildings, res.spawn);
+    if (mission.kind !== 'siege' && selected.targets.length !== mission.goal) fail(`challenge ${mission.id}: missing targets`);
+    if (mission.kind === 'precision' && (!selected.targets[0].landmarkId || selected.protected.length !== 3)) fail(`challenge ${mission.id}: missing landmark / protected structures`);
+  }
+});
 if (res) world.level = res.level; // as game.js (the wrestling modules read it: venue.js)
 // (the classic Chicago build: in the title match the lawns are empty, everyone is at ringside)
 if (level === 'chicago' && mode === 'waves') await step('rigged festival crowd', async () => {

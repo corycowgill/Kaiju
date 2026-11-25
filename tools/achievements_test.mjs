@@ -17,14 +17,17 @@ function fixture(t, initial) {
   return { tracker, earned, storage, begin, has, progress, saved: () => saved };
 }
 
-test('catalogue has 48 unique illustrated trophies with mode, tier and valid targets', () => {
-  assert.equal(ACHIEVEMENTS.length, 48);
-  assert.equal(new Set(ACHIEVEMENTS.map((a) => a.id)).size, 48);
-  assert.equal(new Set(ACHIEVEMENTS.map((a) => a.icon)).size, 48);
-  assert.deepEqual(['havoc', 'wrestling', 'legacy'].map((mode) => ACHIEVEMENTS.filter((a) => a.mode === mode).length), [24, 20, 4]);
+test('catalogue has 54 unique illustrated trophies with mode, tier and valid targets', () => {
+  assert.equal(ACHIEVEMENTS.length, 54);
+  assert.equal(new Set(ACHIEVEMENTS.map((a) => a.id)).size, 54);
+  assert.equal(new Set(ACHIEVEMENTS.map((a) => a.icon)).size, 54);
+  assert.deepEqual(['havoc', 'wrestling', 'legacy'].map((mode) => ACHIEVEMENTS.filter((a) => a.mode === mode).length), [30, 20, 4]);
   for (const a of ACHIEVEMENTS) { assert.ok(a.goal > 0); assert.ok(a.points > 0); assert.ok(a.description); }
   const atlas = fs.readFileSync(new URL('../assets/ui/achievements/trophies.webp', import.meta.url));
   assert.equal(atlas.toString('ascii', 8, 12), 'WEBP');
+  const extra = fs.readFileSync(new URL('../assets/ui/achievements/challenges.webp', import.meta.url));
+  assert.equal(extra.toString('ascii', 8, 12), 'WEBP');
+  assert.deepEqual(ACHIEVEMENTS.slice(48).map((a) => a.artIndex), [0, 1, 2, 3, 4, 5]);
 });
 
 test('unlocks are saved before the callback, delivered once and never replayed on reload', (t) => {
@@ -145,8 +148,18 @@ test('all 48 trophies are reachable through gameplay events, including the final
     wr('prop:hit', { who: 'player', target: 'rival' }); wr('weapon:break', { who: 'player', target: 'rival' }); wr('taunt:complete', { who: 'player' });
     wr('match:won', { rivalFalls: match === 0 ? 1 : 0, defense: match });
   }
-  const missing = ACHIEVEMENTS.filter((a) => !f.has(a.id)).map((a) => a.id);
+  const missing = ACHIEVEMENTS.slice(0, 48).filter((a) => !f.has(a.id)).map((a) => a.id);
   assert.deepEqual(missing, []);
   assert.equal(f.earned.length, 48); assert.equal(f.earned.at(-1), 'kaiju-immortal');
   assert.equal(JSON.parse(f.saved()).stats['m.trophies'], 47);
+});
+
+test('challenge trophies award once, persist, and leave original Platinum requirements intact', (t) => {
+  const f = fixture(t);
+  const summary = { completed: 24, gold: 24, siege: 6, precision: 6, trials: 6 };
+  f.tracker.challenges(summary); f.tracker.challenges(summary);
+  assert.equal(f.earned.length, 6); assert.ok(!f.has('kaiju-immortal'));
+  assert.ok(ACHIEVEMENTS.slice(48).every((a) => f.has(a.id)));
+  const reload = fixture(t, f.saved()); assert.equal(reload.earned.length, 0);
+  assert.ok(reload.has('medal-titan')); assert.equal(reload.progress('kaiju-immortal'), 0);
 });

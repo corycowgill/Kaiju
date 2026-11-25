@@ -1,0 +1,72 @@
+.challenge-trophy-art { background-image: url('../assets/ui/achievements/challenges.webp'); background-size: 300% 200%; }
+#havoc-challenges { position: fixed; inset: 0; margin: auto; width: min(1180px, calc(100vw - 28px)); height: min(920px, calc(100dvh - 28px)); max-width: none; max-height: none; border: 1px solid #7f9ba1; border-radius: 14px; padding: 24px; color: #e4edf0; background: radial-gradient(ellipse at top left, #243d444d, transparent 65%), #0b141b; box-shadow: 0 25px 100px #000c; font: 13px/1.5 'Noto Sans JP', system-ui, sans-serif; overflow: hidden; }
+#havoc-challenges[open] { display: flex; flex-direction: column; gap: 16px; }
+#havoc-challenges::backdrop { background: #030b12eb; backdrop-filter: blur(6px); }
+#havoc-challenges, #havoc-challenges * { touch-action: pan-y; }
+.hc-head { display: flex; gap: 16px; align-items: center; flex: none; }
+.hc-eyebrow { color: #74d4d8; font-size: 9px; letter-spacing: 2px; }
+#havoc-challenges h2 { font: 46px/1.1 'Bebas Neue', Impact, sans-serif; letter-spacing: 3px; color: #d6fcf4; margin: 4px 0; }
+#havoc-challenges button, #havoc-challenges select { min-height: 42px; padding: 9px 14px; font: inherit; color: #dbeef0; border: 1px solid #47616b; background: #172833; border-radius: 6px; cursor: pointer; }
+#havoc-challenges button:hover { border-color: #8df5e1; background: #25434d; }
+#havoc-challenges :focus-visible { outline: 2px solid #86eddf; outline-offset: 3px; }
+#havoc-challenges :disabled { opacity: .4; cursor: default; }
+#havoc-challenges .hc-close { margin-left: auto; align-self: flex-start; font-size: 9px; letter-spacing: 1px; }
+.hc-close kbd { opacity: .6; margin-left: 6px; }
+.hc-board-scroll { overflow-y: auto; min-height: 0; padding: 0 6px 6px 0; scrollbar-color: #557c82 #10202a; overscroll-behavior: contain; }
+.hc-summary { display: flex; align-items: center; gap: 20px; padding: 14px 20px; border: 1px solid #41565e; border-radius: 10px; background: #263b4433; }
+.hc-summary .trophy-art { width: 85px; height: 85px; }
+.hc-summary > div { flex: 1; }
+.hc-summary h3 { font: 25px/1.2 'Bebas Neue', Impact, sans-serif; color: #def9ed; letter-spacing: 1.5px; }
+.hc-summary p { color: #a8c1c9; font-size: 11px; margin: 6px 0 10px; }
+.hc-summary label { display: flex; flex-direction: column; gap: 5px; font-size: 8px; letter-spacing: 2px; color: #93b2be; }
+.hc-summary select { width: 170px; font-size: 12px !important; letter-spacing: 0; }
+.hc-summary progress { width: 100%; height: 4px; appearance: none; -webkit-appearance: none; background: #34434f; color: #7ae8c7; border: 0; }
+.hc-summary progress::-webkit-progress-bar { background: #34434f; }
+.hc-summary progress::-webkit-progress-value { background: #7ae8c7; }
+.hc-summary progress::-moz-progress-bar { background: #7ae8c7; }
+.hc-cities { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 10px; }
+#havoc-challenges .hc-cities button { flex: 1; font-size: 10px; white-space: nowrap; padding: 7px 10px; }
+#havoc-challenges .hc-cities [aria-pressed='true'] { background: #93e6d0; border-color: #b0ffdf; color: #102d32; }
+.hc-unlock-note { font-size: 10px; color: #91aeb7; margin: 8px 0 16px; }
+#hc-missions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.hc-mission { min-width: 0; display: flex; flex-direction: column; padding: 20px; border: 1px solid #38515e; background: linear-gradient(135deg, #20313d, #121f2b); border-radius: 10px; }
+.hc-mission.medal-3 { border-color: #d6ac62; }
+.hc-card-top { display: flex; justify-content: space-between; gap: 12px; font-size: 8px; letter-spacing: 1.2px; color: #82a5b3; }
+.hc-card-top b { color: #a8afb4; }
+.medal-1 .hc-card-top b { color: #cf9d7a; }.medal-2 .hc-card-top b { color: #d3e8f2; }.medal-3 .hc-card-top b { color: #ffd180; }
+.hc-mission h3 { margin: 14px 0 10px; font: 30px/1.1 'Bebas Neue', Impact, sans-serif; letter-spacing: 1.5px; color: #e9f3ed; text-transform: uppercase; }
+.hc-description { color: #adc2c9; font-size: 11px; line-height: 1.7; flex: 1; min-height: 56px; }
+.hc-allowed { color: #8eebdb; font-size: 9px; letter-spacing: 1px; margin-top: 8px; }
+.hc-thresholds { display: flex; gap: 12px; margin: 20px 0 14px; }
+.hc-thresholds > span { display: flex; flex: 1; flex-direction: column; gap: 4px; font-size: 8px; letter-spacing: 1px; }
+.hc-thresholds b { font-size: 15px; font-weight: 500; }
+.hc-thresholds .gold { color: #f6ce83; }.hc-thresholds .silver { color: #c6d8e4; }.hc-thresholds .bronze { color: #cda084; }
+.hc-best { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #3b505a; padding-top: 12px; margin-bottom: 14px; }
+.hc-best > span { display: flex; flex-direction: column; gap: 4px; font-size: 7px; color: #8babb6; letter-spacing: .7px; }
+.hc-best b { color: #c8dee4; font-size: 13px; }
+#havoc-challenges .hc-mission > button { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #b7f9e7; }
+.hc-mission > button span { float: right; }
+.hc-footer { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; border-top: 1px solid #384b56; padding-top: 12px; }
+#hc-save-note { color: #95b3bd; font-size: 9px; }
+.hc-footer small { display: block; margin-top: 4px; font-size: 8px; color: #708e9b; letter-spacing: .6px; }
+#hc-error { color: #ffc3ae; font-size: 11px; }
+.hc-return[hidden] { display: none; }
+[data-hc-progress] { font-size: .75em; opacity: .7; margin-left: 8px; }
+#hc-hud { position: fixed; left: max(14px, env(safe-area-inset-left)); top: 180px; width: 290px; z-index: 45; border: 1px solid #7ca99c; border-radius: 9px; padding: 13px; background: #0c2028eb; pointer-events: none; }
+#hc-hud[hidden] { display: none; }
+.hc-hud-top { display: flex; align-items: center; gap: 12px; justify-content: space-between; color: #9aefda; font-size: 10px; letter-spacing: 1px; }
+.hc-hud-top b { font: 26px/1 'Bebas Neue', Impact, sans-serif; color: #ffe6ad; }
+.hc-objective { font-size: 11px; margin-top: 10px; color: #def4ec; }
+.hc-detail { font-size: 8px; color: #9abbbf; line-height: 1.6; margin-top: 8px; }
+.hc-medal-pace { display: block; font-size: 8px; color: #e8c07d; margin-top: 7px; }
+.hc-hud-track { height: 3px; background: #304851; margin-top: 8px; overflow: hidden; }
+.hc-hud-track i { display: block; height: 100%; background: #92f6d1; transform-origin: left; }
+#hc-hud.hc-urgent .hc-clock { color: #ff9a7e; }
+body.hc-paused #hc-hud, body.hc-paused #hc-rules { display: none; }
+.power-wrap.challenge-blocked { opacity: .27 !important; filter: grayscale(1); }
+.power-wrap.challenge-blocked .power { cursor: not-allowed; }
+#hc-result { margin: 10px auto; color: #f4d99e; font-size: 13px; letter-spacing: 1px; text-align: center; max-width: 460px; }
+#hc-result[hidden], #hc-next-btn[hidden], #gameover.hc-result #goRetryBtn { display: none !important; }
+@media(max-width: 700px) { .hc-summary { gap: 12px; padding: 12px; flex-wrap: wrap; }.hc-summary label { width: 100%; }.hc-summary select { width: 100%; }.hc-summary h3 { font-size: 21px; }#havoc-challenges h2 { font-size: 34px; }.hc-summary .trophy-art { width: 64px; height: 64px; } }
+@media(max-width: 550px) { #havoc-challenges { width: calc(100vw - 12px); height: calc(100dvh - 12px); padding: 14px; }#havoc-challenges h2 { font-size: 28px; letter-spacing: 1px; }.hc-close kbd { display: none; }#hc-missions { grid-template-columns: minmax(0, 1fr); }.hc-cities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }.hc-mission { padding: 16px; }.hc-footer small { display: none; } }
+@media(max-height: 550px) and (min-width: 551px) { #havoc-challenges { height: calc(100dvh - 12px); padding: 12px 18px; }#havoc-challenges[open] { gap: 8px; }#havoc-challenges h2 { font-size: 28px; }.hc-summary { padding: 8px 12px; gap: 14px; }.hc-summary .trophy-art { width: 50px; height: 50px; }.hc-summary h3 { font-size: 19px; }.hc-summary p { font-size: 9px; }.hc-cities { margin-top: 12px; }.hc-footer small { display: none; }#hc-hud { left: 50%; transform: translateX(-50%); top: max(70px, env(safe-area-inset-top)); width: 260px; padding: 8px 10px; }.hc-hud-top { font-size: 8px; }.hc-hud-top b { font-size: 22px; }.hc-objective { margin-top: 5px; font-size: 9px; }.hc-detail { margin-top: 4px; }.hc-medal-pace { margin-top: 4px; } }

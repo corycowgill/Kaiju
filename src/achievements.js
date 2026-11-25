@@ -56,8 +56,19 @@ export const ACHIEVEMENTS = Object.freeze([
   trophy('monster-ensemble', 'Monster Ensemble', 'Play all nine kaiju in Havoc or wrestling.', 'legacy', 'gold', 'm.roster', 9),
   trophy('world-tour', 'World Tour', 'Play in all six cities in Havoc or wrestling.', 'legacy', 'silver', 'm.cities', 6),
   trophy('world-champion', 'World Champion', 'Win a wrestling match in each of the six cities.', 'legacy', 'gold', 'm.championCities', 6),
-  trophy('kaiju-immortal', 'Kaiju Immortal', 'Earn every other trophy in Havoc and wrestling.', 'legacy', 'platinum', 'm.trophies', 47),
+  trophy('kaiju-immortal', 'Kaiju Immortal', 'Earn all 47 original Havoc, wrestling and Legacy trophies.', 'legacy', 'platinum', 'm.trophies', 47),
+  ...[
+    trophy('challenge-accepted', 'Challenge Accepted', 'Earn a medal in a Havoc City Challenge.', 'havoc', 'bronze', 'c.completed', 1),
+    trophy('golden-rampage', 'Golden Rampage', 'Earn your first gold City Challenge medal.', 'havoc', 'silver', 'c.gold', 1),
+    trophy('siege-breaker', 'Siege Breaker', 'Complete Military Siege in all six cities.', 'havoc', 'gold', 'c.siege', 6),
+    trophy('urban-surgeon', 'Urban Surgeon', 'Complete a Precision Rampage while preserving all three protected buildings.', 'havoc', 'silver', 'c.precision', 1),
+    trophy('power-specialist', 'Power Specialist', 'Complete Power Trial in all six cities.', 'havoc', 'gold', 'c.trials', 6),
+    trophy('medal-titan', 'Medal Titan', 'Earn gold medals in all 24 City Challenges.', 'havoc', 'gold', 'c.gold', 24),
+  ].map((a, artIndex) => ({ ...a, art: 'challenges', artIndex })),
 ].map((a, icon) => Object.freeze({ ...a, icon })));
+
+// New content never revokes or expands the original Platinum requirement.
+const immortalRequirements = ACHIEVEMENTS.slice(0, 47);
 
 const knownStats = new Set(ACHIEVEMENTS.map((a) => a.stat));
 const knownIds = new Set(ACHIEVEMENTS.map((a) => a.id));
@@ -81,7 +92,7 @@ export function createAchievementTracker({ storage, now = Date.now, onUnlock = (
   stats['m.roster'] = sets.roster.size;
   stats['m.cities'] = sets.cities.size;
   stats['m.championCities'] = sets.championCities.size;
-  stats['m.trophies'] = ACHIEVEMENTS.slice(0, -1).filter((a) => a.id in unlocked).length;
+  stats['m.trophies'] = immortalRequirements.filter((a) => a.id in unlocked).length;
 
   function flush() {
     if (timer !== null) clearTimeout(timer);
@@ -98,7 +109,7 @@ export function createAchievementTracker({ storage, now = Date.now, onUnlock = (
     dirty = true;
     const earned = [];
     for (const a of ACHIEVEMENTS) {
-      if (a.stat === 'm.trophies') stats[a.stat] = ACHIEVEMENTS.slice(0, -1).filter((t) => t.id in unlocked).length;
+      if (a.stat === 'm.trophies') stats[a.stat] = immortalRequirements.filter((t) => t.id in unlocked).length;
       if (!(a.id in unlocked) && (stats[a.stat] || 0) >= a.goal) {
         unlocked[a.id] = now(); earned.push(a);
       }
@@ -197,6 +208,11 @@ export function createAchievementTracker({ storage, now = Date.now, onUnlock = (
       commit();
     },
     flush,
+    challenges(summary) {
+      let changed = false;
+      for (const key of ['completed', 'gold', 'siege', 'precision', 'trials']) if (max('c.' + key, summary[key])) changed = true;
+      if (changed) commit();
+    },
   };
   return api;
 }

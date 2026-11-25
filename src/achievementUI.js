@@ -1,7 +1,7 @@
 import { ACHIEVEMENTS } from './achievements.js';
 
 const number = (n) => Math.floor(n).toLocaleString();
-const icon = (a, extra = '') => `<span class="trophy-art ${extra}" aria-hidden="true" style="background-position:${a.icon % 8 * 100 / 7}% ${Math.floor(a.icon / 8) * 20}%"></span>`;
+const icon = (a, extra = '') => `<span class="trophy-art ${a.art === 'challenges' ? 'challenge-trophy-art' : ''} ${extra}" aria-hidden="true" style="background-position:${a.art === 'challenges' ? a.artIndex % 3 * 50 : a.icon % 8 * 100 / 7}% ${a.art === 'challenges' ? Math.floor(a.artIndex / 3) * 100 : Math.floor(a.icon / 8) * 20}%"></span>`;
 
 /** Native modal for focus containment; toasts never take focus or block play. */
 export function createAchievementUI(tracker, { onOpen = () => {}, onClose = () => {}, chime = () => {} } = {}) {
@@ -15,14 +15,14 @@ export function createAchievementUI(tracker, { onOpen = () => {}, onClose = () =
       <button type="button" class="trophy-close" aria-label="Close Trophy Room">CLOSE <kbd>ESC</kbd></button>
     </header>
     <section class="trophy-summary" aria-label="Collection progress">
-      <div><b id="trophy-total">0 <small>/ 48</small></b><span>TROPHIES UNLOCKED</span></div>
+      <div><b id="trophy-total">0 <small>/ ${ACHIEVEMENTS.length}</small></b><span>TROPHIES UNLOCKED</span></div>
       <div><b id="trophy-points">0</b><span>TROPHY POINTS</span></div>
-      <div class="trophy-completion"><b id="trophy-percent">0%</b><span>COLLECTION COMPLETE</span><progress id="trophy-overall" max="48" value="0" aria-label="Trophy collection completion"></progress></div>
+      <div class="trophy-completion"><b id="trophy-percent">0%</b><span>COLLECTION COMPLETE</span><progress id="trophy-overall" max="${ACHIEVEMENTS.length}" value="0" aria-label="Trophy collection completion"></progress></div>
     </section>
     <div class="trophy-tools">
       <div class="trophy-filters" role="group" aria-label="Filter trophies by mode">
-        <button type="button" data-trophy-mode="all" aria-pressed="true">ALL <span>48</span></button>
-        <button type="button" data-trophy-mode="havoc" aria-pressed="false">HAVOC <span>24</span></button>
+        <button type="button" data-trophy-mode="all" aria-pressed="true">ALL <span>${ACHIEVEMENTS.length}</span></button>
+        <button type="button" data-trophy-mode="havoc" aria-pressed="false">HAVOC <span>${ACHIEVEMENTS.filter((a) => a.mode === 'havoc').length}</span></button>
         <button type="button" data-trophy-mode="wrestling" aria-pressed="false">WRESTLING <span>20</span></button>
         <button type="button" data-trophy-mode="legacy" aria-pressed="false">LEGACY <span>4</span></button>
       </div>

@@ -79,10 +79,11 @@ Chained kills/destruction ramp a **combo multiplier** up to 5x. Big kills and th
 ### Achievements and trophies
 
 Open **Trophy Room** from the mode menu, pause menu, or results screen to browse
-48 achievements: 24 for Havoc, 20 for wrestling, and four Legacy milestones.
+54 achievements: 30 for Havoc, 20 for wrestling, and four Legacy milestones.
 Each has a custom illustrated badge, a Bronze / Silver / Gold / Platinum tier,
 trophy points, and visible progress. Search by name or requirement and filter
-by mode or unlock status. The final Platinum requires every other trophy.
+by mode or unlock status. The original Platinum still requires the same 47
+original trophies; the six City Challenge trophies are additional rewards.
 
 Havoc trophies cover destruction, military kills, combos, score, cleared waves,
 objectives, pickups, powers, and active survival time. Wrestling trophies track
@@ -135,6 +136,40 @@ The campaign model is `src/championshipTour.js`; the board and responsive styles
 are `src/championshipTourUI.js` and `src/championshipTour.css`. `npm test` checks
 campaign progression and saves. The asset smoke test also exercises the real
 best-of-five final, its difficulty, and its result callback.
+
+### Havoc City Challenges
+
+Open **City Challenges** from the mode screen for 24 replayable missions:
+four in each city along **Chicago → Washington DC → New York City → Seattle →
+San Francisco → Tokyo**. Earn a medal in all four missions to unlock the next
+city. Any of the nine kaiju can play; medals and personal bests are shared across
+fighters, with the fastest run's fighter recorded in the save.
+
+- **Demolition Run:** destroy every gold-marked building before the deadline.
+- **Military Siege:** clear three assaults, including the boss in the final one.
+- **Precision Rampage:** destroy the marked landmark while preserving all three
+  green-marked neighboring buildings. Losing any protected building fails the mission.
+- **Power Trial:** destroy the marked buildings using only melee and the city's
+  listed ability. Restricted abilities are disabled for all input devices.
+
+Gold beacons and minimap diamonds identify targets; green markers identify
+protected buildings. Marked targets have weakened foundations. Every mission
+shows its bronze deadline and faster silver/gold thresholds, active countdown,
+objective progress, and medal pace. Loading, pauses, and background tabs do not
+consume mission time. The ordinary wave/upgrade loop is suspended during missions.
+
+Mission results save medals, fastest completion time, best score, attempts, and
+personal-best dates locally on this device. Slower replays and failures never
+remove an earned medal. The mission board reports unavailable browser storage;
+progress then remains available for the current session. Six new custom badge
+trophies reward mission completion, gold medals, precision, siege and power
+mastery, and all 24 gold medals. The original Platinum requirement is unchanged.
+
+`src/havocChallenges.js` owns mission definitions, saves and rules;
+`src/havocChallengeMode.js` owns in-world markers and the objective HUD;
+`src/havocChallengesUI.js` owns the mission board. `npm test` covers progression,
+medal boundaries, power restrictions, timing, and same-frame collateral. Asset
+smoke checks validate actual mission targets and protected structures in every city.
 
 ---
 

@@ -11,3 +11,9 @@ depict wrestling milestones. The last four are the roster crown, city tour,
 world championship, and Platinum trophy. Locked badges use the same artwork
 with reduced color and opacity. Visible text supplies every badge's name and
 requirement, so the illustration is decorative for assistive technology.
+
+`challenges.webp` adds six custom City Challenge trophy illustrations in a
+three-column, two-row atlas (1200 × 800, 400-pixel square cells). These are
+Challenge Accepted, Golden Rampage, Siege Breaker, Urban Surgeon, Power
+Specialist, and Medal Titan. Their `art: 'challenges'` and `artIndex` fields
+select the new atlas; all original badge indexes remain unchanged.
