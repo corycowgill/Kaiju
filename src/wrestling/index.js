@@ -24,6 +24,7 @@ import { createArena } from '../levels/chicago_arena.js';
 import { createSpots } from './spots.js';
 import { createCommentary } from './commentary.js';
 import { bindWrestlingAchievements } from './achievements.js';
+import { bindTourMatch } from '../championshipTour.js';
 
 /**
  * @param ctx  the context game.js builds (see notes/wrestling_api.md)
@@ -33,6 +34,7 @@ import { bindWrestlingAchievements } from './achievements.js';
 export function createWrestling(ctx) {
   const bus = createBus();
   let releaseAchievements = () => {};
+  let releaseTour = () => {};
   ctx.events = bus;
   /** The wrestling runtime every module factory receives next to ctx. */
   const W = {
@@ -131,6 +133,7 @@ export function createWrestling(ctx) {
       W.input.start(); W.ai.start(); W.grapple.start(); W.anims.start();
       for (const m of show) m.start();
       releaseAchievements = bindWrestlingAchievements(bus, ctx.achievements);
+      releaseTour = bindTourMatch(bus, ctx.tour);
       W.match.start(); // last: its opening events reach every listener
     },
     /** dt: simulation seconds (0 during hit-stop, scaled in slow-mo). dtReal: real seconds, clamped to 0.05. */
@@ -172,6 +175,7 @@ export function createWrestling(ctx) {
       if (!W.running) return;
       W.running = false;
       releaseAchievements();
+      releaseTour();
       for (const m of show) m.dispose();
       W.match.dispose(); W.anims.dispose(); W.input.dispose(); W.ai.dispose(); W.grapple.dispose();
       ctx.setRivalBody(null);

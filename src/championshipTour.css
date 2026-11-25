@@ -1,0 +1,132 @@
+#championship-tour { position: fixed; inset: 0; margin: auto; width: min(1200px, calc(100vw - 32px)); height: min(960px, calc(100dvh - 32px)); max-width: none; max-height: none; padding: 24px; border: 1px solid #987646; border-radius: 16px; color: #f5e5d1; background: radial-gradient(ellipse at 90% 0, #51202d55, transparent 60%), #100c14; box-shadow: 0 25px 100px #000d; font: 13px/1.5 'Noto Sans JP', system-ui, sans-serif; overflow: hidden; }
+#championship-tour[open] { display: flex; flex-direction: column; gap: 16px; }
+#championship-tour::backdrop { background: #08040ced; backdrop-filter: blur(6px); }
+#championship-tour, #championship-tour * { touch-action: pan-y; box-sizing: border-box; }
+#championship-tour button, #championship-tour select { min-height: 44px; background: #211620; border: 1px solid #81634a; border-radius: 6px; color: #fce7c2; padding: 9px 14px; font: inherit; cursor: pointer; }
+#championship-tour button:hover { background: #422333; border-color: #f1c577; }
+#championship-tour :focus-visible { outline: 2px solid #ffce75; outline-offset: 3px; }
+#championship-tour :disabled { opacity: .55; cursor: default; }
+.tour-head { display: flex; align-items: center; gap: 14px; flex: none; }
+.tour-kicker { color: #e5b66d; font-size: 9px; letter-spacing: 2px; font-weight: 700; }
+#championship-tour h2 { color: #ffe5a9; font: 46px/1.1 'Bebas Neue', Impact, sans-serif; letter-spacing: 3px; margin: 4px 0; }
+#championship-tour .tour-close { margin-left: auto; align-self: flex-start; font-size: 9px; letter-spacing: 1px; }
+.tour-close kbd { margin-left: 6px; opacity: .6; }
+.tour-scroll { min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 8px 8px 0; scrollbar-color: #9a684f #130c16; overscroll-behavior: contain; }
+.tour-hero { display: flex; align-items: center; gap: 24px; padding: 16px 28px 16px 12px; background: linear-gradient(120deg, #4c273a55, #1e1629); border: 1px solid #6e4d4044; border-radius: 12px; }
+.tour-portrait { width: 140px; height: 126px; flex: none; background-size: contain; background-repeat: no-repeat; background-position: center; }
+.tour-fighter-copy { flex: 1; }
+.tour-fighter-copy label { display: block; font-size: 12px; color: #c2aaab; margin: 8px 0 6px; }
+#championship-tour #tour-fighter { width: min(300px, 100%); background: #170f1b; font-size: 17px; font-weight: 700; }
+#tour-fighter-note { color: #ad939f; font-size: 10px; margin-top: 8px; }
+.tour-progress { width: 200px; flex: none; display: flex; flex-direction: column; gap: 4px; }
+.tour-progress > b { font: 48px/1 'Bebas Neue', Impact, sans-serif; color: #f4c675; }
+.tour-progress small { font-size: 26px; color: #8f7279; }
+.tour-progress span { color: #c2a89e; font-size: 9px; letter-spacing: 1.6px; }
+.tour-progress progress { width: 100%; margin: 8px 0; height: 5px; appearance: none; -webkit-appearance: none; background: #462938; border: 0; border-radius: 4px; overflow: hidden; color: #f4c675; }
+.tour-progress progress::-webkit-progress-bar { background: #462938; }
+.tour-progress progress::-webkit-progress-value { background: #f4c675; }
+.tour-progress progress::-moz-progress-bar { background: #f4c675; }
+.tour-route-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 24px 0 14px; }
+.tour-route-heading h3 { color: #e9c590; font: 22px/1.1 'Bebas Neue', Impact, sans-serif; letter-spacing: 2px; }
+.tour-route-heading > span { color: #a38b93; font-size: 8px; letter-spacing: 1px; }
+#tour-route { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.tour-stop { padding: 16px; background: linear-gradient(140deg, #28202a, #19131d); border: 1px solid #54404a; border-radius: 10px; min-width: 0; position: relative; }
+.tour-stop.current { border-color: #e8b866; box-shadow: inset 0 0 35px #c97b1c10; }
+.tour-stop.conquered { border-color: #8c753f; }
+.tour-stop.locked { opacity: .62; }
+.tour-stop-top { display: flex; justify-content: space-between; align-items: start; gap: 6px; min-height: 25px; font-size: 7px; letter-spacing: .7px; color: #b499a5; }
+.tour-stop-top b { color: #f1c87a; white-space: nowrap; }
+.tour-stop.locked .tour-stop-top b { color: #a58f9b; }
+.tour-belt { width: 100%; max-width: 260px; margin: 10px auto; filter: grayscale(1); opacity: .45; }
+.tour-belt svg { display: block; width: 100%; }
+.tour-belt.won { filter: none; opacity: 1; }
+.tour-stop.current .tour-belt { filter: saturate(.6); opacity: .8; }
+.tour-stop h4 { text-transform: uppercase; font: 27px/1.2 'Bebas Neue', Impact, sans-serif; letter-spacing: 1.4px; color: #f5e2c1; }
+.tour-city-title { color: #c09c69; font-size: 8px; letter-spacing: 1.2px; margin-top: 3px; }
+.tour-opponent { font-size: 11px; color: #ad8f9d; margin-top: 10px; }
+.tour-opponent strong { color: #ead6d9; margin-left: 4px; }
+.tour-stop-note { font-size: 8px; color: #b29ba6; margin: 10px 0; min-height: 24px; }
+.tour-pressure { display: flex; align-items: center; gap: 3px; }
+.tour-pressure i { width: 9px; height: 5px; background: #4b3444; transform: skewX(-20deg); }
+.tour-pressure i.lit { background: #df9165; }
+.tour-pressure span { margin-left: 6px; color: #987d8e; font-size: 7px; letter-spacing: 1px; }
+#tour-finale { display: flex; align-items: center; gap: 26px; margin-top: 16px; border: 1px solid #71553c; border-radius: 12px; background: linear-gradient(120deg, #32201a, #25192b); padding: 22px; }
+#tour-finale > .tour-belt { width: 240px; flex: none; }
+#tour-finale h3 { color: #ffe3a7; font: 32px/1.2 'Bebas Neue', Impact, sans-serif; letter-spacing: 1.5px; margin: 8px 0; }
+#tour-finale p:not(.tour-kicker) { color: #bda7af; font-size: 11px; line-height: 1.7; }
+#tour-finale b { display: block; color: #ebc583; font-size: 9px; letter-spacing: 1px; margin-top: 12px; }
+#tour-finale.unlocked .tour-belt { filter: none; opacity: 1; }
+#tour-finale.champion { border-color: #ffd675; background: radial-gradient(ellipse at 15% 50%, #b77b303b, transparent 70%), #32202c; }
+#tour-finale.champion .tour-belt { animation: tour-crown-glow 2s ease-in-out infinite alternate; }
+.tour-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid #59434c; padding-top: 16px; }
+#tour-save-state { color: #b49d9e; font-size: 9px; }
+.tour-controls { color: #8b7383; font-size: 8px; margin-top: 5px; letter-spacing: 1px; }
+#tour-error { color: #ffb3a0; font-size: 11px; }
+#championship-tour .tour-launch { font-weight: 700; background: #eac17c; color: #281218; border-color: #ffdf9c; min-height: 50px; letter-spacing: 1px; white-space: nowrap; }
+#championship-tour .tour-launch:hover { background: #ffe0a0; }
+.tour-complete .tour-hero { border-color: #c49f55; }
+[data-tour-progress] { font-size: .75em; opacity: .7; margin-left: 8px; }
+#tour-next-btn[hidden], #gameover.tour-result #wr-defend-btn, #gameover.tour-result #goRetryBtn { display: none !important; }
+#gameover.tour-champion #goTitle { color: #ffe6a0; text-shadow: 0 0 25px #ffbf3380; }
+#gameover.tour-champion #wr-belt { filter: drop-shadow(0 0 16px #f7bd5880); }
+.tour-entry { display: flex; flex: none; justify-content: center; align-items: center; gap: 18px; width: 100%; padding: 5px 0; }
+.tour-entry > span { font-size: 9px; color: #cba777; letter-spacing: 1.5px; }
+#menu .tour-entry button { margin: 0; border-color: #c19957; color: #ffe3aa; background: #24111adb; }
+.tour-entry .pad-focus { outline: 2px solid #ffd166; outline-offset: 3px; }
+@keyframes tour-crown-glow { to { filter: drop-shadow(0 0 14px #ffcd6970); } }
+@media (max-width: 900px) {
+  #championship-tour { padding: 18px; }
+  #championship-tour h2 { font-size: 36px; }
+  .tour-hero { gap: 12px; padding: 12px; }
+  .tour-portrait { width: 90px; height: 110px; }
+  .tour-progress { width: 140px; }
+  #tour-route { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tour-route-heading > span { display: none; }
+  #tour-finale > .tour-belt { width: 180px; }
+  .tour-footer { gap: 12px; }
+  #championship-tour .tour-launch { font-size: 11px; white-space: normal; max-width: 48%; }
+}
+@media (max-width: 550px) {
+  #championship-tour { width: calc(100vw - 12px); height: calc(100dvh - 12px); padding: 14px; }
+  #championship-tour[open] { gap: 12px; }
+  #championship-tour h2 { font-size: 28px; letter-spacing: 1px; }
+  .tour-kicker { font-size: 7px; letter-spacing: 1px; }
+  .tour-close kbd, .tour-controls { display: none; }
+  .tour-hero { flex-wrap: wrap; gap: 8px; }
+  .tour-portrait { width: 70px; height: 100px; }
+  .tour-fighter-copy { min-width: 160px; }
+  .tour-progress { width: 100%; flex-direction: row; align-items: center; gap: 10px; }
+  .tour-progress > b { font-size: 28px; white-space: nowrap; }
+  .tour-progress small { font-size: 20px; }
+  .tour-progress span { font-size: 7px; letter-spacing: 1px; }
+  .tour-progress progress { flex: 1; width: auto; min-width: 40px; }
+  #tour-standing { display: none; }
+  #tour-route { grid-template-columns: minmax(0, 1fr); }
+  .tour-stop { padding: 14px; }
+  .tour-belt { max-width: 230px; }
+  #tour-finale { flex-direction: column; gap: 8px; padding: 16px; }
+  #tour-finale > .tour-belt { width: 200px; }
+  #tour-finale h3 { font-size: 28px; }
+  .tour-footer { flex-direction: column-reverse; gap: 8px; padding-top: 12px; align-items: stretch; }
+  #championship-tour .tour-launch { max-width: none; width: 100%; min-height: 44px; }
+  #tour-save-state { font-size: 8px; text-align: center; }
+}
+@media (max-height: 550px) and (min-width: 551px) {
+  .tour-entry { gap: 12px; padding: 0; }
+  #menu .tour-entry button { font-size: 11px; padding: 6px 14px; min-height: 34px; }
+  .tour-entry > span { font-size: 8px; }
+  #championship-tour { height: calc(100dvh - 12px); padding: 12px 18px; }
+  #championship-tour[open] { gap: 8px; }
+  #championship-tour h2 { font-size: 28px; margin: 0; }
+  .tour-head .tour-kicker { font-size: 7px; }
+  #championship-tour .tour-close { min-height: 32px; padding: 4px 10px; }
+  .tour-hero { padding: 8px 14px; }
+  .tour-portrait { height: 60px; }
+  .tour-fighter-copy label, #tour-fighter-note { display: none; }
+  .tour-progress > b { font-size: 30px; }
+  #tour-fighter-note { font-size: 8px; }
+  .tour-footer { padding-top: 8px; }
+  #championship-tour .tour-launch { min-height: 38px; }
+  .tour-controls { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { #tour-finale.champion .tour-belt { animation: none; } }

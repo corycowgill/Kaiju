@@ -19,6 +19,12 @@ import { chicagoLine, offChicago } from './venue.js';
 // Lines that name Chicago places: left out when the match is staged elsewhere (venue.js)
 const CHI_ROWS = new Set(VO_LINES.filter(chicagoLine));
 
+// Recorded lines cannot be reworded: the world final must not be announced
+// as a two-out-of-three match. Other booth lines remain available normally.
+export function fitsMatchFormat(row, bestOf = 3) {
+  return bestOf <= 3 || !row[2].some((u) => /two out of three|best.of.three|in two straight|for three falls/i.test(u[1]));
+}
+
 export const BOOTH = Object.freeze({
   M: Object.freeze({ id: 'mike', name: 'MIKE BRANNIGAN', tag: 'BRANNIGAN' }),
   V: Object.freeze({ id: 'vance', name: 'STERLING VANCE', tag: 'VANCE' }),
@@ -97,10 +103,10 @@ export function createCommentary(ctx, W) {
       let u = used.get(topics[ti]);
       if (!u) used.set(topics[ti], u = new Set());
       let fresh = 0;
-      for (const r of rows) if (fits(r[1], f) && !u.has(r) && !(off && CHI_ROWS.has(r))) fresh++;
+      for (const r of rows) if (fits(r[1], f) && !u.has(r) && !(off && CHI_ROWS.has(r)) && fitsMatchFormat(r, W.match.state.bestOf)) fresh++;
       if (!fresh) u.clear();
       for (const r of rows) {
-        if (!fits(r[1], f) || u.has(r) || (off && CHI_ROWS.has(r))) continue;
+        if (!fits(r[1], f) || u.has(r) || (off && CHI_ROWS.has(r)) || !fitsMatchFormat(r, W.match.state.bestOf)) continue;
         // the more a line says about this exact moment, the likelier it is
         const w = (1 + 1.6 * specificity(r[1])) * (ti === 0 ? 1 : 0.45);
         cand.push(r); weight.push(w); total += w;
@@ -172,7 +178,7 @@ export function createCommentary(ctx, W) {
       let n = 0;
       // (rows the venue gate leaves unsaid off Chicago are never primed: pick() would never choose them)
       const off = offChicago(ctx);
-      for (const r of rows) if (fits(r[1], f) && !(off && CHI_ROWS.has(r)) && n++ < 6) for (const u of r[2]) if (u[3] > 0 && !primed.has(u[2])) { primed.add(u[2]); primeQ.push(u[2]); }
+      for (const r of rows) if (fits(r[1], f) && !(off && CHI_ROWS.has(r)) && fitsMatchFormat(r, W.match.state.bestOf) && n++ < 6) for (const u of r[2]) if (u[3] > 0 && !primed.has(u[2])) { primed.add(u[2]); primeQ.push(u[2]); }
     }
     pump();
   }

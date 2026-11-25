@@ -355,6 +355,7 @@ if (mode === 'wrestling') await step('wrestling', async () => {
   const achievements = createAchievementTracker({ storage: globalThis.localStorage });
   const ctx = {
     achievements,
+    tour: null,
     scene, camera: new THREE.PerspectiveCamera(), world, audio: new Proxy({}, { get: () => noop }), debug: true, MONSTERS: MON,
     quality: { tier: tier, isMobile: Q.isMobile, particleMul: 1 }, events: null, renderer: null, vfx, frozen: false,
     get rival() { return { key: 'mecha', cfg: MON.mecha, glb: kaijuGLB.mecha }; },
@@ -673,6 +674,30 @@ if (mode === 'wrestling') await step('wrestling', async () => {
     if (kaijuGLB.godzilla.root.rotation.order !== 'XYZ' || kaijuGLB.godzilla.root.rotation.x !== 0) fail('wrestling: dispose() left the player root tilted / with a changed rotation order');
     if (achievements.unlockedAt('main-event-debut') === null || achievements.unlockedAt('and-new') === null) fail('wrestling: real match start / victory did not award trophies');
     achievements.endRun();
+  }
+  // Tour finale: the real director must require three falls, retain its
+  // difficulty across falls, report once, and refuse exhibition defenses.
+  {
+    const { tourEncounter } = await imp('championshipTour.js');
+    const results = [];
+    let starts = 0;
+    ctx.tour = { ...tourEncounter('godzilla', 6), onStart: () => starts++, onResult: (e) => results.push(e) };
+    over = null;
+    wr.start({ rival: { key: 'mecha', cfg: MON.mecha, glb: kaijuGLB.mecha } });
+    wr.qa.ai(false); wr.W.match.skipEntrance();
+    if (wr.W.match.state.bestOf !== 5 || starts !== 1) fail('tour: final did not start as a best-of-five');
+    if (wr.W.rival.atkMult < 1.1 || wr.W.rival.maxHp < 300) fail('tour: final rival did not receive campaign tuning');
+    const untilTour = (condition) => { for (let i = 0; i < 1800 && !condition(); i++) wr.update(1 / 60, 1 / 60); return condition(); };
+    for (let fall = 1; fall <= 3; fall++) {
+      wr.W.match.end('player');
+      if (fall < 3) {
+        if (over || results.length) fail('tour: final awarded before three falls');
+        if (!untilTour(() => wr.W.match.state.phase === 'fight')) fail('tour: final did not continue to its next fall');
+      } else if (!untilTour(() => !!over)) fail('tour: final did not produce a result');
+    }
+    if (results.length !== 1 || results[0].playerFalls !== 3 || results[0].winner !== 'player') fail('tour: final result was not reported exactly once');
+    if (wr.W.match.defend()) fail('tour: campaign accidentally entered exhibition title defense');
+    wr.dispose(); ctx.tour = null;
   }
   scene.remove(kaijuGLB.godzilla.root);
   if (!(A.throwables && A.throwables.items.length >= 8)) fail(`wrestling: only ${A.throwables ? A.throwables.items.length : 0} park throwables placed round the ring (spots)`);

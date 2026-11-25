@@ -107,6 +107,35 @@ The ledger lives in `src/achievements.js`, its collection and toasts in
 in `src/wrestling/achievements.js`. Run `npm test` for progression and save tests;
 `npm run smoke` also checks trophy unlocks through the real wrestling director.
 
+### Championship Tour
+
+Select **Championship Tour** on the mode screen to start or resume a saved
+wrestling campaign. Choose any of the nine kaiju; each fighter keeps a separate
+career and faces seven distinct rivals, with no mirror matches.
+
+Win city belts in **Chicago → Washington DC → New York City → Seattle →
+San Francisco → Tokyo**. Each city is best of three falls. Rivals gain health,
+damage, and stronger AI pressure as the route advances. Winning all six city
+belts unlocks the **World Heavyweight Championship** in Tokyo: the toughest
+rival and a best-of-five match, requiring three winning falls. The final victory
+awards the saved world crown and a championship trophy celebration.
+
+Losses never remove earned belts: retry the current match from its results
+screen or resume from the tour board later. An interrupted match restarts at
+the same city. Wins save as soon as the match is decided. The board shows your
+belts, opponents, match scores, times, attempts, and the next unlocked stop.
+Progress is saved in this browser on this device; if browser storage is blocked
+or full, the board identifies that progress will only last for the session.
+
+Open the board during a paused match to inspect progress; close it to return to
+the pause menu. Tour matches advance existing wrestling trophies. Ordinary
+Title Match, including its title defenses, remains available separately.
+
+The campaign model is `src/championshipTour.js`; the board and responsive styles
+are `src/championshipTourUI.js` and `src/championshipTour.css`. `npm test` checks
+campaign progression and saves. The asset smoke test also exercises the real
+best-of-five final, its difficulty, and its result callback.
+
 ---
 
 ## How It Was Built

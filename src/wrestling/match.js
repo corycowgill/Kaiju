@@ -182,13 +182,14 @@ export function createMatch(ctx, W) {
     const r = W.rival;
     // (the first title match ramps more gently fall to fall: it is where a new player learns the game)
     const first = s.defense === 0, k = first ? MATCH.firstRamp : 1;
-    s.difficulty = 0.25 * s.defense + 0.12 * k * Math.max(0, s.fall - 1);
-    r.atkMult = Math.min(MATCH.rivalAtkMax, (first ? MATCH.firstAtk : MATCH.rivalAtk) + MATCH.rivalAtkPerFall * k * Math.max(0, s.fall - 1) + MATCH.rivalAtkPerDefense * s.defense);
+    s.difficulty = 0.25 * s.defense + 0.12 * k * Math.max(0, s.fall - 1) + (ctx.tour?.difficulty || 0);
+    r.atkMult = Math.min(MATCH.rivalAtkMax, (first ? MATCH.firstAtk : MATCH.rivalAtk) + MATCH.rivalAtkPerFall * k * Math.max(0, s.fall - 1) + MATCH.rivalAtkPerDefense * s.defense + (ctx.tour?.attack || 0));
   }
 
   // ------------------------------------------------------------------ match / fall
   function beginMatch() {
     const p = W.player, r = W.rival;
+    s.bestOf = ctx.tour?.bestOf || MATCH.bestOf;
     s.fall = 0; s.playerFalls = 0; s.rivalFalls = 0; s.time = 0; s.winner = ''; s.by = '';
     reported = false; picked = false; koT = 0; koRunT = -1; intState = 0;
     W.grapple.clear(); W.grapple.resetRopes();
@@ -196,7 +197,7 @@ export function createMatch(ctx, W) {
     if (s.defense === 0) p.maxHp = Math.round(MATCH.hpBase + MATCH.hpStat * p.cfg.stats.hp); // (health upgrades add to it from here)
     p.hp = p.maxHp;
     const hp = Math.round((MATCH.hpBase + MATCH.hpStat * r.cfg.stats.hp) * (s.defense === 0 ? MATCH.firstHp : MATCH.rivalHp) * (1 + MATCH.rivalHpPerDefense * s.defense));
-    r.maxHp = hp; r.hp = hp;
+    r.maxHp = Math.round(hp * (ctx.tour?.hp || 1)); r.hp = r.maxHp;
     p.momentum = Math.min(p.momentum, 50); r.momentum = 0;
     for (const f of [p, r]) { f._cbMatch = 0; f.finKicked = false; }
     rallied.player = rallied.rival = false;
@@ -687,6 +688,7 @@ export function createMatch(ctx, W) {
     },
     /** Title defense: the same run goes on against the other kaiju, harder. */
     defend() {
+      if (ctx.tour) return false; // city progression is owned by the campaign board
       if (swapping || s.phase !== 'over' || s.winner !== 'player') return false;
       const keys = Object.keys(ctx.MONSTERS || {}).filter((k) => k !== W.player.key && k !== W.rival.key);
       const key = keys[0];

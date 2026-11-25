@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.17.0', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.18.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -41,6 +41,8 @@ import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTexture
 import { createWrestling } from './wrestling/index.js';
 import { createAchievementTracker } from './achievements.js';
 import { createAchievementUI } from './achievementUI.js';
+import { createChampionshipTour } from './championshipTour.js';
+import { createChampionshipTourUI } from './championshipTourUI.js';
 import { prebakeAnims } from './wrestling/anims.js';
 import { matchVoiceIds } from './wrestling/commentary.js';
 import { DC_LOOK } from './levels/dcLook.js';
@@ -1427,6 +1429,43 @@ trophyUI = createAchievementUI(achievements, {
   chime: (tier) => audio.achievement(tier),
 });
 trophyUI.refresh();
+let tourUI, tourRun = null, _tourWasPaused = false;
+const championshipTour = createChampionshipTour({ storage: trophyStorage, onChange: () => tourUI?.refresh() });
+tourUI = createChampionshipTourUI(championshipTour, MONSTERS, {
+  canLaunch: () => !_startingGame && (!state.kaiju || state.gameOver),
+  onOpen() {
+    _tourWasPaused = state.paused;
+    if (state.kaiju && !state.gameOver) state.paused = true;
+    state.mouseDown = state.aimDown = false;
+    for (const code of Object.keys(keys)) _setKey(code, false);
+    document.exitPointerLock?.();
+  },
+  onClose() {
+    if (state.kaiju && !state.gameOver && !state.upgradePending) state.paused = _tourWasPaused;
+    const pad = [...(navigator.getGamepads?.() || [])].find((p) => p?.connected);
+    if (pad) for (const i of [0, 1, 9, 12, 13, 14, 15]) _menuPad.prevDown[i] = !!pad.buttons[i]?.pressed;
+  },
+  async onLaunch() {
+    const planned = championshipTour.prepare();
+    if (!planned) return;
+    if (state.kaiju) restartInPlace();
+    modePicker.value = 'title'; modePicker.dispatchEvent(new Event('change'));
+    document.querySelector(`#levelCards .level-card[data-level="${planned.encounter.level}"]`).click();
+    _cardEls[planned.encounter.fighter].click();
+    const run = tourRun = { ...planned.encounter, ticket: planned.ticket, result: null,
+      onStart() { championshipTour.start(planned.ticket); },
+      onResult(result) { run.result = championshipTour.finish(planned.ticket, result); },
+    };
+    if (!await startGame(run.fighter)) {
+      championshipTour.cancel(run.ticket);
+      if (state.kaiju) restartInPlace();
+      tourRun = null;
+      throw new Error('Tour match did not start');
+    }
+  },
+});
+tourUI.refresh();
+window.addEventListener('pagehide', () => championshipTour.flush());
 window.addEventListener('pagehide', () => achievements.flush());
 document.addEventListener('visibilitychange', () => { if (document.hidden) achievements.flush(); });
 
@@ -1657,7 +1696,7 @@ function _menuRows() {
   const shown = (el) => el.getClientRects().length > 0;
   const rows = step === 'mode' ? [
     Array.from(document.querySelectorAll('#modeCards .mode-card')),
-    Array.from(document.querySelectorAll('.menu-extras button')).filter(shown),
+    Array.from(document.querySelectorAll('.tour-entry button, .menu-extras button')).filter(shown),
   ] : step === 'fighter' ? [
     ..._rosterRows(),
     Array.from(document.querySelectorAll('#levelCards .level-card')).filter(shown),
@@ -1731,7 +1770,7 @@ function confirmMenu() {
   if (target.classList.contains('monster-card') && _menuVisible()) _menuFocus(document.getElementById('startBtn'));
 }
 function pollMenuGamepad(dt) {
-  if (trophyUI.isOpen) return;
+  if (trophyUI.isOpen || tourUI.isOpen) return;
   const sheet = !_menuVisible() && !_upgradeVisible() && _sheetTargets().length > 0;
   if (!sheet) _sheetWasUp = false;
   if (!_menuVisible() && !_upgradeVisible() && !sheet) return;
@@ -1825,7 +1864,7 @@ window.addEventListener('keydown', (e) => {
     if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); confirmMenu(); return; }
   }
   if (galleryDialog.open || (!_menuVisible() && !_upgradeVisible())) return;
-  if (e.target?.closest?.('.menu-extras') && (e.key === 'Enter' || e.key === ' ')) return;
+  if (e.target?.closest?.('.menu-extras, .tour-entry') && (e.key === 'Enter' || e.key === ' ')) return;
   if (_menuVisible() && !_upgradeVisible()) {
     // Title menu: steps (attract -> mode -> fighter), rows, Esc / Backspace back
     if (e.ctrlKey || e.metaKey || e.altKey || /^F\d/.test(e.key) || e.key === 'Tab') return;
@@ -1977,7 +2016,7 @@ const _touchControls = []; // extra control elements a mode registered (ctx.inpu
 function isOnControl(target) {
   if (!target || !target.closest) return false;
   for (let i = 0; i < _touchControls.length; i++) if (_touchControls[i].contains(target)) return true;
-  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #vs-moves, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal, #trophy-room');
+  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #vs-moves, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal, #trophy-room, #championship-tour');
 }
 window.addEventListener('touchstart', (e) => {
   if (!touchUI || state.gameOver || !state.kaiju) return;
@@ -3138,12 +3177,17 @@ async function _preuploadTextures(roots) {
 // resets per-run state and returns to the monster-select menu.
 /** The result screen's PLAY AGAIN: the same fighter, mode, stage (and rival / unit) straight into loading. */
 function _playAgain() {
+  if (tourRun) { tourUI.open(); return; }
   const key = state.monsterKey;
   if (!key || _startingGame) return;
   restartInPlace();
   startGame(key);
 }
 function restartInPlace() {
+  if (tourRun) championshipTour.cancel(tourRun.ticket);
+  tourRun = null;
+  document.getElementById('gameover').classList.remove('tour-result', 'tour-champion');
+  document.getElementById('tour-next-btn').hidden = true;
   achievements.endRun();
   _mode.dispose(); // the mode's own objects, DOM and listeners (before the scene goes)
   _resetSeams();
@@ -3241,17 +3285,18 @@ if (/[?&]debug\b/.test(location.search)) {
     }, composer: () => composer, opaqueSort: isMobile ? null : _opaqueSort, ult: () => { state.rage = 100; state.cooldowns.ult = 0; fireUltimate(); }, wave: (n) => startWave(n), objective: (kind) => progressObjective(kind), pause: (on) => togglePause(on), gameOver: (v) => gameOver(!!v), upgrades: () => offerUpgrades() };
 }
 async function startGame(key) {
-  if (_startingGame) return;
+  if (_startingGame) return false;
 
   // On mobile, warn about data usage before downloading (first play only)
   if (isMobile && !_mobileDataAccepted) {
     const proceed = await _showMobileDataWarning();
-    if (!proceed) return;
+    if (!proceed) return false;
   }
 
   _startingGame = true;
   try {
     await _startGameInner(key);
+    return true;
   } catch (e) {
     reportLoadError('startGame', key, e);
     achievements.endRun();
@@ -3263,6 +3308,7 @@ async function startGame(key) {
     document.getElementById('loading-screen')?.classList.remove('visible');
     if (_hudPrewarm) { _hudPrewarm.restore(); _hudPrewarm = null; }
     toast('LOADING FAILED · TAP START TO RETRY', 'bad');
+    return false;
   } finally {
     _startingGame = false;
   }
@@ -4417,6 +4463,25 @@ function gameOver(victory, text) {
   _hideRunHUD();
   _mode.onGameOver(victory);
   const goEl = document.getElementById('gameover');
+  if (tourRun) {
+    const result = tourRun.result;
+    text = { ...(text || {}), keepPose: true, waveLabel: 'Falls Won',
+      waveValue: `${_wr.W.match.state.playerFalls} - ${_wr.W.match.state.rivalFalls}`,
+      title: result?.won ? tourRun.final ? 'WORLD CHAMPION' : 'CITY BELT WON' : 'THE TOUR CONTINUES',
+      subtitle: result?.won ? tourRun.final
+        ? `${state.monsterCfg.name} · UNDISPUTED WORLD HEAVYWEIGHT CHAMPION · ALL SIX CITY BELTS`
+        : `${tourRun.name.toUpperCase()} CONQUERED · ${result.belts} OF 6 CITY BELTS · ${championshipTour.persistent ? 'PROGRESS SAVED' : 'SESSION PROGRESS ONLY'}`
+        : `${tourRun.name.toUpperCase()} · RETRY THIS MATCH · YOUR EARNED BELTS ARE SAFE`,
+    };
+    goEl.classList.add('tour-result');
+    document.getElementById('goAgainBtn').textContent = 'EXIT TOUR';
+    goEl.classList.toggle('tour-champion', !!(result?.won && tourRun.final));
+    document.getElementById('wr-belt-name').textContent = tourRun.final ? 'WORLD HEAVYWEIGHT' : `${tourRun.name.toUpperCase()} HEAVYWEIGHT`;
+    const next = document.getElementById('tour-next-btn');
+    next.hidden = false;
+    next.textContent = !result?.won ? 'RETRY TOUR MATCH' : result.complete ? 'VIEW CHAMPION’S TROPHY' : result.belts === 6 ? 'WORLD TITLE SHOT' : 'NEXT CITY';
+    if (result?.won && tourRun.final) audio.achievement('platinum');
+  }
   document.getElementById('goTitle').textContent = (text && text.title)
     || (victory ? `${LEVELS[world.level || 'tokyo'].name} FALLS` : 'DEFEATED');
   document.getElementById('goSubtitle').textContent = (text && text.subtitle) || (victory
@@ -6919,6 +6984,7 @@ function _rivalWorldTick(dt) {
   _dmgSrc = null;
 }
 function _pickRivalKey(playerKey) {
+  if (tourRun && tourRun.fighter === playerKey) return tourRun.rival;
   const others = Object.keys(MONSTERS).filter((k) => k !== playerKey);
   const m = location.search.match(/[?&]rival=(\w+)/); // QA: force the opponent
   return m && others.includes(m[1]) ? m[1] : others[Math.floor(Math.random() * others.length)];
@@ -7144,6 +7210,7 @@ const _playerView = {
 // ---- ctx: the one object the wrestling modules get ----
 const ctx = {
   achievements,
+  get tour() { return tourRun; },
   scene, camera, renderer, world, audio, vfx, MONSTERS,
   debug: /[?&]debug\b/.test(location.search),
   quality: Object.freeze({ tier: QUALITY, high: Q_HIGH, med: Q_MED, low: Q_LOW, isMobile, touchUI, glbContent: GLB_CONTENT,
@@ -7383,7 +7450,7 @@ function tick(now) {
   const dt = frozen ? 0 : dtReal * (slowActive ? state.slowMoScale : 1);
   _lastDt = dt;
   if(state.paused&&state.kaiju&&!state.gameOver&&!state.upgradePending){
-    readGamepad();if(padInput.pressed.pause&&!trophyUI.isOpen)togglePause(false);
+    readGamepad();if(padInput.pressed.pause&&!trophyUI.isOpen&&!tourUI.isOpen)togglePause(false);
   }
   const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible') && !_settling; // (_settleGpu: the first frames play under it)
   if (!state.paused && !state.gameOver && !loadingUp) {
@@ -7418,8 +7485,9 @@ function tick(now) {
   _in.wheel = 0;
   // Menu navigation (gamepad) -- runs whenever the menu or upgrade modal
   // is on screen, regardless of paused/gameOver state.
-  const trophyWasOpen = trophyUI.isOpen;
+  const trophyWasOpen = trophyUI.isOpen || tourUI.isOpen;
   trophyUI.update(dtRaw, !_startingGame && !_loadingScreenEl?.classList.contains('visible'));
+  tourUI.update(dtRaw);
   if (!trophyWasOpen) pollMenuGamepad(dtRaw);
   // Look layer (look.js): the slide toward dusk advances with play time; the
   // kaiju positions feed the analytic shadows. The ultimate's additive domes

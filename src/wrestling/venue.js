@@ -72,6 +72,7 @@ const VENUES = {
 const _level = (ctx) => { const l = ctx && ctx.world && ctx.world.level; return typeof l === 'string' ? l : 'chicago'; };
 /** text with the level's place names (unchanged on Chicago). */
 export function placeText(ctx, text) {
+  if (ctx?.tour?.final && text) text = text.replace(/CHICAGO HEAVYWEIGHT/g, 'WORLD HEAVYWEIGHT').replace(/Chicago Heavyweight/g, 'World Heavyweight');
   const v = VENUES[_level(ctx)];
   if (!v || !text) return text;
   for (const [re, to] of v.swaps) text = text.replace(re, to);
