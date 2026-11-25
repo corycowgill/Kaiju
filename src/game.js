@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.25.1', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.26.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -46,6 +46,8 @@ import { createAchievementUI } from './achievementUI.js';
 import { createChampionshipTour } from './championshipTour.js';
 import { createChampionshipTourUI } from './championshipTourUI.js';
 import { playerProfiles, playerStorage } from './playerStorage.js';
+import { i18n } from './i18n.js';
+import { installLocalizationDOM } from './i18nDOM.js';
 import { createPlayerHistory } from './playerHistory.js';
 import { createPlayerProfilesUI } from './playerProfilesUI.js';
 import { createHavocChallenges } from './havocChallenges.js';
@@ -59,6 +61,8 @@ import { SEATTLE_LOOK } from './levels/seattleLook.js';
 import { SF_LOOK } from './levels/sfLook.js';
 import { TOKYO_LOOK } from './levels/tokyoLook.js';
 import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, lookSunUp, withLookEnvSky, setLookDip } from './look.js';
+i18n.bindStorage(playerStorage);
+installLocalizationDOM(i18n);
 let localMatch = null;
 const localSeatPoint = new THREE.Vector3();
 window.__dbg && window.__dbg('DBG · all imports OK');
@@ -2680,7 +2684,10 @@ menuEl.classList.add('mn-warm');
     // desktop: the effect set's programs, linked behind the boot screen too (_linkVfxBehindMenu)
     if (!isMobile) await wait(_vfxMenuDone || Promise.resolve(), 20000);
     let calm = 0, last = performance.now();
-    while (calm < 30 && menuEl.classList.contains('mn-warm')) {
+    const warmStarted = last;
+    // Font/layout cost varies by language and device; a low frame rate must
+    // never leave a translated menu behind the loading screen indefinitely.
+    while (calm < 30 && menuEl.classList.contains('mn-warm') && performance.now() - warmStarted < 6000) {
       await frame();
       const now = performance.now();
       calm = now - last < 50 ? calm + 1 : 0;
@@ -3385,7 +3392,7 @@ window.__restartInPlace = restartInPlace;
 // ?debug test hooks (QA scripts): inspect state and trigger abilities
 if (/[?&]debug\b/.test(location.search)) {
   // composer(): the post chain (bloom, grade) for in-game-look screenshots
-  window.__qa = { state, world, camera, renderer,
+  window.__qa = { state, world, camera, renderer, locale: i18n,
     challenge: () => challengeMode,
     history: playerHistory,
     graphics:()=>({width:_fitWidth,height:_fitHeight,pixelRatio:_fitPR,resizeCount:_fitCount,cameraCandidates:_cameraQuery.candidates||0}),

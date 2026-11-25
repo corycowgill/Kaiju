@@ -1,0 +1,22 @@
+#player-profiles .pp-language { margin:18px 0;padding:16px;border-left:3px solid var(--c-gold);background:#27121a;border-bottom:1px solid #ffcc6633 }
+#player-profiles select { width:100%;min-height:44px;margin:0 0 8px;border:1px solid #ffcc6677;border-radius:0;padding:8px 12px;background:#14060a;color:var(--c-cream);font:16px system-ui,sans-serif;letter-spacing:0;cursor:pointer;color-scheme:dark }
+#player-profiles select:focus-visible { outline:2px solid var(--c-gold);outline-offset:2px }
+.pp-language p,.pp-create p { font-size:11px;line-height:1.5;color:var(--c-muted) }
+#pp-new-language { margin-top:6px!important }.pp-create label[for=pp-new-language] { margin-top:18px }
+html[data-localized=true] :is(.mc-body b,.tour-launch,.sheet-btn,.mn-back,.start-btn,.trailer-btn,.tour-close,.tour-step-label) { letter-spacing:.04em;white-space:normal;overflow-wrap:anywhere }
+html[data-localized=true] .mc-body b { font-size:clamp(18px,2.3vw,34px);line-height:1.15 }
+html[data-localized=true] .tour-launch { font-size:clamp(14px,1.6vw,24px);max-width:42vw }
+html[data-localized=true] .tour-controls { letter-spacing:.03em;line-height:1.5 }
+html[data-localized=true] :is(.mn-head,.fs-label,.trophy-tier,.pp-section-title,.hc-thresholds) { letter-spacing:.04em }
+html[data-localized=true]:not(:lang(ja)) :is(.jp,.jp-sub,.mc-jp,.jp-line,#fs-jp) { display:none!important }
+html:lang(ja),html:lang(zh-CN) { --f-display:'Noto Sans CJK JP','Noto Sans JP','Noto Sans CJK SC',system-ui,sans-serif;--f-jp:'Noto Sans CJK JP','Noto Sans JP',system-ui,sans-serif }
+html:lang(zh-CN) { --f-display:'Noto Sans SC','Noto Sans CJK SC','Microsoft YaHei',system-ui,sans-serif;--f-jp:'Noto Sans SC','Noto Sans CJK SC',system-ui,sans-serif }
+html:lang(ja) :is(button,h2,h3,.sheet-title),html:lang(zh-CN) :is(button,h2,h3,.sheet-title) { font-family:var(--f-display)!important;font-weight:700;letter-spacing:.03em }
+html:lang(ja) .campaign-menu h2,html:lang(zh-CN) .campaign-menu h2 { font-size:clamp(20px,2.8vw,36px) }
+@media(max-width:600px) { html[data-localized=true] .tour-launch { max-width:45vw;font-size:12px;padding:10px }html[data-localized=true] .mc-body b { font-size:18px }html[data-localized=true] #menu .trailer-btn { font-size:11px }html[data-localized=true] .tour-head { gap:8px } }
+#player-profiles .pp-language-picker { margin-left:auto;flex:0 1 180px;min-width:108px }
+#player-profiles .pp-language-picker label { font:10px/1.4 system-ui,sans-serif;letter-spacing:.03em;margin:0 0 3px }
+#player-profiles .pp-language-picker select { margin:0;min-height:36px;padding:5px 8px;font-size:14px }
+.pp-audio-note { font:11px/1.5 system-ui,sans-serif;color:var(--c-muted);margin:12px 0 }
+@media(max-width:1000px) { #player-profiles .tour-step-label { display:none }#player-profiles .pp-language-picker { flex-basis:150px } }
+@media(max-width:550px) { #player-profiles .tour-head { flex-wrap:wrap }#player-profiles .tour-head>div:nth-child(2) { flex:1;min-width:0 }#player-profiles .pp-language-picker { order:5;flex:1 0 100%;display:flex;align-items:center;gap:10px }#player-profiles .pp-language-picker select { flex:1;width:0 }#player-profiles .pp-language-picker label { margin:0;width:auto } }

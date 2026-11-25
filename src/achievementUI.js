@@ -1,6 +1,7 @@
+import { i18n } from './i18n.js';
 import { ACHIEVEMENTS } from './achievements.js';
 
-const number = (n) => Math.floor(n).toLocaleString();
+const number = (n) => i18n.formatNumber(Math.floor(n));
 const icon = (a, extra = '') => {
   const artClass = a.art === 'america-first' ? 'america-first-trophy-art' : a.art === 'challenges' ? 'challenge-trophy-art' : '';
   const position = a.art === 'america-first' ? '50% 50%' : a.art === 'challenges'
@@ -67,13 +68,13 @@ export function createAchievementUI(tracker, { onOpen = () => {}, onClose = () =
     const visible = ACHIEVEMENTS.filter((a) => {
       const earned = tracker.unlockedAt(a.id) !== null;
       return (mode === 'all' || a.mode === mode) && (status.value === 'all' || earned === (status.value === 'unlocked'))
-        && (!query || `${a.name} ${a.description}`.toLocaleLowerCase().includes(query));
+        && (!query || `${a.name} ${a.description} ${i18n.t(a.name)} ${i18n.t(a.description)}`.toLocaleLowerCase().includes(query));
     });
     results.textContent = `${visible.length} ${visible.length === 1 ? 'trophy' : 'trophies'} · ${mode === 'all' ? 'All modes' : mode === 'legacy' ? 'Legacy milestones' : mode === 'havoc' ? 'Kaiju Havoc' : 'Title Match'}`;
     grid.innerHTML = visible.length ? visible.map((a) => {
       const at = tracker.unlockedAt(a.id), earned = at !== null, progress = tracker.progress(a);
       const percent = Math.floor(progress / a.goal * 100);
-      const date = earned ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      const date = earned ? new Date(at).toLocaleDateString(i18n.getLanguage(), { month: 'short', day: 'numeric', year: 'numeric' }) : '';
       return `<article class="trophy-card ${earned ? 'earned' : 'locked'} tier-${a.tier}" data-trophy-id="${a.id}">
         <div class="trophy-card-top">${icon(a)}<div><span class="trophy-category">${a.mode === 'legacy' ? 'LEGACY' : a.mode === 'havoc' ? 'HAVOC' : 'WRESTLING'}</span><h3>${a.name}</h3><span class="trophy-tier">${a.tier} <i>·</i> ${a.points} TP</span></div><span class="trophy-state" aria-label="${earned ? 'Unlocked' : 'Locked'}">${earned ? '✓' : '◇'}</span></div>
         <p class="trophy-description">${a.description}</p>

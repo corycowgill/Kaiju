@@ -1,18 +1,20 @@
+import { i18n, LANGUAGES, LANGUAGE_KEY, normalizeLanguage } from './i18n.js';
 import { ACHIEVEMENTS } from './achievements.js';
 const escape = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const parse = (s) => { try { return JSON.parse(s || 'null'); } catch { return null; } };
 const number = (n) => Number.isFinite(Number(n)) ? Math.max(0, Math.min(1e12, Number(n))) : 0;
-const format = (n) => Math.floor(number(n)).toLocaleString();
+const format = (n) => i18n.formatNumber(Math.floor(number(n)));
 const duration = (s) => `${Math.floor(number(s) / 60)}:${String(Math.floor(number(s) % 60)).padStart(2, '0')}`;
 const modeNames = { havoc: 'Havoc', title: 'Title Match', vs: 'VS Duel', lone: 'Lone Soldier', challenge: 'City Challenge', tour: 'Championship Tour', 'local-title': 'Local 2P Wrestling', 'local-vs': 'Local 2P Brawl' };
 const outcomeNames = { won: 'WON', lost: 'LOST', left: 'LEFT', interrupted: 'INTERRUPTED' };
 
 export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch, onOpen, onClose, onSwitch }) {
   const dialog = document.createElement('dialog'); dialog.id = 'player-profiles'; dialog.className = 'campaign-menu'; dialog.setAttribute('aria-labelledby', 'pp-title');
-  dialog.innerHTML = `<div class="tour-backdrop" aria-hidden="true"></div><header class="tour-head"><div class="tour-brand">怪獣 <b>KAIJU HAVOC</b></div><div><p class="tour-kicker">YOUR PLAYERS. YOUR KAIJU LEGACY.</p><h2 id="pp-title">PLAYER PROFILES</h2></div><span class="tour-step-label">01 / PLAYER</span><button type="button" class="tour-close pp-close" aria-label="Close Player Profiles">CLOSE</button></header>
+  const languageOptions = LANGUAGES.map((l) => `<option value="${l.code}" lang="${l.code}" translate="no">${l.name}</option>`).join('');
+  dialog.innerHTML = `<div class="tour-backdrop" aria-hidden="true"></div><header class="tour-head"><div class="tour-brand">怪獣 <b>KAIJU HAVOC</b></div><div><p class="tour-kicker">YOUR PLAYERS. YOUR KAIJU LEGACY.</p><h2 id="pp-title">PLAYER PROFILES</h2></div><div class="pp-language-picker"><label for="pp-language"><span aria-hidden="true">🌐</span> Text language</label><select id="pp-language" aria-label="Text language">${languageOptions}</select></div><span class="tour-step-label">01 / PLAYER</span><button type="button" class="tour-close pp-close" aria-label="Close Player Profiles">CLOSE</button></header>
     <div class="tour-pages"><section class="tour-contender-page" data-pp-page="players"><div class="tour-showcase"><div class="tour-show-portrait"></div><div class="tour-show-copy"><span class="tour-role pp-role"></span><h3 class="tour-show-name pp-show-name"></h3><p class="tour-show-epithet pp-show-standing"></p><p class="tour-show-description">Your trophies, medals, city belts, and records. A separate career for every player on this device.</p></div></div><div class="tour-roster-side"><div class="tour-section-heading"><h3>CHOOSE YOUR PLAYER</h3><span>プレイヤー</span></div><div class="pp-players" role="group" aria-label="Choose a local player"></div><p class="tour-career-note pp-storage"></p></div></section>
-    <section class="pp-career-page" data-pp-page="career" hidden><div class="pp-scroll"><div class="pp-career-head"><div><p class="tour-kicker pp-career-status"></p><h3 class="pp-current"></h3><p class="pp-career-note"></p></div><button type="button" class="pp-choose">CHOOSE PLAYER</button></div><div class="pp-career-grid"><section><h3 class="pp-section-title">CAREER RECORD <span>記録</span></h3><div class="pp-stats"></div><form class="pp-rename"><label for="pp-rename-name">PLAYER NAME</label><div class="pp-form-row"><input id="pp-rename-name" name="name" maxlength="48" autocomplete="off" required><button type="submit">SAVE NAME</button></div></form><div class="pp-manage"><p>Deleting this profile removes its saved career from this browser.</p><button type="button" class="pp-delete">DELETE PROFILE</button></div></section><section><h3 class="pp-section-title">RECENT HISTORY <span>LAST 100 RESULTS</span></h3><p class="pp-history-note">Results recorded since profiles were introduced. Earlier achievements, medals, belts, and high scores are preserved.</p><ol class="pp-history"></ol></section></div></div></section>
-    <section class="pp-create-page" data-pp-page="create" hidden><div class="pp-create-art" aria-hidden="true"></div><div class="pp-create-copy"><span class="tour-role">A NEW KAIJU CAREER</span><h3>MAKE YOUR MARK</h3><p>Start fresh with your own achievements, history, high score, challenge medals, and championship belts.</p><form class="pp-create"><label for="pp-new-name">NEW PLAYER NAME</label><input id="pp-new-name" name="name" maxlength="48" autocomplete="off" placeholder="Enter a player name" required><small>Up to 24 characters · Saved locally · Up to 8 players</small></form></div></section></div>
+    <section class="pp-career-page" data-pp-page="career" hidden><div class="pp-scroll"><div class="pp-career-head"><div><p class="tour-kicker pp-career-status"></p><h3 class="pp-current"></h3><p class="pp-career-note"></p></div><button type="button" class="pp-choose">CHOOSE PLAYER</button></div><div class="pp-career-grid"><section><h3 class="pp-section-title">CAREER RECORD <span>記録</span></h3><div class="pp-stats"></div><p class="pp-audio-note">Audio remains in English.</p><form class="pp-rename"><label for="pp-rename-name">PLAYER NAME</label><div class="pp-form-row"><input id="pp-rename-name" name="name" maxlength="48" autocomplete="off" required><button type="submit">SAVE NAME</button></div></form><div class="pp-manage"><p>Deleting this profile removes its saved career from this browser.</p><button type="button" class="pp-delete">DELETE PROFILE</button></div></section><section><h3 class="pp-section-title">RECENT HISTORY <span>LAST 100 RESULTS</span></h3><p class="pp-history-note">Results recorded since profiles were introduced. Earlier achievements, medals, belts, and high scores are preserved.</p><ol class="pp-history"></ol></section></div></div></section>
+    <section class="pp-create-page" data-pp-page="create" hidden><div class="pp-create-art" aria-hidden="true"></div><div class="pp-create-copy"><span class="tour-role">A NEW KAIJU CAREER</span><h3>MAKE YOUR MARK</h3><p>Start fresh with your own achievements, history, high score, challenge medals, and championship belts.</p><form class="pp-create"><label for="pp-new-name">NEW PLAYER NAME</label><input id="pp-new-name" name="name" maxlength="48" autocomplete="off" placeholder="Enter a player name" required><label for="pp-new-language">Text language</label><select id="pp-new-language" aria-label="New player text language">${languageOptions}</select><p>Audio remains in English.</p><small>Up to 24 characters · Saved locally · Up to 8 players</small></form></div></section></div>
     <footer class="tour-footer"><button type="button" class="tour-back pp-back"><span>ESC</span> BACK</button><div class="tour-footer-copy"><p class="tour-controls">ARROWS / D-PAD SELECT · ENTER / A CONFIRM · ESC / B BACK</p><p class="pp-save-note">Saved in this browser on this device. No account required.</p><p class="pp-error" role="status" aria-live="polite"></p></div><span class="tour-selection pp-selection"></span><button type="button" class="tour-launch pp-launch"></button></footer>`;
   document.body.appendChild(dialog);
   const launch = dialog.querySelector('.pp-launch');
@@ -51,7 +53,7 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
     dialog.querySelector('.pp-show-name').textContent = player.name;
     dialog.querySelector('.pp-role').textContent = active ? 'ACTIVE PLAYER' : 'YOUR NEXT LEGEND';
     dialog.querySelector('.pp-show-standing').textContent = `${c.trophyCount} / ${ACHIEVEMENTS.length} TROPHIES · BEST ${c.high}`;
-    dialog.querySelector('.pp-selection').textContent = step === 'create' ? 'NEW PLAYER · FRESH CAREER' : `${player.name} · ${active ? 'ACTIVE PLAYER' : 'LOCAL PLAYER'}`;
+    dialog.querySelector('.pp-selection').textContent = step === 'create' ? i18n.t('NEW PLAYER · FRESH CAREER') : `${player.name} · ${i18n.t(active ? 'ACTIVE PLAYER' : 'LOCAL PLAYER')}`;
     const note = !editable ? 'Local storage is unavailable. This career lasts for this session; profile changes are disabled.' : canSwitch() ? 'Each player keeps a separate career. Switching players reloads the game.' : 'Finish or quit your current run to switch players. You can still browse careers.';
     dialog.querySelector('.pp-storage').textContent = note;
     dialog.querySelector('.pp-career-note').textContent = note;
@@ -59,7 +61,11 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
       const data = p.id === selectedId ? c : career(p.id);
       return `<button type="button" class="pp-player" data-pp-select="${p.id}" aria-pressed="${p.id === selectedId}" style="--pp-art:url('${data.art}')" ${transitioning ? 'disabled' : ''}><span class="pp-avatar" aria-hidden="true">${escape(Array.from(p.name)[0].toUpperCase())}</span><span class="pp-playing">${p.id === profiles.id ? 'PLAYING' : 'LOCAL PLAYER'}</span><b>${escape(p.name)}</b><small>${data.trophyCount} / ${ACHIEVEMENTS.length} TROPHIES · BEST ${data.high}</small></button>`;
     }).join('') + `<button type="button" class="pp-new-player" ${switchable && players.length < 8 ? '' : 'disabled'}><b>＋</b><span>NEW PLAYER</span><small>${players.length} / 8 PROFILES</small></button>`;
-    dialog.querySelector('.pp-current').textContent = `${player.name}’s career`;
+    dialog.querySelector('.pp-current').textContent = i18n.t('{player}’s career', { player: player.name });
+    const language = dialog.querySelector('#pp-language');
+    language.value = active ? i18n.getLanguage() : normalizeLanguage(profiles.read(selectedId, LANGUAGE_KEY));
+    language.disabled = !active || transitioning;
+    dialog.querySelector('#pp-new-language').disabled = !switchable;
     dialog.querySelector('.pp-career-status').textContent = active ? 'ACTIVE PLAYER · YOUR LOCAL LEGACY' : 'LOCAL PLAYER · CAREER PREVIEW';
     dialog.querySelector('.pp-rename').hidden = !active;
     const rename = dialog.querySelector('#pp-rename-name'); rename.value = player.name;
@@ -71,7 +77,7 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
     const stats = [['TROPHIES', `${c.trophyCount} / ${ACHIEVEMENTS.length}`], ['HIGH SCORE', c.high], ['CHALLENGE MEDALS', `${c.medals} / 24`], ['CITY BELTS', format(c.belts)], ['RECORDED RUNS', format(total.played)], ['WINS / LOSSES', `${format(total.wins)} / ${format(total.losses)}`], ['ACTIVE PLAY', duration(total.seconds)]];
     dialog.querySelector('.pp-stats').innerHTML = stats.map(([label, value]) => `<div><span>${label}</span><b>${value}</b></div>`).join('');
     if (step === 'career') dialog.querySelector('.pp-history').innerHTML = c.recent.length ? c.recent.map((r) => {
-      const date = new Date(r.ended).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+      const date = new Date(r.ended).toLocaleString(i18n.getLanguage(), { dateStyle: 'medium', timeStyle: 'short' });
       const detail = [monsters[r.fighter]?.name || r.fighter || '', String(r.city || '').toUpperCase(), duration(r.seconds), `Score ${format(r.score)}`];
       if (r.mode === 'challenge') detail.push(r.mission || '', ['No medal', 'Bronze', 'Silver', 'Gold'][r.medal] || 'No medal');
       if (r.mode.startsWith('local-')) detail.push(`P2: ${monsters[r.opponent]?.name || r.opponent || 'Guest'}`);
@@ -85,6 +91,7 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
   function close() { if (!transitioning) dialog.close(); }
   function showStep(next) {
     step = next; pendingDelete = null; error(''); refresh();
+    if (next === 'create') dialog.querySelector('#pp-new-language').value = i18n.getLanguage();
     if (next === 'players') focus(`[data-pp-select="${selectedId}"]`);
     else if (next === 'create') focus('#pp-new-name');
     else { dialog.querySelector('.pp-scroll').scrollTop = 0; launch.focus({ preventScroll: true }); }
@@ -109,9 +116,15 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
     e.preventDefault(); if (transitioning) return;
     try {
       if (!canSwitch() || !profiles.persistent) throw Error('Finish your run before creating a player.');
-      const id = profiles.create(dialog.querySelector('#pp-new-name').value); selectedId = id; showStep('career'); await switchTo(id);
+      const id = profiles.create(dialog.querySelector('#pp-new-name').value, { language: dialog.querySelector('#pp-new-language').value }); selectedId = id; showStep('career'); await switchTo(id);
     } catch (e) { error(e.message); refresh(); }
   });
+  dialog.querySelector('#pp-language').addEventListener('change', (e) => {
+    if (selectedId !== profiles.id || transitioning) return;
+    const saved = i18n.setLanguage(e.target.value);
+    error(saved ? 'Language saved to this player profile.' : 'Language changed for this session. Browser storage is unavailable.');
+  });
+  i18n.subscribe(() => { careerCache.clear(); refresh(); });
   dialog.querySelector('.pp-rename').addEventListener('submit', (e) => {
     e.preventDefault(); if (transitioning || selectedId !== profiles.id) return;
     try { profiles.rename(dialog.querySelector('#pp-rename-name').value); refresh(); error('Player name saved.'); } catch (e) { error(e.message); }
@@ -145,7 +158,7 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
       else button?.focus();
     } else if (dy && step === 'career') dialog.querySelector('.pp-scroll').scrollBy({ top: dy * 180 });
     else {
-      const controls = [...dialog.querySelectorAll('button,input')].filter((el) => !el.disabled && el.getClientRects().length);
+      const controls = [...dialog.querySelectorAll('button,input,select')].filter((el) => !el.disabled && el.getClientRects().length);
       const index = controls.indexOf(document.activeElement), direction = dx || dy;
       controls[(index + direction + controls.length) % controls.length]?.focus();
     }
@@ -157,7 +170,7 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
   }
   window.addEventListener('keydown', (e) => {
     if (!dialog.open) return; e.stopImmediatePropagation();
-    const input = e.target?.tagName === 'INPUT';
+    const input = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target?.tagName);
     if (e.key === 'Escape' || e.key === 'Backspace' && !input) { e.preventDefault(); back(); }
     else if (!input && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) { e.preventDefault(); navigate(e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0, e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0); }
     else if (!input && (e.key === 'Enter' || e.key === ' ') && confirm()) e.preventDefault();
@@ -173,7 +186,11 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
         if (press(1)) back();
         else if (press(9)) launch.click();
         else if (press(14) || press(15) || press(12) || press(13) || Math.abs(pad.axes[0]) > .55 || Math.abs(pad.axes[1]) > .55) { navigate(press(14) || pad.axes[0] < -.55 ? -1 : press(15) || pad.axes[0] > .55 ? 1 : 0, press(12) || pad.axes[1] < -.55 ? -1 : press(13) || pad.axes[1] > .55 ? 1 : 0); cooldown = .2; }
-        else if (press(0) && !confirm()) document.activeElement?.click();
+        else if (press(0) && !confirm()) {
+          const el = document.activeElement;
+          if (el?.tagName === 'SELECT' && !el.disabled) { el.selectedIndex = (el.selectedIndex + 1) % el.options.length; el.dispatchEvent(new Event('change', { bubbles: true })); }
+          else el?.click();
+        }
       }
       for (const i of [0, 1, 9, 12, 13, 14, 15]) prev[i] = !!pad.buttons[i]?.pressed;
     },

@@ -1,8 +1,9 @@
+import { LANGUAGE_KEY, normalizeLanguage } from './i18n.js';
 // Each game instance holds a storage adapter bound to one profile. Switching
 // reloads the game; delayed writes/pagehide from the old instance stay with it.
 export const PROFILE_INDEX_KEY = 'kaiju_profiles_v1';
 export const PROFILE_PREFIX = 'kaiju_profile_v1:';
-export const PROFILE_SAVE_KEYS = Object.freeze(['kaiju_achievements_v1', 'kaiju_championship_tour_v1', 'kaiju_city_challenges_v1', 'kaiju_highscore', 'kaijuLevel', 'kaijuMenuPick', 'kaijuWrTut', 'kaiju_history_v1']);
+export const PROFILE_SAVE_KEYS = Object.freeze(['kaiju_achievements_v1', 'kaiju_championship_tour_v1', 'kaiju_city_challenges_v1', 'kaiju_highscore', 'kaijuLevel', 'kaijuMenuPick', 'kaijuWrTut', 'kaiju_history_v1', LANGUAGE_KEY]);
 export const localPlayerId = () => globalThis.crypto?.randomUUID?.() || `player-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 const validId = (id) => typeof id === 'string' && /^[a-z0-9-]{1,80}$/.test(id);
 export const profileName = (name) => Array.from(String(name || '').replace(/[\u0000-\u001f\u007f]/g, '').trim()).slice(0, 24).join('');
@@ -58,14 +59,15 @@ export function createPlayerProfiles({ storage, now = Date.now, makeId = localPl
     get current() { return { ...index.profiles.find((p) => p.id === boundId) }; },
     list() { try { if (persistent) index = readIndex() || index; } catch { persistent = false; } return index.profiles.map((p) => ({ ...p })); },
     read(id, key) { return index.profiles.some((p) => p.id === id) ? dataFor(id)[key] ?? null : null; },
-    create(name) {
+    create(name, { language = 'en' } = {}) {
       name = profileName(name); if (!name) throw Error('Enter a player name.');
       const value = latest(); if (value.profiles.length >= 8) throw Error('Up to eight local profiles can be saved.');
       if (value.profiles.some((p) => p.name.toLocaleLowerCase() === name.toLocaleLowerCase())) throw Error('Choose a different player name.');
       const id = makeId(); if (!validId(id) || value.profiles.some((p) => p.id === id)) throw Error('Could not create a unique player.');
-      storage.setItem(PROFILE_PREFIX + id, '{}');
+      const fresh = { [LANGUAGE_KEY]: normalizeLanguage(language) };
+      storage.setItem(PROFILE_PREFIX + id, JSON.stringify(fresh));
       writeIndex({ ...value, profiles: [...value.profiles, { id, name, created: now() }] });
-      memory.set(id, {}); return id;
+      memory.set(id, fresh); return id;
     },
     rename(name) {
       name = profileName(name); if (!name) throw Error('Enter a player name.');

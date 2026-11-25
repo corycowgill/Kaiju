@@ -174,6 +174,31 @@ browser and device and are removed if its site data is cleared.
 `npm test` checks real ledger isolation, migration, late writes after switching,
 storage failures, profile management, history retention, and interrupted runs.
 
+### Profile languages
+
+Open **Player Profile** and use the **Text language** selector in the header.
+Choose English, Español, Français, 日本語, or 简体中文 (Simplified Chinese).
+The choice applies immediately and saves separately for each local profile.
+New profiles can choose their language during creation; existing profiles start
+in English. Switching players restores that player’s language.
+
+The mode and fighter menus, profiles, Tour route, City Challenges, trophy names
+and requirements, controls, pause/results screens, and core gameplay prompts
+use bundled translations. Trophy search accepts both English and the selected
+language. Player names and key bindings retain their original text. Spoken
+audio stays in English; unlisted flavor/commentary text falls back to English.
+If browser storage is unavailable, the chosen language works for the current
+session. A language never changes controls, save identifiers, or achievement
+progress.
+
+Translation catalogs live in `src/locales/`; `src/i18n.js` handles profile-bound
+preferences, interpolation and fallback. `src/i18nDOM.js` translates the legacy
+menus’ text nodes and accessibility labels while preserving elements and their
+listeners. It keeps the original text for live language changes and observes
+new UI text; brand marks, player names, and key glyphs are excluded. Keep all
+four translations and placeholder tokens when adding a catalog entry. For new
+UI, `i18n.t(source, values)` is also available directly.
+
 ### Achievements and trophies
 
 Open **Trophy Room** from the mode menu, pause menu, or results screen to browse
