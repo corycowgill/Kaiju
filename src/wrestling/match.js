@@ -174,12 +174,13 @@ export function createMatch(ctx, W) {
     if (healed) for (const f of [p, r]) {
       f.hp = Math.min(f.maxHp, Math.max(f.hp + f.maxHp * (decider ? MATCH.decHeal : MATCH.healBetween), f.maxHp * (decider ? MATCH.decFloor : MATCH.healFloor)));
       // (in the first title match only the player gets the fall loser's fire: the rival does not rally back on a new player)
-      const fire = f.id !== s.winner && (f.isPlayer || s.defense > 0);
+      const fire = f.id !== s.winner && (f.isPlayer || ctx.local?.enabled || s.defense > 0);
       f.momentum = fire ? Math.max(Math.min(f.momentum, MATCH.momCarry), MATCH.loserMom) : Math.min(f.momentum, MATCH.momCarry);
     }
   }
   function tuneRival() {
     const r = W.rival;
+    if (ctx.local?.enabled) { s.difficulty = 0; r.atkMult = 1; return; }
     // (the first title match ramps more gently fall to fall: it is where a new player learns the game)
     const first = s.defense === 0, k = first ? MATCH.firstRamp : 1;
     s.difficulty = 0.25 * s.defense + 0.12 * k * Math.max(0, s.fall - 1) + (ctx.tour?.difficulty || 0);
@@ -189,14 +190,14 @@ export function createMatch(ctx, W) {
   // ------------------------------------------------------------------ match / fall
   function beginMatch() {
     const p = W.player, r = W.rival;
-    s.bestOf = ctx.tour?.bestOf || MATCH.bestOf;
+    s.bestOf = ctx.local?.enabled ? ctx.local.versus ? 1 : 3 : ctx.tour?.bestOf || MATCH.bestOf;
     s.fall = 0; s.playerFalls = 0; s.rivalFalls = 0; s.time = 0; s.winner = ''; s.by = '';
     reported = false; picked = false; koT = 0; koRunT = -1; intState = 0;
     W.grapple.clear(); W.grapple.resetRopes();
     ctx.rules.passiveRage = false; // momentum is earned (the fighter adds its own trickle)
     if (s.defense === 0) p.maxHp = Math.round(MATCH.hpBase + MATCH.hpStat * p.cfg.stats.hp); // (health upgrades add to it from here)
     p.hp = p.maxHp;
-    const hp = Math.round((MATCH.hpBase + MATCH.hpStat * r.cfg.stats.hp) * (s.defense === 0 ? MATCH.firstHp : MATCH.rivalHp) * (1 + MATCH.rivalHpPerDefense * s.defense));
+    const hp = Math.round((MATCH.hpBase + MATCH.hpStat * r.cfg.stats.hp) * (ctx.local?.enabled ? 1 : s.defense === 0 ? MATCH.firstHp : MATCH.rivalHp) * (1 + MATCH.rivalHpPerDefense * s.defense));
     r.maxHp = Math.round(hp * (ctx.tour?.hp || 1)); r.hp = r.maxHp;
     p.momentum = Math.min(p.momentum, 50); r.momentum = 0;
     for (const f of [p, r]) { f._cbMatch = 0; f.finKicked = false; }
@@ -665,7 +666,7 @@ export function createMatch(ctx, W) {
       if (s.phase === 'entrance') updateEntrance(dt);
       else if (s.phase === 'fight' || s.phase === 'pin' || s.phase === 'finisher') {
         s.time += dt; fallT += dt;
-        if (s.phase === 'fight') { updateInterference(dt); updateStall(dt); }
+        if (s.phase === 'fight' && !ctx.local?.enabled) { updateInterference(dt); updateStall(dt); }
         updateKO(dt);
       } else if (s.phase === 'between' || s.phase === 'over') updateSeq(dt, dtReal);
       // Prompts and crowd heat a few times a second
@@ -688,7 +689,7 @@ export function createMatch(ctx, W) {
     },
     /** Title defense: the same run goes on against the other kaiju, harder. */
     defend() {
-      if (ctx.tour) return false; // city progression is owned by the campaign board
+      if (ctx.tour || ctx.local?.enabled) return false; // city progression is owned by the campaign board
       if (swapping || s.phase !== 'over' || s.winner !== 'player') return false;
       const keys = Object.keys(ctx.MONSTERS || {}).filter((k) => k !== W.player.key && k !== W.rival.key);
       const key = keys[0];

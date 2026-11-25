@@ -381,6 +381,7 @@ if (mode === 'wrestling') await step('wrestling', async () => {
   const { createAchievementTracker } = await imp('achievements.js');
   const achievements = createAchievementTracker({ storage: globalThis.localStorage });
   const ctx = {
+    local: null,
     playerStorage: globalThis.localStorage,
     achievements,
     tour: null,
@@ -727,6 +728,57 @@ if (mode === 'wrestling') await step('wrestling', async () => {
     if (wr.W.match.defend()) fail('tour: campaign accidentally entered exhibition title defense');
     wr.dispose(); ctx.tour = null;
   }
+  // Both local seats use real combat and equal human rules, without the AI.
+  {
+    const { createLocalMatch } = await imp('localMultiplayer.js');
+    for (const versus of [false, true]) {
+      ctx.local = createLocalMatch({ scheme: 'keyboard', versus });
+      over = null;
+      wr.start({ rival: { key: 'mecha', cfg: MON.mecha, glb: kaijuGLB.mecha } });
+      const W = wr.W, m = W.match.state;
+      W.match.skipEntrance();
+      const expected = versus ? 1 : 3;
+      if (m.bestOf !== expected || W.ai.enabled) fail('local: wrong fall count or AI still enabled');
+      if (W.rival.atkMult !== 1 || m.difficulty !== 0) fail('local: rival retained solo AI tuning');
+      const keys = {};
+      let clock = 0;
+      const step = (n = 1) => { for (let i = 0; i < n; i++) { clock += 1000 / 60; ctx.local.poll(keys, [], clock); wr.update(1 / 60, 1 / 60); } };
+      step(2);
+      const x1 = W.player.pos.x, x2 = W.rival.pos.x;
+      keys.ArrowRight = true; step(12); keys.ArrowRight = false;
+      if (!(W.rival.pos.x < x2 - 1) || Math.abs(W.player.pos.x - x1) > .1) fail('local: P2 movement did not stay on its seat');
+      // Powers are driven by each human, using the same combat path.
+      for (const [f, key] of [[W.player, 'Digit1'], [W.rival, 'Digit7']]) {
+        f.momentum = 100; f.cd.beam = 0; f.setState('neutral');
+        keys[key] = true; step(); keys[key] = false;
+        if (f.move?.power !== 'beam') fail(`local: ${f.id} could not fire its own power`);
+        step(240);
+      }
+      // A P2 pin must require human mashing, not an AI timed kickout.
+      W.grapple.clear();
+      W.player.setState('neutral'); W.rival.setState('downed', 8);
+      W.rival.invuln = false; W.rival.hp = W.rival.maxHp; W.rival.stamina = 100;
+      if (!W.grapple.startPin(W.player, W.rival, false)) fail('local: failed to pin P2');
+      if (W.grapple.pin.kickAt !== Infinity) fail('local: P2 got an automatic AI kickout');
+      let escaped = false;
+      const off = W.bus.on('pin:kickout', () => { escaped = true; });
+      for (let i = 0; i < 22 && W.grapple.pin.active; i++) {
+        keys.KeyJ = true; step(); keys.KeyJ = false; step(5);
+      }
+      off();
+      if (!escaped) fail('local: P2 human input did not kick out of a pin');
+      W.grapple.clear(); W.player.held = W.rival.held = false;
+      if (m.phase !== 'fight') W.match.skipEntrance();
+      for (let i = 0; i < (versus ? 1 : 2); i++) {
+        W.match.end('rival');
+        for (let t = 0; t < 1200 && !(over || m.phase === 'fight'); t++) step();
+      }
+      if (!over || over.victory !== false || m.rivalFalls !== (versus ? 1 : 2)) fail('local: P2 victory not reported correctly');
+      if (W.match.defend()) fail('local: allowed AI title defense');
+      wr.dispose(); ctx.local = null;
+    }
+  }
+
   scene.remove(kaijuGLB.godzilla.root);
   if (!(A.throwables && A.throwables.items.length >= 8)) fail(`wrestling: only ${A.throwables ? A.throwables.items.length : 0} park throwables placed round the ring (spots)`);
   wrestlingSummary = `wrestling ok (${Object.keys(EVENTS).length} events, ${Object.keys(ANIMS).length} anims, ring at ${A.cx}, ${A.cz}, crowd ${A.crowd ? A.crowd.alive.length : 0}, throwables ${A.throwables ? A.throwables.items.length : 0}); `;

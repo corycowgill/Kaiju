@@ -184,7 +184,7 @@ export function createGrapple(ctx, W) {
     if (!hold.noRev && hold.A === A) {
       // The tie-up can be turned around: press grab now
       const c = emit2(EV.REVERSAL_CUE, V, A);
-      c.kind = 'grab'; c.opens = 0; c.dur = V.isPlayer ? GRAPPLE.revWindowPlayer : GRAPPLE.revWindow;
+      c.kind = 'grab'; c.opens = 0; c.dur = (V.isPlayer || ctx.local?.enabled) ? GRAPPLE.revWindowPlayer : GRAPPLE.revWindow;
       bus.emit(EV.REVERSAL_CUE);
     }
   }
@@ -289,7 +289,7 @@ export function createGrapple(ctx, W) {
         hold.escape += iv.mash * g;
       }
       hold.escape = Math.max(0, hold.escape - G.escapeDecay * dt);
-      if (hold.phase === 'lockup' && !hold.noRev && t <= (V.isPlayer ? G.revWindowPlayer : G.revWindow) && iv.grab) { reverse(); return; }
+      if (hold.phase === 'lockup' && !hold.noRev && t <= ((V.isPlayer || ctx.local?.enabled) ? G.revWindowPlayer : G.revWindow) && iv.grab) { reverse(); return; }
       if (hold.escape >= 1) { escape('mash'); return; }
     }
     switch (hold.phase) {
@@ -787,7 +787,7 @@ export function createGrapple(ctx, W) {
     return 0.2 + 0.6 * hp + 0.15 * st - 0.28 * V.lastImpact - 0.07 * V.kickouts - (V.finished > 0 ? 0.3 : 0)
       - 0.04 * (V.worked || 0) // (a back Mechra has worked over: signatures.js)
       // (the third fall: everyone is running on fumes; in the first title match the player is spared it)
-      - (V.isPlayer && !(W.match.state.defense > 0) ? 0 : GRAPPLE.wearPerFall * Math.max(0, (W.match.state.fall || 1) - 1));
+      - ((V.isPlayer || ctx.local?.enabled) && !(W.match.state.defense > 0) ? 0 : GRAPPLE.wearPerFall * Math.max(0, (W.match.state.fall || 1) - 1));
   }
   /** A covers the downed V. forced: a knockout cover that cannot be kicked out of. */
   function startPin(A, V, forced) {
@@ -796,17 +796,17 @@ export function createGrapple(ctx, W) {
     take(A, V);
     pin.active = true; pin.done = false; pin.A = A; pin.V = V; pin.who = A.id; pin.target = V.id;
     pin.t = 0; pin.count = 0; pin.meter = 0; pin.forced = !!forced; pin.nearSent = false;
-    const S = pinStrength(V) + (V.isPlayer ? 0 : 0.05 * (W.match.state.difficulty || 0));
+    const S = pinStrength(V) + ((V.isPlayer || ctx.local?.enabled) ? 0 : 0.05 * (W.match.state.difficulty || 0));
     pin.strength = S;
     // Off a finisher: over, unless the roll gives this kaiju the one kick-out of its match (and then only at 2.9)
     const hpF = Math.max(0, V.hp) / Math.max(1, V.maxHp);
     pin.fin = !forced && V.finished > 0;
     // (the first title match: a new player gets a real chance at the rival's finisher, mashing still decides it)
-    const firstP = V.isPlayer && !(W.match.state.defense > 0);
+    const firstP = (V.isPlayer || ctx.local?.enabled) && !(W.match.state.defense > 0);
     pin.finOk = pin.fin && (firstP
       ? V.finKicked < GRAPPLE.finFirstKicks && hpF >= GRAPPLE.finFirstHpMin && Math.random() < GRAPPLE.finFirstChance
       : !V.finKicked && hpF >= GRAPPLE.finKickHpMin && Math.random() < Math.min(GRAPPLE.finKickMax, GRAPPLE.finKickBase + GRAPPLE.finKickHp * (hpF - GRAPPLE.finKickHpMin)));
-    if (forced || V.isPlayer) pin.kickAt = Infinity;
+    if (forced || V.isPlayer || ctx.local?.enabled) pin.kickAt = Infinity;
     else if (pin.fin) pin.kickAt = pin.finOk ? 2.88 + Math.random() * 0.09 : Infinity;
     else {
       // The rival's kick-out is decided as the cover goes on: fresh = at one, hurt = the last instant, spent = never
@@ -894,7 +894,7 @@ export function createGrapple(ctx, W) {
       bus.emit(EV.PIN_NEAR);
       W.slowMo(G.nearSlowScale, (G.countAt[2] - pin.t + 0.04) / G.nearSlowScale, 2);
     }
-    if (V.isPlayer) {
+    if (V.isPlayer || ctx.local?.enabled) {
       const S = clamp01(pin.strength);
       // (presses come in real time: in the slow motion each one is worth its share of a real second, not more)
       // (the first title match is forgiving: a new player's mashing counts for more)

@@ -4,7 +4,7 @@ const parse = (s) => { try { return JSON.parse(s || 'null'); } catch { return nu
 const number = (n) => Number.isFinite(Number(n)) ? Math.max(0, Math.min(1e12, Number(n))) : 0;
 const format = (n) => Math.floor(number(n)).toLocaleString();
 const duration = (s) => `${Math.floor(number(s) / 60)}:${String(Math.floor(number(s) % 60)).padStart(2, '0')}`;
-const modeNames = { havoc: 'Havoc', title: 'Title Match', vs: 'VS Duel', lone: 'Lone Soldier', challenge: 'City Challenge', tour: 'Championship Tour' };
+const modeNames = { havoc: 'Havoc', title: 'Title Match', vs: 'VS Duel', lone: 'Lone Soldier', challenge: 'City Challenge', tour: 'Championship Tour', 'local-title': 'Local 2P Wrestling', 'local-vs': 'Local 2P Brawl' };
 const outcomeNames = { won: 'WON', lost: 'LOST', left: 'LEFT', interrupted: 'INTERRUPTED' };
 
 export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch, onOpen, onClose, onSwitch }) {
@@ -74,7 +74,8 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
       const date = new Date(r.ended).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
       const detail = [monsters[r.fighter]?.name || r.fighter || '', String(r.city || '').toUpperCase(), duration(r.seconds), `Score ${format(r.score)}`];
       if (r.mode === 'challenge') detail.push(r.mission || '', ['No medal', 'Bronze', 'Silver', 'Gold'][r.medal] || 'No medal');
-      if (r.mode === 'title' || r.mode === 'tour') detail.push(`Falls ${format(r.playerFalls)}–${format(r.rivalFalls)}`);
+      if (r.mode.startsWith('local-')) detail.push(`P2: ${monsters[r.opponent]?.name || r.opponent || 'Guest'}`);
+      if (r.mode === 'title' || r.mode === 'tour' || r.mode.startsWith('local-')) detail.push(`Falls ${format(r.playerFalls)}–${format(r.rivalFalls)}`);
       return `<li><div><b>${modeNames[r.mode]}</b><span class="pp-outcome pp-${r.outcome}">${outcomeNames[r.outcome]}</span></div><p>${detail.map(escape).join(' · ')}</p><time datetime="${new Date(r.ended).toISOString()}">${escape(date)}</time></li>`;
     }).join('') : '<li class="pp-empty">No recorded results yet. Play Havoc, a title match, a challenge, or another mode to start this player’s history.</li>';
     launch.disabled = transitioning || (step === 'create' ? !switchable || players.length >= 8 : step === 'career' && !active ? !switchable : false);

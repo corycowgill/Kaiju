@@ -132,7 +132,7 @@ export function createHud(ctx, W) {
     s.key = f.key;
     s.name.textContent = f.name;
     const defense = W.match.state.defense > 0;
-    s.role.textContent = (id === 'player') === defense ? 'CHAMPION' : 'CHALLENGER';
+    s.role.textContent = ctx.local?.enabled ? id === 'player' ? 'PLAYER 1' : 'PLAYER 2' : (id === 'player') === defense ? 'CHAMPION' : 'CHALLENGER';
     const p = PORTRAIT[f.key];
     s.port.style.backgroundImage = `url(assets/${f.cfg.portrait})`;
     s.port.style.backgroundPosition = p?.pos ?? '50% 30%';
@@ -300,6 +300,27 @@ export function createHud(ctx, W) {
 
   /** What the prompt slot should say right now: derived from the fighters, OR'd with the director's prompt events. */
   function writePrompts() {
+    if (ctx.local?.enabled) {
+      setMash(''); el.wheel.classList.remove('on');
+      el.skip.classList.toggle('hidden', phase !== 'entrance');
+      el.skip.firstElementChild.textContent = 'V / J / A';
+      const html = [W.player, W.rival].map((f, i) => {
+        const pad = ctx.local.seats[i].padIndex !== null;
+        const strike = pad ? 'PA' : i ? 'J' : 'V', grab = pad ? 'PB' : i ? 'L' : 'E';
+        const m = W.grapple.pin, h = W.grapple.hold;
+        let label = '', key = strike;
+        if (phase === 'entrance') label = 'SKIP ENTRANCES';
+        else if (m?.active && m.V === f) label = m.forced ? 'KNOCKED OUT' : `KICK OUT! ${Math.round(m.meter * 100 || 0)}% · MASH`;
+        else if (f.state === 'downed') label = 'GET UP · MASH';
+        else if (h?.active && h.V === f) { label = 'ESCAPE · MASH / REVERSE'; key = grab; }
+        else if (h?.active && h.A === f) { label = 'MOVE + STRIKE TO THROW · GRAB TO SLAM'; key = strike; }
+        else if (f.can('finisher')) { label = 'FINISHER'; key = pad ? 'RT' : i ? 'P' : 'Q'; }
+        else if (f.can('pin')) { label = 'HOLD TO PIN · TAP TO PICK UP'; key = grab; }
+        return label ? `<div class="local-prompt"><b>P${i + 1}</b>${pill(key, label)}</div>` : '';
+      }).join('');
+      if (html !== promptKey) { promptKey = html; el.prompt.innerHTML = html; el.prompt.classList.toggle('off', !html); }
+      return;
+    }
     const P = W.player, R = W.rival, B = BINDINGS[device], g = W.grapple, ui = W.input.ui;
     const fight = phase === 'fight';
     const can = (w) => fight && typeof P.can === 'function' && P.can(w);
@@ -388,6 +409,7 @@ export function createHud(ctx, W) {
   }
   /** First-match teaching: raise a tip at the moment the action becomes useful. */
   function tutorial() {
+    if (ctx.local?.enabled) return;
     const P = W.player, R = W.rival;
     if (phase !== 'fight' || typeof P.gapTo !== 'function') { stallT = 0; return; }
     // Keeping away: the same test match.js runs (stallDist 48 u, penalties from 6 s); warn a second early
@@ -417,7 +439,7 @@ export function createHud(ctx, W) {
     if (!f || !live) return;
     cardWait[id] = -1;
     const defense = W.match.state.defense > 0;
-    c.querySelector('.role').textContent = ((id === 'player') === defense ? 'THE CHAMPION' : 'THE CHALLENGER');
+    c.querySelector('.role').textContent = (ctx.local?.enabled ? id === 'player' ? 'PLAYER 1' : 'PLAYER 2' : (id === 'player') === defense ? 'THE CHAMPION' : 'THE CHALLENGER');
     c.querySelector('.nm').textContent = f.name;
     c.querySelector('.ep').textContent = f.cfg.epithet;
     const home = ROSTER[f.key]?.home;
@@ -766,7 +788,7 @@ export function createHud(ctx, W) {
         const sm = el.defend.querySelector('small');
         if (sm) sm.textContent = next ? `NEXT CHALLENGER · ${ctx.MONSTERS[next].name.toUpperCase()}` : '';
       }
-      if (el.again) el.again.textContent = victory ? 'RETIRE CHAMPION' : 'BACK TO THE LOCKER ROOM';
+      if (el.again) el.again.textContent = ctx.local?.enabled ? 'CHANGE FIGHTERS' : victory ? 'RETIRE CHAMPION' : 'BACK TO THE LOCKER ROOM';
     },
     dispose() {
       if (!el) return;

@@ -66,6 +66,30 @@ Plug it in. The game auto-detects it via the Gamepad API.
 - **RUN** -- toggle sprint
 - **II** -- pause
 
+### Local 2 player
+
+Choose **LOCAL 2 PLAYER** on the mode menu, or select **Local · 2 players** when setting up Title Match or VS. Pick P1's fighter from the roster and P2's fighter from the Player 2 list. Mirror matches are supported. Title Match is best of three falls; local VS is a one-fall brawl using the wrestling combat system. Both players share an automatic camera.
+
+Use a shared keyboard, P1 keyboard + P2 controller, or two standard controllers. Auto selects a layout from the connected controllers; press a button on each controller before launching so the browser can detect it. Device assignments stay fixed until the next match. Disconnecting a controller pauses play; reconnect it and resume, or quit to change layouts. Touch-only local play is not supported.
+
+| Action | P1 keyboard | P2 keyboard | Standard controller |
+|---|---|---|---|
+| Move | WASD | Arrow keys | Left stick |
+| Strike / hold for heavy | V | J | A / ✕ |
+| Heavy | F | K | Hold strike |
+| Grab / reverse / pin | E | L | B / ○ |
+| Block / reverse strike | C | O | LT |
+| Taunt / comeback | R | U | D-pad up |
+| Finisher / ultimate | Q | P | RT |
+| Beam / roar / charge | 1 / 2 / 3 | 7 / 8 / 9 | X / D-pad down / Y |
+| Stomp | Space | 0 | RB |
+| Sprint / signature modifier | Left Shift | Right Shift | LB |
+| Pause | Esc | Esc | Start |
+
+Grab a downed opponent: hold to pin, tap to pick up. In a lock-up, move and strike to choose a throw; grab performs a slam. Mash your own strike, grab or power buttons to escape a pin or hold. The in-game **CONTROLS** panel shows these bindings. Some keyboards limit simultaneous keys; a controller layout avoids that hardware limitation.
+
+P2 is a guest. The active P1 profile records local wins, losses, falls and the opponent separately from solo modes. Local matches do not advance solo trophies, high scores, challenges or championship campaigns. **Play Again** rematches the same setup.
+
 ### The loop
 1. Stomp buildings, eat the score.
 2. Pop pickups for HP / rage / bonus score (they fall out of the rubble).

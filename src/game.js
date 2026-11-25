@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.23.0', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.24.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -38,6 +38,8 @@ import { KAIJU_POWERS, spawnKaijuPower, updateKaijuPowers, resetKaijuPowers } fr
 import { releasePowerPart, warmPowerPool } from './powerVfx.js';
 import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk, waterDepth } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures, flipbooksReady } from './vfx.js';
+import { createLocalMatch } from './localMultiplayer.js';
+import { frameLocalPlayers, constrainLocalPosition } from './localCamera.js';
 import { createWrestling } from './wrestling/index.js';
 import { createAchievementTracker } from './achievements.js';
 import { createAchievementUI } from './achievementUI.js';
@@ -57,6 +59,8 @@ import { SEATTLE_LOOK } from './levels/seattleLook.js';
 import { SF_LOOK } from './levels/sfLook.js';
 import { TOKYO_LOOK } from './levels/tokyoLook.js';
 import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScene, styleKaiju, makeLookSky, resetLookClock, lookSunDir, lookSunUp, withLookEnvSky, setLookDip } from './look.js';
+let localMatch = null;
+const localSeatPoint = new THREE.Vector3();
 window.__dbg && window.__dbg('DBG · all imports OK');
 
 const galleryDialog = document.getElementById('model-gallery');
@@ -109,7 +113,7 @@ const _dataLevel = (lv) => !!(LEVELS[lv] && LEVELS[lv].data);
 function _runModeId(level) {
   const pick = document.getElementById('game-mode');
   const title = pick ? pick.value === 'title' : /[?&]mode=wrestling\b/.test(location.search);
-  return title && LEVELS[level] && LEVELS[level].arena ? 'wrestling' : 'waves';
+  return (title || (pick?.value === 'vs' && document.getElementById('match-players')?.value === 'local')) && LEVELS[level] && LEVELS[level].arena ? 'wrestling' : 'waves';
 }
 const LEVEL_KEY = 'kaijuLevel';
 function _detectLevel() {
@@ -194,6 +198,8 @@ function _syncPauseMenu() {
 /** Pause / resume from Esc, the HUD menu button, the sheet or a gamepad's Start. */
 function togglePause(on = !state.paused) {
   if (state.upgradePending || state.gameOver) return;
+  if (!on && localMatch?.missing.length) { toast('RECONNECT THE MISSING CONTROLLER TO RESUME', 'bad'); return; }
+  localMatch?.suppress();
   state.paused = on;
   if (on) document.exitPointerLock?.();
 }
@@ -1455,6 +1461,7 @@ tourUI = createChampionshipTourUI(championshipTour, MONSTERS, {
     const planned = championshipTour.prepare();
     if (!planned) return;
     if (state.kaiju) restartInPlace();
+    playersPicker.value = 'solo';
     modePicker.value = 'title'; modePicker.dispatchEvent(new Event('change'));
     document.querySelector(`#levelCards .level-card[data-level="${planned.encounter.level}"]`).click();
     _cardEls[planned.encounter.fighter].click();
@@ -1492,6 +1499,7 @@ challengeUI = createHavocChallengesUI(cityChallenges, MONSTERS, {
   async onLaunch(id) {
     const planned = cityChallenges.prepare(id); if (!planned) return;
     if (state.kaiju) restartInPlace();
+    playersPicker.value = 'solo';
     modePicker.value = 'havoc'; modePicker.dispatchEvent(new Event('change'));
     document.querySelector(`#levelCards .level-card[data-level="${planned.mission.city}"]`).click();
     _cardEls[planned.fighter].click();
@@ -1531,13 +1539,14 @@ window.addEventListener('pagehide', () => playerHistory.flush());
 window.addEventListener('pagehide', () => cityChallenges.flush());
 window.addEventListener('pagehide', () => championshipTour.flush());
 window.addEventListener('pagehide', () => achievements.flush());
-document.addEventListener('visibilitychange', () => { if (document.hidden) { achievements.flush(); playerHistory.flush(); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { achievements.flush(); playerHistory.flush(); if (localMatch && state.kaiju && !state.gameOver) togglePause(true); } });
 
 // requestPointerLock() returns a Promise in modern browsers and rejects
 // (WrongDocumentError, or "user exited lock too recently") when called
 // from a non-focused/transitioning document. Swallow those so they don't
 // surface as unhandled rejections; older browsers return undefined.
 function _requestPointerLock() {
+  if (localMatch) return;
   try {
     const p = renderer.domElement.requestPointerLock?.();
     if (p && typeof p.catch === 'function') p.catch(() => {});
@@ -1582,9 +1591,10 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();if(!e.repeat&&lone.role==='infantry')lone.jumpRequested=true;
   }
   _setKey(e.code, true);
-  if (e.code === 'Escape') togglePause();
+  if (localMatch && state.kaiju && !state.gameOver && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
+  if (e.code === 'Escape' && !e.repeat) togglePause();
   // Tab is a gameplay key in a run (free for a mode to bind), not focus traversal
-  if (e.code === 'Tab' && state.kaiju && !state.gameOver && !state.paused) e.preventDefault();
+  if (e.code === 'Tab' && !localMatch && state.kaiju && !state.gameOver && !state.paused) e.preventDefault();
 });
 window.addEventListener('keyup', (e) => { _setKey(e.code, false); });
 
@@ -1674,7 +1684,7 @@ function readGamepad() {
   if (!navigator.getGamepads) return false;
   const pads = navigator.getGamepads();
   let pad = null;
-  for (const p of pads) { if (p && p.connected) { pad = p; break; } }
+  for (const p of pads) { if (p?.connected && (!localMatch || (p.index === localMatch.seats[0].padIndex && p.id === localMatch.seats[0].padId))) { pad = p; break; } }
   if (!pad) {
     padInput.moveX = padInput.moveZ = padInput.lookX = padInput.lookY = 0;
     padInput.attack = padInput.sprint = false;
@@ -2084,7 +2094,7 @@ const _touchControls = []; // extra control elements a mode registered (ctx.inpu
 function isOnControl(target) {
   if (!target || !target.closest) return false;
   for (let i = 0; i < _touchControls.length; i++) if (_touchControls[i].contains(target)) return true;
-  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #vs-moves, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal, #trophy-room, #championship-tour, #havoc-challenges, #player-profiles');
+  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #vs-moves, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal, #trophy-room, #championship-tour, #havoc-challenges, #player-profiles, #local-controls');
 }
 window.addEventListener('touchstart', (e) => {
   if (!touchUI || state.gameOver || !state.kaiju) return;
@@ -2198,6 +2208,8 @@ for (const [id, key] of [['vs-grab', 'grab'], ['vs-kick', 'kick']]) {
   });
 }
 const modePicker = document.getElementById('game-mode');
+const playersPicker = document.getElementById('match-players');
+const devicesPicker = document.getElementById('local-devices');
 const rivalPicker = document.getElementById('vs-rival');
 for (const [key, monster] of Object.entries(MONSTERS)) rivalPicker.add(new Option(monster.name, key));
 const vsWarning = document.getElementById('vs-warning');
@@ -2214,13 +2226,19 @@ function _syncDeployment() {
   const active = modePicker.value === 'lone';
   const vs = modePicker.value === 'vs';
   const title = modePicker.value === 'title';
+  const local = (vs || title) && playersPicker.value === 'local';
+  document.getElementById('menu').classList.toggle('local-setup', local);
+  document.getElementById('match-players-label').hidden = !(vs || title);
+  document.getElementById('local-devices-label').hidden = !local;
+  document.getElementById('local-menu-help').hidden = !local;
+  document.querySelector('#vs-rival-label > span').textContent = local ? 'PLAYER 2 · 相手' : 'AI RIVAL · 相手';
   // The Title Match is staged in Chicago's arena: picking it moves the menu there
   if (title && !LEVELS[selectedLevel].arena) {
     const lv = Object.keys(LEVELS).find((k) => LEVELS[k].arena);
     _setLevel(lv); _showLevel(lv);
     return; // _setLevel synced again
   }
-  document.getElementById('vs-rival-label').hidden = !vs;
+  document.getElementById('vs-rival-label').hidden = !(vs || local);
   document.getElementById('vs-menu-help').hidden = !vs;
   document.getElementById('title-menu-help').hidden = !title;
   if (title) document.getElementById('title-menu-help').textContent = `Best of three falls in a ring raised in the middle of ${LEVELS[selectedLevel].name === 'WASHINGTON DC' ? 'Washington DC' : LEVELS[selectedLevel].name.replace(/\B\w+/g, (w) => w.toLowerCase())}. Strike, grapple, whip your rival through the streets and pin for the three-count.`;
@@ -2235,7 +2253,12 @@ function _syncDeployment() {
     ? `WASD MOVE · MOUSE LOOK · LMB / RT FIRE<br>${hints[document.getElementById('lone-role').value]}`
     : 'WASD MOVE · MOUSE LOOK · LMB ATTACK<br>1-3 POWERS · SPACE STOMP · ESC PAUSE';
   const monster=MONSTERS[state.monsterKey],role=document.getElementById('lone-role').selectedOptions[0]?.textContent.split(' · ')[0];
-  const matchup = vs && monster ? `${monster.name} vs ${MONSTERS[rivalKey(state.monsterKey)].name}` : null;
+  if (local) {
+    document.getElementById('startBtn').textContent = title ? 'FIGHT · LOCAL WRESTLING' : 'FIGHT · LOCAL BRAWL';
+    document.querySelector('#menu .menu-hint').innerHTML = 'P1: WASD · V STRIKE · F HEAVY · E GRAB · C BLOCK<br>P2: ARROWS · J STRIKE · K HEAVY · L GRAB · O BLOCK<br>CONTROLLERS: STICK MOVE · A STRIKE · B GRAB · LT BLOCK · START PAUSE';
+    if (vs) document.getElementById('vs-menu-help').textContent = 'Local brawl: one fall decides it. Fight in the city ring, grapple and pin, or knock your opponent out.';
+  } else document.getElementById('vs-menu-help').textContent = 'Two Kaiju Enter, One Kaiju Leaves. Punch, grapple, and throw your rival through the city.';
+  const matchup = (vs || local) && monster ? `${monster.name} vs ${MONSTERS[rivalKey(state.monsterKey)].name}` : null;
   document.getElementById('deployment-selection').innerHTML=monster
     ? `${matchup || `${active?`${role} vs `:''}${monster.name}`} · ${_lvName(selectedLevel)}${title ? ' · TITLE MATCH' : ''}`
     : active?'CHOOSE YOUR OPPONENT':'CHOOSE YOUR KAIJU';
@@ -2243,6 +2266,8 @@ function _syncDeployment() {
 }
 if (/[?&]mode=wrestling\b/.test(location.search)) modePicker.value = 'title';
 modePicker.addEventListener('change',_syncDeployment);
+playersPicker.addEventListener('change', _syncDeployment);
+devicesPicker.addEventListener('change', _syncDeployment);
 rivalPicker.addEventListener('change', _syncDeployment);
 document.getElementById('lone-role').addEventListener('change',_syncDeployment);
 _syncDeployment();
@@ -2325,7 +2350,7 @@ const MENU_PICK_KEY = 'kaijuMenuPick';
 function _saveMenuPick() {
   try {
     playerStorage.setItem(MENU_PICK_KEY, JSON.stringify({ mode: modePicker.value, monster: state.monsterKey,
-      rival: rivalPicker.value, role: document.getElementById('lone-role').value }));
+      rival: rivalPicker.value, players: playersPicker.value, devices: devicesPicker.value, role: document.getElementById('lone-role').value }));
   } catch (e) { /* not persisted */ }
 }
 {
@@ -2333,6 +2358,8 @@ function _saveMenuPick() {
   try { saved = JSON.parse(playerStorage.getItem(MENU_PICK_KEY) || 'null'); } catch (e) { /* none */ }
   const has = (sel, v) => v != null && [...sel.options].some((o) => o.value === v);
   if (saved && !/[?&]mode=/.test(location.search) && has(modePicker, saved.mode)) modePicker.value = saved.mode;
+  if (saved && has(playersPicker, saved.players)) playersPicker.value = saved.players;
+  if (saved && has(devicesPicker, saved.devices)) devicesPicker.value = saved.devices;
   if (saved && has(rivalPicker, saved.rival)) rivalPicker.value = saved.rival;
   const role = document.getElementById('lone-role');
   if (saved && has(role, saved.role)) role.value = saved.role;
@@ -2537,6 +2564,10 @@ for (const card of document.querySelectorAll('#modeCards .mode-card')) {
     _setMenuStep('fighter');
   });
 }
+document.getElementById('local-play-btn').addEventListener('click', () => {
+  playersPicker.value = 'local'; modePicker.value = 'title'; _syncDeployment();
+  _setMenuStep('fighter'); audio.ui?.('step');
+});
 document.getElementById('mn-back').addEventListener('click', _menuBack);
 menuEl.addEventListener('pointerdown', (e) => _menuInputFrom(e.pointerType === 'touch' ? 'touch' : 'mouse'));
 // Attract screen: a click or tap anywhere (but the quality links) starts
@@ -3266,6 +3297,10 @@ function restartInPlace() {
   document.getElementById('tour-next-btn').hidden = true;
   achievements.endRun();
   _mode.dispose(); // the mode's own objects, DOM and listeners (before the scene goes)
+  localMatch = null; document.body.classList.remove('local-play');
+  document.getElementById('local-connection').textContent = '';
+  document.getElementById('local-controls').hidden = true;
+  document.getElementById('local-markers').hidden = true;
   _resetSeams();
   clearDuel();
   lone?.dispose(); lone = null;
@@ -3372,20 +3407,33 @@ async function startGame(key) {
       const proceed = await _showMobileDataWarning();
       if (!proceed) return false;
     }
+    if (!tourRun && !challengeRun && playersPicker.value === 'local' && ['title', 'vs'].includes(modePicker.value)) {
+      try { localMatch = createLocalMatch({ pads: navigator.getGamepads?.() || [], scheme: devicesPicker.value, versus: modePicker.value === 'vs' }); }
+      catch (e) { toast(e.message, 'bad'); return false; }
+      localMatch.constrain = constrainLocalPosition;
+      document.body.classList.add('local-play');
+      const strip = document.getElementById('local-controls'); strip.hidden = false;
+      document.getElementById('local-markers').hidden = false;
+      strip.querySelector('[data-seat="0"]').textContent = localMatch.label(0);
+      strip.querySelector('[data-seat="1"]').textContent = localMatch.label(1);
+      document.getElementById('local-connection').textContent = '';
+    }
     await _startGameInner(key);
-    if (modePicker.value !== 'title') beginPlayerHistory();
+    if (modePicker.value !== 'title' && !localMatch) beginPlayerHistory();
     return true;
   } catch (e) {
     reportLoadError('startGame', key, e);
     playerHistory.cancel();
     achievements.endRun();
-    if (modePicker.value === 'vs') {
+    if (localMatch) { _hideRunHUD(); restartInPlace(); }
+    else if (modePicker.value === 'vs') {
       clearDuel();
       state.kaiju?.root.removeFromParent();
       state.kaiju = null;
     }
     document.getElementById('loading-screen')?.classList.remove('visible');
     if (_hudPrewarm) { _hudPrewarm.restore(); _hudPrewarm = null; }
+    localMatch = null; document.body.classList.remove('local-play'); document.getElementById('local-controls').hidden = true; document.getElementById('local-markers').hidden = true;
     toast('LOADING FAILED · TAP START TO RETRY', 'bad');
     return false;
   } finally {
@@ -3708,7 +3756,7 @@ async function _startGameInner(key) {
   scene.add(sun.target);
   scene.add(k.root);
   state.kaiju = k;
-  if (gameMode === 'vs') await startDuel(key, loadingStatus);
+  if (gameMode === 'vs' && !localMatch) await startDuel(key, loadingStatus);
   // _startingGame reset is handled by the outer try/finally in startGame().
 
   document.getElementById('menu').classList.add('hidden');
@@ -3742,7 +3790,7 @@ async function _startGameInner(key) {
   // falls back to a procedural ambient drone if no asset is present.
   audio.startMusic();
 
-  achievements.beginRun({ mode: gameMode === 'title' ? 'wrestling' : gameMode === 'havoc' ? 'havoc' : null,
+  achievements.beginRun({ mode: localMatch ? null : gameMode === 'title' ? 'wrestling' : gameMode === 'havoc' ? 'havoc' : null,
     monster: key, level: world.level || selectedLevel });
   if (gameMode === 'lone') {
     const role = document.getElementById('lone-role').value;
@@ -3786,6 +3834,8 @@ let _helpDimTimer = 0;
 let _voKey = ''; // the match whose voice lines are loaded (audio.voPreload)
 /** Hide the in-run HUD (game over, quit to menu). */
 function _hideRunHUD() {
+  document.getElementById('local-controls').hidden = true;
+  document.getElementById('local-markers').hidden = true;
   document.exitPointerLock?.();
   document.getElementById('hud').classList.add('hidden');
   document.getElementById('powers').classList.add('hidden');
@@ -4614,6 +4664,12 @@ function gameOver(victory, text) {
     next.textContent = !result?.won ? 'RETRY TOUR MATCH' : result.complete ? 'VIEW CHAMPION’S TROPHY' : result.belts === 6 ? 'WORLD TITLE SHOT' : 'NEXT CITY';
     if (result?.won && tourRun.final) audio.achievement('platinum');
   }
+  if (localMatch && _wr) {
+    const m = _wr.W.match.state;
+    text = { keepPose: true, title: `PLAYER ${victory ? 1 : 2} WINS`,
+      subtitle: `${state.monsterCfg.name} vs ${MONSTERS[_rivalCache.key].name} · ${LEVELS[world.level].name} · LOCAL ${localMatch.versus ? 'BRAWL' : 'WRESTLING'}`,
+      waveLabel: 'Falls · P1 – P2', waveValue: `${m.playerFalls} – ${m.rivalFalls}` };
+  }
   document.getElementById('goTitle').textContent = (text && text.title)
     || (victory ? `${LEVELS[world.level || 'tokyo'].name} FALLS` : 'DEFEATED');
   document.getElementById('goSubtitle').textContent = (text && text.subtitle) || (victory
@@ -4630,12 +4686,12 @@ function gameOver(victory, text) {
   else goEl.classList.remove('victory');
   audio.gameOver();
   audio.stopMusic();
-  const isNewHigh = !duel && trySetHighScore(state.score);
+  const isNewHigh = !duel && !localMatch && trySetHighScore(state.score);
   const newHighEl = document.getElementById('newHighScore');
   if (newHighEl) newHighEl.style.display = isNewHigh ? 'block' : 'none';
   const highScore = document.getElementById('goHighScore');
   highScore.textContent = getHighScore().toLocaleString();
-  highScore.closest('.stats-row').hidden = !!duel;
+  highScore.closest('.stats-row').hidden = !!duel || !!localMatch;
   document.getElementById('finalScore').textContent = state.score.toLocaleString();
   document.getElementById('finalWaveLabel').textContent = duel ? 'Duel Result' : (text && text.waveLabel) || 'Waves Survived';
   document.getElementById('finalWave').textContent = duel ? (victory ? 'Won' : 'Lost') : text && text.waveValue !== undefined ? text.waveValue : state.wave;
@@ -5534,6 +5590,7 @@ function resolveBuildingCollisions(pos, dt, radius = 0, wearDps = 35) {
 function updatePlayer(dt) {
   const k = state.kaiju;
   if (!k) return;
+  if (localMatch) { readGamepad(); state.vel.set(0, 0, 0); k.glb?.mixer.update(dt); return; }
   // Pull live gamepad state once per frame
   readGamepad();
   // The control gate (_pctl): all defaults in the classic mode
@@ -6100,6 +6157,15 @@ function updateCamera(dt=1/60) {
   // through the city without ever overflowing the 90u shadow camera.
   if (sun && (sun.castShadow || _lookLevel !== 'tokyo')) {
     sun.position.copy(k.root.position).add(_sunOffset);
+  }
+  if (localMatch && _wr?.W.running) {
+    frameLocalPlayers(camera, _wr.W.player, _wr.W.rival);
+    for (const [i, f] of [_wr.W.player, _wr.W.rival].entries()) {
+      localSeatPoint.copy(f.pos); localSeatPoint.y += f.height + 5; localSeatPoint.project(camera);
+      const label = document.getElementById('local-marker-' + i);
+      label.style.left = `${(localSeatPoint.x + 1) * 50}%`; label.style.top = `${(1 - localSeatPoint.y) * 50}%`;
+    }
+    return;
   }
   // A mode's camera (wrestling: fight cam, entrances, finishers) takes the
   // frame when it returns true; the chase cam below is the fallback.
@@ -7125,6 +7191,7 @@ function _rivalWorldTick(dt) {
   _dmgSrc = null;
 }
 function _pickRivalKey(playerKey) {
+  if (localMatch) return rivalKey(playerKey);
   if (tourRun && tourRun.fighter === playerKey) return tourRun.rival;
   const others = Object.keys(MONSTERS).filter((k) => k !== playerKey);
   const m = location.search.match(/[?&]rival=(\w+)/); // QA: force the opponent
@@ -7134,7 +7201,7 @@ function _pickRivalKey(playerKey) {
  *  let go of the old one's root; resolves to the new { key, cfg, glb }. */
 async function loadRival(key) {
   if (_rivalCache && _rivalCache.key === key) return _rivalCache;
-  if (!MONSTERS[key] || key === state.monsterKey) throw new Error(`loadRival: '${key}' is not a possible rival`);
+  if (!MONSTERS[key] || (!localMatch && key === state.monsterKey)) throw new Error(`loadRival: '${key}' is not a possible rival`);
   // The title defense's next challenger, loaded behind the loading screen like a START: the
   // model, its textures and programs, its baked match clips and the booth lines for the new
   // pair (nothing of it is fetched, decoded or linked once the next match is on)
@@ -7351,6 +7418,7 @@ const _playerView = {
 
 // ---- ctx: the one object the wrestling modules get ----
 const ctx = {
+  get local() { return localMatch; },
   playerStorage,
   achievements: { wrestling(event, payload) {
     achievements.wrestling(event, payload);
@@ -7464,8 +7532,8 @@ const ctx = {
 };
 
 function beginPlayerHistory() {
-  playerHistory.begin({ mode: challengeRun ? 'challenge' : tourRun ? 'tour' : modePicker.value,
-    fighter: state.monsterKey, city: world.level || selectedLevel,
+  playerHistory.begin({ mode: localMatch ? localMatch.versus ? 'local-vs' : 'local-title' : challengeRun ? 'challenge' : tourRun ? 'tour' : modePicker.value,
+    fighter: state.monsterKey, opponent: localMatch ? _rivalCache?.key || '' : '', city: world.level || selectedLevel,
     mission: challengeRun?.mission.name || tourRun?.name || '' });
 }
 
@@ -7627,6 +7695,13 @@ function tick(now) {
   const dtRaw = (now - last) / 1000;
   last = now;
   if(document.hidden){requestAnimationFrame(tick);return;}
+  if (localMatch && state.kaiju && !_startingGame && !state.gameOver) {
+    localMatch.poll(keys, navigator.getGamepads?.() || [], now, _keyHit);
+    const missing = localMatch.missing;
+    document.getElementById('local-connection').textContent = missing.length ? `P${missing.join(' / P')} CONTROLLER DISCONNECTED · RECONNECT TO RESUME` : '';
+    if (missing.length && !state.paused) togglePause(true);
+    else if (localMatch.pausePressed && !trophyUI.isOpen && !tourUI.isOpen && !challengeUI.isOpen && !profileUI.isOpen) togglePause();
+  }
   const markerHidden = now > combatHitUntil || state.paused || state.gameOver || !state.kaiju;
   if (combatMarker.hidden !== markerHidden) combatMarker.hidden = markerHidden;
   const slowActive = now < state.slowMoUntil;
@@ -7638,7 +7713,7 @@ function tick(now) {
   const dtReal = Math.min(0.05, dtRaw);
   const dt = frozen ? 0 : dtReal * (slowActive ? state.slowMoScale : 1);
   _lastDt = dt;
-  if(state.paused&&state.kaiju&&!state.gameOver&&!state.upgradePending){
+  if(!localMatch&&state.paused&&state.kaiju&&!state.gameOver&&!state.upgradePending){
     readGamepad();if(padInput.pressed.pause&&!trophyUI.isOpen&&!tourUI.isOpen&&!challengeUI.isOpen&&!profileUI.isOpen)togglePause(false);
   }
   const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible') && !_settling; // (_settleGpu: the first frames play under it)

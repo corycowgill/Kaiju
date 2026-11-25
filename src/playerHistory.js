@@ -1,13 +1,13 @@
 import { localPlayerId } from './playerProfiles.js';
 export const HISTORY_KEY = 'kaiju_history_v1';
-const modes = ['havoc', 'title', 'vs', 'lone', 'challenge', 'tour'];
+const modes = ['havoc', 'title', 'vs', 'lone', 'challenge', 'tour', 'local-title', 'local-vs'];
 const outcomes = ['won', 'lost', 'left', 'interrupted'];
 const number = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.min(n, 1e12) : 0;
 const timestamp = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.min(n, 8640000000000000) : 0;
 const text = (s) => typeof s === 'string' ? s.slice(0, 100) : '';
 function cleanRun(r) {
   if (!r || !modes.includes(r.mode)) return null;
-  return { id: text(r.id), mode: r.mode, fighter: text(r.fighter), city: text(r.city), mission: text(r.mission),
+  return { id: text(r.id), mode: r.mode, fighter: text(r.fighter), city: text(r.city), mission: text(r.mission), opponent: text(r.opponent),
     started: timestamp(r.started), seconds: number(r.seconds), score: number(r.score), wave: number(r.wave),
     medal: Math.min(3, number(r.medal)), playerFalls: number(r.playerFalls), rivalFalls: number(r.rivalFalls),
     outcome: outcomes.includes(r.outcome) ? r.outcome : null, ended: timestamp(r.ended) };

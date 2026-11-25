@@ -81,7 +81,8 @@ export const MOVES = Object.freeze({
 });
 
 /**
- * The rival's signature powers (the player's are game.js's classic ones).
+ * Signature powers: the AI rival and both local players share these rules.
+ * Solo P1 uses game.js's classic powers.
  * windup = the telegraph; cd = cooldown; cost = momentum; dmg = base HP;
  * chipStam = what blocking it costs. Radii and ranges in u.
  */
@@ -292,7 +293,7 @@ export class Fighter {
     if (s !== 'neutral' && s !== 'blocking' && s !== 'staggered' && s !== 'stunned' && !(s === 'downed' && this.falling <= 0)) return false;
     const mine = this.hp / this.maxHp;
     // (the first title match is forgiving: the rival's comeback asks for a deeper hole there)
-    const grace = !this.isPlayer && !(this.W.match.state.defense > 0) ? TUNE.cbRivalGrace : 0;
+    const grace = !this.isPlayer && !this.ctx.local?.enabled && !(this.W.match.state.defense > 0) ? TUNE.cbRivalGrace : 0;
     return mine > 0 && mine < T.cbHp - grace && foe.hp / foe.maxHp - mine >= T.cbBehind + grace && this._beat >= T.cbBeaten * this.maxHp;
   }
   /** 0..1 progress of this fighter's kick-out (pinned) or escape (held); 0 when neither. For the HUD's mash meter. */
@@ -326,7 +327,7 @@ export class Fighter {
       case 'pstomp': what = 'stomp'; // falls through
       case 'beam': case 'roar': case 'charge': case 'ult': {
         const p = POWERS[what];
-        return !this.isPlayer && this.cd[what] <= 0 && this.momentum >= p.cost;
+        return (!this.isPlayer || this.ctx.local?.enabled) && this.cd[what] <= 0 && this.momentum >= p.cost;
       }
       default: return false;
     }
@@ -756,7 +757,7 @@ export class Fighter {
    * reversing guard in time (free, not locked out of its guard).
    */
   /** How long before contact a guard raised by `foe` against move `m` still reverses it (the player gets a reaction allowance on the cued big strikes). */
-  _revWindow(m, foe) { return foe.isPlayer && cued(m) ? TUNE.reversalWindowPlayer : TUNE.reversalWindow; }
+  _revWindow(m, foe) { return (foe.isPlayer || this.ctx.local?.enabled) && cued(m) ? TUNE.reversalWindowPlayer : TUNE.reversalWindow; }
   _cueReversal(m, t) {
     const foe = this.opponent;
     if (!foe || this._cueMove === m || !cued(m)) return;
@@ -1162,7 +1163,7 @@ export class Fighter {
       const p = this.root.position;
       this._ko('military', p.x, p.y + this.height * 0.6, p.z);
     }
-    if (this.isPlayer) this._watchPlayerPowers();
+    if (this.isPlayer && !this.ctx.local?.enabled) this._watchPlayerPowers();
     // The comeback: a taunt press while hurt, behind and beaten fires it up (from the mat, too); the flurry runs out
     if (it.taunt && dt > 0 && this.comebackReady) { it.taunt = false; this._startComeback(); }
     if (this.comebackPhase === 'flurry') {
@@ -1242,20 +1243,21 @@ export class Fighter {
     const moving = it.moveX !== 0 || it.moveZ !== 0;
     const sprint = it.sprint && moving && !this.tired;
     if (sprint) this.spend(TUNE.sprintDrain * dt);
-    if (!this.isPlayer) {
-      // The player's neutral movement is updatePlayer's; the rival walks its intent
+    if (!this.isPlayer || ctx.local?.enabled) {
+      // Local humans and the rival walk their intents; solo P1 uses updatePlayer.
       const wet = this.waterSlow || (this.sink > 1 ? 0.8 : 1);
       const speed = this.cfg.stats.speed * (sprint ? 32 : 18) * this.speedMult * (this.tired ? TUNE.tiredMove : 1) * wet;
       const p = this.root.position;
       p.x += it.moveX * speed * dt;
       p.z += it.moveZ * speed * dt;
-      if (it.faceYaw !== null) this._turnTo(it.faceYaw, 6, dt);
+      if (it.faceYaw !== null) { this._turnTo(it.faceYaw, 6, dt); if (this.isPlayer) ctx.player.yaw = this.root.rotation.y; }
+      ctx.local?.constrain?.(p, foe.pos);
       this.glb.play(moving ? (sprint ? 'run' : 'walk') : 'idle', moving ? 0.25 : 0.4);
     }
     if (this.W.match.state.phase !== 'fight') return;
     const g = this.W.grapple;
     if (B.finisher > 0 && g.tryFinisher(this)) { B.finisher = 0; return; }
-    if (it.power && !this.isPlayer && this._startPower(it.power)) return;
+    if (it.power && (!this.isPlayer || ctx.local?.enabled) && this._startPower(it.power)) return;
     const down = foe && foe.state === 'downed' && !foe.held && foe.falling <= 0;
     if (B.pin > 0 && down && this.groundGap(foe) <= MOVES.reach.reach + 8) {
       B.pin = 0; B.grab = 0;
@@ -1294,7 +1296,7 @@ export class Fighter {
     const it = this.intent, B = this._buf;
     this.blockT += dt;
     this.spend(TUNE.blockDrain * dt);
-    if (!this.isPlayer && this.opponent) this._turnTo(this.yawTo(this.opponent), 6, dt);
+    if ((!this.isPlayer || this.ctx.local?.enabled) && this.opponent) this._turnTo(this.yawTo(this.opponent), 6, dt);
     if (this.blockStun > 0) return;
     if (this.stamina <= 0) { this.blockLock = 1.0; this.reblock = TUNE.reblockLock; this.setState('neutral'); return; }
     // A press out of the guard drops it and goes
@@ -1389,7 +1391,7 @@ export class Fighter {
   _moveBody(dt) {
     const v = this.vel, p = this.root.position, ctx = this.ctx;
     const sp = Math.hypot(v.x, v.z);
-    const own = !this.isPlayer || ctx.player.control.external;
+    const own = this.ctx.local?.enabled || !this.isPlayer || ctx.player.control.external;
     if (sp > 0.5) {
       p.x += v.x * dt; p.z += v.z * dt;
       const k = Math.max(0, sp - TUNE.friction * dt) / sp;
@@ -1445,6 +1447,7 @@ export class Fighter {
   _turnTo(yaw, rate, dt) {
     const d = yaw - this.root.rotation.y;
     this.root.rotation.y += Math.atan2(Math.sin(d), Math.cos(d)) * (1 - Math.exp(-rate * dt));
+    if (this.isPlayer && this.ctx.local?.enabled) this.ctx.player.yaw = this.root.rotation.y;
   }
 
   // Root-driven pose: the topple to the mat and back, a move's lean, the hit wobble and flash
@@ -1463,7 +1466,7 @@ export class Fighter {
     if (this.held) return;
     const r = this.root.rotation, f = this._flinch;
     r.z = f > 0 && this.lie < 0.2 ? Math.sin(f * 14) * 0.07 * f * this._flinchDir : 0;
-    const own = !this.isPlayer || this.ctx.player.control.external;
+    const own = this.ctx.local?.enabled || !this.isPlayer || this.ctx.player.control.external;
     if (own) {
       r.x = -this.lie * HALF_PI + this.lean;
       const air = this.state === 'attacking' && this.move && this.move.ext && this.root.position.y > 0;

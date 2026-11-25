@@ -130,8 +130,10 @@ export function createWrestling(ctx) {
       // A match is decided by the two fighters: no out-of-combat healing
       ctx.rules.oocRegen = false;
       W.running = true;
-      W.input.start(); W.ai.start(); W.grapple.start(); W.anims.start();
-      for (const m of show) m.start();
+      W.input.start();
+      if (ctx.local?.enabled) W.ai.enabled = false; else W.ai.start();
+      W.grapple.start(); W.anims.start();
+      for (const m of show) if (!ctx.local?.enabled || m !== W.cam) m.start();
       releaseAchievements = bindWrestlingAchievements(bus, ctx.achievements);
       releaseTour = bindTourMatch(bus, ctx.tour);
       W.match.start(); // last: its opening events reach every listener
@@ -139,14 +141,14 @@ export function createWrestling(ctx) {
     /** dt: simulation seconds (0 during hit-stop, scaled in slow-mo). dtReal: real seconds, clamped to 0.05. */
     update(dt, dtReal) {
       if (!W.running) return;
-      W.input.update(dt);
-      W.ai.update(dt);
+      if (ctx.local?.enabled) ctx.local.fillFighters(W);
+      else { W.input.update(dt); W.ai.update(dt); }
       W.spots.pre(dt);   // pick-ups and weapon swings read the intents before the fighters do
       W.grapple.update(dt);
       W.player.update(dt);
       W.rival.update(dt);
       for (let i = 0; i < core.length; i++) core[i].update(dt, dtReal);
-      for (let i = 0; i < show.length; i++) show[i].update(dt, dtReal);
+      for (let i = 0; i < show.length; i++) if (!ctx.local?.enabled || show[i] !== W.cam) show[i].update(dt, dtReal);
       clearIntentEdges(W.player.intent);
       clearIntentEdges(W.rival.intent);
     },
@@ -156,7 +158,7 @@ export function createWrestling(ctx) {
       W.player.updateIdle(dtReal);
       W.rival.updateIdle(dtReal);
       for (let i = 0; i < core.length; i++) core[i].updateIdle(dtReal);
-      for (let i = 0; i < show.length; i++) show[i].updateIdle(dtReal);
+      for (let i = 0; i < show.length; i++) if (!ctx.local?.enabled || show[i] !== W.cam) show[i].updateIdle(dtReal);
     },
     /** game.js: the result screen is going up. */
     onGameOver(victory) { if (W.running) W.hud.onGameOver(victory); },

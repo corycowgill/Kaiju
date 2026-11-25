@@ -1,0 +1,34 @@
+/* Local play uses the game's ink, brass and condensed lettering. */
+#local-controls[hidden] { display:none }
+#local-controls { position:fixed; z-index:45; bottom:max(10px,env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); width:min(760px,90vw); color:#ede6cf; background:rgba(12,16,18,.94); border:1px solid #716347; box-shadow:0 5px 20px #0008; font:11px var(--f-display),sans-serif; letter-spacing:1px; pointer-events:auto }
+.local-seats { display:flex; justify-content:space-between; gap:12px; padding:8px 12px; align-items:center }
+.local-seats b:first-child { color:#83d5ee }.local-seats b:last-child { color:#f5b078;text-align:right }.local-seats span { color:#bca97c;white-space:nowrap }
+#local-controls details { border-top:1px solid #716347;padding:5px 12px;max-height:38vh;overflow:auto }
+#local-controls summary { cursor:pointer;color:#dac497;list-style-position:inside }
+#local-controls p { line-height:1.5;letter-spacing:.5px }
+#local-connection { display:none;position:fixed;top:max(8px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:70;max-width:90vw;pointer-events:none;font:14px var(--f-display),sans-serif;letter-spacing:1px }
+#local-connection:not(:empty) { display:block;background:#6e2321;color:#fff0d5;padding:10px;text-align:center }
+body.local-play #help,body.local-play #powers,body.local-play #joy-zone,body.local-play #joystick,body.local-play #attack-btn,body.local-play #sprint-btn,body.local-play #wr-touch,body.local-play #wr-defend-btn { display:none!important }
+body.local-play #rotate-hint { display:none!important }
+@media(max-width:600px) { .local-seats { font-size:10px;gap:5px }.local-seats span { display:none } }
+body.local-play .local-prompt { display:flex;align-items:center;gap:8px }
+body.local-play .local-prompt > b { color:#83d5ee;font-size:18px }
+body.local-play .local-prompt + .local-prompt > b { color:#f5b078 }
+body.local-play #wr-prompt { bottom:110px }
+@media(max-width:900px) { #menu .deployment-options { flex-wrap:wrap!important } }
+
+body.local-play #gameover #goRetryBtn { display:inline-block }
+body.local-play #wr-prompt { flex-wrap:wrap;white-space:normal;max-width:90vw }
+
+#menu.local-setup .deployment-options { display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100% }
+#menu.local-setup .deployment-field:not([hidden]):not(.mn-modefield) { display:flex;flex-direction:row;align-items:center;gap:12px;min-width:0 }
+#menu.local-setup .deployment-field > span { width:120px;flex:none;font-size:11px;letter-spacing:1px }
+#menu.local-setup .deployment-field select { width:0;flex:1;min-width:0;min-height:34px;padding:6px 30px 6px 10px;font-size:15px }
+#menu.local-setup .deployment-field::after { bottom:11px }
+#menu.local-setup #local-menu-help:not([hidden]) { display:block;font-size:11px;line-height:1.5 }
+@media(max-width:550px) { .tour-entry { gap:6px;flex-wrap:wrap } #menu .tour-entry button { flex:1;min-width:130px;font-size:11px;padding:8px } }
+
+#local-markers { position:fixed;inset:0;z-index:30;pointer-events:none }
+#local-markers[hidden] { display:none }
+#local-markers span { position:absolute;transform:translate(-50%,-100%);padding:4px 7px;background:#10191ee6;border:1px solid currentColor;color:#83d5ee;font:bold 13px sans-serif;text-shadow:0 1px 2px #000 }
+#local-markers span:last-child { color:#f5b078;background:#29190fe6 }
