@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.21.0', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.22.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -1285,7 +1285,7 @@ function buildWorldCity() {
   const res = buildCity(scene, world, { lite: isMobile, glb: GLB_CONTENT, level: selectedLevel, mode: (world.builtMode = _runModeId(selectedLevel)) });
   const { buildings, grid, bodiesIM, cityAnimators, cityRadius } = res;
   world.buildings = buildings;
-  world.buildingGrid = grid;
+  world.buildingGrid = grid; world._militaryNavigation = null;
   world.bodiesIM = bodiesIM;
   world.cityAnimators = cityAnimators || [];
   world.cityRadius = cityRadius;
@@ -2945,7 +2945,7 @@ async function _prewarmShaders(kaijuRoot, onProgress, rivalRoot = null) {
   // fired: their unlit transparent double-sided variant linked mid-run, measured by the up-front
   // loading audit on Tokyo and DC)
   { const m = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffaa44 })); stagedEnemies.push(m); stage.add(m); }
-  { const m = new THREE.Mesh(new THREE.RingGeometry(2.5, 3.0, 24), new THREE.MeshBasicMaterial({ color: 0xff3344, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })); stagedEnemies.push(m); stage.add(m); }
+  { const m = new THREE.Mesh(new THREE.RingGeometry(17.2, 18.0, 48), new THREE.MeshBasicMaterial({ color: 0xff3344, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })); stagedEnemies.push(m); stage.add(m); }
   { const m = new THREE.Mesh(new THREE.RingGeometry(18, 22, 32), new THREE.MeshBasicMaterial({ color: 0xff5544, side: THREE.DoubleSide, transparent: true, opacity: 0.7 })); stagedEnemies.push(m); stage.add(m); }
   // ...and every element power of the run's kaiju (player and rival): drawn in the warm frame,
   // then their puff layers and ribbons go to powerVfx's pool, so a power in play reuses them
@@ -3253,6 +3253,7 @@ function _playAgain() {
   startGame(key);
 }
 function restartInPlace() {
+  combatHitUntil = combatKillUntil = 0; lastCombatImpact = -Infinity; combatMarker.hidden = true;
   playerHistory.finish('left', { score: state.score, wave: state.wave });
   challengeMode?.dispose(); challengeMode = null;
   if (challengeRun) cityChallenges.cancel(challengeRun.ticket);
@@ -4487,6 +4488,36 @@ world.onBuildingDestroyed = (b) => {
   maybeDropPickup(b.group.position.clone(), 'building');
 };
 
+// Confirm contacts without amplifying continuous beam ticks or rival/environment damage.
+const combatMarker = document.getElementById('combat-hit-confirm');
+const reducedCombatMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let combatHitUntil = 0, combatKillUntil = 0, lastCombatImpact = -Infinity;
+world.onMilitaryHit = (enemy, damage, killed) => {
+  if (_dmgSrc) return;
+  const now = performance.now();
+  if (achievements.mode === 'havoc') {
+    combatHitUntil = Math.max(combatHitUntil, now + (killed ? 190 : 120));
+    if (killed) combatKillUntil = now + 190;
+    combatMarker.classList.toggle('kill', now < combatKillUntil);
+    combatMarker.hidden = state.paused || state.gameOver;
+  }
+  if (now - (enemy._lastImpactAt ?? -Infinity) < 100 && !killed) return;
+  enemy._lastImpactAt = now;
+  _tmpV1.copy(enemy.root.position); _tmpV1.y += enemy.type === 'boss' ? 9 : enemy.type === 'mech' ? 5 : enemy.type === 'soldier' ? 1 : 2;
+  world.spawnHitPulse(_tmpV1, killed ? 0xffcc66 : enemy.armored ? 0x99dfff : 0xffffff);
+  world.spawnSparks(_tmpV1, enemy.armored ? 6 : 3);
+};
+function militaryContactFeedback(kind, armored) {
+  const now = performance.now();
+  if (now - lastCombatImpact < 180 || achievements.mode !== 'havoc') return;
+  lastCombatImpact = now;
+  audio.meleeImpact(kind === 'stomp' ? 'stomp' : 'punch', armored ? .85 : .55);
+  if (!reducedCombatMotion) {
+    hitStop(kind === 'stomp' ? .055 : armored ? .045 : .03);
+    world.shake(kind === 'stomp' ? .22 : .12, .12);
+  }
+}
+
 // ---- Artillery shell support (parabolic) ----
 world.spawnArtilleryShell = (origin, target) => {
   // Compute initial velocity to hit target after T seconds
@@ -4504,16 +4535,18 @@ world.spawnArtilleryShell = (origin, target) => {
 
   // Ground marker at predicted impact
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(2.5, 3.0, 24),
+    new THREE.RingGeometry(17.2, 18.0, 48),
     new THREE.MeshBasicMaterial({ color: 0xff3344, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
   );
   ring.rotation.x = -Math.PI / 2;
   ring.position.set(target.x, 0.3, target.z);
+  const countdown = new THREE.Mesh(ring.geometry, ring.material.clone());
+  countdown.material.opacity = .35; ring.add(countdown);
   scene.add(ring);
 
   state.artyShells.push({
     mesh: m, ring, vel: new THREE.Vector3(vx, vy, vz),
-    target, life: T + 1.0, damage: 25, gravity: g,
+    target: target.clone(), life: T + 1.0, damage: 25, gravity: g,
   });
 };
 
@@ -4656,18 +4689,19 @@ function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample =
     });
   }
   // Damage enemies
+  let militaryContacts = 0, armoredContact = false;
   for (let i = 0; i < world.enemies.length; i++) {
     const e = world.enemies[i];
     if (e.dead) continue;
-    if (!isAerialAlso && e.type === 'heli') continue;
+    if (!isAerialAlso && (e.type === 'heli' || e.type === 'jet')) continue;
     const ep = e.root.position;
     const dx = ep.x - center.x;
     const dz = ep.z - center.z;
     if (dx * dx + dz * dz < radiusSq) {
       const dealt = (isTrample && e.armored) ? amount * 0.15 : amount;
+      if (e !== duel && dealt > 0) { militaryContacts++; armoredContact ||= !!e.armored; }
       e.damage(e === duel ? dealt * rivalScale : dealt, world);
-      _tmpV1.set(ep.x, ep.y + 4, ep.z);
-      world.spawnHitPulse(_tmpV1, 0xffffff);
+      if (e === duel) { _tmpV1.set(ep.x, ep.y + 4, ep.z); world.spawnHitPulse(_tmpV1, 0xffffff); }
     }
   }
   // The rival kaiju (wrestling): a body-sized target, so its radius counts.
@@ -4706,6 +4740,8 @@ function damageInRadius(center, radius, amount, isAerialAlso = true, isTrample =
     for (let i = 0; i < Math.min(n, 3); i++) world.onCivilianStomped();
   }
   _dmgSrc = srcWas;
+  if (militaryContacts && !other && !isTrample && ['melee', 'stomp', 'charge'].includes(kind)) militaryContactFeedback(kind, armoredContact);
+  return militaryContacts;
 }
 
 // Aim assist: the live enemy closest to the ray (origin, dir) within
@@ -5423,7 +5459,7 @@ function fireMelee() {
     if (_tmpV3.length() > 30) center.copy(state.kaiju.root.position).addScaledVector(_tmpV3.normalize(), 30);
   }
   const dmg = state.monsterCfg.stats.melee;
-  damageInRadius(center, 17, dmg, false, false, 'melee');
+  const contacts = damageInRadius(center, 17, dmg, false, false, 'melee');
   state.rage = Math.min(state.maxRage, state.rage + 4);
   // Animate arm swing (GLB uses punch combo, procedural uses armR swing)
   if (state.kaiju.glb) {
@@ -5433,7 +5469,7 @@ function fireMelee() {
     const armR = state.kaiju.bones?.armR;
     if (armR) armR.userData.swing = 0.4;
   }
-  audio.hit();
+  if (!contacts) audio.hit();
 }
 
 // ------------------------- Collision -------------------------
@@ -6389,15 +6425,15 @@ function updateWorld(dt, dtReal = dt) {
     // Pulse the marker
     if (s.ring) {
       const t01 = 1 - Math.max(0, s.life - 1.0) / 2.4;
-      s.ring.material.opacity = 0.3 + Math.sin(world.time * 8) * 0.3;
-      s.ring.scale.setScalar(1 + t01 * 0.4);
+      s.ring.material.opacity = 0.6 + Math.sin(world.time * 8) * 0.2;
+      s.ring.children[0]?.scale.setScalar(Math.max(.03, 1 - t01));
     }
     if (s.mesh.position.y <= 0 || s.life <= 0) {
-      const impact = s.mesh.position.clone().setY(0);
+      const impact = s.target.clone().setY(0);
       world.spawnExplosion(impact, 1.5);
       world.shake(0.4, 0.4);
       // AOE damage to player and buildings
-      damageInRadius(impact, 18, s.damage * 0.6, false, false, 'military');
+      damageInRadius(impact, 18, s.damage * 0.6, false, false, 'military', 'env');
       const dx = state.kaiju.root.position.x - impact.x;
       const dz = state.kaiju.root.position.z - impact.z;
       if (dx * dx + dz * dz < 18 * 18) {
@@ -6428,7 +6464,7 @@ function updateWorld(dt, dtReal = dt) {
       const impact = new THREE.Vector3(a.x, 0, a.z);
       world.spawnExplosion(impact, 2.0);
       world.shake(1.0, 0.7);
-      damageInRadius(impact, 22, 40, false, false, 'military');
+      damageInRadius(impact, 22, 40, false, false, 'military', 'env');
       const dx = state.kaiju.root.position.x - a.x;
       const dz = state.kaiju.root.position.z - a.z;
       if (dx * dx + dz * dz < 22 * 22) {
@@ -7591,6 +7627,8 @@ function tick(now) {
   const dtRaw = (now - last) / 1000;
   last = now;
   if(document.hidden){requestAnimationFrame(tick);return;}
+  const markerHidden = now > combatHitUntil || state.paused || state.gameOver || !state.kaiju;
+  if (combatMarker.hidden !== markerHidden) combatMarker.hidden = markerHidden;
   const slowActive = now < state.slowMoUntil;
   // Hit-stop outranks slow-mo: the simulation holds still (dt = 0) while the
   // camera, HUD and audio keep running on real time, and a slow-mo in force

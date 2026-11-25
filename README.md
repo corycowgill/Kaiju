@@ -76,6 +76,43 @@ Plug it in. The game auto-detects it via the Gamepad API.
 
 Chained kills/destruction ramp a **combo multiplier** up to 5x. Big kills and the Ultimate trigger a **brief slow-mo** because we're not above it.
 
+### Military combat and hit feedback
+
+Military units now accelerate and turn smoothly instead of snapping to face the
+kaiju. Ground units steer around intact building footprints, including rotated
+city blocks, avoid water and play-area edges, and spread out locally. Destroying
+a blocker opens the route immediately. A cached footprint index keeps collision
+queries local even when a city contains very wide bridges.
+
+- **Tanks** split into opposing flank lanes, reverse when crowded, then brace,
+  align their hull, and show a muzzle charge before firing a leading shot.
+- **Infantry** advances and skirmishes laterally, falls back at close range, and
+  fires short two-round bursts. Run-and-shoot clips now accompany real movement.
+- **Helicopters** make burst-firing passes, bank with their lateral movement,
+  and break away between passes, with smoothly changing altitude and rotor motion.
+- **Mechs** advance or backstep, plant for telegraphed dual-cannon volleys, and
+  retain their attack clip through the firing sequence. Faster movement uses the
+  authored in-place running clip; walk playback follows speed and direction.
+- **Jets** bank into continuous return passes instead of teleporting to a new
+  approach position. Afterburner movement is smooth rather than random each frame.
+- **Artillery** relocates if approached, pauses to aim, and fires at a fixed,
+  slightly leading target. The warning ring shows the actual 18-unit blast radius,
+  with a shrinking countdown ring. Environmental blasts do not award player credit.
+
+Confirmed hits produce impact sparks, a brief hit marker (gold on a kill), and
+local flinch/recoil without changing shared model materials. Surviving ordinary
+units briefly stagger and interrupt cannon windups; boss telegraphs remain intact.
+Melee, stomp, and charge contacts add a rate-limited impact sound, light camera
+kick, and a short hit pause. Continuous beams do not repeatedly freeze combat.
+Reduced-motion preferences disable that extra camera kick and hit pause. Ground
+melee and trample damage no longer hit jets overhead.
+
+`src/militaryMotion.js` owns steering, collision and hit reactions;
+`src/enemies.js` owns tactics and model animation. `npm test` covers the actual
+enemy classes, movement bounds, obstacle avoidance, attack cadence, interrupts,
+freeze behavior, and continuous jet passes. Asset smoke checks also verify that
+the loaded mech attack and infantry locomotion clips stay active correctly.
+
 ### Local player profiles
 
 Open **Player Profile** in the top-right of the menu, from pause, or from results.

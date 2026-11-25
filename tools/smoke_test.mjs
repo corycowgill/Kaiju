@@ -303,6 +303,25 @@ await step('spawn cars/civilians', () => {
 for (const C of [enemies.Tank, enemies.Helicopter, enemies.Mech, enemies.Jet, enemies.Artillery, enemies.Soldier, enemies.BossMech]) {
   await step(`spawn ${C.name}`, () => { const e = new C(10, 10); scene.add(e.root); e.update(1 / 60, world, new THREE.Vector3()); spawned[C.name] = e; });
 }
+await step('military animation holds', () => {
+  const quiet = { time: 0, enemies: [], buildings: [], spawnShell() {}, spawnMuzzleFlash() {}, spawnHitPulse() {}, spawnExplosion() {}, spawnSparks() {}, shake() {} };
+  const mech = spawned.Mech, soldier = spawned.Soldier;
+  if (mech?.mixer) {
+    mech.root.position.set(0, 0, 0); mech.cooldown = 0;
+    const target = new THREE.Vector3(0, 0, 65);
+    for (let i = 0; i < 30; i++) mech.update(1 / 60, quiet, target);
+    if (mech._currentAnim !== 'attack' || mech._actions.attack.time < .2) fail('military: the real mech attack clip is overwritten during windup');
+    mech.cooldown = 100; mech._windup = mech._attackHold = 0; target.z = 140;
+    for (let i = 0; i < 90; i++) mech.update(1 / 60, quiet, target);
+    if (!['run', 'runFast'].includes(mech._currentAnim) || mech._actions[mech._currentAnim].getEffectiveTimeScale() <= 0 || mech._moveSpeed <= 0) fail('military: the real mech run clip does not track movement');
+  }
+  if (soldier?.mixer) {
+    soldier.root.position.set(0, 0, 0); soldier.cooldown = 100;
+    const target = new THREE.Vector3(0, 0, 30);
+    for (let i = 0; i < 30; i++) soldier.update(1 / 60, quiet, target);
+    if (soldier._currentAnim !== 'runAndShoot' || soldier._moveSpeed <= 0) fail('military: infantry run-and-shoot plays without movement');
+  }
+});
 const trisOf = (root) => { let t = 0; root?.traverse((o) => { if (o.isMesh) { const g = o.geometry; t += (g.index ? g.index.count : g.attributes.position.count) / 3; } }); return t; };
 
 // Wrestling mode (src/wrestling/, composed by index.js; game.js itself is not importable
@@ -733,6 +752,11 @@ if (res?.buildings?.length) {
 for (const name of ['Mech', 'BossMech']) {
   const actor = spawned[name];
   if (!actor?.mixer) continue;
+  // A mid-stride toe can point down/back naturally; audit the authored
+  // forward axis in a repeatable neutral pose after the animation tests.
+  actor.mixer.stopAllAction();
+  actor._actions.walk?.reset().play(); actor.mixer.update(0);
+  actor._visual.rotation.set(0, 0, 0); actor.root.updateMatrixWorld(true);
   const forward = actor.root.getWorldDirection(new THREE.Vector3());
   let toeDirection = 0;
   for (const side of ['Left', 'Right']) {

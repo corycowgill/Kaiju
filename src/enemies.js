@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { initMilitaryMotion, observeTarget, moveMilitary, turnToward, damageMilitary } from './militaryMotion.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skinnedClone } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -206,6 +207,38 @@ function _cloneBiped(tpl) {
   return { root: clone, mixer, actions };
 }
 
+// A separate presentation pivot leaves skeleton clips and actor ground position intact.
+function setupMilitary(actor) {
+  initMilitaryMotion(actor);
+  const visual = new THREE.Group();
+  while (actor.root.children.length) visual.add(actor.root.children[0]);
+  actor.root.add(visual); actor._visual = visual;
+}
+function faceMilitary(actor, x, z, dt, rate = 2.4) {
+  if (x || z) actor.root.rotation.y = turnToward(actor.root.rotation.y, Math.atan2(x, z), rate * dt);
+}
+function animateMilitary(actor, dt, bank = 0, pitch = 0) {
+  const v = actor._visual, speed = actor._moveSpeed || 0;
+  const gait = actor.type === 'soldier' ? 11 : 5;
+  const moving = Math.min(1.5, speed / (actor.speed || 1));
+  const a = 1 - Math.exp(-dt * 10);
+  v.rotation.z += (bank + actor._hitTilt - v.rotation.z) * a;
+  v.rotation.x += (pitch - actor._recoil * .055 - v.rotation.x) * a;
+  v.position.z = -actor._recoil * (actor.type === 'soldier' ? .12 : .45);
+  v.position.y = (actor.type === 'soldier' || actor.type === 'mech') ? Math.sin(actor._tacticalTime * gait + actor._phase) * .045 * moving : 0;
+  actor._driveAction?.setEffectiveTimeScale(moving * (actor.tactic === 'reverse' ? -1 : 1));
+  const action = actor._actions?.[actor._currentAnim];
+  if (action && ['run', 'walk', 'quickWalk', 'runFast', 'runAndShoot'].includes(actor._currentAnim)) action.setEffectiveTimeScale(moving < .02 ? 0 : Math.max(.45, moving * (actor._currentAnim === 'walk' ? 1.2 : 1)) * (actor._reverse ? -1 : 1));
+  if (actor._actions && actor._currentAnim === 'attack') action?.setEffectiveTimeScale(1);
+  if (actor.mixer && (actor.root.position.x - actor._targetX) ** 2 + (actor.root.position.z - actor._targetZ) ** 2 < MIXER_CULL_DIST_SQ) actor.mixer.update(dt);
+}
+function muzzleShot(actor, world, target, type, lead = .2, size = .4) {
+  actor._muzzle?.getWorldPosition(_aiVB);
+  if (!actor._muzzle) _aiVB.copy(actor.root.position);
+  _aiVC.set(target.x + actor._targetVX * lead, target.y * .5 + 8, target.z + actor._targetVZ * lead).sub(_aiVB).normalize();
+  world.spawnShell(_aiVB, _aiVC, type); world.spawnMuzzleFlash(_aiVB, size); actor._recoil = 1;
+}
+
 // Military units. Each has hp, type, mesh, ai().
 
 export class Tank {
@@ -247,7 +280,7 @@ export class Tank {
         this.mixer = new THREE.AnimationMixer(tpl);
         const clip = _templates.tank.animations[0];
         const action = this.mixer.clipAction(clip);
-        action.play();
+        this._driveAction = action; action.play();
       }
     } else {
       // Minimal fallback box
@@ -263,48 +296,39 @@ export class Tank {
     root.add(this._muzzle);
 
     this.root = root;
+    setupMilitary(this);
   }
 
   update(dt, world, kaijuPos) {
-    if (this.dead) return;
-    if (this.mixer) {
-      const dx = kaijuPos.x - this.root.position.x;
-      const dz = kaijuPos.z - this.root.position.z;
-      if (dx * dx + dz * dz < MIXER_CULL_DIST_SQ) this.mixer.update(dt);
-    }
-    const myPos = this.root.position;
-    _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
-    const dist = _aiVA.length();
+    if (this.dead || !(dt > 0)) return;
+    observeTarget(this, kaijuPos, dt);
+    const p = this.root.position, dx = kaijuPos.x - p.x, dz = kaijuPos.z - p.z, dist = Math.hypot(dx, dz);
     if (dist < 4.5) { this.die(world); return; }
-    if (dist < 0.0001) return;
-    _aiVA.divideScalar(dist);
-
-    // Drive: maintain ~60u distance
-    let moveX = 0, moveZ = 0;
-    if (dist > 80)      { moveX = _aiVA.x;  moveZ = _aiVA.z;  }
-    else if (dist < 50) { moveX = -_aiVA.x; moveZ = -_aiVA.z; }
-    if (moveX || moveZ) {
-      myPos.x += moveX * this.speed * dt;
-      myPos.z += moveZ * this.speed * dt;
-    }
-
-    // Always face toward kaiju
-    this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
-
-    // Shoot
+    const nx = dx / dist, nz = dz / dist;
     this.cooldown -= dt;
-    if (this.cooldown <= 0 && dist < this.shootRange) {
-      this.cooldown = 2.5 + Math.random() * 1.5;
-      this._muzzle.getWorldPosition(_aiVB);
-      _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 6, kaijuPos.z).sub(_aiVB).normalize();
-      world.spawnShell(_aiVB, _aiVC, 'tank');
-      world.spawnMuzzleFlash(_aiVB, 0.5);
+    if (this._windup <= 0 && this._stagger <= 0 && this.cooldown <= 0 && dist < this.shootRange) {
+      this._windup = .7; this.cooldown = 2.8 + this._unitId % 3 * .3;
+      this._muzzle.getWorldPosition(_aiVB); world.spawnHitPulse?.(_aiVB, 0xffbb55);
     }
+    const brace = this._windup > 0;
+    this.tactic = brace ? 'brace' : dist < 48 ? 'reverse' : 'flank';
+    const radial = dist > 78 ? 1 : dist < 48 ? -1 : .15;
+    const flank = dist < 110 && dist > 48 ? this._side * .65 : 0;
+    moveMilitary(this, dt, world, brace ? 0 : nx * radial - nz * flank, brace ? 0 : nz * radial + nx * flank, this.speed, 3.2);
+    if (brace || radial < 0) faceMilitary(this, nx, nz, dt, 1.9);
+    else faceMilitary(this, this._vx, this._vz, dt, 1.9);
+    if (brace) {
+      this._windup = Math.max(.001, this._windup - dt);
+      const error = Math.abs(Math.atan2(Math.sin(Math.atan2(nx, nz) - this.root.rotation.y), Math.cos(Math.atan2(nx, nz) - this.root.rotation.y)));
+      if (this._windup <= .001 && error < .22) { this._windup = 0; if (dist < this.shootRange + 8) muzzleShot(this, world, kaijuPos, 'tank', .25, .5); }
+      if (dist > this.shootRange + 20) this._windup = 0;
+    }
+    animateMilitary(this, dt, -this._vx * Math.cos(this.root.rotation.y) * .006 + this._vz * Math.sin(this.root.rotation.y) * .006);
   }
 
+
   damage(amount, world) {
-    this.hp -= amount;
-    if (this.hp <= 0) this.die(world);
+    damageMilitary(this, amount, world);
   }
 
   die(world) {
@@ -365,48 +389,35 @@ export class Helicopter {
     }
 
     this.root = root;
+    setupMilitary(this);
   }
 
   update(dt, world, kaijuPos) {
-    if (this.dead) return;
-    const myPos = this.root.position;
-    _aiVA.set(kaijuPos.x, this.altitude, kaijuPos.z).sub(myPos);
-    const dist = _aiVA.length();
-
-    if (dist > 0.001) {
-      _aiVA.divideScalar(dist);
-      const tx = -_aiVA.z, tz = _aiVA.x;
-      let dx, dz;
-      if (dist > 90)       { dx = _aiVA.x;  dz = _aiVA.z;  }
-      else if (dist < 60)  { dx = -_aiVA.x; dz = -_aiVA.z; }
-      else                 { dx = 0; dz = 0; }
-      dx += tx * 0.6; dz += tz * 0.6;
-      const dlen = Math.hypot(dx, dz) || 1;
-      dx /= dlen; dz /= dlen;
-      myPos.x += dx * this.speed * dt;
-      myPos.z += dz * this.speed * dt;
-      myPos.y = this.altitude + Math.sin(world.time * 1.5 + myPos.x) * 0.4;
-      this.root.rotation.y = Math.atan2(dx, dz);
-      this.root.rotation.z = -dx * 0.15;
-    }
-
-    // Spin rotors (fallback boxes, or the v2 GLB's rotor_main / rotor_tail nodes)
+    if (this.dead || !(dt > 0)) return;
+    observeTarget(this, kaijuPos, dt);
+    const p = this.root.position, dx = kaijuPos.x - p.x, dz = kaijuPos.z - p.z, dist = Math.hypot(dx, dz) || 1;
+    const nx = dx / dist, nz = dz / dist;
+    this._passT = Math.max(0, (this._passT || 0) - dt); this.cooldown -= dt;
+    if (!this._passT && this.cooldown <= 0 && dist < 125 && this._stagger <= 0) { this._passT = 1.05; this._burstCD = 0; this.cooldown = 4.8; }
+    const pass = this._passT > 0, breaking = !pass && this.cooldown > 1.2;
+    this.tactic = pass ? 'strafe' : breaking ? 'break' : 'ingress';
+    const radial = breaking ? (dist < 125 ? -1 : 0) : dist > 82 ? 1 : dist < 58 ? -1 : 0;
+    moveMilitary(this, dt, world, nx * radial - nz * this._side * .8, nz * radial + nx * this._side * .8, this.speed * (breaking ? 1.2 : 1), 0, true);
+    faceMilitary(this, nx, nz, dt, 2.3);
+    p.y += (this.altitude + Math.sin(this._tacticalTime * 1.5 + this._phase) * .45 - p.y) * (1 - Math.exp(-dt * 3));
+    const lateral = this._vx * nz - this._vz * nx, forward = this._vx * nx + this._vz * nz;
+    animateMilitary(this, dt, -lateral / this.speed * .22, forward / this.speed * .1);
     if (this.rotor) this.rotor.rotation.y += dt * 30;
     if (this.tailRotor) this.tailRotor.rotation.x += dt * 40;
-
-    this.cooldown -= dt;
-    if (this.cooldown <= 0 && dist < 130) {
-      this.cooldown = 1.4 + Math.random() * 0.6;
-      _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(myPos).normalize();
-      _aiVB.copy(myPos);
-      world.spawnShell(_aiVB, _aiVC, 'heli');
-      world.spawnMuzzleFlash(_aiVB, 0.3);
+    if (pass && this._stagger <= 0) {
+      this._burstCD -= dt;
+      if (this._burstCD <= 0 && dist < 140) { this._burstCD = .34; muzzleShot(this, world, kaijuPos, 'heli', .18, .3); }
     }
   }
 
+
   damage(amount, world) {
-    this.hp -= amount;
-    if (this.hp <= 0) this.die(world);
+    damageMilitary(this, amount, world);
   }
 
   die(world) {
@@ -471,11 +482,13 @@ export class Mech {
     root.add(this._muzzle);
 
     this.root = root;
+    setupMilitary(this);
   }
 
   _playAnim(name, reverse = false) {
     const action = this._actions?.[name];
     if (!action) return;
+    this._reverse = reverse;
     const rate = reverse ? -1 : 1;
     if (this._currentAnim === name) {
       action.setEffectiveTimeScale(rate);
@@ -489,56 +502,35 @@ export class Mech {
   }
 
   update(dt, world, kaijuPos) {
-    if (this.dead) return;
-    if (this.mixer) {
-      const dx = kaijuPos.x - this.root.position.x;
-      const dz = kaijuPos.z - this.root.position.z;
-      if (dx * dx + dz * dz < MIXER_CULL_DIST_SQ) this.mixer.update(dt);
-    }
-    const myPos = this.root.position;
-    _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
-    const dist = _aiVA.length();
+    if (this.dead || !(dt > 0)) return;
+    observeTarget(this, kaijuPos, dt);
+    const p = this.root.position, dx = kaijuPos.x - p.x, dz = kaijuPos.z - p.z, dist = Math.hypot(dx, dz);
     if (dist < 5) { this.die(world); return; }
-    if (dist > 0.001) {
-      _aiVA.divideScalar(dist);
-      let dx = 0, dz = 0;
-      if (dist > 50)      { dx = _aiVA.x;  dz = _aiVA.z;  }
-      else if (dist < 35) { dx = -_aiVA.x; dz = -_aiVA.z; }
-      if (dx || dz) {
-        myPos.x += dx * this.speed * dt;
-        myPos.z += dz * this.speed * dt;
-        // Animate walk vs run based on distance
-        if (this._actions) {
-          this._playAnim(dist > 70 ? 'run' : 'walk', dist < 35);
-        } else if (this.legL) {
-          this.legPhase = (this.legPhase || 0) + dt * 6;
-          this.legL.position.y = 2.0 + Math.sin(this.legPhase) * 0.4;
-          this.legR.position.y = 2.0 + Math.sin(this.legPhase + Math.PI) * 0.4;
-        }
-      } else {
-        if (this._actions) this._playAnim('idle');
+    const nx = dx / dist, nz = dz / dist;
+    this.cooldown -= dt; this._attackHold = Math.max(0, this._attackHold - dt);
+    if (this.cooldown <= 0 && this._stagger <= 0 && dist < 110 && this._windup <= 0) {
+      this._windup = .65; this._attackHold = 1.2; this.cooldown = 3 + this._unitId % 3 * .2;
+      this._playAnim('attack'); this._muzzle.getWorldPosition(_aiVB); world.spawnHitPulse?.(_aiVB, 0xffaa55);
+    }
+    const attack = this._attackHold > 0, radial = dist > 52 ? 1 : dist < 32 ? -1 : 0;
+    this.tactic = attack ? 'volley' : radial < 0 ? 'backstep' : 'advance';
+    moveMilitary(this, dt, world, attack ? 0 : nx * radial, attack ? 0 : nz * radial, this.speed * (dist > 85 ? 1.35 : 1), 3);
+    faceMilitary(this, nx, nz, dt, 2);
+    if (!attack) this._playAnim(this._moveSpeed < .2 ? 'idle' : dist > 85 ? (this._actions?.runFast ? 'runFast' : 'run') : 'walk', radial < 0);
+    if (this._windup > 0) {
+      this._windup -= dt;
+      if (this._windup <= 0 && this._stagger <= 0 && dist < 125) {
+        this._muzzle.position.x = -1.4; muzzleShot(this, world, kaijuPos, 'mech', .25);
+        this._muzzle.position.x = 1.4; muzzleShot(this, world, kaijuPos, 'mech', .25); this._muzzle.position.x = 0;
       }
-      this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
     }
-
-    this.cooldown -= dt;
-    if (this.cooldown <= 0 && dist < 110) {
-      this.cooldown = 1.8 + Math.random() * 0.6;
-      if (this._actions) this._playAnim('attack');
-      this._muzzle.getWorldPosition(_aiVB);
-      _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
-      world.spawnShell(_aiVB, _aiVC, 'mech');
-      world.spawnMuzzleFlash(_aiVB, 0.4);
-      // Fire from both sides
-      _aiVB.x += 2; // offset for second shot
-      world.spawnShell(_aiVB, _aiVC, 'mech');
-      world.spawnMuzzleFlash(_aiVB, 0.4);
-    }
+    if (this.legL) { const gait = Math.sin(this._tacticalTime * 6) * Math.min(1, this._moveSpeed / this.speed) * .35; this.legL.rotation.x = gait; this.legR.rotation.x = -gait; }
+    animateMilitary(this, dt);
   }
 
+
   damage(amount, world) {
-    this.hp -= amount;
-    if (this.hp <= 0) this.die(world);
+    damageMilitary(this, amount, world);
   }
 
   die(world) {
@@ -623,54 +615,38 @@ export class Jet {
     this.burner = burner;
 
     this.root = root;
+    setupMilitary(this);
   }
 
   update(dt, world, kaijuPos) {
-    if (this.dead) return;
-    const myPos = this.root.position;
-    _aiVA.set(kaijuPos.x, this.altitude, kaijuPos.z).sub(myPos);
-    const dist2D = Math.hypot(_aiVA.x, _aiVA.z);
-
+    if (this.dead || !(dt > 0)) return;
+    observeTarget(this, kaijuPos, dt);
+    const p = this.root.position, dx = kaijuPos.x - p.x, dz = kaijuPos.z - p.z, dist = Math.hypot(dx, dz);
+    const oldYaw = this.root.rotation.y;
     if (this.state === 'approach') {
-      const len = _aiVA.length() || 1;
-      this.passDir.copy(_aiVA).divideScalar(len);
-      myPos.addScaledVector(this.passDir, this.speed * dt);
-      if (dist2D < 70) this.state = 'strafe';
+      const heading = turnToward(Math.atan2(this.passDir.x, this.passDir.z), Math.atan2(dx, dz), dt * 1.15);
+      this.passDir.set(Math.sin(heading), 0, Math.cos(heading));
+      if (dist < 75) this.state = 'strafe';
     } else if (this.state === 'strafe') {
-      myPos.addScaledVector(this.passDir, this.speed * dt);
       this.cooldown -= dt;
-      if (this.cooldown <= 0 && dist2D < 100) {
-        this.cooldown = 0.4;
-        _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(myPos).normalize();
-        _aiVB.copy(myPos);
-        world.spawnShell(_aiVB, _aiVC, 'jet');
-        world.spawnMuzzleFlash(_aiVB, 0.4);
-      }
-      if (dist2D > 90) { this.state = 'egress'; this.egressTimer = 2.5; }
+      if (this.cooldown <= 0 && dist < 105 && this._stagger <= 0) { this.cooldown = .45; muzzleShot(this, world, kaijuPos, 'jet', .15); }
+      if (dist > 100) { this.state = 'egress'; this.egressTimer = 1.8; }
     } else {
-      myPos.addScaledVector(this.passDir, this.speed * dt);
       this.egressTimer -= dt;
-      if (this.egressTimer <= 0) {
-        this.state = 'approach';
-        const a = Math.random() * Math.PI * 2;
-        myPos.set(kaijuPos.x + Math.cos(a) * 220, this.altitude, kaijuPos.z + Math.sin(a) * 220);
-      }
+      if (this.egressTimer <= 0) this.state = 'approach';
     }
-
-    // Orient: in approach we'd want re-normalized toward target, otherwise passDir
-    let fx = this.passDir.x, fz = this.passDir.z;
-    if (this.state === 'approach') {
-      const len = Math.hypot(_aiVA.x, _aiVA.z) || 1;
-      fx = _aiVA.x / len; fz = _aiVA.z / len;
-    }
-    this.root.rotation.y = Math.atan2(fx, fz);
-    this.root.rotation.z = Math.sin(world.time * 4 + myPos.x) * 0.15;
-    this.burner.scale.set(1, 1 + Math.random() * 0.4, 1);
+    this.tactic = this.state;
+    moveMilitary(this, dt, world, this.passDir.x, this.passDir.z, this.speed, 0, true);
+    faceMilitary(this, this._vx, this._vz, dt, 2.2);
+    const turn = Math.atan2(Math.sin(this.root.rotation.y - oldYaw), Math.cos(this.root.rotation.y - oldYaw)) / dt;
+    p.y += (this.altitude + (this.state === 'egress' ? 5 : 0) - p.y) * (1 - Math.exp(-dt * 2));
+    animateMilitary(this, dt, Math.max(-.65, Math.min(.65, -turn * .4)), this.state === 'egress' ? -.06 : .02);
+    this.burner.scale.y = 1.15 + Math.sin(this._tacticalTime * 30 + this._phase) * .12;
   }
 
+
   damage(amount, world) {
-    this.hp -= amount;
-    if (this.hp <= 0) this.die(world);
+    damageMilitary(this, amount, world);
   }
 
   die(world) {
@@ -685,7 +661,7 @@ export class Jet {
 }
 
 // -------------------------- Artillery --------------------------
-// Stationary far-range. Lobs shells in arcs with a ground marker.
+// Long-range battery: relocates under pressure, then aims and lobs marked shells.
 export class Artillery {
   constructor(x, z) {
     this.type = 'artillery';
@@ -739,34 +715,38 @@ export class Artillery {
     root.add(this._muzzle);
 
     this.root = root;
+    setupMilitary(this);
   }
 
   update(dt, world, kaijuPos) {
-    if (this.dead) return;
-    const myPos = this.root.position;
-    const dx = kaijuPos.x - myPos.x;
-    const dz = kaijuPos.z - myPos.z;
-    const dist = Math.hypot(dx, dz);
+    if (this.dead || !(dt > 0)) return;
+    observeTarget(this, kaijuPos, dt);
+    const p = this.root.position, dx = kaijuPos.x - p.x, dz = kaijuPos.z - p.z, dist = Math.hypot(dx, dz);
     if (dist < 5) { this.die(world); return; }
-    // Face toward kaiju
-    this.root.rotation.y = Math.atan2(dx, dz);
-
+    const nx = dx / dist, nz = dz / dist;
+    const retreat = dist < 95;
+    this.tactic = retreat ? 'relocate' : this._windup > 0 ? 'aim' : 'battery';
+    moveMilitary(this, dt, world, retreat ? -nx - nz * this._side * .3 : 0, retreat ? -nz + nx * this._side * .3 : 0, 4, 4);
+    faceMilitary(this, nx, nz, dt, 1.2);
     this.cooldown -= dt;
-    if (this.cooldown <= 0 && dist < 320) {
-      this.cooldown = 4.5 + Math.random() * 1.5;
-      const tx = kaijuPos.x + (Math.random() - 0.5) * 14;
-      const tz = kaijuPos.z + (Math.random() - 0.5) * 14;
-      this._muzzle.getWorldPosition(_aiVB);
-      _aiVC.set(tx, 0, tz);
-      world.spawnArtilleryShell?.(_aiVB, _aiVC);
-      world.spawnMuzzleFlash(_aiVB, 0.8);
-      world.shake(0.2, 0.2);
+    if (retreat || this._stagger > 0) this._windup = 0;
+    else if (this._windup > 0) {
+      this._windup -= dt;
+      if (this._windup <= 0 && dist < 320) {
+        this._muzzle.getWorldPosition(_aiVB);
+        _aiVC.set(kaijuPos.x + this._targetVX * .55, 0, kaijuPos.z + this._targetVZ * .55);
+        world.spawnArtilleryShell?.(_aiVB, _aiVC); world.spawnMuzzleFlash(_aiVB, .8); this._recoil = 1;
+      }
+    } else if (this.cooldown <= 0 && dist < 300) {
+      this._windup = 1; this.cooldown = 5.5 + this._unitId % 3 * .4;
+      this._muzzle.getWorldPosition(_aiVB); world.spawnHitPulse?.(_aiVB, 0xffbb55);
     }
+    animateMilitary(this, dt);
   }
 
+
   damage(amount, world) {
-    this.hp -= amount;
-    if (this.hp <= 0) this.die(world);
+    damageMilitary(this, amount, world);
   }
 
   die(world) {
@@ -828,6 +808,7 @@ export class Soldier {
     root.add(this._muzzle);
 
     this.root = root;
+    setupMilitary(this);
   }
 
   _playAnim(name) {
@@ -838,55 +819,31 @@ export class Soldier {
   }
 
   update(dt, world, kaijuPos) {
-    if (this.dead) return;
-    if (this.mixer) {
-      const dx = kaijuPos.x - this.root.position.x;
-      const dz = kaijuPos.z - this.root.position.z;
-      if (dx * dx + dz * dz < MIXER_CULL_DIST_SQ) this.mixer.update(dt);
-    }
-    const myPos = this.root.position;
-    _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
-    const dist = _aiVA.length();
-    if (dist > 0.001) _aiVA.divideScalar(dist);
-
-    if (dist > 30) {
-      myPos.x += _aiVA.x * this.speed * dt;
-      myPos.z += _aiVA.z * this.speed * dt;
-      if (this._actions) {
-        this._playAnim('run');
-      } else if (this.legL) {
-        this.walkPhase += dt * 10;
-        this.legL.rotation.x = Math.sin(this.walkPhase) * 0.6;
-        this.legR.rotation.x = -Math.sin(this.walkPhase) * 0.6;
-      }
-    } else {
-      // In range — run-and-shoot or stand and fire
-      if (this._actions) {
-        this._playAnim(this._actions.runAndShoot ? 'runAndShoot' : 'rifleCharge');
-      } else if (this.legL) {
-        this.legL.rotation.x = 0; this.legR.rotation.x = 0;
-      }
-    }
-    this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
-
+    if (this.dead || !(dt > 0)) return;
+    observeTarget(this, kaijuPos, dt);
+    const p = this.root.position, dx = kaijuPos.x - p.x, dz = kaijuPos.z - p.z, dist = Math.hypot(dx, dz);
+    if (dist < 4) { this.damage(999, world); return; }
+    const nx = dx / dist, nz = dz / dist;
     this.cooldown -= dt;
-    if (this.cooldown <= 0 && dist < 60) {
-      this.cooldown = 0.7 + Math.random() * 0.4;
-      this._muzzle.getWorldPosition(_aiVB);
-      _aiVC.set(kaijuPos.x, kaijuPos.y * 0.5 + 8, kaijuPos.z).sub(_aiVB).normalize();
-      world.spawnShell(_aiVB, _aiVC, 'rifle');
-      world.spawnMuzzleFlash(_aiVB, 0.2);
+    if (dist > 64) this._burst = 0;
+    const brace = (this._burst || 0) > 0, radial = dist > 38 ? 1 : dist < 20 ? -1 : 0;
+    const flank = dist < 80 ? this._side * .55 : this._side * .22;
+    this.tactic = brace ? 'fire' : radial < 0 ? 'fall-back' : 'skirmish';
+    moveMilitary(this, dt, world, brace ? 0 : nx * radial - nz * flank, brace ? 0 : nz * radial + nx * flank, this.speed * (dist < 40 ? .55 : 1), .8);
+    faceMilitary(this, this._moveSpeed > .5 && dist > 65 ? this._vx : nx, this._moveSpeed > .5 && dist > 65 ? this._vz : nz, dt, 5);
+    if (this.cooldown <= 0 && dist < 60 && this._stagger <= 0) {
+      if (!this._burst) this._burst = 2;
+      muzzleShot(this, world, kaijuPos, 'rifle', .08, .2); this._burst--;
+      this.cooldown = this._burst ? .18 : 1.5 + this._unitId % 4 * .12;
     }
-
-    if (dist < 4) {
-      this.damage(999, world);
-      world.shake(0.05, 0.1);
-    }
+    this._playAnim(this._moveSpeed < .6 ? 'rifleCharge' : dist < 60 ? 'runAndShoot' : 'run');
+    if (this.legL) { const gait = Math.sin(this._tacticalTime * 11 + this._phase) * Math.min(1, this._moveSpeed / this.speed) * .6; this.legL.rotation.x = gait; this.legR.rotation.x = -gait; }
+    animateMilitary(this, dt);
   }
 
+
   damage(amount, world) {
-    this.hp -= amount;
-    if (this.hp <= 0) this.die(world);
+    damageMilitary(this, amount, world);
   }
 
   die(world) {
@@ -977,6 +934,7 @@ export class BossMech {
     root.add(this._muzzleR);
 
     this.root = root;
+    setupMilitary(this);
   }
 
   _playAnim(name) {
@@ -987,32 +945,30 @@ export class BossMech {
   }
 
   update(dt, world, kaijuPos) {
-    if (this.dead) return;
-    if (this.mixer) {
-      const dx = kaijuPos.x - this.root.position.x;
-      const dz = kaijuPos.z - this.root.position.z;
-      if (dx * dx + dz * dz < MIXER_CULL_DIST_SQ) this.mixer.update(dt);
-    }
+    if (this.dead || !(dt > 0)) return;
+    observeTarget(this, kaijuPos, dt);
+    this._attackHold = Math.max(0, this._attackHold - dt);
     const myPos = this.root.position;
     _aiVA.subVectors(kaijuPos, myPos); _aiVA.y = 0;
     const dist = _aiVA.length();
     if (dist > 0.001) _aiVA.divideScalar(dist);
 
-    if (dist > 30) {
-      myPos.x += _aiVA.x * this.speed * dt;
-      myPos.z += _aiVA.z * this.speed * dt;
+    if (dist > 30 && this._volleyT <= 0 && this._slamT <= 0 && this._attackHold <= 0) {
+      moveMilitary(this, dt, world, _aiVA.x, _aiVA.z, this.speed, 6);
       if (this._actions) {
-        this._playAnim(dist > 60 ? 'run' : 'walk');
+        this._playAnim(dist > 60 ? (this._actions.runFast ? 'runFast' : 'run') : 'walk');
       } else if (this.legL) {
         this.legPhase = (this.legPhase || 0) + dt * 4;
         this.legL.position.y = 4.0 + Math.sin(this.legPhase) * 0.5;
         this.legR.position.y = 4.0 + Math.sin(this.legPhase + Math.PI) * 0.5;
       }
     } else {
-      if (this._actions) this._playAnim('idle');
+      moveMilitary(this, dt, world, 0, 0, this.speed, 6);
+      if (this._actions && this._volleyT <= 0 && this._slamT <= 0 && this._attackHold <= 0) this._playAnim('idle');
       else if (this.legL) { this.legL.position.y = 4.0; this.legR.position.y = 4.0; }
     }
-    this.root.rotation.y = Math.atan2(_aiVA.x, _aiVA.z);
+    faceMilitary(this, _aiVA.x, _aiVA.z, dt, 1.5);
+    animateMilitary(this, dt);
 
     const VOLLEY_WINDUP = 0.9, SLAM_WINDUP = 1.5, SLAM_RADIUS = 45;
 
@@ -1029,6 +985,7 @@ export class BossMech {
         }
       }
       if (this._volleyT <= 0) {
+        this._attackHold = .8;
         if (this._actions) this._playAnim('attack');
         for (const muzzle of [this._muzzleL, this._muzzleR]) {
           muzzle.getWorldPosition(_aiVB);
@@ -1057,7 +1014,7 @@ export class BossMech {
       }
     } else if (this.specialCooldown <= 0 && dist < 55 && this._volleyT <= 0) {
       this.specialCooldown = 9 + Math.random() * 3;
-      this._slamT = SLAM_WINDUP;
+      this._slamT = SLAM_WINDUP; this._attackHold = SLAM_WINDUP + .35;
       world.spawnBossTelegraph?.(myPos.clone(), SLAM_RADIUS, SLAM_WINDUP);
       world.onBossWindup?.('slam', this, SLAM_WINDUP);
       if (this._actions) this._playAnim('attack');
@@ -1065,8 +1022,7 @@ export class BossMech {
   }
 
   damage(amount, world) {
-    this.hp -= amount;
-    if (this.hp <= 0) this.die(world);
+    damageMilitary(this, amount, world);
   }
 
   die(world) {
