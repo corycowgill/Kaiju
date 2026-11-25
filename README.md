@@ -116,6 +116,12 @@ the loaded mech attack and infantry locomotion clips stay active correctly.
 ### Local player profiles
 
 Open **Player Profile** in the top-right of the menu, from pause, or from results.
+The profile menu shares the full-screen poster style, player cards, and fixed
+red-and-gold command bar used by Championship Tour and City Challenges. Choose a
+player, view their career, then continue or switch. You can preview another
+player’s records without activating that profile. Arrow keys / D-pad select,
+Enter / A confirms, and Escape / B goes back.
+
 Create up to eight named players, rename the current player, and switch players
 between runs. Deleting an inactive profile requires a second confirmation and
 removes only that player's career. Each profile owns its trophies and unlock dates,
