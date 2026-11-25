@@ -183,6 +183,14 @@ San Francisco → Tokyo**. Earn a medal in all four missions to unlock the next
 city. Any of the nine kaiju can play; medals and personal bests are shared across
 fighters, with the fastest run's fighter recorded in the save.
 
+City Challenges uses the same full-screen campaign menu as Championship Tour:
+choose a kaiju from the portrait roster, continue to city/mission selection, then
+start the selected mission from the fixed command bar. Scenic city cards show
+locks and medal counts; mission cards show medal targets and saved records.
+Arrow keys and D-pad navigate the cards, Enter/A confirms, and Escape/B steps
+back before closing. The mission board opens directly from results or pause;
+during a live run it is read-only, and closing it preserves the pause.
+
 - **Demolition Run:** destroy every gold-marked building before the deadline.
 - **Military Siege:** clear three assaults, including the boss in the final one.
 - **Precision Rampage:** destroy the marked landmark while preserving all three
@@ -205,7 +213,9 @@ mastery, and all 24 gold medals. The original Platinum requirement is unchanged.
 
 `src/havocChallenges.js` owns mission definitions, saves and rules;
 `src/havocChallengeMode.js` owns in-world markers and the objective HUD;
-`src/havocChallengesUI.js` owns the mission board. `npm test` covers progression,
+`src/havocChallengesUI.js` owns the mission menu, with shared campaign shell and
+roster styles in `src/championshipTour.css` and mission-specific styles in
+`src/havocChallenges.css`. `npm test` covers progression,
 medal boundaries, power restrictions, timing, and same-frame collateral. Asset
 smoke checks validate actual mission targets and protected structures in every city.
 

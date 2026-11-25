@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.20.0', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.21.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -3245,7 +3245,7 @@ async function _preuploadTextures(roots) {
 // resets per-run state and returns to the monster-select menu.
 /** The result screen's PLAY AGAIN: the same fighter, mode, stage (and rival / unit) straight into loading. */
 function _playAgain() {
-  if (challengeRun) { challengeUI.open(); return; }
+  if (challengeRun) { challengeUI.open('missions'); return; }
   if (tourRun) { tourUI.open('route'); return; }
   const key = state.monsterKey;
   if (!key || _startingGame) return;
