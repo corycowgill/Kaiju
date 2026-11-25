@@ -362,6 +362,7 @@ if (mode === 'wrestling') await step('wrestling', async () => {
   const { createAchievementTracker } = await imp('achievements.js');
   const achievements = createAchievementTracker({ storage: globalThis.localStorage });
   const ctx = {
+    playerStorage: globalThis.localStorage,
     achievements,
     tour: null,
     scene, camera: new THREE.PerspectiveCamera(), world, audio: new Proxy({}, { get: () => noop }), debug: true, MONSTERS: MON,

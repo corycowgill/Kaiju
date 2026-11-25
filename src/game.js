@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.19.0', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.20.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -43,6 +43,9 @@ import { createAchievementTracker } from './achievements.js';
 import { createAchievementUI } from './achievementUI.js';
 import { createChampionshipTour } from './championshipTour.js';
 import { createChampionshipTourUI } from './championshipTourUI.js';
+import { playerProfiles, playerStorage } from './playerStorage.js';
+import { createPlayerHistory } from './playerHistory.js';
+import { createPlayerProfilesUI } from './playerProfilesUI.js';
 import { createHavocChallenges } from './havocChallenges.js';
 import { createHavocChallengesUI } from './havocChallengesUI.js';
 import { createHavocChallengeMode, missionClock } from './havocChallengeMode.js';
@@ -76,12 +79,12 @@ document.getElementById('galleryBtn').addEventListener('click', async () => {
 // ------------------------- High score (localStorage) -------------------------
 const HIGH_SCORE_KEY = 'kaiju_highscore';
 function getHighScore() {
-  try { return parseInt(localStorage.getItem(HIGH_SCORE_KEY) || '0', 10) || 0; } catch { return 0; }
+  try { return parseInt(playerStorage.getItem(HIGH_SCORE_KEY) || '0', 10) || 0; } catch { return 0; }
 }
 function trySetHighScore(s) {
   try {
     const cur = getHighScore();
-    if (s > cur) { localStorage.setItem(HIGH_SCORE_KEY, String(s)); return true; }
+    if (s > cur) { playerStorage.setItem(HIGH_SCORE_KEY, String(s)); return true; }
   } catch {}
   return false;
 }
@@ -113,7 +116,7 @@ function _detectLevel() {
   const m = location.search.match(/[?&]level=(\w+)/);
   if (m && LEVELS[m[1]]) return m[1];
   try {
-    const saved = localStorage.getItem(LEVEL_KEY);
+    const saved = playerStorage.getItem(LEVEL_KEY);
     if (saved && LEVELS[saved]) return saved;
   } catch (e) { /* storage blocked: default */ }
   return 'tokyo';
@@ -122,7 +125,7 @@ let selectedLevel = _detectLevel();
 function _setLevel(level) {
   if (!LEVELS[level]) return;
   selectedLevel = level;
-  try { localStorage.setItem(LEVEL_KEY, level); } catch (e) { /* not persisted */ }
+  try { playerStorage.setItem(LEVEL_KEY, level); } catch (e) { /* not persisted */ }
   _syncDeployment();
 }
 
@@ -1410,8 +1413,8 @@ for (const k of Object.keys(state)) {
 // The career ledger lives outside per-run state, so restart and title defenses
 // retain earned trophies. Storage can be disabled without breaking gameplay.
 let trophyUI;
-let trophyStorage;
-try { trophyStorage = window.localStorage; } catch { /* session-only */ }
+const trophyStorage = playerStorage;
+const playerHistory = createPlayerHistory({ storage: playerStorage });
 const achievements = createAchievementTracker({ storage: trophyStorage,
   onUnlock: (a) => trophyUI?.enqueue(a), onChange: () => trophyUI?.refresh(),
 });
@@ -1501,10 +1504,34 @@ challengeUI = createHavocChallengesUI(cityChallenges, MONSTERS, {
   },
 });
 challengeUI.refresh(); achievements.challenges(cityChallenges.summary());
+let _profileWasPaused = false;
+function flushPlayer() { achievements.flush(); championshipTour.flush(); cityChallenges.flush(); playerHistory.flush(); }
+const profileUI = createPlayerProfilesUI(playerProfiles, playerHistory, MONSTERS, {
+  canSwitch: () => !_startingGame && (!state.kaiju || state.gameOver),
+  onOpen() {
+    _profileWasPaused = state.paused;
+    if (state.kaiju && !state.gameOver) state.paused = true;
+    state.mouseDown = state.aimDown = false;
+    for (const code of Object.keys(keys)) _setKey(code, false);
+    document.exitPointerLock?.(); flushPlayer();
+  },
+  onClose() {
+    if (state.kaiju && !state.gameOver && !state.upgradePending) state.paused = _profileWasPaused;
+    const pad = [...(navigator.getGamepads?.() || [])].find((p) => p?.connected);
+    if (pad) for (const i of [0, 1, 9, 12, 13, 14, 15]) _menuPad.prevDown[i] = !!pad.buttons[i]?.pressed;
+  },
+  onSwitch(id) {
+    flushPlayer();
+    if (!playerProfiles.persistent) throw Error('Progress could not be saved. Free browser storage before switching players.');
+    playerProfiles.switchTo(id); location.reload();
+  },
+});
+profileUI.refresh();
+window.addEventListener('pagehide', () => playerHistory.flush());
 window.addEventListener('pagehide', () => cityChallenges.flush());
 window.addEventListener('pagehide', () => championshipTour.flush());
 window.addEventListener('pagehide', () => achievements.flush());
-document.addEventListener('visibilitychange', () => { if (document.hidden) achievements.flush(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { achievements.flush(); playerHistory.flush(); } });
 
 // requestPointerLock() returns a Promise in modern browsers and rejects
 // (WrongDocumentError, or "user exited lock too recently") when called
@@ -1741,6 +1768,7 @@ function _menuRows() {
     Array.from(document.querySelectorAll('#menu .deployment-options select')).filter(shown),
     [document.getElementById('startBtn')],
   ] : [];
+  if (step !== 'title') rows.push([document.querySelector('#menu [data-open-profiles]')]);
   return rows.filter((r) => r.length && r[0]);
 }
 function _menuTargets() {
@@ -1809,7 +1837,7 @@ function confirmMenu() {
 }
 function pollMenuGamepad(dt) {
   if (_startingGame) return;
-  if (trophyUI.isOpen || tourUI.isOpen || challengeUI.isOpen) return;
+  if (trophyUI.isOpen || tourUI.isOpen || challengeUI.isOpen || profileUI.isOpen) return;
   const sheet = !_menuVisible() && !_upgradeVisible() && _sheetTargets().length > 0;
   if (!sheet) _sheetWasUp = false;
   if (!_menuVisible() && !_upgradeVisible() && !sheet) return;
@@ -1904,7 +1932,7 @@ window.addEventListener('keydown', (e) => {
     if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); confirmMenu(); return; }
   }
   if (galleryDialog.open || (!_menuVisible() && !_upgradeVisible())) return;
-  if (e.target?.closest?.('.menu-extras, .tour-entry') && (e.key === 'Enter' || e.key === ' ')) return;
+  if (e.target?.closest?.('.menu-extras, .tour-entry, [data-open-profiles]') && (e.key === 'Enter' || e.key === ' ')) return;
   if (_menuVisible() && !_upgradeVisible()) {
     // Title menu: steps (attract -> mode -> fighter), rows, Esc / Backspace back
     if (e.ctrlKey || e.metaKey || e.altKey || /^F\d/.test(e.key) || e.key === 'Tab') return;
@@ -2056,7 +2084,7 @@ const _touchControls = []; // extra control elements a mode registered (ctx.inpu
 function isOnControl(target) {
   if (!target || !target.closest) return false;
   for (let i = 0; i < _touchControls.length; i++) if (_touchControls[i].contains(target)) return true;
-  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #vs-moves, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal, #trophy-room, #championship-tour, #havoc-challenges');
+  return !!target.closest('#joy-zone, #attack-btn, #sprint-btn, #pause-btn, #vs-moves, #lone-hud button, #powers, #menu, #gameover, #pause-menu, #upgrade-modal, #trophy-room, #championship-tour, #havoc-challenges, #player-profiles');
 }
 window.addEventListener('touchstart', (e) => {
   if (!touchUI || state.gameOver || !state.kaiju) return;
@@ -2296,13 +2324,13 @@ console.info('[KAIJU HAVOC] menu cards built:', cardsDiv.children.length, 'isMob
 const MENU_PICK_KEY = 'kaijuMenuPick';
 function _saveMenuPick() {
   try {
-    localStorage.setItem(MENU_PICK_KEY, JSON.stringify({ mode: modePicker.value, monster: state.monsterKey,
+    playerStorage.setItem(MENU_PICK_KEY, JSON.stringify({ mode: modePicker.value, monster: state.monsterKey,
       rival: rivalPicker.value, role: document.getElementById('lone-role').value }));
   } catch (e) { /* not persisted */ }
 }
 {
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem(MENU_PICK_KEY) || 'null'); } catch (e) { /* none */ }
+  try { saved = JSON.parse(playerStorage.getItem(MENU_PICK_KEY) || 'null'); } catch (e) { /* none */ }
   const has = (sel, v) => v != null && [...sel.options].some((o) => o.value === v);
   if (saved && !/[?&]mode=/.test(location.search) && has(modePicker, saved.mode)) modePicker.value = saved.mode;
   if (saved && has(rivalPicker, saved.rival)) rivalPicker.value = saved.rival;
@@ -2513,7 +2541,7 @@ document.getElementById('mn-back').addEventListener('click', _menuBack);
 menuEl.addEventListener('pointerdown', (e) => _menuInputFrom(e.pointerType === 'touch' ? 'touch' : 'mouse'));
 // Attract screen: a click or tap anywhere (but the quality links) starts
 menuEl.addEventListener('click', (e) => {
-  if (_menuStepNow() === 'title' && !e.target.closest('#quality-picker')) _menuAdvance();
+  if (_menuStepNow() === 'title' && !e.target.closest('#quality-picker, [data-open-profiles]')) _menuAdvance();
 });
 // Hover ticks, and the showcase follows the mouse over the roster
 menuEl.addEventListener('pointerover', (e) => {
@@ -3218,13 +3246,14 @@ async function _preuploadTextures(roots) {
 /** The result screen's PLAY AGAIN: the same fighter, mode, stage (and rival / unit) straight into loading. */
 function _playAgain() {
   if (challengeRun) { challengeUI.open(); return; }
-  if (tourRun) { tourUI.open(); return; }
+  if (tourRun) { tourUI.open('route'); return; }
   const key = state.monsterKey;
   if (!key || _startingGame) return;
   restartInPlace();
   startGame(key);
 }
 function restartInPlace() {
+  playerHistory.finish('left', { score: state.score, wave: state.wave });
   challengeMode?.dispose(); challengeMode = null;
   if (challengeRun) cityChallenges.cancel(challengeRun.ticket);
   challengeRun = null;
@@ -3322,6 +3351,7 @@ if (/[?&]debug\b/.test(location.search)) {
   // composer(): the post chain (bloom, grade) for in-game-look screenshots
   window.__qa = { state, world, camera, renderer,
     challenge: () => challengeMode,
+    history: playerHistory,
     graphics:()=>({width:_fitWidth,height:_fitHeight,pixelRatio:_fitPR,resizeCount:_fitCount,cameraCandidates:_cameraQuery.candidates||0}),
     soldier:()=>lone,
     duel:()=>duel,
@@ -3342,9 +3372,11 @@ async function startGame(key) {
       if (!proceed) return false;
     }
     await _startGameInner(key);
+    if (modePicker.value !== 'title') beginPlayerHistory();
     return true;
   } catch (e) {
     reportLoadError('startGame', key, e);
+    playerHistory.cancel();
     achievements.endRun();
     if (modePicker.value === 'vs') {
       clearDuel();
@@ -4491,6 +4523,8 @@ world.spawnArtilleryShell = (origin, target) => {
 function gameOver(victory, text) {
   if (state.gameOver) return;
   if (challengeRun && !challengeRun.result) challengeMode?.finishFromGameOver();
+  playerHistory.finish(victory ? 'won' : 'lost', { score: state.score, wave: state.wave,
+    ...(challengeRun?.result ? { seconds: challengeRun.result.time, medal: challengeRun.result.medal } : {}) });
   achievements.havoc('score', state.score);
   achievements.flush();
   if (achievements.mode === 'havoc') achievements.endRun();
@@ -7281,7 +7315,15 @@ const _playerView = {
 
 // ---- ctx: the one object the wrestling modules get ----
 const ctx = {
-  achievements,
+  playerStorage,
+  achievements: { wrestling(event, payload) {
+    achievements.wrestling(event, payload);
+    if (event === 'match:start') beginPlayerHistory();
+    else if (event === 'match:won' || event === 'match:lost') playerHistory.finish(event === 'match:won' ? 'won' : 'lost', {
+      seconds: payload.time, score: state.score, wave: state.wave,
+      playerFalls: payload.playerFalls, rivalFalls: payload.rivalFalls,
+    });
+  } },
   get tour() { return tourRun; },
   scene, camera, renderer, world, audio, vfx, MONSTERS,
   debug: /[?&]debug\b/.test(location.search),
@@ -7384,6 +7426,12 @@ const ctx = {
     },
   },
 };
+
+function beginPlayerHistory() {
+  playerHistory.begin({ mode: challengeRun ? 'challenge' : tourRun ? 'tour' : modePicker.value,
+    fighter: state.monsterKey, city: world.level || selectedLevel,
+    mission: challengeRun?.mission.name || tourRun?.name || '' });
+}
 
 // ---- the modes ----
 function challengePowerAllowed(power) {
@@ -7553,11 +7601,11 @@ function tick(now) {
   const dt = frozen ? 0 : dtReal * (slowActive ? state.slowMoScale : 1);
   _lastDt = dt;
   if(state.paused&&state.kaiju&&!state.gameOver&&!state.upgradePending){
-    readGamepad();if(padInput.pressed.pause&&!trophyUI.isOpen&&!tourUI.isOpen&&!challengeUI.isOpen)togglePause(false);
+    readGamepad();if(padInput.pressed.pause&&!trophyUI.isOpen&&!tourUI.isOpen&&!challengeUI.isOpen&&!profileUI.isOpen)togglePause(false);
   }
   const loadingUp = _loadingScreenEl && _loadingScreenEl.classList.contains('visible') && !_settling; // (_settleGpu: the first frames play under it)
   if (!state.paused && !state.gameOver && !loadingUp) {
-    if (state.kaiju && !_startingGame) achievements.advance(dtRaw, state.score);
+    if (state.kaiju && !_startingGame) { achievements.advance(dtRaw, state.score); playerHistory.advance(dtRaw, state.score, state.wave); }
     state.elapsedTime += dtRaw;
     world.time += dt;
     skyMat.uniforms.time.value = world.time;
@@ -7589,10 +7637,11 @@ function tick(now) {
   _in.wheel = 0;
   // Menu navigation (gamepad) -- runs whenever the menu or upgrade modal
   // is on screen, regardless of paused/gameOver state.
-  const trophyWasOpen = trophyUI.isOpen || tourUI.isOpen || challengeUI.isOpen;
+  const trophyWasOpen = trophyUI.isOpen || tourUI.isOpen || challengeUI.isOpen || profileUI.isOpen;
   trophyUI.update(dtRaw, !_startingGame && !_loadingScreenEl?.classList.contains('visible'));
   tourUI.update(dtRaw);
   challengeUI.update(dtRaw);
+  profileUI.update(dtRaw);
   challengeMode?.pause(state.paused || state.gameOver || _startingGame);
   if (!trophyWasOpen) pollMenuGamepad(dtRaw);
   // Look layer (look.js): the slide toward dusk advances with play time; the

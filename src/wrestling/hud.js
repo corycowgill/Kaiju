@@ -286,14 +286,14 @@ export function createHud(ctx, W) {
   // ---- prompts, wheel, tutorial ----------------------------------------------
   function loadTut() {
     tut = { strike: 0, block: 0, grab: 0, ground: 0, taunt: 0, finisher: 0 };
-    try { Object.assign(tut, JSON.parse(localStorage.getItem(TUT_KEY) || '{}')); } catch (e) { /* private mode: teach every time */ }
+    try { Object.assign(tut, JSON.parse((ctx.playerStorage || localStorage).getItem(TUT_KEY) || '{}')); } catch (e) { /* private mode: teach every time */ }
     tutOn = false;
     for (const k in TUT_NEED) if (!(tut[k] >= TUT_NEED[k])) tutOn = true;
   }
   function learned(k) {
     if (!tut || tut[k] >= TUT_NEED[k]) return;
     tut[k]++;
-    if (tut[k] >= TUT_NEED[k]) { try { localStorage.setItem(TUT_KEY, JSON.stringify(tut)); } catch (e) { /* ignore */ } if (tipId === k) tipT = 0; }
+    if (tut[k] >= TUT_NEED[k]) { try { (ctx.playerStorage || localStorage).setItem(TUT_KEY, JSON.stringify(tut)); } catch (e) { /* ignore */ } if (tipId === k) tipT = 0; }
   }
   const needs = (k) => tutOn && tut[k] < TUT_NEED[k];
   function tip(id, sec) { if (needs(id) && tipId !== id) { tipId = id; tipT = sec; } else if (tipId === id) tipT = Math.max(tipT, sec); }

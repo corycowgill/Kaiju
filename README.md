@@ -76,6 +76,37 @@ Plug it in. The game auto-detects it via the Gamepad API.
 
 Chained kills/destruction ramp a **combo multiplier** up to 5x. Big kills and the Ultimate trigger a **brief slow-mo** because we're not above it.
 
+### Local player profiles
+
+Open **Player Profile** in the top-right of the menu, from pause, or from results.
+Create up to eight named players, rename the current player, and switch players
+between runs. Deleting an inactive profile requires a second confirmation and
+removes only that player's career. Each profile owns its trophies and unlock dates,
+high score, Championship Tour belts, City Challenge medals and personal bests,
+menu choices, wrestling tutorial progress, and game history. Graphics, audio,
+and downloaded assets remain shared device settings.
+
+Existing saves migrate automatically to **Player 1** on the first visit. Original
+save keys remain untouched as a backup; new players start fresh. The selected
+player persists between visits. Switching reloads the game after flushing the
+current player's saves; delayed writes remain bound to the original player.
+Switching and creating players are disabled during a run and when browser
+storage is unavailable, while gameplay remains available for the session.
+
+History records the latest 100 results across all game modes, including dates,
+fighter, city, active play time, score, challenge medals, and wrestling fall
+scores. Wins, losses, quits, and interrupted runs are distinguished, with lifetime
+run/win/loss/play-time totals retained beyond the recent-history limit. History
+starts with this update; earlier achievements and records are preserved without
+inventing earlier match results. An unfinished run is marked interrupted on the
+next visit. This is local browser storage, so profiles are specific to this
+browser and device and are removed if its site data is cleared.
+
+`src/playerProfiles.js` owns migration and profile-bound storage adapters;
+`src/playerHistory.js` records results; `src/playerProfilesUI.js` presents careers.
+`npm test` checks real ledger isolation, migration, late writes after switching,
+storage failures, profile management, history retention, and interrupted runs.
+
 ### Achievements and trophies
 
 Open **Trophy Room** from the mode menu, pause menu, or results screen to browse
@@ -136,6 +167,13 @@ The campaign model is `src/championshipTour.js`; the board and responsive styles
 are `src/championshipTourUI.js` and `src/championshipTour.css`. `npm test` checks
 campaign progression and saves. The asset smoke test also exercises the real
 best-of-five final, its difficulty, and its result callback.
+
+The tour uses the main menu’s full-screen poster style, portrait roster,
+red-and-gold command bar, and keyboard/controller navigation. Choose a contender,
+continue to the title route, then fight or retry the next unlocked stop. Back
+returns from the route to contender selection before closing; opening the tour
+from match results goes straight to the next title on the route. During a paused
+match the route is read-only and closing it preserves the pause.
 
 ### Havoc City Challenges
 
