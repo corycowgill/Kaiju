@@ -787,7 +787,7 @@ export class Fighter {
     if (t < m.startup) {
       // Track the foe through the wind-up and step in
       if (foe && !m.dash) {
-        if (!this.isPlayer) this._turnTo(this.yawTo(foe), 7, dt);
+        if (!this.isPlayer || this.ctx.local?.enabled) this._turnTo(this.yawTo(foe), 7, dt);
         else if (this.ctx.player.control.faceYaw === null && this.distTo(foe) < this.radius + foe.radius + 20 && this.facing(foe, 1.2)) {
           this.ctx.player.yaw += angDiff(this.yawTo(foe), this.ctx.player.yaw) * (1 - Math.exp(-8 * dt));
         }

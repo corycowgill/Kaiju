@@ -747,6 +747,17 @@ if (mode === 'wrestling') await step('wrestling', async () => {
       const x1 = W.player.pos.x, x2 = W.rival.pos.x;
       keys.ArrowRight = true; step(12); keys.ArrowRight = false;
       if (!(W.rival.pos.x < x2 - 1) || Math.abs(W.player.pos.x - x1) > .1) fail('local: P2 movement did not stay on its seat');
+      // Both human attackers track a sidestepping opponent during wind-up.
+      for (const [f, other, key, yaw] of [[W.player, W.rival, 'KeyV', -Math.PI / 2], [W.rival, W.player, 'KeyJ', Math.PI / 2]]) {
+        const arena = W.arena.info;
+        W.player.pos.set(arena.cx + 13, 0, arena.cz); W.rival.pos.set(arena.cx - 12, 0, arena.cz);
+        for (const actor of [f, other]) { actor.held = false; actor.vel.set(0, 0, 0); actor.setState('neutral'); }
+        f.yaw = yaw;
+        keys[key] = true; step(); keys[key] = false;
+        other.pos.z += 20; step(6);
+        if (Math.abs(f.yaw - yaw) < .1) fail(`local: ${f.id} did not track its opponent during strike wind-up`);
+        step(120);
+      }
       // Powers are driven by each human, using the same combat path.
       for (const [f, key] of [[W.player, 'Digit1'], [W.rival, 'Digit7']]) {
         f.momentum = 100; f.cd.beam = 0; f.setState('neutral');
