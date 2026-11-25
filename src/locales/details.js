@@ -188,4 +188,25 @@ Building the city|Creando la ciudad|Construction de la ville|街を構築中|正
 Loading fonts|Cargando fuentes|Chargement des polices|フォント読み込み中|正在加载字体
 Loading menu media|Cargando recursos del menú|Chargement des médias du menu|メニュー素材読み込み中|正在加载菜单资源
 Warming up|Preparando|Préparation|準備中|正在准备
+Download backup|Descargar copia|Télécharger la sauvegarde|バックアップを保存|下载备份
+Restore backup|Restaurar copia|Restaurer une sauvegarde|バックアップを復元|恢复备份
+Profile backup|Copia del perfil|Sauvegarde du profil|プロフィールのバックアップ|档案备份
+Restore profile|Restaurar perfil|Restaurer le profil|プロフィールを復元|恢复档案
+Review your backup|Revisa tu copia|Vérifiez votre sauvegarde|バックアップを確認|检查备份
+Restored player name|Nombre del jugador restaurado|Nom du joueur restauré|復元するプレイヤー名|恢复后的玩家名称
+Restore as new profile|Restaurar como perfil nuevo|Restaurer dans un nouveau profil|新しいプロフィールとして復元|恢复为新档案
+Original player|Jugador original|Joueur d’origine|元のプレイヤー|原始玩家
+Backup date|Fecha de la copia|Date de sauvegarde|バックアップ日時|备份日期
+Choose a profile backup|Elige una copia de perfil|Choisissez une sauvegarde de profil|プロフィールのバックアップを選択|选择档案备份
+Download this player’s progress, or restore a backup as a new profile.|Descarga el progreso de este jugador o restaura una copia como un perfil nuevo.|Téléchargez la progression de ce joueur ou restaurez une sauvegarde dans un nouveau profil.|このプレイヤーの進行状況を保存するか、バックアップを新しいプロフィールとして復元します。|下载此玩家的进度，或将备份恢复为新档案。
+Restoring creates a new profile. Existing players and their progress stay unchanged.|Restaurar crea un perfil nuevo. Se conservan los jugadores existentes y su progreso.|La restauration crée un nouveau profil. Les joueurs existants et leur progression sont conservés.|復元すると新しいプロフィールを作成します。既存のプレイヤーと進行状況は保持されます。|恢复操作将创建新档案。现有玩家及其进度保持不变。
+You can choose Play as player after restoring to continue this career.|Tras restaurar, elige Jugar con este jugador para continuar la carrera.|Après la restauration, choisissez Jouer avec ce joueur pour continuer sa carrière.|復元後に「このプレイヤーでプレイ」を選ぶと、この戦績で続けられます。|恢复后选择“使用此玩家游玩”即可继续该生涯。
+Backup download started. Keep this file to restore your progress.|La descarga ha comenzado. Guarda este archivo para restaurar tu progreso.|Le téléchargement a commencé. Conservez ce fichier pour restaurer votre progression.|ダウンロードを開始しました。復元する時のためにこのファイルを保管してください。|备份下载已开始。请保留此文件以恢复进度。
+Profile restored. Choose Play as player to switch.|Perfil restaurado. Elige Jugar con este jugador para cambiar.|Profil restauré. Choisissez Jouer avec ce joueur pour changer.|プロフィールを復元しました。「このプレイヤーでプレイ」で切り替えられます。|档案已恢复。选择“使用此玩家游玩”即可切换。
+Finish your run before restoring a profile.|Termina la partida antes de restaurar un perfil.|Terminez la partie avant de restaurer un profil.|プレイを終了してからプロフィールを復元してください。|请先结束当前游戏，再恢复档案。
+This is not a valid Kaiju Havoc profile backup.|Este archivo no es una copia válida de un perfil de Kaiju Havoc.|Ce fichier n’est pas une sauvegarde valide de profil Kaiju Havoc.|Kaiju Havocの有効なプロフィールバックアップではありません。|这不是有效的怪兽浩劫档案备份。
+Backup files must be 2 MB or smaller.|Las copias deben tener un tamaño máximo de 2 MB.|Les sauvegardes doivent faire 2 Mo maximum.|バックアップファイルは2MB以下にしてください。|备份文件不能超过2 MB。
+This backup version is not supported by this game.|Esta versión de copia no es compatible con el juego.|Cette version de sauvegarde n’est pas prise en charge.|このバックアップのバージョンには対応していません。|此游戏不支持该备份版本。
+This backup uses a save version this game cannot restore.|La copia usa una versión de guardado que no se puede restaurar.|La sauvegarde utilise une version de données incompatible.|このゲームでは復元できないバージョンの保存データです。|此备份使用了游戏无法恢复的存档版本。
+Could not save the restored profile. Free browser storage and try again.|No se pudo guardar el perfil restaurado. Libera espacio y reinténtalo.|Impossible d’enregistrer le profil restauré. Libérez de l’espace et réessayez.|復元したプロフィールを保存できませんでした。空き容量を確保して再度お試しください。|无法保存恢复的档案。请释放浏览器存储空间后重试。
 `;

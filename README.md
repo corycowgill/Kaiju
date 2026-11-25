@@ -174,6 +174,27 @@ browser and device and are removed if its site data is cleared.
 `npm test` checks real ledger isolation, migration, late writes after switching,
 storage failures, profile management, history retention, and interrupted runs.
 
+### Profile backup and restore
+
+Open **Player Profile**, select a player, and choose **Download backup**. The
+JSON file includes that player’s achievements and unlock dates, history,
+Championship Tour belts, City Challenge medals and records, high score, menu
+choices, tutorial progress, and text language. You can back up an inactive
+profile too. The game flushes the active career before downloading.
+
+To transfer or recover a career, choose **Restore backup**, select the file,
+review its summary, and choose a name. **Restore as new profile** creates a
+separate local player and keeps existing careers intact. Duplicate names get a
+suggested suffix you can edit. Select **Play as player** afterward to use the
+restored profile and its language. Restoring is available between runs and
+requires a free slot among the eight local profiles and working browser storage.
+
+Only Kaiju Havoc profile backups up to 2 MB are accepted. Invalid, unsupported,
+and unsafe data are rejected before saving. Failed writes do not replace an
+existing player. The file transfers saved career progress, not an in-progress
+match or the downloaded 3D assets, graphics, or audio settings. An unfinished
+run in a restored backup is recorded as interrupted when that profile is loaded.
+
 ### Profile languages
 
 Open **Player Profile** and use the **Text language** selector in the header.

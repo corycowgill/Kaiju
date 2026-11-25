@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.26.0', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.27.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -1532,6 +1532,7 @@ const profileUI = createPlayerProfilesUI(playerProfiles, playerHistory, MONSTERS
     const pad = [...(navigator.getGamepads?.() || [])].find((p) => p?.connected);
     if (pad) for (const i of [0, 1, 9, 12, 13, 14, 15]) _menuPad.prevDown[i] = !!pad.buttons[i]?.pressed;
   },
+  onBackup: flushPlayer,
   onSwitch(id) {
     flushPlayer();
     if (!playerProfiles.persistent) throw Error('Progress could not be saved. Free browser storage before switching players.');

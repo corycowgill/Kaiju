@@ -1,3 +1,4 @@
+import { parseProfileBackup, MAX_PROFILE_BACKUP_BYTES, profileName } from './playerProfiles.js';
 import { i18n, LANGUAGES, LANGUAGE_KEY, normalizeLanguage } from './i18n.js';
 import { ACHIEVEMENTS } from './achievements.js';
 const escape = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -8,17 +9,19 @@ const duration = (s) => `${Math.floor(number(s) / 60)}:${String(Math.floor(numbe
 const modeNames = { havoc: 'Havoc', title: 'Title Match', vs: 'VS Duel', lone: 'Lone Soldier', challenge: 'City Challenge', tour: 'Championship Tour', 'local-title': 'Local 2P Wrestling', 'local-vs': 'Local 2P Brawl' };
 const outcomeNames = { won: 'WON', lost: 'LOST', left: 'LEFT', interrupted: 'INTERRUPTED' };
 
-export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch, onOpen, onClose, onSwitch }) {
+export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch, onOpen, onClose, onSwitch, onBackup = () => {} }) {
   const dialog = document.createElement('dialog'); dialog.id = 'player-profiles'; dialog.className = 'campaign-menu'; dialog.setAttribute('aria-labelledby', 'pp-title');
   const languageOptions = LANGUAGES.map((l) => `<option value="${l.code}" lang="${l.code}" translate="no">${l.name}</option>`).join('');
+  const backupActions = '<div class="pp-backup-actions"><button type="button" class="pp-backup-download">DOWNLOAD BACKUP</button><button type="button" class="pp-restore-open">RESTORE BACKUP</button></div>';
   dialog.innerHTML = `<div class="tour-backdrop" aria-hidden="true"></div><header class="tour-head"><div class="tour-brand">怪獣 <b>KAIJU HAVOC</b></div><div><p class="tour-kicker">YOUR PLAYERS. YOUR KAIJU LEGACY.</p><h2 id="pp-title">PLAYER PROFILES</h2></div><div class="pp-language-picker"><label for="pp-language"><span aria-hidden="true">🌐</span> Text language</label><select id="pp-language" aria-label="Text language">${languageOptions}</select></div><span class="tour-step-label">01 / PLAYER</span><button type="button" class="tour-close pp-close" aria-label="Close Player Profiles">CLOSE</button></header>
-    <div class="tour-pages"><section class="tour-contender-page" data-pp-page="players"><div class="tour-showcase"><div class="tour-show-portrait"></div><div class="tour-show-copy"><span class="tour-role pp-role"></span><h3 class="tour-show-name pp-show-name"></h3><p class="tour-show-epithet pp-show-standing"></p><p class="tour-show-description">Your trophies, medals, city belts, and records. A separate career for every player on this device.</p></div></div><div class="tour-roster-side"><div class="tour-section-heading"><h3>CHOOSE YOUR PLAYER</h3><span>プレイヤー</span></div><div class="pp-players" role="group" aria-label="Choose a local player"></div><p class="tour-career-note pp-storage"></p></div></section>
-    <section class="pp-career-page" data-pp-page="career" hidden><div class="pp-scroll"><div class="pp-career-head"><div><p class="tour-kicker pp-career-status"></p><h3 class="pp-current"></h3><p class="pp-career-note"></p></div><button type="button" class="pp-choose">CHOOSE PLAYER</button></div><div class="pp-career-grid"><section><h3 class="pp-section-title">CAREER RECORD <span>記録</span></h3><div class="pp-stats"></div><p class="pp-audio-note">Audio remains in English.</p><form class="pp-rename"><label for="pp-rename-name">PLAYER NAME</label><div class="pp-form-row"><input id="pp-rename-name" name="name" maxlength="48" autocomplete="off" required><button type="submit">SAVE NAME</button></div></form><div class="pp-manage"><p>Deleting this profile removes its saved career from this browser.</p><button type="button" class="pp-delete">DELETE PROFILE</button></div></section><section><h3 class="pp-section-title">RECENT HISTORY <span>LAST 100 RESULTS</span></h3><p class="pp-history-note">Results recorded since profiles were introduced. Earlier achievements, medals, belts, and high scores are preserved.</p><ol class="pp-history"></ol></section></div></div></section>
-    <section class="pp-create-page" data-pp-page="create" hidden><div class="pp-create-art" aria-hidden="true"></div><div class="pp-create-copy"><span class="tour-role">A NEW KAIJU CAREER</span><h3>MAKE YOUR MARK</h3><p>Start fresh with your own achievements, history, high score, challenge medals, and championship belts.</p><form class="pp-create"><label for="pp-new-name">NEW PLAYER NAME</label><input id="pp-new-name" name="name" maxlength="48" autocomplete="off" placeholder="Enter a player name" required><label for="pp-new-language">Text language</label><select id="pp-new-language" aria-label="New player text language">${languageOptions}</select><p>Audio remains in English.</p><small>Up to 24 characters · Saved locally · Up to 8 players</small></form></div></section></div>
+    <div class="tour-pages"><section class="tour-contender-page" data-pp-page="players"><div class="tour-showcase"><div class="tour-show-portrait"></div><div class="tour-show-copy"><span class="tour-role pp-role"></span><h3 class="tour-show-name pp-show-name"></h3><p class="tour-show-epithet pp-show-standing"></p><p class="tour-show-description">Your trophies, medals, city belts, and records. A separate career for every player on this device.</p></div></div><div class="tour-roster-side"><div class="tour-section-heading"><h3>CHOOSE YOUR PLAYER</h3><span>プレイヤー</span></div><div class="pp-players" role="group" aria-label="Choose a local player"></div><p class="tour-career-note pp-storage"></p>${backupActions}</div></section>
+    <section class="pp-career-page" data-pp-page="career" hidden><div class="pp-scroll"><div class="pp-career-head"><div><p class="tour-kicker pp-career-status"></p><h3 class="pp-current"></h3><p class="pp-career-note"></p></div><button type="button" class="pp-choose">CHOOSE PLAYER</button></div><div class="pp-career-grid"><section><h3 class="pp-section-title">CAREER RECORD <span>記録</span></h3><div class="pp-stats"></div><p class="pp-audio-note">Audio remains in English.</p><section class="pp-backup-panel"><h3 class="pp-section-title">PROFILE BACKUP</h3><p>Download this player’s progress, or restore a backup as a new profile.</p>${backupActions}</section><form class="pp-rename"><label for="pp-rename-name">PLAYER NAME</label><div class="pp-form-row"><input id="pp-rename-name" name="name" maxlength="48" autocomplete="off" required><button type="submit">SAVE NAME</button></div></form><div class="pp-manage"><p>Deleting this profile removes its saved career from this browser.</p><button type="button" class="pp-delete">DELETE PROFILE</button></div></section><section><h3 class="pp-section-title">RECENT HISTORY <span>LAST 100 RESULTS</span></h3><p class="pp-history-note">Results recorded since profiles were introduced. Earlier achievements, medals, belts, and high scores are preserved.</p><ol class="pp-history"></ol></section></div></div></section>
+    <section class="pp-create-page" data-pp-page="create" hidden><div class="pp-create-art" aria-hidden="true"></div><div class="pp-create-copy"><span class="tour-role">A NEW KAIJU CAREER</span><h3>MAKE YOUR MARK</h3><p>Start fresh with your own achievements, history, high score, challenge medals, and championship belts.</p><form class="pp-create"><label for="pp-new-name">NEW PLAYER NAME</label><input id="pp-new-name" name="name" maxlength="48" autocomplete="off" placeholder="Enter a player name" required><label for="pp-new-language">Text language</label><select id="pp-new-language" aria-label="New player text language">${languageOptions}</select><p>Audio remains in English.</p><small>Up to 24 characters · Saved locally · Up to 8 players</small></form></div></section><section class="pp-restore-page" data-pp-page="restore" hidden><div class="pp-scroll"><span class="tour-role">RESTORE PROFILE</span><h3 class="pp-section-title">REVIEW YOUR BACKUP</h3><p>Restoring creates a new profile. Existing players and their progress stay unchanged.</p><p class="pp-restore-file" translate="no"></p><div class="pp-restore-summary"></div><form class="pp-restore-form"><label for="pp-restore-name">RESTORED PLAYER NAME</label><input id="pp-restore-name" maxlength="48" autocomplete="off" required><p>You can choose Play as player after restoring to continue this career.</p></form></div></section></div>
+    <input type="file" id="pp-backup-file" accept=".json,application/json" aria-label="Choose a profile backup" hidden>
     <footer class="tour-footer"><button type="button" class="tour-back pp-back"><span>ESC</span> BACK</button><div class="tour-footer-copy"><p class="tour-controls">ARROWS / D-PAD SELECT · ENTER / A CONFIRM · ESC / B BACK</p><p class="pp-save-note">Saved in this browser on this device. No account required.</p><p class="pp-error" role="status" aria-live="polite"></p></div><span class="tour-selection pp-selection"></span><button type="button" class="tour-launch pp-launch"></button></footer>`;
   document.body.appendChild(dialog);
   const launch = dialog.querySelector('.pp-launch');
-  let returnFocus, prev = {}, cooldown = .35, pendingDelete = null, step = 'players', entryStep = 'players', selectedId = profiles.id, transitioning = false;
+  let returnFocus, prev = {}, cooldown = .35, pendingDelete = null, step = 'players', entryStep = 'players', selectedId = profiles.id, transitioning = false, backupText = null, backupPreview = null, backupFileName = '', backupSerial = 0;
   // Opening pauses gameplay and flushes the career; reuse that snapshot while
   // navigating so a long history is not parsed for every D-pad movement.
   const careerCache = new Map();
@@ -48,12 +51,12 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
     const c = career(selectedId), editable = profiles.persistent && !transitioning, switchable = editable && canSwitch();
     dialog.dataset.step = step;
     for (const page of dialog.querySelectorAll('[data-pp-page]')) page.hidden = page.dataset.ppPage !== step;
-    dialog.querySelector('.tour-step-label').textContent = step === 'players' ? '01 / PLAYER' : step === 'career' ? '02 / CAREER' : 'NEW PLAYER';
+    dialog.querySelector('.tour-step-label').textContent = step === 'players' ? '01 / PLAYER' : step === 'career' ? '02 / CAREER' : step === 'restore' ? 'RESTORE PROFILE' : 'NEW PLAYER';
     dialog.querySelector('.tour-show-portrait').style.backgroundImage = `url("${c.art}")`;
     dialog.querySelector('.pp-show-name').textContent = player.name;
     dialog.querySelector('.pp-role').textContent = active ? 'ACTIVE PLAYER' : 'YOUR NEXT LEGEND';
     dialog.querySelector('.pp-show-standing').textContent = `${c.trophyCount} / ${ACHIEVEMENTS.length} TROPHIES · BEST ${c.high}`;
-    dialog.querySelector('.pp-selection').textContent = step === 'create' ? i18n.t('NEW PLAYER · FRESH CAREER') : `${player.name} · ${i18n.t(active ? 'ACTIVE PLAYER' : 'LOCAL PLAYER')}`;
+    dialog.querySelector('.pp-selection').textContent = step === 'restore' ? i18n.t('RESTORE AS NEW PROFILE') : step === 'create' ? i18n.t('NEW PLAYER · FRESH CAREER') : `${player.name} · ${i18n.t(active ? 'ACTIVE PLAYER' : 'LOCAL PLAYER')}`;
     const note = !editable ? 'Local storage is unavailable. This career lasts for this session; profile changes are disabled.' : canSwitch() ? 'Each player keeps a separate career. Switching players reloads the game.' : 'Finish or quit your current run to switch players. You can still browse careers.';
     dialog.querySelector('.pp-storage').textContent = note;
     dialog.querySelector('.pp-career-note').textContent = note;
@@ -73,6 +76,23 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
     dialog.querySelector('.pp-manage').hidden = active;
     const remove = dialog.querySelector('.pp-delete'); remove.disabled = !switchable; remove.textContent = pendingDelete === selectedId ? 'CONFIRM DELETE PROFILE' : 'DELETE PROFILE';
     dialog.querySelector('#pp-new-name').disabled = !switchable || players.length >= 8;
+    for (const button of dialog.querySelectorAll('.pp-backup-download')) button.disabled = transitioning;
+    for (const button of dialog.querySelectorAll('.pp-restore-open')) {
+      button.disabled = !switchable || players.length >= 8;
+      button.title = players.length >= 8 ? 'Up to eight local profiles can be saved.' : !canSwitch() ? 'Finish your run before restoring a profile.' : 'Choose a profile backup';
+    }
+    if (step === 'restore' && backupPreview) {
+      const data = backupPreview.data, stats = parse(data.kaiju_history_v1)?.totals || {};
+      const trophies = parse(data.kaiju_achievements_v1), tour = parse(data.kaiju_championship_tour_v1), challenges = parse(data.kaiju_city_challenges_v1);
+      const summary = [['ORIGINAL PLAYER', backupPreview.profile.name], ['BACKUP DATE', new Date(backupPreview.exportedAt).toLocaleString(i18n.getLanguage())],
+        ['Text language', LANGUAGES.find((l) => l.code === normalizeLanguage(data[LANGUAGE_KEY])).name],
+        ['TROPHIES', ACHIEVEMENTS.filter((a) => Number.isFinite(trophies?.unlocked?.[a.id])).length],
+        ['HIGH SCORE', format(data.kaiju_highscore)], ['RECORDED RUNS', format(stats.played)],
+        ['CITY BELTS', Object.values(tour?.records || {}).reduce((sum, r) => sum + Math.min(6, Array.isArray(r?.wins) ? r.wins.length : 0), 0)],
+        ['CHALLENGE MEDALS', Object.values(challenges?.records || {}).filter((r) => r?.medal > 0).length]];
+      dialog.querySelector('.pp-restore-file').textContent = backupFileName;
+      dialog.querySelector('.pp-restore-summary').innerHTML = summary.map(([label, value], i) => `<div><span>${label}</span><b ${i < 3 ? 'translate="no"' : ''}>${escape(value)}</b></div>`).join('');
+    }
     const total = c.totals;
     const stats = [['TROPHIES', `${c.trophyCount} / ${ACHIEVEMENTS.length}`], ['HIGH SCORE', c.high], ['CHALLENGE MEDALS', `${c.medals} / 24`], ['CITY BELTS', format(c.belts)], ['RECORDED RUNS', format(total.played)], ['WINS / LOSSES', `${format(total.wins)} / ${format(total.losses)}`], ['ACTIVE PLAY', duration(total.seconds)]];
     dialog.querySelector('.pp-stats').innerHTML = stats.map(([label, value]) => `<div><span>${label}</span><b>${value}</b></div>`).join('');
@@ -84,8 +104,8 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
       if (r.mode === 'title' || r.mode === 'tour' || r.mode.startsWith('local-')) detail.push(`Falls ${format(r.playerFalls)}–${format(r.rivalFalls)}`);
       return `<li><div><b>${modeNames[r.mode]}</b><span class="pp-outcome pp-${r.outcome}">${outcomeNames[r.outcome]}</span></div><p>${detail.map(escape).join(' · ')}</p><time datetime="${new Date(r.ended).toISOString()}">${escape(date)}</time></li>`;
     }).join('') : '<li class="pp-empty">No recorded results yet. Play Havoc, a title match, a challenge, or another mode to start this player’s history.</li>';
-    launch.disabled = transitioning || (step === 'create' ? !switchable || players.length >= 8 : step === 'career' && !active ? !switchable : false);
-    launch.textContent = step === 'players' ? 'VIEW CAREER →' : step === 'create' ? 'CREATE & PLAY' : active ? 'CONTINUE AS PLAYER' : 'PLAY AS PLAYER';
+    launch.disabled = transitioning || (step === 'restore' ? !switchable || players.length >= 8 || !backupPreview : step === 'create' ? !switchable || players.length >= 8 : step === 'career' && !active ? !switchable : false);
+    launch.textContent = step === 'players' ? 'VIEW CAREER →' : step === 'restore' ? 'RESTORE AS NEW PROFILE' : step === 'create' ? 'CREATE & PLAY' : active ? 'CONTINUE AS PLAYER' : 'PLAY AS PLAYER';
   }
   function focus(selector) { const node = dialog.querySelector(selector); node?.focus({ preventScroll: true }); node?.scrollIntoView({ block: 'nearest' }); }
   function close() { if (!transitioning) dialog.close(); }
@@ -94,6 +114,7 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
     if (next === 'create') dialog.querySelector('#pp-new-language').value = i18n.getLanguage();
     if (next === 'players') focus(`[data-pp-select="${selectedId}"]`);
     else if (next === 'create') focus('#pp-new-name');
+    else if (next === 'restore') { dialog.querySelector('.pp-restore-page .pp-scroll').scrollTop = 0; launch.focus({ preventScroll: true }); }
     else { dialog.querySelector('.pp-scroll').scrollTop = 0; launch.focus({ preventScroll: true }); }
   }
   function back() { if (transitioning) return; if (step === 'players' || step === entryStep && step === 'career') close(); else showStep('players'); }
@@ -111,7 +132,54 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
   dialog.querySelector('.pp-back').addEventListener('click', back);
   dialog.querySelector('.pp-choose').addEventListener('click', () => { entryStep = 'players'; showStep('players'); });
   dialog.addEventListener('cancel', (e) => { e.preventDefault(); back(); });
-  dialog.addEventListener('close', () => { onClose(); if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true }); });
+  dialog.addEventListener('close', () => { backupSerial++; onClose(); if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true }); });
+  function uniqueRestoreName(name) {
+    const names = new Set(profiles.list().map((p) => p.name.toLocaleLowerCase()));
+    if (!names.has(name.toLocaleLowerCase())) return name;
+    for (let n = 2; n < 100; n++) {
+      const suffix = ` (${n})`, candidate = Array.from(name).slice(0, 24 - suffix.length).join('') + suffix;
+      if (!names.has(candidate.toLocaleLowerCase())) return candidate;
+    }
+    return profileName(name);
+  }
+  for (const button of dialog.querySelectorAll('.pp-backup-download')) button.addEventListener('click', () => {
+    if (transitioning) return;
+    try {
+      onBackup();
+      const text = profiles.backup(selectedId), preview = parseProfileBackup(text);
+      const slug = preview.profile.name.replace(/[^\p{L}\p{N}._-]+/gu, '-').slice(0, 50) || 'player';
+      const blob = new Blob([text], { type: 'application/json;charset=utf-8' }), url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = `kaiju-${slug}-${new Date(preview.exportedAt).toISOString().slice(0, 10)}.json`;
+      dialog.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+      error('Backup download started. Keep this file to restore your progress.');
+    } catch (e) { error(e.message); }
+  });
+  const backupInput = dialog.querySelector('#pp-backup-file');
+  for (const button of dialog.querySelectorAll('.pp-restore-open')) button.addEventListener('click', () => {
+    if (!canSwitch() || !profiles.persistent || transitioning || profiles.list().length >= 8) return;
+    backupInput.value = ''; backupInput.click();
+  });
+  backupInput.addEventListener('change', async () => {
+    const file = backupInput.files?.[0]; if (!file) return;
+    const serial = ++backupSerial; backupPreview = null; backupText = null;
+    try {
+      if (file.size > MAX_PROFILE_BACKUP_BYTES) throw Error('Backup files must be 2 MB or smaller.');
+      const text = await file.text(), preview = parseProfileBackup(text);
+      if (serial !== backupSerial || !dialog.open) return;
+      backupText = text; backupPreview = preview; backupFileName = file.name;
+      dialog.querySelector('#pp-restore-name').value = uniqueRestoreName(preview.profile.name);
+      showStep('restore');
+    } catch (e) { if (serial === backupSerial && dialog.open) { error(e.message); refresh(); } }
+  });
+  dialog.querySelector('.pp-restore-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!backupText || transitioning || !canSwitch()) return;
+    try {
+      const id = profiles.restoreBackup(backupText, dialog.querySelector('#pp-restore-name').value);
+      selectedId = id; backupText = null; backupPreview = null; careerCache.clear(); entryStep = 'players';
+      showStep('career'); error('Profile restored. Choose Play as player to switch.');
+    } catch (e) { error(e.message); refresh(); }
+  });
   dialog.querySelector('.pp-create').addEventListener('submit', async (e) => {
     e.preventDefault(); if (transitioning) return;
     try {
@@ -144,6 +212,7 @@ export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch,
   launch.addEventListener('click', async () => {
     if (transitioning) return;
     if (step === 'players') { showStep('career'); return; }
+    if (step === 'restore') { dialog.querySelector('.pp-restore-form').requestSubmit(); return; }
     if (step === 'create') { dialog.querySelector('.pp-create').requestSubmit(); return; }
     if (selectedId === profiles.id) { close(); return; }
     try { await switchTo(selectedId); } catch (e) { error(e.message); }
