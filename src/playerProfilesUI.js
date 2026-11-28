@@ -6,7 +6,7 @@ const parse = (s) => { try { return JSON.parse(s || 'null'); } catch { return nu
 const number = (n) => Number.isFinite(Number(n)) ? Math.max(0, Math.min(1e12, Number(n))) : 0;
 const format = (n) => i18n.formatNumber(Math.floor(number(n)));
 const duration = (s) => `${Math.floor(number(s) / 60)}:${String(Math.floor(number(s) % 60)).padStart(2, '0')}`;
-const modeNames = { havoc: 'Havoc', title: 'Title Match', vs: 'VS Duel', lone: 'Lone Soldier', challenge: 'City Challenge', tour: 'Championship Tour', 'local-title': 'Local 2P Wrestling', 'local-vs': 'Local 2P Brawl' };
+const modeNames = { havoc: 'Havoc', title: 'Title Match', vs: 'VS Duel', lone: 'Lone Soldier', challenge: 'City Challenge', tour: 'Championship Tour', 'local-title': 'Local 2P Wrestling', 'local-vs': 'Local 2P Brawl', 'online-title': 'Online Wrestling', 'online-vs': 'Online VS' };
 const outcomeNames = { won: 'WON', lost: 'LOST', left: 'LEFT', interrupted: 'INTERRUPTED' };
 
 export function createPlayerProfilesUI(profiles, history, monsters, { canSwitch, onOpen, onClose, onSwitch, onBackup = () => {} }) {

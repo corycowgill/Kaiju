@@ -2,10 +2,11 @@
   "name": "kaiju-havoc",
   "private": true,
   "type": "module",
-  "description": "Browser game; no build step. This file only serves the dev tools in tools/.",
+  "description": "Browser game with an optional authoritative online match server.",
   "scripts": {
     "smoke": "node tools/smoke_test.mjs",
-    "test": "node --test tools/gameplay_test.mjs tools/festival_assets_test.mjs tools/lone_kaiju_test.mjs tools/crowd_navigation_test.mjs tools/achievements_test.mjs tools/championship_tour_test.mjs tools/havoc_challenges_test.mjs tools/player_profiles_test.mjs tools/military_combat_test.mjs tools/local_multiplayer_test.mjs tools/localization_test.mjs tools/profile_backups_test.mjs"
+    "test": "node --test tools/gameplay_test.mjs tools/festival_assets_test.mjs tools/lone_kaiju_test.mjs tools/crowd_navigation_test.mjs tools/achievements_test.mjs tools/championship_tour_test.mjs tools/havoc_challenges_test.mjs tools/player_profiles_test.mjs tools/military_combat_test.mjs tools/local_multiplayer_test.mjs tools/localization_test.mjs tools/profile_backups_test.mjs tools/online_test.mjs",
+    "server": "node server/index.js"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.1",
@@ -13,7 +14,10 @@
     "@gltf-transform/functions": "^4.5.1",
     "ktx2-encoder": "^0.6.0",
     "meshoptimizer": "^1.3.0",
-    "sharp": "^0.35.5",
+    "sharp": "^0.35.5"
+  },
+  "dependencies": {
+    "ws": "^8.18.3",
     "three": "0.160.0"
   }
 }

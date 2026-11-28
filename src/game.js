@@ -1,5 +1,5 @@
 // Build stamp for the on-page console (visible via ?debug in the URL).
-console.info('[KAIJU HAVOC] build', '1.27.0', new Date().toISOString());
+console.info('[KAIJU HAVOC] build', '1.28.0', new Date().toISOString());
 window.__dbg && window.__dbg('DBG · game.js module starting');
 import * as THREE from 'three';
 import { LoneSoldier, loadLoneView } from './loneSoldier.js';
@@ -39,6 +39,9 @@ import { releasePowerPart, warmPowerPool } from './powerVfx.js';
 import { bindWater, wadeSpeedMult, wadeSink, updateWading, footfall as waterFootfall, impact as waterImpact, boatSunk, waterDepth } from './waterPlay.js';
 import vfx, { listBuilders, resetPooledLights, flipbookWarmMeshes, effectTextures, flipbooksReady } from './vfx.js';
 import { createLocalMatch } from './localMultiplayer.js';
+import { createOnlineUI } from './online/ui.js';
+import { createOnlineInput } from './online/input.js';
+import { createOnlinePresentation } from './online/presentation.js';
 import { frameLocalPlayers, constrainLocalPosition } from './localCamera.js';
 import { createWrestling } from './wrestling/index.js';
 import { createAchievementTracker } from './achievements.js';
@@ -64,6 +67,7 @@ import { initLook, bindLook, setLookLevel, updateLook, buildLookMap, tagLookScen
 i18n.bindStorage(playerStorage);
 installLocalizationDOM(i18n);
 let localMatch = null;
+let onlineSession = null;
 const localSeatPoint = new THREE.Vector3();
 window.__dbg && window.__dbg('DBG · all imports OK');
 
@@ -1780,7 +1784,7 @@ function _menuRows() {
   ] : step === 'fighter' ? [
     ..._rosterRows(),
     Array.from(document.querySelectorAll('#levelCards .level-card')).filter(shown),
-    Array.from(document.querySelectorAll('#menu .deployment-options select')).filter(shown),
+    Array.from(document.querySelectorAll('#menu .deployment-options select, #online-fighter-btn')).filter(shown),
     [document.getElementById('startBtn')],
   ] : [];
   if (step !== 'title') rows.push([document.querySelector('#menu [data-open-profiles]')]);
@@ -1852,7 +1856,7 @@ function confirmMenu() {
 }
 function pollMenuGamepad(dt) {
   if (_startingGame) return;
-  if (trophyUI.isOpen || tourUI.isOpen || challengeUI.isOpen || profileUI.isOpen) return;
+  if (trophyUI.isOpen || tourUI.isOpen || challengeUI.isOpen || profileUI.isOpen || document.getElementById('online-lobby')?.open) return;
   const sheet = !_menuVisible() && !_upgradeVisible() && _sheetTargets().length > 0;
   if (!sheet) _sheetWasUp = false;
   if (!_menuVisible() && !_upgradeVisible() && !sheet) return;
@@ -1940,7 +1944,7 @@ function pollMenuGamepad(dt) {
 // Keyboard fallback: arrow keys + Enter while the menu / upgrade modal are open.
 window.addEventListener('keydown', (e) => {
   // Pause / result sheet: arrows step through its buttons, Enter / Space presses (Esc stays the pause key)
-  if (_startingGame) return;
+  if (_startingGame || document.getElementById('online-lobby')?.open) return;
   if (!galleryDialog.open && !_menuVisible() && !_upgradeVisible() && _sheetTargets().length) {
     const d = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 }[e.key];
     if (d) { e.preventDefault(); navigateMenu(d); audio.ui?.('move'); return; }
@@ -2573,6 +2577,29 @@ document.getElementById('local-play-btn').addEventListener('click', () => {
   playersPicker.value = 'local'; modePicker.value = 'title'; _syncDeployment();
   _setMenuStep('fighter'); audio.ui?.('step');
 });
+const onlineUI = createOnlineUI({ monsters: MONSTERS, profile: () => playerProfiles.current.name, i18n,
+  async onLoad(client, room) {
+    if (state.kaiju) restartInPlace(true);
+    onlineSession = client;
+    const own = room.seats[client.seat], other = room.seats[1 - client.seat];
+    modePicker.value = room.mode; playersPicker.value = 'local'; _setLevel(room.city); _syncDeployment();
+    _cardEls[own.fighter].click(); rivalPicker.value = other.fighter;
+    localMatch = createOnlineInput(client, { touch: touchUI, paused: () => state.paused || state.gameOver });
+    document.body.classList.add('local-play', 'online-play');
+    audio.init(); audio.resume();
+    if (!await startGame(own.fighter)) { _hideRunHUD(); restartInPlace(); throw Error('Match load failed'); }
+  },
+  onLeave() { if (onlineSession) { _hideRunHUD(); restartInPlace(); } },
+});
+const onlinePauseNote = document.createElement('p'); onlinePauseNote.className = 'on-pause-note'; onlinePauseNote.textContent = 'Online match continues while the menu is open.'; document.getElementById('pause-menu').append(onlinePauseNote);
+onlineUI.client.addEventListener('error', ({detail}) => {
+  if (onlineSession && ['This room is no longer available.', 'The reconnect window has ended.', 'Loading timed out. Create a new room.', 'Match interrupted. No result recorded.', 'Game versions differ. Reload both games.'].includes(detail)) {
+    playerHistory.finish('interrupted');
+    gameOver(false, {keepPose:true, title:'MATCH INTERRUPTED', subtitle:'Match interrupted. No result recorded.', waveLabel:'Falls', waveValue:'—'});
+  }
+});
+document.getElementById('online-play-btn').addEventListener('click', () => onlineUI.open(modePicker.value, selectedLevel, state.monsterKey));
+document.getElementById('online-fighter-btn').addEventListener('click', () => onlineUI.open(modePicker.value, selectedLevel, state.monsterKey));
 document.getElementById('mn-back').addEventListener('click', _menuBack);
 menuEl.addEventListener('pointerdown', (e) => _menuInputFrom(e.pointerType === 'touch' ? 'touch' : 'mouse'));
 // Attract screen: a click or tap anywhere (but the quality links) starts
@@ -3284,6 +3311,10 @@ async function _preuploadTextures(roots) {
 // resets per-run state and returns to the monster-select menu.
 /** The result screen's PLAY AGAIN: the same fighter, mode, stage (and rival / unit) straight into loading. */
 function _playAgain() {
+  if (onlineSession) {
+    if (!onlineSession.room?.seats[1-onlineSession.seat]?.connected) { onlineUI.open(modePicker.value, selectedLevel, state.monsterKey); return; }
+    onlineSession.send({type:'rematch'}); document.getElementById('goRetryBtn').textContent = 'WAITING FOR REMATCH'; return;
+  }
   if (challengeRun) { challengeUI.open('missions'); return; }
   if (tourRun) { tourUI.open('route'); return; }
   const key = state.monsterKey;
@@ -3291,7 +3322,11 @@ function _playAgain() {
   restartInPlace();
   startGame(key);
 }
-function restartInPlace() {
+function restartInPlace(preserveOnline = false) {
+  if (onlineSession) document.getElementById('goRetryBtn').innerHTML = 'PLAY AGAIN<small></small>';
+  localMatch?.dispose?.();
+  if (!preserveOnline && onlineSession) { onlineSession.leave(); onlineSession = null; }
+  document.body.classList.remove('online-play');
   combatHitUntil = combatKillUntil = 0; lastCombatImpact = -Infinity; combatMarker.hidden = true;
   playerHistory.finish('left', { score: state.score, wave: state.wave });
   challengeMode?.dispose(); challengeMode = null;
@@ -3394,6 +3429,7 @@ window.__restartInPlace = restartInPlace;
 if (/[?&]debug\b/.test(location.search)) {
   // composer(): the post chain (bloom, grade) for in-game-look screenshots
   window.__qa = { state, world, camera, renderer, locale: i18n,
+    online: () => onlineSession, onlineUI: () => onlineUI, onlineView: () => _wr?.W,
     challenge: () => challengeMode,
     history: playerHistory,
     graphics:()=>({width:_fitWidth,height:_fitHeight,pixelRatio:_fitPR,resizeCount:_fitCount,cameraCandidates:_cameraQuery.candidates||0}),
@@ -3415,7 +3451,7 @@ async function startGame(key) {
       const proceed = await _showMobileDataWarning();
       if (!proceed) return false;
     }
-    if (!tourRun && !challengeRun && playersPicker.value === 'local' && ['title', 'vs'].includes(modePicker.value)) {
+    if (!onlineSession && !tourRun && !challengeRun && playersPicker.value === 'local' && ['title', 'vs'].includes(modePicker.value)) {
       try { localMatch = createLocalMatch({ pads: navigator.getGamepads?.() || [], scheme: devicesPicker.value, versus: modePicker.value === 'vs' }); }
       catch (e) { toast(e.message, 'bad'); return false; }
       localMatch.constrain = constrainLocalPosition;
@@ -4672,7 +4708,7 @@ function gameOver(victory, text) {
     next.textContent = !result?.won ? 'RETRY TOUR MATCH' : result.complete ? 'VIEW CHAMPION’S TROPHY' : result.belts === 6 ? 'WORLD TITLE SHOT' : 'NEXT CITY';
     if (result?.won && tourRun.final) audio.achievement('platinum');
   }
-  if (localMatch && _wr) {
+  if (localMatch && !onlineSession && _wr) {
     const m = _wr.W.match.state;
     text = { keepPose: true, title: `PLAYER ${victory ? 1 : 2} WINS`,
       subtitle: `${state.monsterCfg.name} vs ${MONSTERS[_rivalCache.key].name} · ${LEVELS[world.level].name} · LOCAL ${localMatch.versus ? 'BRAWL' : 'WRESTLING'}`,
@@ -7540,7 +7576,7 @@ const ctx = {
 };
 
 function beginPlayerHistory() {
-  playerHistory.begin({ mode: localMatch ? localMatch.versus ? 'local-vs' : 'local-title' : challengeRun ? 'challenge' : tourRun ? 'tour' : modePicker.value,
+  playerHistory.begin({ mode: onlineSession ? localMatch.versus ? 'online-vs' : 'online-title' : localMatch ? localMatch.versus ? 'local-vs' : 'local-title' : challengeRun ? 'challenge' : tourRun ? 'tour' : modePicker.value,
     fighter: state.monsterKey, opponent: localMatch ? _rivalCache?.key || '' : '', city: world.level || selectedLevel,
     mission: challengeRun?.mission.name || tourRun?.name || '' });
 }
@@ -7613,7 +7649,14 @@ const MODES = {
   wrestling: {
     id: 'wrestling', needsRival: true, ownsKO: true,
     start() {
-      if (!_wr) _wr = createWrestling(ctx);
+      if (onlineSession) {
+        _wr = createOnlinePresentation(ctx, onlineSession, { i18n, onResult(result) {
+          playerHistory.finish(result.won ? 'won' : 'lost', { seconds: result.match.time, playerFalls: result.match.playerFalls, rivalFalls: result.match.rivalFalls });
+          gameOver(result.won, { keepPose: true, title: result.won ? 'YOU WIN' : 'OPPONENT WINS', subtitle: result.reason === 'disconnect' ? result.won ? 'Opponent disconnected. Match ended by forfeit.' : 'Connection lost. Match ended by forfeit.' : 'ONLINE MATCH COMPLETE', waveLabel: 'Falls', waveValue: `${result.match.playerFalls} – ${result.match.rivalFalls}` });
+        } });
+        document.getElementById('goRetryBtn').textContent = 'REQUEST REMATCH';
+        beginPlayerHistory();
+      } else _wr = createWrestling(ctx);
       _wr.start({ rival: _rivalCache });
     },
     update(dt, dtReal) { if (_wr) _wr.update(dt, dtReal); },
@@ -7702,13 +7745,13 @@ window.__dynRes = () => ({ pr: _curPR, emaMs: +_dyn.ema.toFixed(1) });
 function tick(now) {
   const dtRaw = (now - last) / 1000;
   last = now;
-  if(document.hidden){requestAnimationFrame(tick);return;}
+  if(document.hidden){if(onlineSession)onlineSession.input({});requestAnimationFrame(tick);return;}
   if (localMatch && state.kaiju && !_startingGame && !state.gameOver) {
     localMatch.poll(keys, navigator.getGamepads?.() || [], now, _keyHit);
     const missing = localMatch.missing;
     document.getElementById('local-connection').textContent = missing.length ? `P${missing.join(' / P')} CONTROLLER DISCONNECTED · RECONNECT TO RESUME` : '';
-    if (missing.length && !state.paused) togglePause(true);
-    else if (localMatch.pausePressed && !trophyUI.isOpen && !tourUI.isOpen && !challengeUI.isOpen && !profileUI.isOpen) togglePause();
+    if (missing.length && !state.paused && !onlineSession) togglePause(true);
+    else if (localMatch.pausePressed && !onlineUI.isOpen && !trophyUI.isOpen && !tourUI.isOpen && !challengeUI.isOpen && !profileUI.isOpen) togglePause();
   }
   const markerHidden = now > combatHitUntil || state.paused || state.gameOver || !state.kaiju;
   if (combatMarker.hidden !== markerHidden) combatMarker.hidden = markerHidden;
@@ -7732,6 +7775,7 @@ function tick(now) {
     skyMat.uniforms.time.value = world.time;
     if (state.kaiju) {
       if (lone) updateLoneSoldier(dt);
+      else if (onlineSession) { _mode.update(dt, dtReal); }
       else { updatePlayer(dt); if (!state.paused && !state.gameOver) updateWorld(dt, dtReal); }
       if (!_startingGame && !state.paused && !state.gameOver) challengeMode?.update(Math.max(0, dtRaw));
       _dynResTick(dtRaw);
@@ -7742,7 +7786,7 @@ function tick(now) {
     if (now - (state._lastMini || 0) > 66) { drawMinimap(); state._lastMini = now; }
   } else if (state.kaiju) {
     // Keep victory and defeat animations playing after the simulation stops.
-    if (state.kaiju.mixer && (state.gameOver || !state.paused)) {
+    if (!onlineSession && state.kaiju.mixer && (state.gameOver || !state.paused)) {
       state.kaiju.mixer.update(Math.min(0.05, dtRaw));
       if (state._topple) _updateTopple(Math.min(0.05, dtRaw));
     }
@@ -7763,6 +7807,7 @@ function tick(now) {
   tourUI.update(dtRaw);
   challengeUI.update(dtRaw);
   profileUI.update(dtRaw);
+  onlineUI.update(dtRaw);
   challengeMode?.pause(state.paused || state.gameOver || _startingGame);
   if (!trophyWasOpen) pollMenuGamepad(dtRaw);
   // Look layer (look.js): the slide toward dusk advances with play time; the

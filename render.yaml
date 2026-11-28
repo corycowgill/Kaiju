@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: kaiju-online
+    runtime: docker
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8787
+      - key: ALLOWED_ORIGINS
+        value: https://corycowgill.github.io

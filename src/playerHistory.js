@@ -1,6 +1,6 @@
 import { localPlayerId } from './playerProfiles.js';
 export const HISTORY_KEY = 'kaiju_history_v1';
-const modes = ['havoc', 'title', 'vs', 'lone', 'challenge', 'tour', 'local-title', 'local-vs'];
+const modes = ['havoc', 'title', 'vs', 'lone', 'challenge', 'tour', 'local-title', 'local-vs', 'online-title', 'online-vs'];
 const outcomes = ['won', 'lost', 'left', 'interrupted'];
 const number = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.min(n, 1e12) : 0;
 const timestamp = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.min(n, 8640000000000000) : 0;

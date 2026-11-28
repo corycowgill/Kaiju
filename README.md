@@ -66,6 +66,13 @@ Plug it in. The game auto-detects it via the Gamepad API.
 - **RUN** -- toggle sprint
 - **II** -- pause
 
+### Online multiplayer
+
+Choose **ONLINE MULTIPLAYER** for private Wrestling or VS arena matches. Create
+a room, share its code or invite link, and have both players press **Ready**.
+Online play requires a separate running match server; GitHub Pages hosts only the
+frontend. See [server setup, controls, deployment and current limits](docs/online-multiplayer.md).
+
 ### Local 2 player
 
 Choose **LOCAL 2 PLAYER** on the mode menu, or select **Local · 2 players** when setting up Title Match or VS. Pick P1's fighter from the roster and P2's fighter from the Player 2 list. Mirror matches are supported. Title Match is best of three falls; local VS is a one-fall brawl using the wrestling combat system. Both players share an automatic camera.

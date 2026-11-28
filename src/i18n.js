@@ -1,4 +1,5 @@
 import menu from './locales/menu.js';
+import online from './locales/online.js';
 import play from './locales/play.js';
 import details from './locales/details.js';
 import templates from './locales/templates.js';
@@ -20,7 +21,7 @@ function add(source, values) {
   messages.set(key(source), { source, values: Object.fromEntries(codes.slice(1).map((code, i) => [code, values[i]])) });
   for (const value of values) if (!reverse.has(key(value))) reverse.set(key(value), source);
 }
-for (const file of [menu, play, details, templates]) for (const row of file.trim().split('\n').filter((row) => row.trim())) {
+for (const file of [menu, play, details, templates, online]) for (const row of file.trim().split('\n').filter((row) => row.trim())) {
   const [source, ...values] = row.split('|'); add(source, values);
 }
 for (const row of trophies.trim().split('\n').filter((row) => row.trim())) {

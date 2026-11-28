@@ -1,0 +1,8 @@
+.git
+node_modules
+art
+tools
+assets
+!assets/levels
+!assets/levels/*_layout.json
+*.png
